@@ -73,14 +73,14 @@ def test_intelligence_settings_persist_and_default_standard_is_safe(tmp_path):
     initial = service.snapshot()
     assert initial.enabled is False
     assert initial.mode is IntelligenceMode.STANDARD
-    assert initial.training_capture is True
+    assert initial.training_capture is False
 
     updated = service.update(
         enabled=True,
         mode='deep',
         auto_escalation=True,
         verification_enabled=True,
-        training_capture=False,
+        training_capture=True,
         performance_learning=True,
         max_models=3,
         latency_preference='quality',
@@ -88,7 +88,7 @@ def test_intelligence_settings_persist_and_default_standard_is_safe(tmp_path):
     )
     assert updated.mode is IntelligenceMode.DEEP
     assert updated.max_models == 3
-    assert updated.training_capture is False
+    assert updated.training_capture is True
 
     reloaded = IntelligenceSettingsService(Preferences(path)).snapshot()
     assert reloaded == updated
