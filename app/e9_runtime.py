@@ -13,7 +13,19 @@ from integrations.provider_contracts import runtime_provider_inventory
 from models.intelligence import IntelligenceEngine
 from models.intelligence_settings import IntelligenceSettingsService
 from models.performance import ModelPerformanceTracker
-from training import TrainingCandidateStore, TrainingCollector, TrainingDatasetExporter
+from models.performance_routing import attach_performance_routing
+from training import (
+    AutoTrainingCoordinator,
+    AutoTrainingRuntime,
+    FailClosedEvaluator,
+    LocalPeftTrainerBackend,
+    TrainingCandidateStore,
+    TrainingCollector,
+    TrainingDatasetExporter,
+    TrainingDatasetSnapshotBuilder,
+    TrainingRegistry,
+    TrainingSettingsService,
+)
 
 
 def attach_e9_runtime(runtime: dict) -> dict:
@@ -60,6 +72,14 @@ def attach_e9_runtime(runtime: dict) -> dict:
     model_performance = ModelPerformanceTracker(
         path=runtime["settings"].data_dir / "model-performance.sqlite3"
     )
+    # Performance learning can only re-rank candidates that the governed router
+    # has already declared eligible. Its adjustment is independently hard-capped
+    # and disabling the owner setting returns the exact canonical ranking.
+    attach_performance_routing(
+        base_router,
+        model_performance,
+        enabled=lambda: intelligence_settings.snapshot().performance_learning,
+    )
     intelligence = IntelligenceEngine(
         base_router,
         default_mode=settings_snapshot.mode,
@@ -75,6 +95,39 @@ def attach_e9_runtime(runtime: dict) -> dict:
     runtime["training_candidate_store"] = training_store
     runtime["training_collector"] = training_collector
     runtime["training_dataset_exporter"] = training_exporter
+
+    # Actual model training is a separate governed pipeline from candidate
+    # capture. The built-in PEFT backend performs real local LoRA/QLoRA/full
+    # training when its optional ML dependencies and an owner-selected base
+    # model are available. Evaluation fails closed by default: a checkpoint can
+    # never become promotion-ready merely because training completed.
+    training_settings = TrainingSettingsService(
+        runtime["settings"].data_dir / "training-settings.json",
+        events=events,
+    )
+    training_snapshots = TrainingDatasetSnapshotBuilder(
+        training_store,
+        runtime["settings"].data_dir / "training-datasets",
+    )
+    training_registry = TrainingRegistry(runtime["settings"].data_dir / "training-registry.sqlite3")
+    training_coordinator = AutoTrainingCoordinator(
+        settings=training_settings,
+        candidates=training_store,
+        snapshots=training_snapshots,
+        registry=training_registry,
+        backends={"local_peft": LocalPeftTrainerBackend()},
+        evaluator=FailClosedEvaluator(),
+        output_root=runtime["settings"].data_dir / "trained-models",
+        events=events,
+    )
+    auto_training = AutoTrainingRuntime(training_coordinator, events=events)
+    runtime.update({
+        "training_settings": training_settings,
+        "training_snapshots": training_snapshots,
+        "training_registry": training_registry,
+        "training_coordinator": training_coordinator,
+        "auto_training": auto_training,
+    })
 
     # Existing runtime objects were constructed before E9 attachment. Point
     # their model-intelligence references at the facade without changing any
@@ -168,8 +221,11 @@ def attach_e9_runtime(runtime: dict) -> dict:
         advanced_intelligence_enabled=settings_snapshot.enabled,
         intelligence_mode=settings_snapshot.mode.value,
         intelligence_auto_escalation=settings_snapshot.auto_escalation,
+        performance_routing_learning=True,
         training_candidates_governed=True,
+        auto_training_enabled=training_settings.snapshot().enabled,
         training_publication_automatic=False,
+        trained_model_activation_automatic=False,
         providers=len(runtime["provider_inventory"]),
         agent_types=workforce.summary()["total_agents"],
     )
@@ -183,9 +239,15 @@ def start_e9_services(runtime: dict) -> None:
     agent_evolution = runtime.get("agent_evolution")
     if agent_evolution is not None:
         agent_evolution.start()
+    auto_training = runtime.get("auto_training")
+    if auto_training is not None:
+        auto_training.start()
 
 
 def stop_e9_services(runtime: dict) -> None:
+    auto_training = runtime.get("auto_training")
+    if auto_training is not None:
+        auto_training.stop()
     agent_evolution = runtime.get("agent_evolution")
     if agent_evolution is not None:
         agent_evolution.stop()
@@ -204,6 +266,9 @@ def stop_e9_services(runtime: dict) -> None:
     model_performance = runtime.get("model_performance")
     if model_performance is not None:
         model_performance.close()
+    training_registry = runtime.get("training_registry")
+    if training_registry is not None:
+        training_registry.close()
     training_store = runtime.get("training_candidate_store")
     if training_store is not None:
         training_store.close()
