@@ -20,7 +20,7 @@ function installStyle(){if(document.getElementById('oc-intelligence-style'))retu
 function providerPage(){const body=document.getElementById('moduleBody');if(!body)return null;const text=body.textContent||'';if(!text.includes('Your AI providers')&&!text.includes('Choose and configure AI providers'))return null;return body}
 function metric(label,value){return `<span class="oc-ai-metric"><strong>${esc(value)}</strong> ${esc(label)}</span>`}
 function toggle(label,key,checked,help){return `<label class="oc-ai-control"><span><strong>${esc(label)}</strong><small>${esc(help)}</small></span><input class="oc-ai-toggle" type="checkbox" data-ai-setting="${esc(key)}" ${checked?'checked':''}></label>`}
-function panelHtml(data){const s=data.settings||{},t=data.training||{},runtime=data.runtime||{};const statuses=t.by_status||{};return `<section class="oc-panel" id="${PANEL_ID}">
+function panelHtml(data){const s=data.settings||{},t=data.training||{},runtime=data.runtime||{};const statuses=t.by_status||{};const resolved=runtime.last_outcome?.mode||'not used yet';return `<section class="oc-panel" id="${PANEL_ID}">
 <div><strong>Advanced Intelligence</strong><p>Keep normal Vishnu as the default, choose a fixed reasoning level, or use Auto so Vishnu selects the least expensive suitable level for each task. Security, permissions, privacy and approvals always remain authoritative.</p></div>
 <div class="oc-ai-grid">
 ${toggle('Advanced Intelligence','enabled',!!s.enabled,'Master switch. Off always uses Standard behavior.')}
@@ -33,7 +33,7 @@ ${toggle('Training candidate capture','training_capture',s.training_capture!==fa
 <label class="oc-ai-control"><span><strong>Latency preference</strong><small>Fast caps deliberation more aggressively.</small></span><select data-ai-setting="latency_preference">${['fast','balanced','quality'].map(v=>`<option value="${v}" ${s.latency_preference===v?'selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select></label>
 <label class="oc-ai-control"><span><strong>Per-request cost ceiling</strong><small>Optional owner ceiling; leave blank for existing budget policy.</small></span><input type="number" min="0.01" max="10000" step="0.01" value="${s.max_cost_per_request??''}" placeholder="Existing policy" data-ai-setting="max_cost_per_request"></label>
 </div>
-<div class="oc-ai-metrics">${metric('configured mode',s.mode||'standard')}${metric('last resolved mode',runtime.mode||s.mode||'standard')}${metric('training candidates',t.total||0)}${metric('eligible',t.eligible||0)}${metric('approved',statuses.approved||0)}${metric('performance profiles',(data.performance||[]).length)}</div>
+<div class="oc-ai-metrics">${metric('configured mode',s.mode||'standard')}${metric('last resolved mode',resolved)}${metric('training candidates',t.total||0)}${metric('eligible',t.eligible||0)}${metric('approved',statuses.approved||0)}${metric('performance profiles',(data.performance||[]).length)}</div>
 <div class="oc-ai-actions"><button type="button" class="oc-button" data-ai-review>Review training candidates</button><button type="button" class="oc-button" data-ai-export>Export approved dataset</button></div>
 <div class="oc-note">Auto changes only reasoning depth. Training capture remains an independent owner setting. Training exports are owner-local JSONL + manifest files; Vishnu does not automatically publish them, and model output never gains tool or execution authority.</div>
 </section>`}
