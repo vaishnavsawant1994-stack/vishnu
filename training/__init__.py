@@ -14,12 +14,12 @@ from training.candidates import (
     TrainingCandidateFactory,
 )
 from training.collector import TrainingCollector
+from training.comprehensive_evaluation import ComprehensiveCheckpointEvaluator as LocalCheckpointEvaluator
 from training.deployment import (
     DeploymentResult,
     ModelDeploymentBackend,
     UnavailableDeploymentBackend,
 )
-from training.evaluation import LocalCheckpointEvaluator
 from training.exporter import TrainingDatasetExporter, TrainingExport
 from training.self_improvement import (
     AutoTrainingRuntime,
