@@ -31,13 +31,24 @@ class DeliberationEngine:
     Every branch still passes through GovernedModelRouter._run, so health,
     privacy, quota, budgets, retries, fallback accounting and model-output
     non-authority remain enforced. This engine never executes tools.
+
+    Legacy callers continue to use the deployment-level
+    ``multi_model_deliberation_enabled`` gate. The optional Advanced
+    Intelligence layer may pass ``enabled=True`` only after the owner master
+    switch and mode policy have selected a bounded deliberation pattern.
     """
 
     MODES = {'parallel_compare', 'critic', 'judge', 'synthesize', 'consensus'}
 
-    def __init__(self, router, *, max_models: int = 3):
+    def __init__(self, router, *, max_models: int = 3, enabled: bool | None = None):
         self.router = router
         self.max_models = max(2, min(5, int(max_models)))
+        self.enabled_override = None if enabled is None else bool(enabled)
+
+    def _enabled(self) -> bool:
+        if self.enabled_override is not None:
+            return self.enabled_override
+        return bool(getattr(self.router.settings, 'multi_model_deliberation_enabled', False))
 
     def _privacy(self, request: ModelRequest) -> PrivacyMode:
         if request.sensitivity in {'sensitive', 'secret'}:
@@ -95,7 +106,7 @@ class DeliberationEngine:
     def run(self, request: ModelRequest, *, mode: str = 'synthesize') -> DeliberationResult:
         if mode not in self.MODES:
             raise ValueError('unsupported deliberation mode')
-        if not bool(getattr(self.router.settings, 'multi_model_deliberation_enabled', False)):
+        if not self._enabled():
             final = self.router.request(request)
             return DeliberationResult('single', (), final, ())
 
