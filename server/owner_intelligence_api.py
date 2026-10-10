@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from security.request_context import current_trusted_request
@@ -19,6 +19,21 @@ class IntelligenceSettingsBody(BaseModel):
     max_models: int | None = Field(default=None, ge=1, le=5)
     latency_preference: str | None = Field(default=None, max_length=32)
     max_cost_per_request: float | None = Field(default=None, gt=0, le=10000)
+
+
+class AutoTrainingSettingsBody(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    enabled: bool | None = None
+    backend_id: str | None = Field(default=None, min_length=1, max_length=80)
+    base_model: str | None = Field(default=None, max_length=500)
+    method: str | None = Field(default=None, max_length=20)
+    min_approved_records: int | None = Field(default=None, ge=10, le=1_000_000)
+    interval_seconds: int | None = Field(default=None, ge=3600, le=2_592_000)
+    minimum_quality_score: float | None = Field(default=None, ge=0, le=1)
+    minimum_improvement: float | None = Field(default=None, ge=0, le=1)
+    require_safety_evaluation: bool | None = None
+    require_shadow_evaluation: bool | None = None
+    max_training_records: int | None = Field(default=None, ge=10, le=1_000_000)
 
 
 class CandidateDecisionBody(BaseModel):
@@ -40,12 +55,12 @@ class DatasetExportBody(BaseModel):
 
 
 def owner_intelligence_router(runtime) -> APIRouter:
-    """Owner-only PWA surface for optional intelligence and training governance.
+    """Owner-only surface for intelligence, training and safe self-improvement.
 
-    This router deliberately has no provider-key mutation and no dataset upload
-    endpoint. It operates on the same canonical services used by the desktop
-    Owner AI surface and therefore cannot bypass Vishnu policy or execution
-    authority.
+    This router can configure/trigger model training and implementation of an
+    *already owner-approved* evolution handoff. It deliberately exposes no model
+    activation, Body adoption, merge, deployment, provider-key mutation or
+    approval-bypass endpoint.
     """
 
     router = APIRouter(prefix='/iphone/api/owner/intelligence', tags=['owner-intelligence'])
@@ -62,8 +77,6 @@ def owner_intelligence_router(runtime) -> APIRouter:
         return device_id
 
     def require_fresh_owner_verification(device_id: str) -> None:
-        # PwaSessionMiddleware establishes current_trusted_request in hosted
-        # operation. Compatibility/local test runtimes may omit pwa_sessions.
         if runtime.get('pwa_sessions') is None:
             return
         context = current_trusted_request()
@@ -96,6 +109,18 @@ def owner_intelligence_router(runtime) -> APIRouter:
             raise HTTPException(503, 'training candidate store unavailable')
         return store
 
+    def training_coordinator():
+        service = runtime.get('training_coordinator')
+        if service is None:
+            raise HTTPException(503, 'training coordinator unavailable')
+        return service
+
+    def training_registry():
+        service = runtime.get('training_registry')
+        if service is None:
+            raise HTTPException(503, 'training registry unavailable')
+        return service
+
     @router.get('/summary')
     def summary(
         pa_device: str | None = Cookie(default=None),
@@ -107,13 +132,23 @@ def owner_intelligence_router(runtime) -> APIRouter:
         store = training_store()
         intelligence = runtime.get('intelligence') or runtime.get('models')
         status = intelligence.status() if intelligence is not None else {}
+        coordinator = runtime.get('training_coordinator')
+        auto_training = runtime.get('auto_training')
+        code_runtime = runtime.get('automatic_code_evolution_runtime')
+        deployment = runtime.get('model_deployment')
         return {
             'settings': settings.public(),
             'performance': [item.public() for item in performance.profiles()] if performance is not None else [],
             'training': store.stats(),
+            'auto_training': coordinator.summary() if coordinator is not None else None,
+            'auto_training_runtime': auto_training.status() if auto_training is not None else None,
+            'code_evolution': code_runtime.status() if code_runtime is not None else {'available': False},
+            'model_deployment': deployment.status() if deployment is not None else {'backends': {}},
             'runtime': status.get('advanced_intelligence', {}),
             'model_output_authority': False,
             'automatic_publication': False,
+            'automatic_model_activation': False,
+            'automatic_code_adoption': False,
         }
 
     @router.patch('/settings')
@@ -130,6 +165,145 @@ def owner_intelligence_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
         emit('owner.intelligence.settings_updated', device_id=device_id, **snapshot.public())
         return {'ok': True, 'settings': snapshot.public()}
+
+    @router.patch('/training/settings')
+    def update_training_settings(
+        body: AutoTrainingSettingsBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        service = runtime.get('training_settings')
+        if service is None:
+            raise HTTPException(503, 'training settings unavailable')
+        try:
+            snapshot = service.update(**body.model_dump(exclude_unset=True))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        auto_runtime = runtime.get('auto_training')
+        if auto_runtime is not None:
+            if snapshot.enabled:
+                auto_runtime.start()
+            else:
+                auto_runtime.stop()
+        emit('owner.training.settings_updated', device_id=device_id, enabled=snapshot.enabled, backend_id=snapshot.backend_id)
+        return {'ok': True, 'settings': snapshot.public(), 'runtime': auto_runtime.status() if auto_runtime is not None else None}
+
+    @router.post('/training/run')
+    def run_training(
+        background: BackgroundTasks,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        coordinator = training_coordinator()
+        background.add_task(coordinator.run_once, force=True)
+        emit('owner.training.run_requested', device_id=device_id)
+        return {'ok': True, 'scheduled': True, 'production_activation_automatic': False}
+
+    @router.get('/training/jobs')
+    def training_jobs(
+        limit: int = 100,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        return {'jobs': [job.public() for job in training_registry().jobs(limit=limit)]}
+
+    @router.post('/training/jobs/{job_id}/cancel')
+    def cancel_training_job(
+        job_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        try:
+            job = training_registry().cancel_job(job_id)
+        except KeyError as exc:
+            raise HTTPException(404, 'training job not found') from exc
+        emit('owner.training.job_cancelled', device_id=device_id, job_id=job_id)
+        return {'ok': True, 'job': job.public()}
+
+    @router.get('/training/models')
+    def trained_models(
+        limit: int = 100,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        return {'models': [model.public() for model in training_registry().models(limit=limit)]}
+
+    @router.post('/training/models/{model_id}/approve-promotion')
+    def approve_model_promotion(
+        model_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        try:
+            model = training_registry().approve_promotion(model_id, owner_id='owner')
+        except KeyError as exc:
+            raise HTTPException(404, 'trained model not found') from exc
+        except (ValueError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        emit('owner.training.model_promotion_approved', device_id=device_id, model_id=model_id)
+        return {
+            'ok': True,
+            'model': model.public(),
+            'activated': False,
+            'message': 'Promotion approved. A configured release controller must deploy and prove the exact checkpoint before activation.',
+        }
+
+    @router.post('/evolution/candidates/{candidate_id}/implement')
+    def implement_evolution_candidate(
+        candidate_id: str,
+        background: BackgroundTasks,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        automatic = runtime.get('automatic_code_evolution')
+        if automatic is None:
+            raise HTTPException(503, 'automatic code evolution is unavailable on this host')
+        # This endpoint cannot approve an evolution candidate. The immutable
+        # handoff must already exist from the separate owner approval flow.
+        handoff = automatic.code_body.handoffs.get(candidate_id)
+        if handoff is None:
+            raise HTTPException(409, 'candidate has no owner-approved implementation handoff')
+        existing = automatic.code_body.latest(candidate_id)
+        if existing is not None:
+            return {'ok': True, 'scheduled': False, 'run': existing.to_dict(), 'review_required': True, 'owner_adoption_required': True}
+        background.add_task(automatic.run, candidate_id, runtime_epoch=int(runtime.get('code_worker_epoch', 0)))
+        emit('owner.evolution.auto_implementation_requested', device_id=device_id, candidate_id=candidate_id)
+        return {
+            'ok': True,
+            'scheduled': True,
+            'candidate_id': candidate_id,
+            'review_required': True,
+            'owner_adoption_required': True,
+            'automatic_merge': False,
+            'automatic_deploy': False,
+        }
+
+    @router.post('/evolution/run-approved')
+    def run_approved_evolution(
+        background: BackgroundTasks,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        auto_runtime = runtime.get('automatic_code_evolution_runtime')
+        if auto_runtime is None:
+            raise HTTPException(503, 'automatic code evolution runtime unavailable')
+        background.add_task(auto_runtime.run_once)
+        emit('owner.evolution.auto_cycle_requested', device_id=device_id)
+        return {'ok': True, 'scheduled': True, 'owner_approved_handoffs_only': True}
 
     @router.get('/training/candidates')
     def candidates(
