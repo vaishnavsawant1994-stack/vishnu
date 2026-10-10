@@ -28,7 +28,7 @@ class IntelligenceProfile:
     adaptive_routing: bool
     verification: bool
     deliberation: bool
-    training_capture: bool = True
+    training_capture: bool = False
     max_models: int = 1
 
     def __post_init__(self) -> None:
@@ -49,7 +49,7 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
         adaptive_routing=False,
         verification=False,
         deliberation=False,
-        training_capture=True,
+        training_capture=False,
         max_models=1,
     ),
     IntelligenceMode.SMART: IntelligenceProfile(
@@ -57,7 +57,7 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
         adaptive_routing=True,
         verification=True,
         deliberation=False,
-        training_capture=True,
+        training_capture=False,
         max_models=2,
     ),
     IntelligenceMode.DEEP: IntelligenceProfile(
@@ -65,7 +65,7 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
         adaptive_routing=True,
         verification=True,
         deliberation=True,
-        training_capture=True,
+        training_capture=False,
         max_models=4,
     ),
     IntelligenceMode.RESEARCH: IntelligenceProfile(
@@ -73,7 +73,7 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
         adaptive_routing=True,
         verification=True,
         deliberation=True,
-        training_capture=True,
+        training_capture=False,
         max_models=5,
     ),
     # AUTO is never executed directly by IntelligenceEngine: it is resolved to
@@ -84,7 +84,7 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
         adaptive_routing=True,
         verification=True,
         deliberation=True,
-        training_capture=True,
+        training_capture=False,
         max_models=5,
     ),
 }
