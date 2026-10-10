@@ -12,6 +12,7 @@ from training.candidates import (
     TrainingCandidateFactory,
 )
 from training.collector import TrainingCollector
+from training.exporter import TrainingDatasetExporter, TrainingExport
 from training.store import TrainingCandidateStore
 
 __all__ = [
@@ -21,4 +22,6 @@ __all__ = [
     'TrainingCandidateFactory',
     'TrainingCandidateStore',
     'TrainingCollector',
+    'TrainingDatasetExporter',
+    'TrainingExport',
 ]
