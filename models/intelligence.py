@@ -176,6 +176,14 @@ class IntelligenceEngine:
     def _bounded_request(self, request: ModelRequest) -> ModelRequest:
         settings = self._settings()
         bounded = request
+
+        # Advanced interactive requests often arrive without a durable
+        # execution identifier. Give them a request-unique execution scope so a
+        # per-request owner budget never overwrites the router's global budget
+        # scope and all specialist/synthesis calls share one accounting key.
+        if not bounded.execution_id:
+            bounded = replace(bounded, execution_id=f'intelligence:{bounded.request_id}')
+
         if settings is not None and settings.max_cost_per_request is not None:
             max_cost = settings.max_cost_per_request if request.max_cost is None else min(float(request.max_cost), settings.max_cost_per_request)
             bounded = replace(bounded, max_cost=max_cost)
