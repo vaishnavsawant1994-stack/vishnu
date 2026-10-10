@@ -120,7 +120,7 @@ class IntelligenceEngine:
 
     @staticmethod
     def _verification_evidence(request: ModelRequest) -> VerificationEvidence:
-        metadata = self._metadata(request)
+        metadata = IntelligenceEngine._metadata(request)
         raw = metadata.get('verification_evidence')
         if not isinstance(raw, dict):
             return VerificationEvidence()
