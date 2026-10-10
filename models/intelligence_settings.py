@@ -140,6 +140,9 @@ class IntelligenceSettingsService:
             updates['intelligence_verification_enabled'] = self._bool(values['verification_enabled'], field='verification_enabled')
         if 'training_capture' in values:
             updates['intelligence_training_capture'] = self._bool(values['training_capture'], field='training_capture')
+            # Marks this as a deliberate owner choice so the legacy-default
+            # migration can never turn a real OFF selection back on.
+            updates['intelligence_training_capture_owner_configured'] = True
         if 'performance_learning' in values:
             updates['intelligence_performance_learning'] = self._bool(values['performance_learning'], field='performance_learning')
         if 'max_models' in values:
