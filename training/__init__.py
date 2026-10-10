@@ -11,10 +11,14 @@ from training.candidates import (
     TrainingCandidate,
     TrainingCandidateFactory,
 )
+from training.collector import TrainingCollector
+from training.store import TrainingCandidateStore
 
 __all__ = [
     'CandidateStatus',
     'PrivacyLevel',
     'TrainingCandidate',
     'TrainingCandidateFactory',
+    'TrainingCandidateStore',
+    'TrainingCollector',
 ]
