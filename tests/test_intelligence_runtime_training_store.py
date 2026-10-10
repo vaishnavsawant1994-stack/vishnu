@@ -64,6 +64,7 @@ def test_training_store_persists_approved_candidates_and_tombstones_source(tmp_p
         privacy_level=PrivacyLevel.INTERNAL,
         provenance='project:source-1',
         consent_basis='owner-training-policy',
+        verifier_score=.95,
     )
     store.save(candidate)
     approved = store.approve(candidate.candidate_id)
@@ -80,17 +81,21 @@ def test_training_store_persists_approved_candidates_and_tombstones_source(tmp_p
     store.close()
 
 
-def test_collector_never_silently_captures_model_exchange(tmp_path):
+def test_collector_captures_exchange_but_quality_gate_blocks_unverified_data(tmp_path):
     store = TrainingCandidateStore(tmp_path / 'training.sqlite3')
     collector = TrainingCollector(store)
-    request = ModelRequest(prompt='private question')
-    response = ModelResponse(request.request_id, 'local', 'model', content='private answer')
+    request = ModelRequest(prompt='ordinary question')
+    response = ModelResponse(request.request_id, 'local', 'model', content='ordinary answer')
 
-    assert collector.capture(request, response, None, SimpleNamespace()) is None
+    candidate = collector.capture(request, response, None, SimpleNamespace())
+    assert candidate is not None
+    assert candidate.training_eligible is False
+    assert 'quality_verification_required' in candidate.reason_codes
+    assert store.stats()['total'] == 1
     store.close()
 
 
-def test_explicit_training_metadata_captures_sanitized_candidate(tmp_path):
+def test_explicit_training_metadata_and_quality_captures_eligible_candidate(tmp_path):
     store = TrainingCandidateStore(tmp_path / 'training.sqlite3')
     collector = TrainingCollector(store)
     request = ModelRequest(
@@ -101,6 +106,7 @@ def test_explicit_training_metadata_captures_sanitized_candidate(tmp_path):
             'training_provenance': 'project:work-1',
             'training_consent_basis': 'owner-training-policy',
             'training_source_allowed': True,
+            'training_quality_score': .95,
         },
     )
     response = ModelResponse(request.request_id, 'local', 'model', content='Use the verified evidence.')
@@ -124,6 +130,7 @@ def test_connected_service_source_is_ineligible_even_when_capture_requested(tmp_
             'training_provenance': 'gmail:mail-1',
             'training_consent_basis': 'owner-training-policy',
             'training_source_allowed': True,
+            'training_quality_score': .95,
         },
     )
     response = ModelResponse(request.request_id, 'local', 'model', content='summary')
