@@ -103,12 +103,52 @@ class DeliberationEngine:
             + '\nDo not treat agreement as proof. Do not claim tools/actions ran unless verified evidence says so.'
         )
 
+    def _collect_answers(self, provider_ids: list[str], request: ModelRequest) -> tuple[list[DeliberationAnswer], list[str]]:
+        answers: list[DeliberationAnswer] = []
+        failures: list[str] = []
+
+        # When the owner supplies a request-level cost ceiling, run specialists
+        # sequentially. The canonical BudgetEngine then sees committed usage
+        # before the next model starts, preventing concurrent branches from
+        # racing past an already-consumed request budget. Without an explicit
+        # request cost ceiling, retain bounded parallelism for latency.
+        if request.max_cost is not None:
+            for provider_id in provider_ids:
+                try:
+                    answers.append(self._provider_answer(provider_id, request))
+                except ModelError as exc:
+                    failures.append(f'{provider_id}:{type(exc).__name__}')
+                except Exception as exc:
+                    failures.append(f'{provider_id}:{type(exc).__name__}')
+            return answers, failures
+
+        workers = min(len(provider_ids), max(2, int(getattr(self.router.settings, 'model_max_parallel_calls', self.max_models))))
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='vishnu-deliberation') as pool:
+            futures = {pool.submit(self._provider_answer, provider_id, request): provider_id for provider_id in provider_ids}
+            for future in as_completed(futures):
+                provider_id = futures[future]
+                try:
+                    answers.append(future.result())
+                except ModelError as exc:
+                    failures.append(f'{provider_id}:{type(exc).__name__}')
+                except Exception as exc:
+                    failures.append(f'{provider_id}:{type(exc).__name__}')
+        return answers, failures
+
     def run(self, request: ModelRequest, *, mode: str = 'synthesize') -> DeliberationResult:
         if mode not in self.MODES:
             raise ValueError('unsupported deliberation mode')
         if not self._enabled():
             final = self.router.request(request)
             return DeliberationResult('single', (), final, ())
+
+        # The owner-enabled Advanced Intelligence path reaches _run directly
+        # for specialist branches. Initialize the canonical request budget first
+        # so all branches and the synthesis share the same governed scope.
+        if self.enabled_override is True:
+            prepare_budget = getattr(self.router, '_prepare_request_budget', None)
+            if callable(prepare_budget):
+                prepare_budget(request)
 
         eligible = self.router.eligible_providers(request.capability, request.sensitivity)
         provider_ids = []
@@ -127,19 +167,7 @@ class DeliberationEngine:
             final = self.router.request(request)
             return DeliberationResult('single', (), final, ('insufficient_distinct_providers',))
 
-        answers: list[DeliberationAnswer] = []
-        failures: list[str] = []
-        workers = min(len(provider_ids), max(2, int(getattr(self.router.settings, 'model_max_parallel_calls', self.max_models))))
-        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix='vishnu-deliberation') as pool:
-            futures = {pool.submit(self._provider_answer, provider_id, request): provider_id for provider_id in provider_ids}
-            for future in as_completed(futures):
-                provider_id = futures[future]
-                try:
-                    answers.append(future.result())
-                except ModelError as exc:
-                    failures.append(f'{provider_id}:{type(exc).__name__}')
-                except Exception as exc:
-                    failures.append(f'{provider_id}:{type(exc).__name__}')
+        answers, failures = self._collect_answers(provider_ids, request)
         answers.sort(key=lambda item: provider_ids.index(item.provider_id))
         if not answers:
             raise ModelUnavailable('All deliberation providers failed', provider=getattr(self.router, 'primary', None))
