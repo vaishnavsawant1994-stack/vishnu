@@ -14,7 +14,8 @@ class TrainingCandidateStore:
 
     This is intentionally separate from Vishnu Memory/Knowledge. Rows are
     sanitized candidates, not raw connected-service data, and only APPROVED +
-    eligible rows are available to dataset export.
+    eligible rows are available to dataset export. Repeated capture of the same
+    sanitized source exchange is deduplicated before a new pending row is added.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -102,8 +103,32 @@ class TrainingCandidateStore:
             value['response'] = candidate.response
         return value
 
+    def _pending_duplicate(self, candidate: TrainingCandidate) -> TrainingCandidate | None:
+        if candidate.status is not CandidateStatus.PENDING:
+            return None
+        row = self.connection.execute(
+            '''SELECT * FROM training_candidates
+               WHERE source_fingerprint=? AND prompt=? AND response=?
+                 AND COALESCE(provider_id,'')=COALESCE(?, '')
+                 AND COALESCE(model_id,'')=COALESCE(?, '')
+                 AND status<>?
+               ORDER BY created_at DESC LIMIT 1''',
+            (
+                candidate.source_fingerprint,
+                candidate.prompt,
+                candidate.response,
+                candidate.provider_id,
+                candidate.model_id,
+                CandidateStatus.TOMBSTONED.value,
+            ),
+        ).fetchone()
+        return None if row is None else self._from_row(row)
+
     def save(self, candidate: TrainingCandidate) -> TrainingCandidate:
         with self._lock:
+            duplicate = self._pending_duplicate(candidate)
+            if duplicate is not None:
+                return duplicate
             self.connection.execute(
                 '''
                 INSERT OR REPLACE INTO training_candidates (
@@ -159,6 +184,15 @@ class TrainingCandidateStore:
             rows = self.connection.execute(
                 f'SELECT * FROM training_candidates{where} ORDER BY created_at DESC LIMIT ? OFFSET ?',
                 (*params, bounded_limit, bounded_offset),
+            ).fetchall()
+        return tuple(self._from_row(row) for row in rows)
+
+    def source_candidates(self, source_type: str, source_id: str) -> tuple[TrainingCandidate, ...]:
+        fingerprint = self.source_fingerprint(source_type, source_id)
+        with self._lock:
+            rows = self.connection.execute(
+                'SELECT * FROM training_candidates WHERE source_fingerprint=? ORDER BY created_at ASC',
+                (fingerprint,),
             ).fetchall()
         return tuple(self._from_row(row) for row in rows)
 
