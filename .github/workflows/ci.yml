@@ -19,11 +19,8 @@ jobs:
       - name: Advanced Intelligence governance gate
         run: >-
           pytest -q
-          tests/test_intelligence_modes.py
-          tests/test_adaptive_strategy.py
-          tests/test_model_performance.py
-          tests/test_intelligence_verifier.py
-          tests/test_training_candidates.py
+          tests/test_advanced_intelligence_modes.py
+          tests/test_intelligence_verifier_training.py
           tests/test_intelligence_runtime_training_store.py
           tests/test_advanced_intelligence_integration.py
           tests/test_intelligence_master_switch.py
