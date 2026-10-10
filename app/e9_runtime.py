@@ -96,6 +96,12 @@ def attach_e9_runtime(runtime: dict) -> dict:
     worker_intelligence = runtime.get("worker_intelligence")
     if worker_intelligence is not None and hasattr(worker_intelligence, "attach_intelligence"):
         worker_intelligence.attach_intelligence(intelligence)
+    hybrid_intelligence = runtime.get("hybrid_intelligence")
+    if hybrid_intelligence is not None and hasattr(hybrid_intelligence, "canonical_router"):
+        hybrid_intelligence.canonical_router = intelligence
+    advanced_autonomy = runtime.get("advanced_autonomy")
+    if advanced_autonomy is not None and hasattr(advanced_autonomy, "models"):
+        advanced_autonomy.models = intelligence
 
     continuous = ContinuousEvolutionRuntime(
         events=events,
