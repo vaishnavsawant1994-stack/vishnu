@@ -10,13 +10,15 @@ from training.self_improvement import EvaluationResult, TrainingArtifact, Traini
 
 
 class ComprehensiveCheckpointEvaluator(LocalCheckpointEvaluator):
-    """Deterministic multi-domain candidate-vs-baseline evaluation.
+    """Deterministic multi-domain candidate-vs-current-baseline evaluation.
 
     This evaluator has no tool, connector, approval or action authority. It
     exercises reasoning, coding, planning, tool-use boundaries, structured
     output, completion honesty, hallucination resistance and policy behavior,
     then combines those probes with source-isolated held-out project examples.
-    Latency is measured for observability only and never grants promotion.
+    When an active trained model exists, the inherited baseline provider compares
+    against that exact checkpoint; otherwise the configured base model is used.
+    Training loss is never a promotion signal.
     """
 
     CASES = (
@@ -172,13 +174,14 @@ class ComprehensiveCheckpointEvaluator(LocalCheckpointEvaluator):
     def evaluate(self, artifact: TrainingArtifact, snapshot: TrainingDatasetSnapshot, settings: AutoTrainingSettings) -> EvaluationResult:
         shadow_rows = self._load_shadow(snapshot.test_path, self.max_shadow_cases)
         candidate_tokenizer, candidate_model = self._load_candidate(artifact)
-        candidate = self._score_model(candidate_tokenizer, candidate_model, shadow_rows, settings)
-        self._release_model(candidate_model)
+        try:
+            candidate = self._score_model(candidate_tokenizer, candidate_model, shadow_rows, settings)
+        finally:
+            self._release_model(candidate_model)
 
-        base_tokenizer, base_model = self._load_base(artifact.base_model)
-        baseline = self._score_model(base_tokenizer, base_model, shadow_rows, settings)
-        self._release_model(base_model)
-
+        # LocalCheckpointEvaluator._baseline uses the active trained model when
+        # baseline_provider returns one, otherwise the configured base model.
+        baseline, baseline_type, baseline_model_id = self._baseline(artifact, shadow_rows, settings)
         quality = float(candidate['quality_score'])
         baseline_score = float(baseline['quality_score'])
         improvement = quality - baseline_score
@@ -187,10 +190,9 @@ class ComprehensiveCheckpointEvaluator(LocalCheckpointEvaluator):
         shadow_passed = bool(candidate['shadow_passed'])
 
         # A candidate cannot compensate for a security regression with gains in
-        # unrelated quality. Critical safety must be at least as strong as the
-        # baseline and must pass absolutely when safety evaluation is required.
-        baseline_safety = bool(baseline['safety_passed'])
-        security_regression = baseline_safety and not safety_passed
+        # unrelated quality. Per-case regression detection is stricter than a
+        # single aggregate safety boolean.
+        security_regression = self._security_regression(candidate, baseline)
         reasons: list[str] = []
         if quality < settings.minimum_quality_score:
             reasons.append('minimum_quality_not_met')
@@ -234,14 +236,17 @@ class ComprehensiveCheckpointEvaluator(LocalCheckpointEvaluator):
                 'candidate_average_latency_ms': candidate['average_latency_ms'],
                 'candidate_estimated_cost': float(dict(artifact.metrics).get('estimated_cost', 0.0) or 0.0),
                 'candidate_case_results': candidate['case_results'],
+                'baseline_type': baseline_type,
+                'baseline_model_id': baseline_model_id,
                 'baseline_domain_scores': baseline['domain_scores'],
                 'baseline_quality_score': baseline_score,
-                'baseline_safety_passed': baseline_safety,
+                'baseline_safety_passed': baseline['safety_passed'],
                 'baseline_hallucination_rate': baseline['hallucination_rate'],
                 'baseline_average_latency_ms': baseline['average_latency_ms'],
                 'heldout_shadow_cases': candidate['shadow_cases'],
                 'heldout_shadow_errors': candidate['shadow_errors'],
                 'security_regression': security_regression,
+                'training_loss_is_promotion_signal': False,
             },
         )
 
