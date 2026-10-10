@@ -15,7 +15,17 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: pip check
-      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive qualification security server tools ui updates vision voice visual_intelligence
+      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive qualification security server tools training ui updates vision voice visual_intelligence
+      - name: Advanced Intelligence governance gate
+        run: >-
+          pytest -q
+          tests/test_advanced_intelligence_modes.py
+          tests/test_intelligence_verifier_training.py
+          tests/test_intelligence_runtime_training_store.py
+          tests/test_advanced_intelligence_integration.py
+          tests/test_intelligence_master_switch.py
+          tests/test_deliberation_owner_enable.py
+          tests/test_intelligence_budget_scope.py
       - name: Vishnu Visualize browser syntax gate
         run: |
           node --check pwa/visualize-workspace.js

@@ -70,6 +70,10 @@ class ModelRequest:
     blocked_providers: tuple[str, ...] = ()
     tools_allowed: tuple[str, ...] = ()
     structured_output_schema: dict[str, Any] | None = None
+    # Private retrieved context is a separate field so the governed router can
+    # inject it only into private/local providers. It must never be flattened
+    # into a shared system/prompt string before provider selection.
+    private_context: str = ''
     metadata: dict[str, Any] = field(default_factory=dict)
 
 

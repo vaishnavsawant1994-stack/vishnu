@@ -21,6 +21,19 @@ DEFAULTS={
     'review_memory_before_saving':True,
     'share_anonymous_usage_data':False,
     'notifications_preferences':{},
+    # Optional adaptive intelligence. STANDARD + disabled preserves the
+    # historical single-route Vishnu behavior. Training capture is enabled as
+    # an owner preference, but the governed collector still requires explicit
+    # source provenance/permission before a candidate is persisted.
+    'advanced_intelligence_enabled':False,
+    'intelligence_mode':'standard',
+    'intelligence_auto_escalation':False,
+    'intelligence_verification_enabled':True,
+    'intelligence_training_capture':True,
+    'intelligence_performance_learning':True,
+    'intelligence_max_models':5,
+    'intelligence_latency_preference':'balanced',
+    'intelligence_max_cost_per_request':None,
 }
 
 class Preferences:

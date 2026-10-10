@@ -10,6 +10,10 @@ from future_intelligence.agent_workforce.learning_bridge import AgentLearningEve
 from identity import IdentityRuntime
 from integrations.extension_contracts import ExtensionGrantStore
 from integrations.provider_contracts import runtime_provider_inventory
+from models.intelligence import IntelligenceEngine
+from models.intelligence_settings import IntelligenceSettingsService
+from models.performance import ModelPerformanceTracker
+from training import TrainingCandidateStore, TrainingCollector, TrainingDatasetExporter
 
 
 def attach_e9_runtime(runtime: dict) -> dict:
@@ -37,6 +41,67 @@ def attach_e9_runtime(runtime: dict) -> dict:
             authority.assert_active()
             identity.assert_body_compatible()
         code_body.attach_continuation_authority(body_mutation_guard)
+
+    # Advanced intelligence is one advisory facade over the already-governed
+    # model router. Keeping the original router separately is important: it
+    # remains the single authority for providers, credentials, privacy, quotas,
+    # budgets, resilience and embeddings. STANDARD still follows that router's
+    # historical chat/json path exactly.
+    preferences = runtime.get("preferences")
+    intelligence_settings = IntelligenceSettingsService(preferences, events=events)
+    settings_snapshot = intelligence_settings.snapshot()
+    base_router = runtime.get("model_router") or runtime["models"]
+    training_store = TrainingCandidateStore(runtime["settings"].data_dir / "training-candidates.sqlite3")
+    training_collector = TrainingCollector(training_store)
+    training_exporter = TrainingDatasetExporter(
+        training_store,
+        runtime["settings"].data_dir / "training-exports",
+    )
+    model_performance = ModelPerformanceTracker(
+        path=runtime["settings"].data_dir / "model-performance.sqlite3"
+    )
+    intelligence = IntelligenceEngine(
+        base_router,
+        default_mode=settings_snapshot.mode,
+        performance=model_performance,
+        capture_hook=training_collector.capture,
+        settings_service=intelligence_settings,
+    )
+    runtime["model_router"] = base_router
+    runtime["models"] = intelligence
+    runtime["intelligence"] = intelligence
+    runtime["intelligence_settings"] = intelligence_settings
+    runtime["model_performance"] = model_performance
+    runtime["training_candidate_store"] = training_store
+    runtime["training_collector"] = training_collector
+    runtime["training_dataset_exporter"] = training_exporter
+
+    # Existing runtime objects were constructed before E9 attachment. Point
+    # their model-intelligence references at the facade without changing any
+    # execution, approval, tool, memory or security owner.
+    if agent_executor is not None:
+        agent_executor.models = intelligence
+        planner = getattr(agent_executor, "planner", None)
+        if planner is not None:
+            planner.models = intelligence
+    voice = runtime.get("voice")
+    if voice is not None:
+        voice.models = intelligence
+        backend = getattr(voice, "backend", None)
+        if backend is not None and hasattr(backend, "models"):
+            backend.models = intelligence
+    model_evaluation = runtime.get("model_evaluation")
+    if model_evaluation is not None and hasattr(model_evaluation, "models"):
+        model_evaluation.models = intelligence
+    worker_intelligence = runtime.get("worker_intelligence")
+    if worker_intelligence is not None and hasattr(worker_intelligence, "attach_intelligence"):
+        worker_intelligence.attach_intelligence(intelligence)
+    hybrid_intelligence = runtime.get("hybrid_intelligence")
+    if hybrid_intelligence is not None and hasattr(hybrid_intelligence, "canonical_router"):
+        hybrid_intelligence.canonical_router = intelligence
+    advanced_autonomy = runtime.get("advanced_autonomy")
+    if advanced_autonomy is not None and hasattr(advanced_autonomy, "models"):
+        advanced_autonomy.models = intelligence
 
     continuous = ContinuousEvolutionRuntime(
         events=events,
@@ -68,7 +133,7 @@ def attach_e9_runtime(runtime: dict) -> dict:
         worker_registry=getattr(runtime.get("advanced_autonomy"), "_worker_registry", None),
         work_store=runtime.get("canonical_work_store"),
         worker_intelligence=runtime.get("worker_intelligence"),
-        models=runtime.get("models"),
+        models=intelligence,
         events=events,
     )
     runtime["agent_workforce_store"] = workforce_store
@@ -100,6 +165,11 @@ def attach_e9_runtime(runtime: dict) -> dict:
         continuous_evolution=continuous.enabled,
         agent_evolution=runtime["agent_evolution"].enabled,
         agent_learning=True,
+        advanced_intelligence_enabled=settings_snapshot.enabled,
+        intelligence_mode=settings_snapshot.mode.value,
+        intelligence_auto_escalation=settings_snapshot.auto_escalation,
+        training_candidates_governed=True,
+        training_publication_automatic=False,
         providers=len(runtime["provider_inventory"]),
         agent_types=workforce.summary()["total_agents"],
     )
@@ -131,3 +201,9 @@ def stop_e9_services(runtime: dict) -> None:
     workforce_store = runtime.get("agent_workforce_store")
     if workforce_store is not None:
         workforce_store.connection.close()
+    model_performance = runtime.get("model_performance")
+    if model_performance is not None:
+        model_performance.close()
+    training_store = runtime.get("training_candidate_store")
+    if training_store is not None:
+        training_store.close()
