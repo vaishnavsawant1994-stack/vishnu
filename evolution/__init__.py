@@ -1,4 +1,5 @@
 from .adoption import AdoptionRecord, OwnerBodyAdoptionService
+from .automation import AutomaticCodeEvolution, EvolutionImplementationProvider, ImplementationResult, ModelFileImplementationProvider
 from .code_body import CodeBodyEvolutionService, CodeBodyRun, CodeBodyRunStatus
 from .config import EvolutionConfig
 from .continuous import ContinuousEvolutionRuntime, ContinuousEvolutionStatus
@@ -30,6 +31,7 @@ from .verification import (
 __all__ = [
     "EVOLUTION_SCHEMA_VERSION",
     "AdoptionRecord",
+    "AutomaticCodeEvolution",
     "CandidateStatus",
     "CandidateSynthesizer",
     "CodeBodyEvolutionService",
@@ -46,13 +48,16 @@ __all__ = [
     "EvolutionDecision",
     "EvolutionHandoff",
     "EvolutionHandoffService",
+    "EvolutionImplementationProvider",
     "EvolutionMode",
     "EvolutionScanner",
     "EvolutionService",
     "EvolutionStore",
     "GitHubPublicReviewVerifier",
     "GuardedVerificationProvider",
+    "ImplementationResult",
     "LocalSubprocessVerificationProvider",
+    "ModelFileImplementationProvider",
     "OwnerBodyAdoptionService",
     "PROTECTED_PATTERNS",
     "ProtectedScopeMatch",
