@@ -3,7 +3,8 @@ from __future__ import annotations
 import os
 
 from automation.work_bridge import AutomationWorkBridge
-from evolution import ContinuousEvolutionRuntime
+from evolution import AutomaticCodeEvolution, ContinuousEvolutionRuntime, ModelFileImplementationProvider
+from evolution.automation_runtime import AutomaticCodeEvolutionRuntime
 from future_intelligence.agent_workforce import AgentWorkforceService, AgentWorkforceStore
 from future_intelligence.agent_workforce.evolution import AgentEvolutionRuntime
 from future_intelligence.agent_workforce.learning_bridge import AgentLearningEventBridge
@@ -17,8 +18,9 @@ from models.performance_routing import attach_performance_routing
 from training import (
     AutoTrainingCoordinator,
     AutoTrainingRuntime,
-    FailClosedEvaluator,
+    LocalCheckpointEvaluator,
     LocalPeftTrainerBackend,
+    ModelDeploymentController,
     TrainingCandidateStore,
     TrainingCollector,
     TrainingDatasetExporter,
@@ -29,7 +31,7 @@ from training import (
 
 
 def attach_e9_runtime(runtime: dict) -> dict:
-    """Attach E9 convergence services after E1–E8 and P10 are fully constructed."""
+    """Attach E9 convergence and governed self-improvement services."""
 
     events = runtime["events"]
     trusted_release_revision = str(os.environ.get("VISHNU_TRUSTED_RELEASE_REVISION") or "").strip() or None
@@ -54,11 +56,6 @@ def attach_e9_runtime(runtime: dict) -> dict:
             identity.assert_body_compatible()
         code_body.attach_continuation_authority(body_mutation_guard)
 
-    # Advanced intelligence is one advisory facade over the already-governed
-    # model router. Keeping the original router separately is important: it
-    # remains the single authority for providers, credentials, privacy, quotas,
-    # budgets, resilience and embeddings. STANDARD still follows that router's
-    # historical chat/json path exactly.
     preferences = runtime.get("preferences")
     intelligence_settings = IntelligenceSettingsService(preferences, events=events)
     settings_snapshot = intelligence_settings.snapshot()
@@ -72,9 +69,6 @@ def attach_e9_runtime(runtime: dict) -> dict:
     model_performance = ModelPerformanceTracker(
         path=runtime["settings"].data_dir / "model-performance.sqlite3"
     )
-    # Performance learning can only re-rank candidates that the governed router
-    # has already declared eligible. Its adjustment is independently hard-capped
-    # and disabling the owner setting returns the exact canonical ranking.
     attach_performance_routing(
         base_router,
         model_performance,
@@ -96,11 +90,9 @@ def attach_e9_runtime(runtime: dict) -> dict:
     runtime["training_collector"] = training_collector
     runtime["training_dataset_exporter"] = training_exporter
 
-    # Actual model training is a separate governed pipeline from candidate
-    # capture. The built-in PEFT backend performs real local LoRA/QLoRA/full
-    # training when its optional ML dependencies and an owner-selected base
-    # model are available. Evaluation fails closed by default: a checkpoint can
-    # never become promotion-ready merely because training completed.
+    # Governed auto-training: approved datasets only, real optional PEFT
+    # training, local checkpoint evaluation, persistent model lineage and a
+    # separate release controller. Missing ML dependencies fail closed.
     training_settings = TrainingSettingsService(
         runtime["settings"].data_dir / "training-settings.json",
         events=events,
@@ -110,23 +102,30 @@ def attach_e9_runtime(runtime: dict) -> dict:
         runtime["settings"].data_dir / "training-datasets",
     )
     training_registry = TrainingRegistry(runtime["settings"].data_dir / "training-registry.sqlite3")
+    training_evaluator = LocalCheckpointEvaluator()
     training_coordinator = AutoTrainingCoordinator(
         settings=training_settings,
         candidates=training_store,
         snapshots=training_snapshots,
         registry=training_registry,
         backends={"local_peft": LocalPeftTrainerBackend()},
-        evaluator=FailClosedEvaluator(),
+        evaluator=training_evaluator,
         output_root=runtime["settings"].data_dir / "trained-models",
         events=events,
     )
     auto_training = AutoTrainingRuntime(training_coordinator, events=events)
+    # No production deployment backend is silently assumed. A serving backend
+    # must be explicitly configured by the release environment, after which the
+    # controller still requires OWNER_APPROVED + exact checkpoint confirmation.
+    model_deployment = ModelDeploymentController(training_registry, backends={}, events=events)
     runtime.update({
         "training_settings": training_settings,
         "training_snapshots": training_snapshots,
         "training_registry": training_registry,
+        "training_evaluator": training_evaluator,
         "training_coordinator": training_coordinator,
         "auto_training": auto_training,
+        "model_deployment": model_deployment,
     })
 
     # Existing runtime objects were constructed before E9 attachment. Point
@@ -164,6 +163,27 @@ def attach_e9_runtime(runtime: dict) -> dict:
     )
     runtime["continuous_evolution"] = continuous
 
+    # An owner-approved evolution handoff may now be implemented and verified
+    # automatically in the existing isolated code workspace. This service has
+    # no method for approving a candidate, approving review, adoption, merge,
+    # deployment or Body activation.
+    automatic_code_evolution = None
+    automatic_code_runtime = None
+    if code_body is not None and runtime.get("evolution_handoff") is not None:
+        automatic_code_evolution = AutomaticCodeEvolution(
+            code_body=code_body,
+            implementation=ModelFileImplementationProvider(intelligence),
+            events=events,
+        )
+        automatic_code_runtime = AutomaticCodeEvolutionRuntime(
+            automatic_code_evolution,
+            handoffs=runtime["evolution_handoff"],
+            runtime_epoch=lambda: runtime.get("code_worker_epoch", 0),
+            events=events,
+        )
+    runtime["automatic_code_evolution"] = automatic_code_evolution
+    runtime["automatic_code_evolution_runtime"] = automatic_code_runtime
+
     work_bridge = getattr(runtime.get("advanced_autonomy"), "_work_bridge", None)
     if work_bridge is not None:
         runtime["automation_work_bridge"] = AutomationWorkBridge(
@@ -177,9 +197,6 @@ def attach_e9_runtime(runtime: dict) -> dict:
         runtime["automation_work_bridge"] = None
         runtime["canonical_work_store"] = None
 
-    # The workforce is a coordination/intelligence layer over canonical Work.
-    # It cannot execute tools, approve effects, manufacture evidence or decide
-    # canonical completion. Runtime instances are bound to exactly one Project.
     workforce_store = AgentWorkforceStore(runtime["settings"].data_dir / "agent-workforce.sqlite3")
     workforce = AgentWorkforceService(
         workforce_store,
@@ -224,8 +241,10 @@ def attach_e9_runtime(runtime: dict) -> dict:
         performance_routing_learning=True,
         training_candidates_governed=True,
         auto_training_enabled=training_settings.snapshot().enabled,
+        automatic_code_evolution=bool(automatic_code_runtime and automatic_code_runtime.enabled),
         training_publication_automatic=False,
         trained_model_activation_automatic=False,
+        body_adoption_automatic=False,
         providers=len(runtime["provider_inventory"]),
         agent_types=workforce.summary()["total_agents"],
     )
@@ -242,9 +261,15 @@ def start_e9_services(runtime: dict) -> None:
     auto_training = runtime.get("auto_training")
     if auto_training is not None:
         auto_training.start()
+    auto_code = runtime.get("automatic_code_evolution_runtime")
+    if auto_code is not None:
+        auto_code.start()
 
 
 def stop_e9_services(runtime: dict) -> None:
+    auto_code = runtime.get("automatic_code_evolution_runtime")
+    if auto_code is not None:
+        auto_code.stop()
     auto_training = runtime.get("auto_training")
     if auto_training is not None:
         auto_training.stop()
