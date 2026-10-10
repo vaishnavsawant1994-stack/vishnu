@@ -1,0 +1,12 @@
+# Optional dependencies for governed local model training/evaluation.
+# The normal Vishnu runtime does not require these packages. Auto Training
+# reports its backend unavailable rather than simulating a successful run when
+# they are absent.
+-r requirements.txt
+torch>=2.4
+transformers>=4.45
+datasets>=3.0
+peft>=0.13
+accelerate>=1.0
+# QLoRA additionally requires a platform-supported bitsandbytes installation.
+bitsandbytes>=0.44; platform_system == "Linux"

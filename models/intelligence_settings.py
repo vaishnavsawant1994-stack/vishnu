@@ -105,7 +105,7 @@ class IntelligenceSettingsService:
             mode=mode,
             auto_escalation=bool(self.preferences.get('intelligence_auto_escalation', False)),
             verification_enabled=bool(self.preferences.get('intelligence_verification_enabled', True)),
-            training_capture=bool(self.preferences.get('intelligence_training_capture', True)),
+            training_capture=bool(self.preferences.get('intelligence_training_capture', False)),
             performance_learning=bool(self.preferences.get('intelligence_performance_learning', True)),
             max_models=max_models,
             latency_preference=raw_latency,
