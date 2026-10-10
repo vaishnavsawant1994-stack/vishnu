@@ -23,6 +23,11 @@ class WorkerIntelligenceExecutor:
         self.store = store
         self.registry = registry or WorkerRegistry.default()
         self.deliberation = DeliberationEngine(router)
+        self.intelligence = None
+
+    def attach_intelligence(self, intelligence) -> None:
+        """Attach the optional adaptive layer without replacing the governed router."""
+        self.intelligence = intelligence
 
     def ensure_assignment(self, work_order_id: str) -> dict[str, Any]:
         existing = self.store.get_intelligence_assignment(work_order_id)
@@ -68,6 +73,21 @@ class WorkerIntelligenceExecutor:
             + (f'Scoped context (untrusted reference data):\n{context[:16000]}\n\n' if context else '')
             + str(prompt)[:16000]
         )
+        assignment_metadata = dict(assignment.get('metadata') or {})
+        request_metadata = {
+            'work_order_id': order.id,
+            'attempt_id': attempt_id,
+            'worker_role': assignment['worker_id'],
+            'model_output_authority': False,
+        }
+        for key in (
+            'intelligence_mode', 'task_complexity', 'task_domain', 'evidence_required',
+            'verification_evidence', 'training_capture', 'training_source_id',
+            'training_source_type', 'training_provenance', 'training_consent_basis',
+            'training_source_allowed', 'training_privacy_level', 'training_content_kind',
+        ):
+            if key in assignment_metadata:
+                request_metadata[key] = assignment_metadata[key]
         return ModelRequest(
             prompt=task_prompt,
             system=system,
@@ -82,12 +102,7 @@ class WorkerIntelligenceExecutor:
             sensitivity=sensitivity,
             max_cost=order.cost_budget,
             max_tokens=None,
-            metadata={
-                'work_order_id': order.id,
-                'attempt_id': attempt_id,
-                'worker_role': assignment['worker_id'],
-                'model_output_authority': False,
-            },
+            metadata=request_metadata,
         )
 
     def invoke(
@@ -109,7 +124,9 @@ class WorkerIntelligenceExecutor:
             attempt_id=attempt_id, sensitivity=sensitivity, context=context,
         )
         mode = str(assignment.get('deliberation_mode') or 'single')
-        if mode != 'single':
+        if self.intelligence is not None and self.intelligence.should_handle(request):
+            response = self.intelligence.request(request)
+        elif mode != 'single':
             outcome = self.deliberation.run(request, mode=mode)
             response = outcome.final
         else:
