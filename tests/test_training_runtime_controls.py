@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
+from core.preferences import Preferences
+from models.intelligence_settings import IntelligenceSettingsService
 from training import ModelDeploymentController
 from training.comprehensive_evaluation import (
     ComprehensiveCheckpointEvaluator,
@@ -86,6 +89,24 @@ def test_structured_output_and_planning_scorers_are_strict():
     assert _valid_plan_order('A,D,B,C')
     assert not _valid_plan_order('B,A,D,C')
     assert not _valid_plan_order('A,C,B,D')
+
+
+def test_legacy_implicit_training_capture_false_migrates_on_but_real_owner_off_persists(tmp_path):
+    path = tmp_path / 'preferences.json'
+    path.write_text(json.dumps({
+        'owner_account_id': 'legacy-owner',
+        'intelligence_training_capture': False,
+    }), encoding='utf-8')
+
+    migrated = Preferences(path)
+    service = IntelligenceSettingsService(migrated)
+    assert service.snapshot().training_capture is True
+    assert migrated.get('intelligence_training_capture_owner_configured') is False
+
+    service.update(training_capture=False)
+    assert migrated.get('intelligence_training_capture_owner_configured') is True
+    restarted = IntelligenceSettingsService(Preferences(path))
+    assert restarted.snapshot().training_capture is False
 
 
 class _BaselineHarness(ComprehensiveCheckpointEvaluator):
