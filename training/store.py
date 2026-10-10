@@ -13,8 +13,8 @@ class TrainingCandidateStore:
     """Persistent candidate registry with source-level deletion lineage.
 
     This is intentionally separate from Vishnu Memory/Knowledge. Rows are
-    sanitized candidates, not raw connected-service data, and only APPROVED
-    rows are eligible for future dataset exports.
+    sanitized candidates, not raw connected-service data, and only APPROVED +
+    eligible rows are available to dataset export.
     """
 
     def __init__(self, path: str | Path) -> None:
@@ -79,6 +79,29 @@ class TrainingCandidateStore:
             reason_codes=tuple(json.loads(row['reason_codes_json'] or '[]')),
         )
 
+    @staticmethod
+    def public(candidate: TrainingCandidate, *, include_content: bool = False) -> dict:
+        value = {
+            'candidate_id': candidate.candidate_id,
+            'created_at': candidate.created_at,
+            'source_type': candidate.source_type,
+            'source_fingerprint': candidate.source_fingerprint,
+            'provider_id': candidate.provider_id,
+            'model_id': candidate.model_id,
+            'privacy_level': candidate.privacy_level.value,
+            'provenance': candidate.provenance,
+            'consent_basis': candidate.consent_basis,
+            'verifier_score': candidate.verifier_score,
+            'contains_secret': candidate.contains_secret,
+            'training_eligible': candidate.training_eligible,
+            'status': candidate.status.value,
+            'reason_codes': list(candidate.reason_codes),
+        }
+        if include_content:
+            value['prompt'] = candidate.prompt
+            value['response'] = candidate.response
+        return value
+
     def save(self, candidate: TrainingCandidate) -> TrainingCandidate:
         with self._lock:
             self.connection.execute(
@@ -109,6 +132,57 @@ class TrainingCandidateStore:
             ).fetchone()
         return None if row is None else self._from_row(row)
 
+    def list(
+        self,
+        *,
+        status: CandidateStatus | str | None = None,
+        eligible: bool | None = None,
+        limit: int = 200,
+        offset: int = 0,
+    ) -> tuple[TrainingCandidate, ...]:
+        bounded_limit = max(1, min(1000, int(limit)))
+        bounded_offset = max(0, int(offset))
+        clauses: list[str] = []
+        params: list[object] = []
+        if status not in (None, ''):
+            try:
+                status_value = status.value if isinstance(status, CandidateStatus) else CandidateStatus(str(status)).value
+            except ValueError as exc:
+                raise ValueError('unsupported candidate status') from exc
+            clauses.append('status=?')
+            params.append(status_value)
+        if eligible is not None:
+            clauses.append('training_eligible=?')
+            params.append(int(bool(eligible)))
+        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
+        with self._lock:
+            rows = self.connection.execute(
+                f'SELECT * FROM training_candidates{where} ORDER BY created_at DESC LIMIT ? OFFSET ?',
+                (*params, bounded_limit, bounded_offset),
+            ).fetchall()
+        return tuple(self._from_row(row) for row in rows)
+
+    def stats(self) -> dict:
+        with self._lock:
+            total = int(self.connection.execute('SELECT COUNT(*) FROM training_candidates').fetchone()[0])
+            rows = self.connection.execute(
+                'SELECT status, training_eligible, COUNT(*) AS count FROM training_candidates GROUP BY status, training_eligible'
+            ).fetchall()
+        by_status = {status.value: 0 for status in CandidateStatus}
+        eligible = 0
+        for row in rows:
+            by_status[str(row['status'])] = by_status.get(str(row['status']), 0) + int(row['count'])
+            if int(row['training_eligible']):
+                eligible += int(row['count'])
+        return {
+            'total': total,
+            'eligible': eligible,
+            'by_status': by_status,
+            'approved_for_export': by_status.get(CandidateStatus.APPROVED.value, 0),
+            'raw_source_data_stored': False,
+            'automatic_publication': False,
+        }
+
     def approve(self, candidate_id: str) -> TrainingCandidate:
         candidate = self.get(candidate_id)
         if candidate is None:
@@ -120,6 +194,12 @@ class TrainingCandidateStore:
         if candidate is None:
             raise KeyError(candidate_id)
         return self.save(candidate.reject(reason))
+
+    def tombstone(self, candidate_id: str, reason: str = 'source_deleted_or_consent_revoked') -> TrainingCandidate:
+        candidate = self.get(candidate_id)
+        if candidate is None:
+            raise KeyError(candidate_id)
+        return self.save(candidate.tombstone(reason))
 
     def tombstone_source(self, source_type: str, source_id: str, reason: str = 'source_deleted_or_consent_revoked') -> int:
         fingerprint = self.source_fingerprint(source_type, source_id)
