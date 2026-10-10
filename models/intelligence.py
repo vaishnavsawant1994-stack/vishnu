@@ -120,7 +120,7 @@ class IntelligenceEngine:
 
     @staticmethod
     def _verification_evidence(request: ModelRequest) -> VerificationEvidence:
-        metadata = IntelligenceEngine._metadata(request)
+        metadata = self._metadata(request)
         raw = metadata.get('verification_evidence')
         if not isinstance(raw, dict):
             return VerificationEvidence()
@@ -209,12 +209,12 @@ class IntelligenceEngine:
 
         if decision.pattern is ExecutionPattern.SPECIALIST_RACE:
             deliberation_mode = 'synthesize'
-            result = DeliberationEngine(self.router, max_models=decision.max_models).run(request, mode=deliberation_mode)
+            result = DeliberationEngine(self.router, max_models=decision.max_models, enabled=True).run(request, mode=deliberation_mode)
             response = result.final
             failures = result.failures
         elif decision.pattern is ExecutionPattern.DEEP_CONSENSUS:
             deliberation_mode = 'consensus'
-            result = DeliberationEngine(self.router, max_models=decision.max_models).run(request, mode=deliberation_mode)
+            result = DeliberationEngine(self.router, max_models=decision.max_models, enabled=True).run(request, mode=deliberation_mode)
             response = result.final
             failures = result.failures
         else:
