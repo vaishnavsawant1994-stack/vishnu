@@ -72,14 +72,15 @@ class TrainingCandidate:
 
 
 class TrainingCandidateFactory:
-    """Create sanitized, governed candidates without retaining raw secrets.
+    """Create sanitized governed candidates without retaining raw secrets.
 
     Capture being enabled means a candidate may be proposed. It does not mean
-    the candidate is eligible or approved. Secret-bearing, connected-service
-    and restricted data fail closed, and hidden chain-of-thought is never
-    accepted as a data type.
+    the candidate is eligible or approved. Secret-bearing, connected-service,
+    restricted, unprovenanced and unverified/low-quality data fail closed, and
+    hidden chain-of-thought is never accepted as a data type.
     """
 
+    MIN_QUALITY_SCORE = 0.60
     _DISALLOWED_CONTENT_KINDS = {
         'chain_of_thought',
         'hidden_chain_of_thought',
@@ -154,6 +155,12 @@ class TrainingCandidateFactory:
         if privacy in {PrivacyLevel.PRIVATE, PrivacyLevel.SENSITIVE, PrivacyLevel.RESTRICTED} and not str(consent_basis or '').strip():
             eligible = False
             reasons.append('consent_basis_required')
+        if verifier_score is None:
+            eligible = False
+            reasons.append('quality_verification_required')
+        elif float(verifier_score) < self.MIN_QUALITY_SCORE:
+            eligible = False
+            reasons.append('quality_threshold_not_met')
 
         fingerprint_input = f'{source}\0{source_id}'.encode('utf-8', errors='replace')
         source_fingerprint = sha256(fingerprint_input).hexdigest()

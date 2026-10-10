@@ -115,6 +115,9 @@ class _Trainer:
     def available(self):
         return True, None
 
+    def estimate_cost(self, snapshot, settings):
+        return 0.25
+
     def train(self, snapshot, settings, output_dir):
         checkpoint = Path(output_dir) / 'checkpoint'
         checkpoint.mkdir(parents=True, exist_ok=True)
@@ -124,7 +127,7 @@ class _Trainer:
             backend_id=self.backend_id,
             base_model=settings.base_model,
             method=settings.method.value,
-            metrics={'quality_score': .95},
+            metrics={'quality_score': .95, 'estimated_cost': .25, 'resource': {'device': 'test'}},
         )
 
 
@@ -137,7 +140,7 @@ class _Evaluator:
             safety_passed=True,
             shadow_passed=True,
             reasons=('evaluation_passed',),
-            metrics={'quality_score': .95, 'shadow': .94},
+            metrics={'quality_score': .95, 'held_out': .94},
         )
 
 
@@ -162,7 +165,19 @@ class _Deployment:
         return self.running
 
 
-def test_real_training_lifecycle_requires_eval_owner_approval_and_exact_activation(tmp_path):
+def _qualify_shadow(registry, settings, model_id: str, samples: int = 3):
+    for index in range(samples):
+        registry.governance.record_shadow(
+            model_id,
+            request_id=f'real-request-{index}',
+            passed=True,
+            quality_score=.96,
+            baseline_quality_score=.90,
+        )
+    assert registry.governance.qualify_shadow(model_id, settings.snapshot()) is True
+
+
+def test_real_training_lifecycle_requires_eval_shadow_owner_approval_and_exact_activation(tmp_path):
     store = _approved_candidates(tmp_path, 15)
     settings = TrainingSettingsService(tmp_path / 'settings.json')
     settings.update(
@@ -173,6 +188,9 @@ def test_real_training_lifecycle_requires_eval_owner_approval_and_exact_activati
         min_approved_records=10,
         require_safety_evaluation=True,
         require_shadow_evaluation=True,
+        shadow_min_samples=3,
+        shadow_min_pass_rate=.9,
+        shadow_min_quality_delta=0,
     )
     registry = TrainingRegistry(tmp_path / 'registry.sqlite3')
     coordinator = AutoTrainingCoordinator(
@@ -187,15 +205,20 @@ def test_real_training_lifecycle_requires_eval_owner_approval_and_exact_activati
 
     job = coordinator.run_once()
     assert job is not None
-    assert job.status is TrainingJobStatus.PROMOTION_READY
+    assert job.status is TrainingJobStatus.COMPLETED
     model = registry.get_model(job.model_id)
     assert model is not None
     assert model.status is TrainedModelStatus.PROMOTION_READY
+    assert registry.governance.lifecycle(model.model_id)['status'] == 'shadow'
 
+    with pytest.raises(ValueError, match='live shadow'):
+        registry.approve_promotion(model.model_id, owner_id='owner')
+    _qualify_shadow(registry, settings, model.model_id)
     with pytest.raises(PermissionError):
         registry.approve_promotion(model.model_id, owner_id='not-owner')
     approved = registry.approve_promotion(model.model_id, owner_id='owner')
     assert approved.status is TrainedModelStatus.OWNER_APPROVED
+    assert registry.governance.lifecycle(model.model_id)['status'] == 'approved'
 
     backend = _Deployment()
     deployment = ModelDeploymentController(registry, backends={backend.backend_id: backend})
@@ -203,6 +226,7 @@ def test_real_training_lifecycle_requires_eval_owner_approval_and_exact_activati
     assert result.checkpoint_ref == approved.checkpoint_ref
     assert active.status is TrainedModelStatus.ACTIVE
     assert active.activated_at
+    assert registry.governance.lifecycle(model.model_id)['status'] == 'active'
 
     store.close()
     registry.close()
@@ -211,7 +235,13 @@ def test_real_training_lifecycle_requires_eval_owner_approval_and_exact_activati
 def test_unconfigured_deployment_never_activates_owner_approved_model(tmp_path):
     store = _approved_candidates(tmp_path, 10)
     settings = TrainingSettingsService(tmp_path / 'settings.json')
-    settings.update(enabled=True, backend_id='fake', base_model='base', min_approved_records=10)
+    settings.update(
+        enabled=True,
+        backend_id='fake',
+        base_model='base',
+        min_approved_records=10,
+        shadow_min_samples=1,
+    )
     registry = TrainingRegistry(tmp_path / 'registry.sqlite3')
     coordinator = AutoTrainingCoordinator(
         settings=settings,
@@ -223,6 +253,7 @@ def test_unconfigured_deployment_never_activates_owner_approved_model(tmp_path):
         output_root=tmp_path / 'models',
     )
     job = coordinator.run_once()
+    _qualify_shadow(registry, settings, job.model_id, samples=1)
     model = registry.approve_promotion(job.model_id, owner_id='owner')
     controller = ModelDeploymentController(registry, backends={})
     with pytest.raises(RuntimeError, match='deployment backend unavailable'):

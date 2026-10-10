@@ -13,7 +13,15 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt pip-audit
       - run: pip-audit -r requirements.txt
-      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive security server tools ui updates vision voice packaging
+      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive security server tools training ui updates vision voice packaging
+      - name: Self-improvement training and evolution security boundary
+        run: >-
+          pytest -q
+          tests/test_self_improvement_engine.py
+          tests/test_self_improvement_governance.py
+          tests/test_training_runtime_controls.py
+          tests/test_training_export_governance.py
+          tests/test_automatic_code_evolution.py
       - name: E5 evolution safety boundary
         run: pytest -q tests/test_evolution_e5.py
       - name: E6 evolution handoff safety boundary

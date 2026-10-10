@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
@@ -26,14 +27,22 @@ class AutoTrainingSettingsBody(BaseModel):
     enabled: bool | None = None
     backend_id: str | None = Field(default=None, min_length=1, max_length=80)
     base_model: str | None = Field(default=None, max_length=500)
-    method: str | None = Field(default=None, max_length=20)
+    method: str | None = Field(default=None, max_length=40)
     min_approved_records: int | None = Field(default=None, ge=10, le=1_000_000)
+    min_new_examples_since_last_training: int | None = Field(default=None, ge=0, le=1_000_000)
     interval_seconds: int | None = Field(default=None, ge=3600, le=2_592_000)
+    max_training_cost: float | None = Field(default=None, gt=0, le=1_000_000)
+    max_runtime_seconds: int | None = Field(default=None, ge=60, le=604_800)
     minimum_quality_score: float | None = Field(default=None, ge=0, le=1)
     minimum_improvement: float | None = Field(default=None, ge=0, le=1)
     require_safety_evaluation: bool | None = None
     require_shadow_evaluation: bool | None = None
+    shadow_min_samples: int | None = Field(default=None, ge=1, le=100_000)
+    shadow_min_pass_rate: float | None = Field(default=None, ge=0, le=1)
+    shadow_min_quality_delta: float | None = Field(default=None, ge=-1, le=1)
+    automatic_rollback: bool | None = None
     max_training_records: int | None = Field(default=None, ge=10, le=1_000_000)
+    hyperparameters: dict[str, Any] | None = None
 
 
 class CandidateDecisionBody(BaseModel):
@@ -121,6 +130,14 @@ def owner_intelligence_router(runtime) -> APIRouter:
             raise HTTPException(503, 'training registry unavailable')
         return service
 
+    def public_job(service, job):
+        serializer = getattr(service, 'public_job', None)
+        return serializer(job) if callable(serializer) else job.public()
+
+    def public_model(service, model):
+        serializer = getattr(service, 'public_model', None)
+        return serializer(model) if callable(serializer) else model.public()
+
     @router.get('/summary')
     def summary(
         pa_device: str | None = Cookie(default=None),
@@ -134,6 +151,7 @@ def owner_intelligence_router(runtime) -> APIRouter:
         status = intelligence.status() if intelligence is not None else {}
         coordinator = runtime.get('training_coordinator')
         auto_training = runtime.get('auto_training')
+        shadow = runtime.get('shadow_qualification')
         code_runtime = runtime.get('automatic_code_evolution_runtime')
         deployment = runtime.get('model_deployment')
         return {
@@ -142,13 +160,17 @@ def owner_intelligence_router(runtime) -> APIRouter:
             'training': store.stats(),
             'auto_training': coordinator.summary() if coordinator is not None else None,
             'auto_training_runtime': auto_training.status() if auto_training is not None else None,
+            'shadow_qualification': shadow.status() if shadow is not None else {'backends': {}, 'authoritative': False},
             'code_evolution': code_runtime.status() if code_runtime is not None else {'available': False},
             'model_deployment': deployment.status() if deployment is not None else {'backends': {}},
             'runtime': status.get('advanced_intelligence', {}),
+            'training_capture_default': True,
+            'training_capture_is_approval': False,
             'model_output_authority': False,
             'automatic_publication': False,
             'automatic_model_activation': False,
             'automatic_code_adoption': False,
+            'exact_machine_unlearning_claimed': False,
         }
 
     @router.patch('/settings')
@@ -201,7 +223,12 @@ def owner_intelligence_router(runtime) -> APIRouter:
         coordinator = training_coordinator()
         background.add_task(coordinator.run_once, force=True)
         emit('owner.training.run_requested', device_id=device_id)
-        return {'ok': True, 'scheduled': True, 'production_activation_automatic': False}
+        return {
+            'ok': True,
+            'scheduled': True,
+            'live_shadow_required_before_promotion': True,
+            'production_activation_automatic': False,
+        }
 
     @router.get('/training/jobs')
     def training_jobs(
@@ -210,7 +237,8 @@ def owner_intelligence_router(runtime) -> APIRouter:
         pa_token: str | None = Cookie(default=None),
     ):
         authenticate(pa_device, pa_token)
-        return {'jobs': [job.public() for job in training_registry().jobs(limit=limit)]}
+        service = training_registry()
+        return {'jobs': [public_job(service, job) for job in service.jobs(limit=limit)]}
 
     @router.post('/training/jobs/{job_id}/cancel')
     def cancel_training_job(
@@ -220,12 +248,13 @@ def owner_intelligence_router(runtime) -> APIRouter:
     ):
         device_id = authenticate(pa_device, pa_token)
         require_fresh_owner_verification(device_id)
+        service = training_registry()
         try:
-            job = training_registry().cancel_job(job_id)
+            job = service.cancel_job(job_id)
         except KeyError as exc:
             raise HTTPException(404, 'training job not found') from exc
         emit('owner.training.job_cancelled', device_id=device_id, job_id=job_id)
-        return {'ok': True, 'job': job.public()}
+        return {'ok': True, 'job': public_job(service, job)}
 
     @router.get('/training/models')
     def trained_models(
@@ -234,7 +263,24 @@ def owner_intelligence_router(runtime) -> APIRouter:
         pa_token: str | None = Cookie(default=None),
     ):
         authenticate(pa_device, pa_token)
-        return {'models': [model.public() for model in training_registry().models(limit=limit)]}
+        service = training_registry()
+        return {'models': [public_model(service, model) for model in service.models(limit=limit)]}
+
+    @router.get('/training/models/{model_id}/lineage')
+    def trained_model_lineage(
+        model_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        service = training_registry()
+        governance = getattr(service, 'governance', None)
+        if governance is None:
+            raise HTTPException(503, 'training lineage unavailable')
+        value = governance.lifecycle(model_id)
+        if value is None:
+            raise HTTPException(404, 'trained model not found')
+        return {'model': value, 'exact_machine_unlearning_claimed': False}
 
     @router.post('/training/models/{model_id}/approve-promotion')
     def approve_model_promotion(
@@ -244,8 +290,9 @@ def owner_intelligence_router(runtime) -> APIRouter:
     ):
         device_id = authenticate(pa_device, pa_token)
         require_fresh_owner_verification(device_id)
+        service = training_registry()
         try:
-            model = training_registry().approve_promotion(model_id, owner_id='owner')
+            model = service.approve_promotion(model_id, owner_id='owner')
         except KeyError as exc:
             raise HTTPException(404, 'trained model not found') from exc
         except (ValueError, PermissionError) as exc:
@@ -253,7 +300,7 @@ def owner_intelligence_router(runtime) -> APIRouter:
         emit('owner.training.model_promotion_approved', device_id=device_id, model_id=model_id)
         return {
             'ok': True,
-            'model': model.public(),
+            'model': public_model(service, model),
             'activated': False,
             'message': 'Promotion approved. A configured release controller must deploy and prove the exact checkpoint before activation.',
         }
@@ -386,9 +433,30 @@ def owner_intelligence_router(runtime) -> APIRouter:
     ):
         device_id = authenticate(pa_device, pa_token)
         require_fresh_owner_verification(device_id)
-        count = training_store().tombstone_source(body.source_type, body.source_id, body.reason)
-        emit('owner.training_source.tombstoned', device_id=device_id, source_type=body.source_type, candidate_count=count)
-        return {'ok': True, 'tombstoned': count, 'source_type': body.source_type}
+        store = training_store()
+        fingerprint = store.source_fingerprint(body.source_type, body.source_id)
+        count = store.tombstone_source(body.source_type, body.source_id, body.reason)
+        service = training_registry()
+        governance = getattr(service, 'governance', None)
+        affected_models = []
+        if governance is not None:
+            affected_models = [item for item in governance.revoke_source(fingerprint, body.reason) if item]
+        emit(
+            'owner.training_source.tombstoned',
+            device_id=device_id,
+            source_type=body.source_type,
+            candidate_count=count,
+            affected_model_count=len(affected_models),
+        )
+        return {
+            'ok': True,
+            'tombstoned': count,
+            'source_type': body.source_type,
+            'source_fingerprint': fingerprint,
+            'affected_trained_models': affected_models,
+            'future_datasets_exclude_tombstoned_records': True,
+            'exact_machine_unlearning_performed': False,
+        }
 
     @router.post('/training/export')
     def export_dataset(
@@ -401,8 +469,16 @@ def owner_intelligence_router(runtime) -> APIRouter:
         exporter = runtime.get('training_dataset_exporter')
         if exporter is None:
             raise HTTPException(503, 'training exporter unavailable')
-        exported = exporter.export(dataset_name=body.dataset_name, limit=body.limit)
+        try:
+            exported = exporter.export(dataset_name=body.dataset_name, limit=body.limit)
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
         emit('owner.training_dataset.exported', device_id=device_id, export_id=exported.export_id, records=exported.records)
-        return {'ok': True, 'export': exported.public()}
+        return {
+            'ok': True,
+            'export': exported.public(),
+            'automatic_publication': False,
+            'automatic_huggingface_publication': False,
+        }
 
     return router

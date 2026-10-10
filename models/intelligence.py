@@ -5,7 +5,7 @@ import json
 from typing import Callable
 
 from models.adaptive_strategy import AdaptiveStrategy, ExecutionPattern, StrategyDecision, StrategyRequest, TaskComplexity
-from models.contracts import ModelRequest, ModelResponse
+from models.contracts import ModelRequest, ModelResponse, UsageRecord
 from models.deliberation import DeliberationEngine
 from models.intelligence_modes import IntelligenceMode, IntelligenceProfile, intelligence_profile
 from models.intelligence_settings import IntelligenceSettingsService, IntelligenceSettingsSnapshot
@@ -28,9 +28,9 @@ class IntelligenceEngine:
 
     The engine is deliberately a router facade: unknown attributes and all
     non-chat capabilities remain owned by the underlying GovernedModelRouter.
-    STANDARD delegates directly to the historical router path. Higher modes
-    may add bounded deliberation/verification, but cannot execute tools,
-    approve effects, change privacy, or grant authority.
+    STANDARD delegates model execution directly to the historical router path.
+    Post-result performance/candidate capture may observe that result but cannot
+    alter the selected provider, permissions, approvals, privacy or authority.
     """
 
     def __init__(
@@ -41,6 +41,7 @@ class IntelligenceEngine:
         performance: ModelPerformanceTracker | None = None,
         verifier: EvidenceVerifier | None = None,
         capture_hook: Callable[[ModelRequest, ModelResponse, VerificationResult | None, StrategyDecision], None] | None = None,
+        shadow_hook: Callable[[ModelRequest, ModelResponse, VerificationResult | None, StrategyDecision], None] | None = None,
         settings_service: IntelligenceSettingsService | None = None,
     ) -> None:
         self.router = router
@@ -48,6 +49,7 @@ class IntelligenceEngine:
         self.performance = performance or ModelPerformanceTracker()
         self.verifier = verifier or EvidenceVerifier()
         self.capture_hook = capture_hook
+        self.shadow_hook = shadow_hook
         self.settings_service = settings_service
         self.strategy = AdaptiveStrategy()
         self.last_outcome: IntelligenceOutcome | None = None
@@ -82,15 +84,24 @@ class IntelligenceEngine:
         except ValueError:
             return TaskComplexity.MEDIUM
 
-    def _auto_mode_for(self, request: ModelRequest) -> IntelligenceMode:
-        """Resolve AUTO to the least expensive mode suitable for this task.
+    @staticmethod
+    def _specialist_role(request: ModelRequest) -> str:
+        metadata = IntelligenceEngine._metadata(request)
+        return str(metadata.get('specialist_role') or metadata.get('role') or 'general').strip().lower() or 'general'
 
-        AUTO never changes privacy, permissions, approvals, training policy or
-        owner budgets. It only chooses the reasoning ceiling. Existing strategy
-        and GovernedModelRouter controls still decide whether extra models are
-        actually useful/eligible.
-        """
+    @staticmethod
+    def _feedback_score(metadata: dict) -> float | None:
+        raw = metadata.get('explicit_feedback')
+        if isinstance(raw, bool):
+            return 1.0 if raw else 0.0
+        if raw is None:
+            return None
+        try:
+            return max(0.0, min(1.0, float(raw)))
+        except (TypeError, ValueError):
+            return None
 
+    def _base_auto_mode(self, request: ModelRequest) -> IntelligenceMode:
         metadata = self._metadata(request)
         complexity = self._complexity(request)
         if complexity in {TaskComplexity.TRIVIAL, TaskComplexity.LOW}:
@@ -100,6 +111,51 @@ class IntelligenceEngine:
         if complexity is TaskComplexity.HIGH:
             return IntelligenceMode.DEEP
         return IntelligenceMode.RESEARCH if bool(metadata.get('evidence_required', False)) else IntelligenceMode.DEEP
+
+    def _auto_mode_for(self, request: ModelRequest) -> IntelligenceMode:
+        """Resolve AUTO with bounded historical escalation for comparable tasks.
+
+        Task complexity/evidence creates the minimum reasoning ceiling. Durable
+        performance history may only escalate that ceiling when there is enough
+        recent evidence of poor quality or frequent fallback; it never lowers a
+        task's required ceiling and never changes eligibility, privacy, budget,
+        permission, approval, credential or security policy.
+        """
+
+        base = self._base_auto_mode(request)
+        settings = self._settings()
+        if settings is not None and not settings.performance_learning:
+            return base
+        summary_fn = getattr(self.performance, 'task_summary', None)
+        if not callable(summary_fn):
+            return base
+        metadata = self._metadata(request)
+        domain = str(metadata.get('task_domain', request.routing_policy or 'general'))
+        try:
+            summary = summary_fn(
+                domain,
+                task_complexity=self._complexity(request).value,
+                specialist_role=self._specialist_role(request),
+            )
+        except Exception:
+            return base
+        samples = int(summary.get('samples') or 0)
+        confidence = float(summary.get('confidence') or 0.0)
+        quality = summary.get('quality_score')
+        fallback_rate = summary.get('fallback_rate')
+        if samples < 5 or confidence < .25:
+            return base
+        weak_quality = quality is not None and float(quality) < .70
+        unstable = fallback_rate is not None and float(fallback_rate) > .25
+        if not (weak_quality or unstable):
+            return base
+        escalation = {
+            IntelligenceMode.STANDARD: IntelligenceMode.SMART,
+            IntelligenceMode.SMART: IntelligenceMode.DEEP,
+            IntelligenceMode.DEEP: IntelligenceMode.RESEARCH,
+            IntelligenceMode.RESEARCH: IntelligenceMode.RESEARCH,
+        }
+        return escalation[base]
 
     def mode_for(self, request: ModelRequest) -> IntelligenceMode:
         metadata = self._metadata(request)
@@ -224,6 +280,75 @@ class IntelligenceEngine:
             )
         return bounded
 
+    def _record_outcome(
+        self,
+        request: ModelRequest,
+        response: ModelResponse,
+        verification: VerificationResult | None,
+        decision: StrategyDecision,
+    ) -> None:
+        metadata = self._metadata(request)
+        settings = self._settings()
+        learning_enabled = settings is None or settings.performance_learning
+        evidence = self._verification_evidence(request)
+        if learning_enabled:
+            self.performance.record(
+                PerformanceObservation(
+                    task_domain=str(metadata.get('task_domain', request.routing_policy or 'general')),
+                    task_complexity=self._complexity(request).value,
+                    specialist_role=self._specialist_role(request),
+                    provider_id=response.provider_id,
+                    model_id=response.model_id,
+                    success=not bool(metadata.get('failed', False)),
+                    verifier_score=(verification.score if verification is not None and verification.evaluated_dimensions else None),
+                    tool_agreement=evidence.tool_agreement,
+                    explicit_feedback=self._feedback_score(metadata),
+                    latency_ms=response.usage.latency_ms,
+                    estimated_cost=response.usage.estimated_cost,
+                    accepted=metadata.get('accepted') if isinstance(metadata.get('accepted'), bool) else None,
+                    corrected=bool(metadata.get('corrected', False)),
+                    regenerated=bool(metadata.get('regenerated', False)),
+                    fallback=bool(response.retry_count or metadata.get('fallback', False)),
+                )
+            )
+
+        if decision.training_capture and self.capture_hook is not None:
+            self.capture_hook(request, response, verification, decision)
+
+        if self.shadow_hook is not None:
+            try:
+                self.shadow_hook(request, response, verification, decision)
+            except Exception:
+                # Shadow qualification is explicitly non-authoritative. It may
+                # never break or replace the active model's real result.
+                pass
+
+    def _legacy_identity(self) -> tuple[str, str, int]:
+        last = getattr(self.router, '_last', None)
+        if not isinstance(last, dict):
+            return 'unknown', 'unknown', 0
+        provider = str(last.get('provider_id') or last.get('provider') or 'unknown')
+        model = str(last.get('model_id') or last.get('model') or 'unknown')
+        try:
+            retry_count = max(0, int(last.get('retry_count') or last.get('fallback_index') or 0))
+        except (TypeError, ValueError):
+            retry_count = 0
+        return provider, model, retry_count
+
+    def _observe_legacy_result(self, request: ModelRequest, content: str) -> None:
+        decision = self._decision(request)
+        provider, model, retry_count = self._legacy_identity()
+        response = ModelResponse(
+            request_id=request.request_id,
+            provider_id=provider,
+            model_id=model,
+            content=str(content),
+            usage=UsageRecord(),
+            retry_count=retry_count,
+        )
+        self._record_outcome(request, response, None, decision)
+        self.last_outcome = IntelligenceOutcome(response=response, strategy=decision)
+
     def request(self, request: ModelRequest) -> ModelResponse:
         if not isinstance(request, ModelRequest):
             raise TypeError('request must be ModelRequest')
@@ -249,29 +374,7 @@ class IntelligenceEngine:
         if decision.verifier_required:
             verification = self.verifier.verify(self._verification_evidence(request))
 
-        metadata = self._metadata(request)
-        settings = self._settings()
-        learning_enabled = settings is None or settings.performance_learning
-        if learning_enabled:
-            self.performance.record(
-                PerformanceObservation(
-                    task_domain=str(metadata.get('task_domain', request.routing_policy or 'general')),
-                    provider_id=response.provider_id,
-                    model_id=response.model_id,
-                    success=True,
-                    verifier_score=(verification.score if verification is not None and verification.evaluated_dimensions else None),
-                    latency_ms=response.usage.latency_ms,
-                    estimated_cost=response.usage.estimated_cost,
-                    accepted=metadata.get('accepted') if isinstance(metadata.get('accepted'), bool) else None,
-                    corrected=bool(metadata.get('corrected', False)),
-                    regenerated=bool(metadata.get('regenerated', False)),
-                    fallback=bool(response.retry_count),
-                )
-            )
-
-        if decision.training_capture and self.capture_hook is not None:
-            self.capture_hook(request, response, verification, decision)
-
+        self._record_outcome(request, response, verification, decision)
         self.last_outcome = IntelligenceOutcome(
             response=response,
             strategy=decision,
@@ -315,9 +418,11 @@ class IntelligenceEngine:
             metadata=metadata,
         )
         if self.mode_for(request) is IntelligenceMode.STANDARD:
-            # Preserve the exact historical call path in STANDARD mode,
-            # including private-context provider filtering behavior.
-            return self.router.chat(
+            # Preserve the exact historical provider/model execution path in
+            # STANDARD mode, including private-context provider filtering. Only
+            # after that path returns do we observe the result for bounded
+            # performance learning and governed candidate capture.
+            content = self.router.chat(
                 prompt,
                 system=system,
                 history=history,
@@ -325,6 +430,8 @@ class IntelligenceEngine:
                 sensitivity=sensitivity,
                 private_context=private_context,
             )
+            self._observe_legacy_result(request, content)
+            return content
         return self.request(request).content
 
     def json(
@@ -339,7 +446,8 @@ class IntelligenceEngine:
         task_domain: str = 'planning',
         evidence_required: bool = False,
     ) -> dict:
-        # STANDARD must remain byte-for-byte on the existing parser/router path.
+        # STANDARD remains on the existing parser/router path. Observation and
+        # candidate capture happen only after the canonical result is returned.
         probe = ModelRequest(
             prompt=str(prompt),
             system=str(system),
@@ -356,7 +464,9 @@ class IntelligenceEngine:
             },
         )
         if self.mode_for(probe) is IntelligenceMode.STANDARD:
-            return self.router.json(prompt, system=system, sensitivity=sensitivity, private_context=private_context)
+            value = self.router.json(prompt, system=system, sensitivity=sensitivity, private_context=private_context)
+            self._observe_legacy_result(probe, json.dumps(value, sort_keys=True, ensure_ascii=False, default=str))
+            return value
         raw = self.chat(
             prompt,
             system=system,

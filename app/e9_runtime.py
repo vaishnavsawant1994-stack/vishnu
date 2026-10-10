@@ -21,6 +21,7 @@ from training import (
     LocalCheckpointEvaluator,
     LocalPeftTrainerBackend,
     ModelDeploymentController,
+    ShadowQualificationRuntime,
     TrainingCandidateStore,
     TrainingCollector,
     TrainingDatasetExporter,
@@ -90,9 +91,10 @@ def attach_e9_runtime(runtime: dict) -> dict:
     runtime["training_collector"] = training_collector
     runtime["training_dataset_exporter"] = training_exporter
 
-    # Governed auto-training: approved datasets only, real optional PEFT
-    # training, local checkpoint evaluation, persistent model lineage and a
-    # separate release controller. Missing ML dependencies fail closed.
+    # Governed auto-training: approved datasets only, immutable source-grouped
+    # snapshots, real optional PEFT training, current-baseline evaluation,
+    # persistent lineage and a distinct live-shadow and release boundary.
+    # Missing ML/serving dependencies fail closed rather than simulating success.
     training_settings = TrainingSettingsService(
         runtime["settings"].data_dir / "training-settings.json",
         events=events,
@@ -102,7 +104,17 @@ def attach_e9_runtime(runtime: dict) -> dict:
         runtime["settings"].data_dir / "training-datasets",
     )
     training_registry = TrainingRegistry(runtime["settings"].data_dir / "training-registry.sqlite3")
-    training_evaluator = LocalCheckpointEvaluator()
+
+    def active_training_baseline():
+        governance = getattr(training_registry, 'governance', None)
+        if governance is None:
+            return None
+        active = governance.active_model()
+        if not active:
+            return None
+        return training_registry.get_model(active['model_id'])
+
+    training_evaluator = LocalCheckpointEvaluator(baseline_provider=active_training_baseline)
     training_coordinator = AutoTrainingCoordinator(
         settings=training_settings,
         candidates=training_store,
@@ -114,10 +126,27 @@ def attach_e9_runtime(runtime: dict) -> dict:
         events=events,
     )
     auto_training = AutoTrainingRuntime(training_coordinator, events=events)
+    # Candidate serving is deliberately not guessed. An owner-approved local or
+    # remote shadow backend may be attached by deployment configuration. Shadow
+    # results remain non-authoritative and only create promotion eligibility.
+    shadow_qualification = ShadowQualificationRuntime(
+        training_registry,
+        training_settings,
+        backends={},
+        events=events,
+    )
+    intelligence.shadow_hook = shadow_qualification.observe_request
     # No production deployment backend is silently assumed. A serving backend
     # must be explicitly configured by the release environment, after which the
-    # controller still requires OWNER_APPROVED + exact checkpoint confirmation.
-    model_deployment = ModelDeploymentController(training_registry, backends={}, events=events)
+    # controller still requires owner approval + exact checkpoint confirmation.
+    # Automatic rollback, when enabled, is callable only by a trusted release
+    # health monitor and still requires a configured backend + known-good parent.
+    model_deployment = ModelDeploymentController(
+        training_registry,
+        backends={},
+        events=events,
+        settings=training_settings,
+    )
     runtime.update({
         "training_settings": training_settings,
         "training_snapshots": training_snapshots,
@@ -125,6 +154,7 @@ def attach_e9_runtime(runtime: dict) -> dict:
         "training_evaluator": training_evaluator,
         "training_coordinator": training_coordinator,
         "auto_training": auto_training,
+        "shadow_qualification": shadow_qualification,
         "model_deployment": model_deployment,
     })
 
@@ -239,8 +269,10 @@ def attach_e9_runtime(runtime: dict) -> dict:
         intelligence_mode=settings_snapshot.mode.value,
         intelligence_auto_escalation=settings_snapshot.auto_escalation,
         performance_routing_learning=True,
+        training_capture_default=settings_snapshot.training_capture,
         training_candidates_governed=True,
         auto_training_enabled=training_settings.snapshot().enabled,
+        live_shadow_qualification=True,
         automatic_code_evolution=bool(automatic_code_runtime and automatic_code_runtime.enabled),
         training_publication_automatic=False,
         trained_model_activation_automatic=False,

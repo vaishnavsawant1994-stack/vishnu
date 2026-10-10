@@ -39,6 +39,8 @@ class IntelligenceSettingsService:
     The service persists through the existing Preferences authority. These
     settings only constrain/recommend model reasoning. They cannot grant tools,
     permissions, approvals, execution authority, or bypass privacy policy.
+    Training capture is enabled by default but remains only the first stage of
+    the governed candidate pipeline; the owner may disable it at any time.
     """
 
     MODES = tuple(mode.value for mode in IntelligenceMode)
@@ -105,7 +107,7 @@ class IntelligenceSettingsService:
             mode=mode,
             auto_escalation=bool(self.preferences.get('intelligence_auto_escalation', False)),
             verification_enabled=bool(self.preferences.get('intelligence_verification_enabled', True)),
-            training_capture=bool(self.preferences.get('intelligence_training_capture', False)),
+            training_capture=bool(self.preferences.get('intelligence_training_capture', True)),
             performance_learning=bool(self.preferences.get('intelligence_performance_learning', True)),
             max_models=max_models,
             latency_preference=raw_latency,
@@ -138,6 +140,9 @@ class IntelligenceSettingsService:
             updates['intelligence_verification_enabled'] = self._bool(values['verification_enabled'], field='verification_enabled')
         if 'training_capture' in values:
             updates['intelligence_training_capture'] = self._bool(values['training_capture'], field='training_capture')
+            # Marks this as a deliberate owner choice so the legacy-default
+            # migration can never turn a real OFF selection back on.
+            updates['intelligence_training_capture_owner_configured'] = True
         if 'performance_learning' in values:
             updates['intelligence_performance_learning'] = self._bool(values['performance_learning'], field='performance_learning')
         if 'max_models' in values:

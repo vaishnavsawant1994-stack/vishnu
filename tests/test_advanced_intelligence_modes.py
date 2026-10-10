@@ -23,17 +23,17 @@ def test_standard_preserves_existing_single_model_behavior():
     assert decision.verifier_required is False
 
 
-def test_training_capture_defaults_off_and_owner_can_enable_it():
-    assert intelligence_profile('standard').training_capture is False
-    assert intelligence_profile('smart').training_capture is False
-    assert intelligence_profile('deep').training_capture is False
-    assert intelligence_profile('research').training_capture is False
-    assert intelligence_profile('auto').training_capture is False
+def test_training_capture_defaults_on_and_owner_can_disable_it():
+    assert intelligence_profile('standard').training_capture is True
+    assert intelligence_profile('smart').training_capture is True
+    assert intelligence_profile('deep').training_capture is True
+    assert intelligence_profile('research').training_capture is True
+    assert intelligence_profile('auto').training_capture is True
 
-    enabled = intelligence_profile('research', training_capture=True)
-    assert enabled.training_capture is True
-    assert enabled.mode is IntelligenceMode.RESEARCH
-    assert enabled.max_models == 5
+    disabled = intelligence_profile('research', training_capture=False)
+    assert disabled.training_capture is False
+    assert disabled.mode is IntelligenceMode.RESEARCH
+    assert disabled.max_models == 5
 
 
 def test_higher_modes_are_bounded_permission_ceilings():
@@ -113,7 +113,9 @@ def test_performance_learning_is_bounded_by_sample_confidence():
 
     assert first.samples == 1
     assert first.learning_influence == pytest.approx(0.025)
-    assert first.quality_score == pytest.approx(0.9)
+    assert 0.9 <= first.quality_score <= 1.0
+    assert first.sample_confidence == pytest.approx(0.05)
+    assert 0.0 < first.recency_weight <= 1.0
 
     latest = first
     for _ in range(30):

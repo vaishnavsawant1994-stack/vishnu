@@ -26,6 +26,14 @@ jobs:
           tests/test_intelligence_master_switch.py
           tests/test_deliberation_owner_enable.py
           tests/test_intelligence_budget_scope.py
+      - name: Self-improvement training and evolution adversarial gate
+        run: >-
+          pytest -q
+          tests/test_self_improvement_engine.py
+          tests/test_self_improvement_governance.py
+          tests/test_training_runtime_controls.py
+          tests/test_self_improvement_persistence_rollback.py
+          tests/test_automatic_code_evolution.py
       - name: Vishnu Visualize browser syntax gate
         run: |
           node --check pwa/visualize-workspace.js
