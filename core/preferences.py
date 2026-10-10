@@ -22,14 +22,14 @@ DEFAULTS={
     'share_anonymous_usage_data':False,
     'notifications_preferences':{},
     # Optional adaptive intelligence. STANDARD + disabled preserves the
-    # historical single-route Vishnu behavior. Training capture is explicit
-    # owner opt-in; the governed collector also requires source provenance and
-    # permission before any candidate can be persisted.
+    # historical single-route Vishnu behavior. Training capture is ON by
+    # default, while governed eligibility/privacy/provenance/quality filters
+    # still decide whether any captured candidate may enter a dataset.
     'advanced_intelligence_enabled':False,
     'intelligence_mode':'standard',
     'intelligence_auto_escalation':False,
     'intelligence_verification_enabled':True,
-    'intelligence_training_capture':False,
+    'intelligence_training_capture':True,
     'intelligence_performance_learning':True,
     'intelligence_max_models':5,
     'intelligence_latency_preference':'balanced',
