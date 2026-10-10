@@ -26,6 +26,9 @@ jobs:
           tests/test_training_candidates.py
           tests/test_intelligence_runtime_training_store.py
           tests/test_advanced_intelligence_integration.py
+          tests/test_intelligence_master_switch.py
+          tests/test_deliberation_owner_enable.py
+          tests/test_intelligence_budget_scope.py
       - name: Vishnu Visualize browser syntax gate
         run: |
           node --check pwa/visualize-workspace.js
