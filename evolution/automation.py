@@ -19,19 +19,30 @@ class EvolutionImplementationProvider(Protocol):
 
 
 class ModelFileImplementationProvider:
-    """Bounded model-driven source editor for an already isolated workspace.
+    """Bounded model-driven source editor for an isolated approved workspace.
 
-    The model does not receive git, approval, merge, deployment or tool
-    authority. It may propose complete UTF-8 file replacements only. Paths are
-    validated before any write, protected evolution/security surfaces are
-    rejected, symlinks are rejected and total output is bounded.
+    The model receives only bounded current source context from the candidate's
+    declared ordinary scope. It does not receive git, approval, merge,
+    deployment or tool authority. Complete UTF-8 file replacements are checked
+    against the canonical protected-code policy before any write.
     """
 
-    def __init__(self, models, *, max_files: int = 12, max_file_bytes: int = 250_000, max_total_bytes: int = 1_000_000) -> None:
+    def __init__(
+        self,
+        models,
+        *,
+        max_files: int = 12,
+        max_file_bytes: int = 250_000,
+        max_total_bytes: int = 1_000_000,
+        max_context_files: int = 24,
+        max_context_bytes: int = 300_000,
+    ) -> None:
         self.models = models
         self.max_files = max(1, min(50, int(max_files)))
         self.max_file_bytes = max(1_000, min(1_000_000, int(max_file_bytes)))
         self.max_total_bytes = max(self.max_file_bytes, min(5_000_000, int(max_total_bytes)))
+        self.max_context_files = max(1, min(100, int(max_context_files)))
+        self.max_context_bytes = max(10_000, min(1_000_000, int(max_context_bytes)))
 
     @staticmethod
     def _safe_path(workspace: Path, raw: str) -> tuple[str, Path]:
@@ -48,11 +59,64 @@ class ModelFileImplementationProvider:
             raise ValueError('evolution implementation cannot replace symlinks')
         return normalized, target
 
+    def _workspace_context(self, workspace: Path, scopes) -> str:
+        candidates: list[tuple[str, Path]] = []
+        for raw in scopes:
+            normalized, target = self._safe_path(workspace, str(raw))
+            policy = evaluate_code_change((normalized,))
+            if not policy.allowed:
+                raise PermissionError(f'evolution candidate scope touches protected code: {list(policy.protected_paths)}')
+            if target.is_file() and not target.is_symlink():
+                candidates.append((normalized, target))
+            elif target.is_dir() and not target.is_symlink():
+                for item in sorted(target.rglob('*')):
+                    if len(candidates) >= self.max_context_files:
+                        break
+                    if not item.is_file() or item.is_symlink():
+                        continue
+                    relative = item.relative_to(workspace).as_posix()
+                    if not evaluate_code_change((relative,)).allowed:
+                        continue
+                    candidates.append((relative, item))
+            if len(candidates) >= self.max_context_files:
+                break
+
+        blocks: list[str] = []
+        total = 0
+        seen: set[str] = set()
+        for relative, path in candidates:
+            if relative in seen or len(seen) >= self.max_context_files:
+                continue
+            seen.add(relative)
+            try:
+                raw = path.read_bytes()
+            except OSError:
+                continue
+            if b'\x00' in raw:
+                continue
+            remaining = self.max_context_bytes - total
+            if remaining <= 0:
+                break
+            raw = raw[: min(remaining, self.max_file_bytes)]
+            try:
+                text = raw.decode('utf-8')
+            except UnicodeDecodeError:
+                continue
+            block = f'\n--- CURRENT FILE: {relative} ---\n{text}\n--- END FILE ---\n'
+            encoded = len(block.encode('utf-8'))
+            if total + encoded > self.max_context_bytes:
+                break
+            blocks.append(block)
+            total += encoded
+        return ''.join(blocks)
+
     def implement(self, *, candidate, workspace: Path) -> ImplementationResult:
+        current_context = self._workspace_context(workspace, candidate.affected_scope)
         system = (
             'You are Vishnu software engineering intelligence operating in an isolated candidate workspace. '
             'Return one JSON object only with keys files and summary. files is a list of objects with path and content. '
             'Use complete UTF-8 file contents, not patches. Make the smallest implementation that satisfies the candidate and tests. '
+            'Use the supplied CURRENT FILE blocks as the authoritative starting code; preserve unrelated behavior. '
             'Never edit security, authority, approval, identity, evolution, tool/capability governance, CI workflows, or safety tests. '
             'Do not add credentials, secrets, network exfiltration, self-approval, auto-merge, auto-deploy or auto-activation.'
         )
@@ -63,8 +127,9 @@ class ModelFileImplementationProvider:
             f'Expected benefit: {candidate.expected_benefit}\n'
             f'Affected scope: {list(candidate.affected_scope)}\n'
             f'Test plan: {list(candidate.test_plan)}\n'
-            'Inspect the stated scope conceptually and return only files that must change. '
-            'If the change cannot be safely implemented without protected surfaces, return files=[] and explain in summary.'
+            f'{current_context}\n'
+            'Return only files that must change. New ordinary files may be added when necessary, but keep the implementation bounded. '
+            'If the available context is insufficient or the change requires a protected surface, return files=[] and explain why.'
         )
         payload = self.models.json(
             prompt,
@@ -125,7 +190,6 @@ class AutomaticCodeEvolution:
         self.events = events
 
     def run(self, candidate_id: str, *, runtime_epoch: int) -> CodeBodyRun:
-        # prepare() itself proves an immutable owner-approved handoff exists.
         run = self.code_body.prepare(candidate_id, worker_id=self.worker_id, runtime_epoch=int(runtime_epoch))
         if run.status is not CodeBodyRunStatus.PREPARED:
             return run
@@ -168,6 +232,7 @@ class AutomaticCodeEvolution:
             'available': self.code_body is not None and self.implementation is not None,
             'requires_owner_approved_handoff': True,
             'protected_scope_enforced': True,
+            'workspace_context_grounded': True,
             'automatic_review_approval': False,
             'automatic_adoption': False,
             'automatic_merge': False,
