@@ -23,16 +23,17 @@ def test_standard_preserves_existing_single_model_behavior():
     assert decision.verifier_required is False
 
 
-def test_training_capture_defaults_on_and_owner_can_disable_it():
-    assert intelligence_profile('standard').training_capture is True
-    assert intelligence_profile('smart').training_capture is True
-    assert intelligence_profile('deep').training_capture is True
-    assert intelligence_profile('research').training_capture is True
+def test_training_capture_defaults_off_and_owner_can_enable_it():
+    assert intelligence_profile('standard').training_capture is False
+    assert intelligence_profile('smart').training_capture is False
+    assert intelligence_profile('deep').training_capture is False
+    assert intelligence_profile('research').training_capture is False
+    assert intelligence_profile('auto').training_capture is False
 
-    disabled = intelligence_profile('research', training_capture=False)
-    assert disabled.training_capture is False
-    assert disabled.mode is IntelligenceMode.RESEARCH
-    assert disabled.max_models == 5
+    enabled = intelligence_profile('research', training_capture=True)
+    assert enabled.training_capture is True
+    assert enabled.mode is IntelligenceMode.RESEARCH
+    assert enabled.max_models == 5
 
 
 def test_higher_modes_are_bounded_permission_ceilings():
