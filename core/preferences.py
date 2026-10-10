@@ -30,6 +30,9 @@ DEFAULTS={
     'intelligence_auto_escalation':False,
     'intelligence_verification_enabled':True,
     'intelligence_training_capture':True,
+    # Added with the corrected ON-by-default policy. Presence of this key lets
+    # us distinguish a legacy implicit false from a later real owner OFF choice.
+    'intelligence_training_capture_owner_configured':False,
     'intelligence_performance_learning':True,
     'intelligence_max_models':5,
     'intelligence_latency_preference':'balanced',
@@ -38,8 +41,16 @@ DEFAULTS={
 
 class Preferences:
     def __init__(self,path:Path):
-        self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True);is_new_install=not self.path.exists();self.lock=threading.RLock();self.data=dict(DEFAULTS);self._load()
+        self.path=Path(path);self.path.parent.mkdir(parents=True,exist_ok=True);is_new_install=not self.path.exists();self.lock=threading.RLock();self.data=dict(DEFAULTS);self._loaded_keys=set();self._load()
         changed=False
+        # The previous implementation wrote Training Capture=False as a default
+        # even when the owner never made a choice. Migrate that implicit legacy
+        # state to the corrected ON default exactly once. Future owner OFF
+        # choices persist because the marker is then present/configured.
+        if not is_new_install and 'intelligence_training_capture_owner_configured' not in self._loaded_keys:
+            self.data['intelligence_training_capture']=True
+            self.data['intelligence_training_capture_owner_configured']=False
+            changed=True
         if not self.data.get('owner_account_id'):
             self.data['owner_account_id']=uuid.uuid4().hex;changed=True
         if is_new_install and not self.data.get('owner_account_created_at'):
@@ -55,7 +66,9 @@ class Preferences:
         if not self.path.exists():return
         try:
             value=json.loads(self.path.read_text())
-            if isinstance(value,dict):self.data.update({k:v for k,v in value.items() if k in DEFAULTS})
+            if isinstance(value,dict):
+                self._loaded_keys=set(value)
+                self.data.update({k:v for k,v in value.items() if k in DEFAULTS})
         except Exception:pass
     def get(self,key,default=None):return self.data.get(key,default)
     def set(self,key,value):
