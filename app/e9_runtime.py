@@ -10,6 +10,8 @@ from future_intelligence.agent_workforce.learning_bridge import AgentLearningEve
 from identity import IdentityRuntime
 from integrations.extension_contracts import ExtensionGrantStore
 from integrations.provider_contracts import runtime_provider_inventory
+from models.intelligence import IntelligenceEngine
+from training import TrainingCandidateStore, TrainingCollector
 
 
 def attach_e9_runtime(runtime: dict) -> dict:
@@ -37,6 +39,24 @@ def attach_e9_runtime(runtime: dict) -> dict:
             authority.assert_active()
             identity.assert_body_compatible()
         code_body.attach_continuation_authority(body_mutation_guard)
+
+    # Advanced intelligence is an advisory layer over the canonical governed
+    # router. STANDARD remains the default and preserves existing behavior.
+    preferences = runtime.get("preferences")
+    selected_mode = str(preferences.get("intelligence_mode", "standard") if preferences is not None else "standard")
+    training_store = TrainingCandidateStore(runtime["settings"].data_dir / "training-candidates.sqlite3")
+    training_collector = TrainingCollector(training_store)
+    intelligence = IntelligenceEngine(
+        runtime["models"],
+        default_mode=selected_mode,
+        capture_hook=training_collector.capture,
+    )
+    runtime["training_candidate_store"] = training_store
+    runtime["training_collector"] = training_collector
+    runtime["intelligence"] = intelligence
+    worker_intelligence = runtime.get("worker_intelligence")
+    if worker_intelligence is not None and hasattr(worker_intelligence, "attach_intelligence"):
+        worker_intelligence.attach_intelligence(intelligence)
 
     continuous = ContinuousEvolutionRuntime(
         events=events,
@@ -100,6 +120,8 @@ def attach_e9_runtime(runtime: dict) -> dict:
         continuous_evolution=continuous.enabled,
         agent_evolution=runtime["agent_evolution"].enabled,
         agent_learning=True,
+        intelligence_mode=selected_mode,
+        training_candidates_governed=True,
         providers=len(runtime["provider_inventory"]),
         agent_types=workforce.summary()["total_agents"],
     )
@@ -131,3 +153,6 @@ def stop_e9_services(runtime: dict) -> None:
     workforce_store = runtime.get("agent_workforce_store")
     if workforce_store is not None:
         workforce_store.connection.close()
+    training_store = runtime.get("training_candidate_store")
+    if training_store is not None:
+        training_store.close()
