@@ -92,9 +92,9 @@ def attach_e9_runtime(runtime: dict) -> dict:
     runtime["training_dataset_exporter"] = training_exporter
 
     # Governed auto-training: approved datasets only, immutable source-grouped
-    # snapshots, real optional PEFT training, baseline evaluation, persistent
-    # lineage and a distinct live-shadow and release boundary. Missing ML or
-    # serving dependencies fail closed rather than simulating success.
+    # snapshots, real optional PEFT training, current-baseline evaluation,
+    # persistent lineage and a distinct live-shadow and release boundary.
+    # Missing ML/serving dependencies fail closed rather than simulating success.
     training_settings = TrainingSettingsService(
         runtime["settings"].data_dir / "training-settings.json",
         events=events,
@@ -104,7 +104,17 @@ def attach_e9_runtime(runtime: dict) -> dict:
         runtime["settings"].data_dir / "training-datasets",
     )
     training_registry = TrainingRegistry(runtime["settings"].data_dir / "training-registry.sqlite3")
-    training_evaluator = LocalCheckpointEvaluator()
+
+    def active_training_baseline():
+        governance = getattr(training_registry, 'governance', None)
+        if governance is None:
+            return None
+        active = governance.active_model()
+        if not active:
+            return None
+        return training_registry.get_model(active['model_id'])
+
+    training_evaluator = LocalCheckpointEvaluator(baseline_provider=active_training_baseline)
     training_coordinator = AutoTrainingCoordinator(
         settings=training_settings,
         candidates=training_store,
@@ -129,7 +139,14 @@ def attach_e9_runtime(runtime: dict) -> dict:
     # No production deployment backend is silently assumed. A serving backend
     # must be explicitly configured by the release environment, after which the
     # controller still requires owner approval + exact checkpoint confirmation.
-    model_deployment = ModelDeploymentController(training_registry, backends={}, events=events)
+    # Automatic rollback, when enabled, is callable only by a trusted release
+    # health monitor and still requires a configured backend + known-good parent.
+    model_deployment = ModelDeploymentController(
+        training_registry,
+        backends={},
+        events=events,
+        settings=training_settings,
+    )
     runtime.update({
         "training_settings": training_settings,
         "training_snapshots": training_snapshots,
