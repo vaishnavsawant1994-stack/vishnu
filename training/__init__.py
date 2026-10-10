@@ -37,7 +37,6 @@ from training.self_improvement import (
 from training.governance import (
     GovernedAutoTrainingCoordinator as AutoTrainingCoordinator,
     GovernedAutoTrainingSettings as AutoTrainingSettings,
-    GovernedLocalPeftTrainerBackend as LocalPeftTrainerBackend,
     GovernedModelDeploymentController as ModelDeploymentController,
     GovernedTrainingDatasetSnapshotBuilder as TrainingDatasetSnapshotBuilder,
     GovernedTrainingRegistry as TrainingRegistry,
@@ -46,6 +45,7 @@ from training.governance import (
     ShadowResult,
     TrainingGovernanceLedger,
 )
+from training.runtime_controls import BoundedLocalPeftTrainerBackend as LocalPeftTrainerBackend
 from training.store import TrainingCandidateStore
 
 __all__ = [
