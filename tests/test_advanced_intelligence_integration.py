@@ -73,14 +73,14 @@ def test_intelligence_settings_persist_and_default_standard_is_safe(tmp_path):
     initial = service.snapshot()
     assert initial.enabled is False
     assert initial.mode is IntelligenceMode.STANDARD
-    assert initial.training_capture is False
+    assert initial.training_capture is True
 
     updated = service.update(
         enabled=True,
         mode='deep',
         auto_escalation=True,
         verification_enabled=True,
-        training_capture=True,
+        training_capture=False,
         performance_learning=True,
         max_models=3,
         latency_preference='quality',
@@ -88,7 +88,7 @@ def test_intelligence_settings_persist_and_default_standard_is_safe(tmp_path):
     )
     assert updated.mode is IntelligenceMode.DEEP
     assert updated.max_models == 3
-    assert updated.training_capture is True
+    assert updated.training_capture is False
 
     reloaded = IntelligenceSettingsService(Preferences(path)).snapshot()
     assert reloaded == updated
@@ -197,6 +197,7 @@ def test_export_contains_only_approved_eligible_candidates(tmp_path):
         provenance='owner accepted response',
         provider_id='self_hosted',
         model_id='local-model',
+        verifier_score=.95,
     )
     blocked = factory.create(
         source_type='google_drive',
@@ -206,6 +207,7 @@ def test_export_contains_only_approved_eligible_candidates(tmp_path):
         privacy_level='private',
         provenance='connected source',
         consent_basis='owner connected service',
+        verifier_score=.95,
     )
     store.save(eligible)
     store.save(blocked)
