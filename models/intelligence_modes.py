@@ -9,13 +9,17 @@ class IntelligenceMode(str, Enum):
 
     STANDARD deliberately preserves the existing single-route behavior. Higher
     modes only permit additional intelligence; they never grant tool or action
-    authority and they do not override routing/privacy policy.
+    authority and they do not override routing/privacy policy. AUTO is a
+    controller mode: it resolves to one concrete mode per request according to
+    task complexity/evidence needs and remains bounded by owner cost, latency,
+    model-count, privacy and security controls.
     """
 
     STANDARD = 'standard'
     SMART = 'smart'
     DEEP = 'deep'
     RESEARCH = 'research'
+    AUTO = 'auto'
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,17 @@ _PROFILES: dict[IntelligenceMode, IntelligenceProfile] = {
     ),
     IntelligenceMode.RESEARCH: IntelligenceProfile(
         mode=IntelligenceMode.RESEARCH,
+        adaptive_routing=True,
+        verification=True,
+        deliberation=True,
+        training_capture=True,
+        max_models=5,
+    ),
+    # AUTO is never executed directly by IntelligenceEngine: it is resolved to
+    # a concrete mode before strategy selection. This profile exists so status
+    # and configuration callers can inspect the controller's maximum ceiling.
+    IntelligenceMode.AUTO: IntelligenceProfile(
+        mode=IntelligenceMode.AUTO,
         adaptive_routing=True,
         verification=True,
         deliberation=True,

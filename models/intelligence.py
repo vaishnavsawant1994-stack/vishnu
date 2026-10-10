@@ -82,6 +82,25 @@ class IntelligenceEngine:
         except ValueError:
             return TaskComplexity.MEDIUM
 
+    def _auto_mode_for(self, request: ModelRequest) -> IntelligenceMode:
+        """Resolve AUTO to the least expensive mode suitable for this task.
+
+        AUTO never changes privacy, permissions, approvals, training policy or
+        owner budgets. It only chooses the reasoning ceiling. Existing strategy
+        and GovernedModelRouter controls still decide whether extra models are
+        actually useful/eligible.
+        """
+
+        metadata = self._metadata(request)
+        complexity = self._complexity(request)
+        if complexity in {TaskComplexity.TRIVIAL, TaskComplexity.LOW}:
+            return IntelligenceMode.STANDARD
+        if complexity is TaskComplexity.MEDIUM:
+            return IntelligenceMode.SMART
+        if complexity is TaskComplexity.HIGH:
+            return IntelligenceMode.DEEP
+        return IntelligenceMode.RESEARCH if bool(metadata.get('evidence_required', False)) else IntelligenceMode.DEEP
+
     def mode_for(self, request: ModelRequest) -> IntelligenceMode:
         metadata = self._metadata(request)
         settings = self._settings()
@@ -97,23 +116,21 @@ class IntelligenceEngine:
         explicit = metadata.get('intelligence_mode')
         if explicit not in (None, ''):
             try:
-                return self._mode(explicit)
+                requested = self._mode(explicit)
+                return self._auto_mode_for(request) if requested is IntelligenceMode.AUTO else requested
             except ValueError:
                 pass
 
         if settings is None:
-            return self.default_mode
+            return self._auto_mode_for(request) if self.default_mode is IntelligenceMode.AUTO else self.default_mode
+
+        # AUTO is a first-class owner mode. It does not depend on the legacy
+        # auto_escalation toggle; selecting AUTO itself is the explicit opt-in.
+        if settings.mode is IntelligenceMode.AUTO:
+            return self._auto_mode_for(request)
         if not settings.auto_escalation:
             return settings.mode
-
-        complexity = self._complexity(request)
-        if complexity in {TaskComplexity.TRIVIAL, TaskComplexity.LOW}:
-            return IntelligenceMode.STANDARD
-        if complexity is TaskComplexity.MEDIUM:
-            return IntelligenceMode.SMART
-        if complexity is TaskComplexity.HIGH:
-            return IntelligenceMode.DEEP
-        return IntelligenceMode.RESEARCH if bool(metadata.get('evidence_required', False)) else IntelligenceMode.DEEP
+        return self._auto_mode_for(request)
 
     def should_handle(self, request: ModelRequest) -> bool:
         return self.mode_for(request) is not IntelligenceMode.STANDARD
@@ -370,7 +387,7 @@ class IntelligenceEngine:
             **(settings.public() if settings is not None else {
                 'enabled': self.default_mode is not IntelligenceMode.STANDARD,
                 'mode': self.default_mode.value,
-                'auto_escalation': False,
+                'auto_escalation': self.default_mode is IntelligenceMode.AUTO,
                 'verification_enabled': True,
                 'training_capture': True,
                 'performance_learning': True,
