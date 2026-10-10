@@ -221,6 +221,6 @@ def test_owner_controls_register_training_lineage_and_evolution_api_routes():
     assert '/iphone/api/owner/intelligence/training/models/{model_id}/lineage' in paths
     assert '/iphone/api/owner/intelligence/training/models/{model_id}/approve-promotion' in paths
     assert '/iphone/api/owner/intelligence/training/candidates' in paths
-    assert '/iphone/api/owner/intelligence/training/tombstone-source' in paths
+    assert '/iphone/api/owner/intelligence/training/sources/tombstone' in paths
     assert '/iphone/api/owner/intelligence/training/export' in paths
     assert '/iphone/api/owner/intelligence/evolution/run-approved' in paths
