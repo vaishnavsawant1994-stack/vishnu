@@ -8,8 +8,15 @@ on:
     paths:
       - 'server/iphone_pwa.py'
       - 'server/cloud_app.py'
+      - 'server/owner_intelligence_api.py'
+      - 'server/owner_intelligence_ui.py'
+      - 'server/self_improvement_ui.py'
       - 'pwa/**'
       - 'tests/test_p3_iphone_pwa.py'
+      - 'tests/test_p3_voice_qualification.py'
+      - 'tests/test_advanced_intelligence_integration.py'
+      - 'tests/test_self_improvement_*.py'
+      - 'tests/test_training_*.py'
       - 'core/config.py'
       - '.env.example'
       - '.github/workflows/p3-iphone-pwa.yml'
@@ -46,6 +53,13 @@ jobs:
         run: python -m compileall -q server core tests
       - name: iPhone PWA integration tests
         run: pytest -q tests/test_p3_iphone_pwa.py tests/test_p3_voice_qualification.py
+      - name: Owner Intelligence responsive/API qualification
+        run: >-
+          pytest -q
+          tests/test_advanced_intelligence_integration.py
+          tests/test_self_improvement_governance.py
+          tests/test_training_runtime_controls.py
+          tests/test_training_export_governance.py
       - name: Fail closed if insecure production default is introduced
         run: |
           python - <<'PY'
