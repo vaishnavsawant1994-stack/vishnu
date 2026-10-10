@@ -75,14 +75,16 @@ class TrainingCandidateFactory:
     """Create sanitized, governed candidates without retaining raw secrets.
 
     Capture being enabled means a candidate may be proposed. It does not mean
-    the candidate is eligible or approved. Secret-bearing and restricted data
-    fail closed, and hidden chain-of-thought is never accepted as a data type.
+    the candidate is eligible or approved. Secret-bearing, connected-service
+    and restricted data fail closed, and hidden chain-of-thought is never
+    accepted as a data type.
     """
 
     _DISALLOWED_CONTENT_KINDS = {
         'chain_of_thought',
         'hidden_chain_of_thought',
         'private_reasoning',
+        'reasoning_trace',
         'scratchpad',
     }
     _DISALLOWED_SOURCE_TYPES = {
@@ -90,6 +92,12 @@ class TrainingCandidateFactory:
         'secret',
         'password',
         'authentication_secret',
+        'gmail',
+        'google_drive',
+        'google-drive',
+        'slack',
+        'connected_service',
+        'connector',
     }
 
     def create(
@@ -135,7 +143,6 @@ class TrainingCandidateFactory:
         if not source_training_allowed:
             reasons.append('source_training_not_allowed')
         if contains_secret:
-            # Sanitized candidate can be retained for review, but never auto-approved.
             eligible = False
             reasons.append('secret_detected_and_redacted')
         if privacy in {PrivacyLevel.SENSITIVE, PrivacyLevel.RESTRICTED}:
