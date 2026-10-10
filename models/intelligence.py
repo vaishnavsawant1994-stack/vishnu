@@ -84,6 +84,16 @@ class IntelligenceEngine:
 
     def mode_for(self, request: ModelRequest) -> IntelligenceMode:
         metadata = self._metadata(request)
+        settings = self._settings()
+
+        # The owner's master switch is the top-level authority for this optional
+        # layer. Per-request metadata may choose a mode only after the owner has
+        # enabled Advanced Intelligence; it can never reactivate a disabled
+        # system. Instances without a settings service retain their explicit
+        # request-mode behavior for isolated workers/tests.
+        if settings is not None and not settings.enabled:
+            return IntelligenceMode.STANDARD
+
         explicit = metadata.get('intelligence_mode')
         if explicit not in (None, ''):
             try:
@@ -91,11 +101,8 @@ class IntelligenceEngine:
             except ValueError:
                 pass
 
-        settings = self._settings()
         if settings is None:
             return self.default_mode
-        if not settings.enabled:
-            return IntelligenceMode.STANDARD
         if not settings.auto_escalation:
             return settings.mode
 
