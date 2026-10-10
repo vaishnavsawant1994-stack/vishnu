@@ -13,6 +13,13 @@ from training.candidates import (
     TrainingCandidateFactory,
 )
 from training.collector import TrainingCollector
+from training.deployment import (
+    DeploymentResult,
+    ModelDeploymentBackend,
+    ModelDeploymentController,
+    UnavailableDeploymentBackend,
+)
+from training.evaluation import LocalCheckpointEvaluator
 from training.exporter import TrainingDatasetExporter, TrainingExport
 from training.self_improvement import (
     AutoTrainingCoordinator,
@@ -49,6 +56,7 @@ __all__ = [
     'AutoTrainingSettings',
     'EvaluationResult',
     'FailClosedEvaluator',
+    'LocalCheckpointEvaluator',
     'LocalPeftTrainerBackend',
     'TrainedModel',
     'TrainedModelStatus',
@@ -61,4 +69,8 @@ __all__ = [
     'TrainingRegistry',
     'TrainingSettingsService',
     'UnavailableTrainerBackend',
+    'DeploymentResult',
+    'ModelDeploymentBackend',
+    'ModelDeploymentController',
+    'UnavailableDeploymentBackend',
 ]
