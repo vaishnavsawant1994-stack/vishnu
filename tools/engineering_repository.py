@@ -24,8 +24,14 @@ def _schema(properties, required=()):
     }
 
 
-def _call(runtime, operation):
+def _call(runtime, operation, *, mutation=False):
     def handler(params):
+        if mutation:
+            policy_store = getattr(runtime, "owner_policy", None)
+            if policy_store is not None and not policy_store.snapshot().allows_workspace_mutation():
+                raise PermissionError(
+                    "Engineering Autonomy must be Workspace, Auto-Fix, or Review Candidate for source mutations"
+                )
         payload = dict(params)
         work_order_id = payload.pop("work_order_id")
         attempt_id = payload.pop("attempt_id")
@@ -102,7 +108,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_create_file",
         "Create a UTF-8 source file inside the allowed engineering workspace scope",
-        _call(runtime, "create"),
+        _call(runtime, "create", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
@@ -114,7 +120,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_modify_file",
         "Replace a governed UTF-8 source file using a required stale-write SHA-256 precondition",
-        _call(runtime, "replace"),
+        _call(runtime, "replace", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
@@ -126,7 +132,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_apply_patch",
         "Apply one exact old-to-new source replacement with a stale-write SHA-256 precondition",
-        _call(runtime, "replace_exact"),
+        _call(runtime, "replace_exact", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
@@ -143,7 +149,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_delete_file",
         "Delete one allowed engineering source file with a stale-write SHA-256 precondition",
-        _call(runtime, "delete"),
+        _call(runtime, "delete", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
@@ -155,7 +161,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_rename_file",
         "Rename one allowed engineering source file inside the same isolated workspace",
-        _call(runtime, "rename"),
+        _call(runtime, "rename", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
@@ -167,7 +173,7 @@ def register(registry, runtime):
     registry.register(Tool(
         "repository_restore_file",
         "Restore one allowed source path from the engineering workspace base revision",
-        _call(runtime, "restore"),
+        _call(runtime, "restore", mutation=True),
         Risk.REVERSIBLE,
         verifier=_mutation_verifier,
         verification_required=True,
