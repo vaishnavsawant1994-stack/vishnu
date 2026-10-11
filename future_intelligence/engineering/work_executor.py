@@ -134,7 +134,23 @@ class EngineeringWorkExecutor:
         revision = str(commit["revision"])
         if self.verification_provider is None:
             return revision, None, ()
-        report = self.verification_provider.verify(coordinator.session, revision=revision)
+        try:
+            report = self.verification_provider.verify(coordinator.session, revision=revision)
+        except Exception as exc:
+            coordinator.evidence.append(
+                "engineering.verification_interrupted",
+                {
+                    "revision": revision,
+                    "error_type": type(exc).__name__,
+                    "recovery_required": True,
+                },
+            )
+            self.runtime.work_store.mark_recovery_required(
+                coordinator.spec.work_order_id,
+                attempt_id=coordinator.spec.attempt_id,
+                reason=RecoveryReason.INTERRUPTED_VERIFICATION,
+            )
+            raise
         observations = observations_from_verification_report(report)
         coordinator.evidence.append(
             "engineering.local_verification",
@@ -273,16 +289,37 @@ class EngineeringWorkExecutor:
                 review_decision="pending",
                 limitations=limitations,
             )
-            review = self.reviewer.review(
-                spec=spec,
-                report=preliminary,
-                diff=diff,
-                evidence={
-                    "changed_paths": list(current.changed_paths),
-                    "repair_cycles": repairs,
-                    "local_verification_passed": None if verification is None else verification.passed,
-                },
-            )
+            if spec.review_required:
+                try:
+                    review = self.reviewer.review(
+                        spec=spec,
+                        report=preliminary,
+                        diff=diff,
+                        evidence={
+                            "changed_paths": list(current.changed_paths),
+                            "repair_cycles": repairs,
+                            "local_verification_passed": None if verification is None else verification.passed,
+                        },
+                    )
+                except Exception as exc:
+                    limitations.append("independent review unavailable; candidate requires external review retry")
+                    review = EngineeringReviewDecision(
+                        decision="rejected",
+                        reviewer="independent-engineering-reviewer",
+                        summary=f"Independent review unavailable: {type(exc).__name__}",
+                        findings=("Retry independent review before qualification can pass.",),
+                    )
+                    coordinator.evidence.append(
+                        "engineering.review_unavailable",
+                        {"revision": revision, "error_type": type(exc).__name__},
+                    )
+            else:
+                review = EngineeringReviewDecision(
+                    decision="approved",
+                    reviewer="review-not-required",
+                    summary="EngineeringSpec does not require independent review.",
+                    findings=(),
+                )
             final_report = coordinator.finalize(
                 candidate_revision=revision,
                 observations=observations,
