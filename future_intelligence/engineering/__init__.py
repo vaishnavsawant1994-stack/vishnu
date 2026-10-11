@@ -22,6 +22,7 @@ from .database_qualification import DatabaseQualificationResult, SqliteMigration
 from .dependency_qualification import DependencyFinding, DependencyQualificationResult, DependencyQualifier
 from .environment_qualification import HttpQualificationProbe, ReadOnlyHttpQualificationProvider
 from .failure_intelligence import EngineeringFailureStore, FailureFingerprint, FlakyAssessment
+from .final_qualification import EngineeringCandidateFinalizer, EngineeringFinalQualificationResult
 from .owner_policy import EngineeringOwnerPolicy, EngineeringOwnerPolicyStore
 from .portability import EngineeringArtifactClass, EngineeringArtifactPolicy, classify_engineering_artifact, portability_manifest
 from .production_feedback import ProductionFeedbackWork, ProductionRegressionWorkBridge
@@ -43,7 +44,9 @@ __all__ = [
     "EngineeringArtifactPolicy",
     "EngineeringAutonomyMode",
     "EngineeringBudget",
+    "EngineeringCandidateFinalizer",
     "EngineeringFailureStore",
+    "EngineeringFinalQualificationResult",
     "EngineeringOwnerPolicy",
     "EngineeringOwnerPolicyStore",
     "EngineeringSpec",
