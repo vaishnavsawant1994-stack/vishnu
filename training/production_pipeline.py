@@ -16,13 +16,24 @@ def _configured(name: str) -> bool:
     return bool(str(os.getenv(name, '') or '').strip())
 
 
+def _lifecycle_public(value: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(value, dict):
+        return None
+    return {
+        key: value.get(key)
+        for key in ('status', 'promotion_state', 'deployment_state', 'rollback_parent')
+        if key in value
+    }
+
+
 class ProductionModelPipeline:
     """Readiness/orchestration surface for the governed model release chain.
 
     This class deliberately has no owner-approval method and no direct model
     activation method. It composes the existing training, evaluation, shadow,
     owner approval and release-controller boundaries without becoming a second
-    source of authority.
+    source of authority. ``status`` is safe for the unauthenticated health
+    surface: local paths, raw job records and secret values are never returned.
     """
 
     def __init__(self, runtime: dict, artifact_store) -> None:
@@ -68,13 +79,29 @@ class ProductionModelPipeline:
         return {
             'model_id': model.model_id,
             'status': model.status.value,
-            'checkpoint_ref': model.checkpoint_ref,
             'artifact': artifact,
-            'lifecycle': lifecycle,
+            'lifecycle': _lifecycle_public(lifecycle),
             'owner_approved': model.status in {TrainedModelStatus.OWNER_APPROVED, TrainedModelStatus.ACTIVE},
             'active': model.status is TrainedModelStatus.ACTIVE,
             'automatic_owner_approval': False,
             'automatic_activation': False,
+        }
+
+    def _training_public(self, coordinator, config) -> dict[str, Any] | None:
+        if coordinator is None:
+            return None
+        registry = self._registry()
+        jobs = registry.jobs(limit=20) if registry is not None and hasattr(registry, 'jobs') else ()
+        models = registry.models(limit=20) if registry is not None and hasattr(registry, 'models') else ()
+        method = getattr(config, 'method', None)
+        return {
+            'enabled': bool(getattr(config, 'enabled', False)) if config is not None else False,
+            'backend_id': str(getattr(config, 'backend_id', '') or '') if config is not None else '',
+            'base_model_configured': bool(str(getattr(config, 'base_model', '') or '').strip()) if config is not None else False,
+            'method': getattr(method, 'value', str(method or '')),
+            'backends': coordinator.backend_status() if hasattr(coordinator, 'backend_status') else {},
+            'recent_job_count': len(jobs),
+            'recent_model_count': len(models),
         }
 
     def status(self) -> dict[str, Any]:
@@ -90,16 +117,16 @@ class ProductionModelPipeline:
         shadow_status = shadow.status() if shadow is not None else {'backends': {}}
         deployment_status = deployment.status() if deployment is not None else {'backends': {}}
         runtime_status = runner.status() if runner is not None else {'available': False, 'persistent': False}
-        artifact_status = self.artifact_store.status()
+        artifact_status = dict(self.artifact_store.status())
+        artifact_status.pop('root', None)
 
         blockers: list[str] = []
         if coordinator is None:
             blockers.append('training_coordinator_unavailable')
         if training_config is None:
             blockers.append('training_settings_unavailable')
-        else:
-            if not str(training_config.base_model or '').strip():
-                blockers.append('base_model_not_configured')
+        elif not str(training_config.base_model or '').strip():
+            blockers.append('base_model_not_configured')
         if not bool(artifact_status.get('persistent')):
             blockers.append('artifact_store_not_persistent')
         if not bool(runtime_status.get('available')):
@@ -129,7 +156,7 @@ class ProductionModelPipeline:
         return {
             'schema_version': 1,
             'artifact_store': artifact_status,
-            'training': coordinator.summary() if coordinator is not None else None,
+            'training': self._training_public(coordinator, training_config),
             'candidate_stats': candidate_stats,
             'shadow': shadow_status,
             'deployment': deployment_status,
