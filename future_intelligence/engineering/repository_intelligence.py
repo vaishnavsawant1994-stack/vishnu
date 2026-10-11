@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import fnmatch
 import hashlib
 import json
 import re
@@ -76,17 +77,32 @@ class RepositoryIntelligenceBuilder:
         return f"symbol:{path}:{line}:{name}"
 
     @staticmethod
-    def _normalize_prefixes(include_paths: Iterable[str]) -> tuple[str, ...]:
+    def _normalize_scopes(include_paths: Iterable[str]) -> tuple[str, ...]:
         raw = tuple(str(item).strip().replace("\\", "/") for item in include_paths if str(item).strip())
         if any(item in _ROOT_SCOPES for item in raw):
             return ()
-        return tuple(dict.fromkeys(item.strip("/") for item in raw if item.strip("/")))
+        return tuple(dict.fromkeys(item.lstrip("./") for item in raw if item.lstrip("./")))
+
+    @staticmethod
+    def _in_scope(relative: str, scopes: tuple[str, ...]) -> bool:
+        if not scopes:
+            return True
+        for rule in scopes:
+            if any(char in rule for char in "*?["):
+                if fnmatch.fnmatch(relative, rule):
+                    return True
+                continue
+            normalized = rule.rstrip("/")
+            if relative == normalized or relative.startswith(normalized + "/"):
+                return True
+        return False
 
     def build(self, root: str | Path, *, revision: str, include_paths: Iterable[str] = ()) -> RepositoryGraph:
-        base = Path(root).expanduser().resolve()
-        if not base.is_dir():
-            raise ValueError("repository intelligence root must be a directory")
-        prefixes = self._normalize_prefixes(include_paths)
+        raw_root = Path(root).expanduser()
+        if raw_root.is_symlink() or not raw_root.is_dir():
+            raise ValueError("repository intelligence root must be a non-symlink directory")
+        base = raw_root.resolve(strict=True)
+        scopes = self._normalize_scopes(include_paths)
         nodes: list[RepositoryNode] = []
         edges: list[RepositoryEdge] = []
         file_ids: dict[str, str] = {}
@@ -102,7 +118,7 @@ class RepositoryIntelligenceBuilder:
             relative = path.relative_to(base).as_posix()
             if relative.startswith((".git/", ".venv/", "node_modules/", "artifacts/", "dist/", "build/")):
                 continue
-            if prefixes and not any(relative == prefix or relative.startswith(prefix + "/") for prefix in prefixes):
+            if not self._in_scope(relative, scopes):
                 continue
             try:
                 raw = path.read_bytes()
