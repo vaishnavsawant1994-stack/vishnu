@@ -132,6 +132,7 @@ class EngineeringOwnerPolicy:
             "localization_required": bool(self.localization_required and ui_change),
             "three_d_required": bool(self.three_d_required and ui_change),
             "max_model_cost_per_work": self.max_model_cost_per_work,
+            "specialist_consultation_enabled": True,
         })
         return replace(spec, budget=budget, metadata=metadata)
 
