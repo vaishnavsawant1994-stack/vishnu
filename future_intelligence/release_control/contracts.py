@@ -54,6 +54,7 @@ class ReleaseStatus(StrEnum):
     ROLLBACK_RECOMMENDED = "rollback_recommended"
     ROLLING_BACK = "rolling_back"
     ROLLED_BACK = "rolled_back"
+    RECOVERY_REQUIRED = "recovery_required"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
