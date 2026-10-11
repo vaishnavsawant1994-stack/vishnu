@@ -14,6 +14,7 @@ from future_intelligence.engineering.contracts import (
     QualificationReport,
 )
 from future_intelligence.engineering.release_qualification import EnvironmentQualificationResult
+from future_intelligence.release_control.contracts import ReleaseRiskClass
 from future_intelligence.release_control.controller import GovernedReleaseController
 from future_intelligence.release_control.policy_store import ReleasePolicyStore
 from future_intelligence.release_control.providers import InMemoryReleaseProvider
@@ -158,6 +159,7 @@ def seed_release(value, *, surfaces=("pwa/home",)):
         report=qualification_report(),
         provider="memory",
         target="vishnu-production",
+        risk_class=ReleaseRiskClass.LOW,
     )
 
 
