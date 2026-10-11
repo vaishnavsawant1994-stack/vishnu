@@ -10,6 +10,7 @@ from future_intelligence.engineering.environment_qualification import (
     HttpQualificationProbe,
     ReadOnlyHttpQualificationProvider,
 )
+from future_intelligence.engineering.final_qualification import EngineeringCandidateFinalizer
 from future_intelligence.engineering.qualification import EngineeringQualification
 from future_intelligence.engineering.release_qualification import EnvironmentQualificationResult
 from future_intelligence.engineering.trusted_qualification import (
@@ -161,6 +162,24 @@ def test_regression_test_becomes_blocking_gate_and_must_match_failure_fingerprin
             requirement_traces=(),
             regression_test_evidence=wrong,
         )
+
+
+def test_any_repair_cycle_strengthens_final_spec_with_permanent_regression_gate():
+    original = _spec()
+    unchanged = EngineeringCandidateFinalizer._with_attempt_requirements(original, {"repair_cycles": 0})
+    assert unchanged is original
+    repaired = EngineeringCandidateFinalizer._with_attempt_requirements(original, {"repair_cycles": 2})
+    assert repaired.metadata["repair_cycles"] == 2
+    assert repaired.metadata["regression_test_required"] is True
+    assert "regression_test" in EngineeringQualification().required_gates(repaired)
+    report = EngineeringQualification().report(
+        spec=repaired,
+        candidate_revision="b" * 40,
+        observations=(),
+    )
+    assert {gate.gate: gate.status.value for gate in report.gates}["regression_test"] == "pending"
+    with pytest.raises(RuntimeError, match="repair cycle metadata"):
+        EngineeringCandidateFinalizer._with_attempt_requirements(original, {"repair_cycles": "not-a-number"})
 
 
 def test_preview_request_is_revision_bound_and_has_no_release_authority():
