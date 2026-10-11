@@ -40,7 +40,7 @@ try{
   await desktop.goto(`${base}/iphone/our-products.html`,{waitUntil:'networkidle'});
   await desktop.getByRole('heading',{name:'Our Products'}).waitFor();
   assert.equal(await desktop.locator('#metricTotal').textContent(),'1');
-  await desktop.getByText('ACME Sales Employee').waitFor();
+  await desktop.locator('[data-product-id="product-acme"] h3').getByText('ACME Sales Employee',{exact:true}).waitFor();
   assert.ok(await desktop.getByRole('button',{name:/Create Product/}).first().isVisible());
   assert.ok(await desktop.locator('.sidebar a.active').getByText('Our Products').isVisible());
   const columns=await desktop.locator('#productGrid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
@@ -59,7 +59,7 @@ try{
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await mockApi(mobile);
   await mobile.goto(`${base}/iphone/our-products.html`,{waitUntil:'networkidle'});
   await mobile.getByRole('heading',{name:'Our Products'}).waitFor();
-  await mobile.getByText('ACME Sales Employee').waitFor();
+  await mobile.locator('[data-product-id="product-acme"] h3').getByText('ACME Sales Employee',{exact:true}).waitFor();
   const mobileColumns=await mobile.locator('#productGrid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length);
   assert.equal(mobileColumns,1,'mobile product catalog should be one column');
   assert.equal(await mobile.locator('.side-nav').evaluate(el=>getComputedStyle(el).display),'none');
