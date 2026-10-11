@@ -42,7 +42,10 @@ def normalize_repository_path(raw: str) -> str:
 
 
 def _matches_prefix(path: str, rule: str) -> bool:
-    normalized = str(rule or "").strip().replace("\\", "/").lstrip("./")
+    raw = str(rule or "").strip().replace("\\", "/")
+    if raw in {".", "./", "*", "**", "**/*"}:
+        return True
+    normalized = raw.lstrip("./")
     if not normalized:
         return False
     if any(char in normalized for char in "*?["):
