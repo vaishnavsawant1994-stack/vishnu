@@ -37,8 +37,17 @@ class EngineeringQualification:
                 gates.append("firefox")
         if spec.accessibility_required:
             gates.append("accessibility")
-        if bool(spec.metadata.get("performance_required", False)):
+        metadata = dict(spec.metadata)
+        if bool(metadata.get("performance_required", False)):
             gates.append("performance")
+        if bool(metadata.get("localization_required", False)):
+            gates.append("localization")
+        if bool(metadata.get("three_d_required", False)):
+            gates.append("three_d")
+        if bool(metadata.get("physical_device_required", False)):
+            gates.append("physical_device")
+        if bool(metadata.get("preview_enabled", False)):
+            gates.append("preview")
         return tuple(dict.fromkeys(gates))
 
     def report(
