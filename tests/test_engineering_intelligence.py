@@ -118,6 +118,17 @@ def test_repository_intelligence_and_impact_are_reconstructable(tmp_path: Path):
     assert "tests/test_core.py" in report.relevant_tests
 
 
+def test_repository_intelligence_honors_glob_scopes(tmp_path: Path):
+    (tmp_path / "app" / "nested").mkdir(parents=True)
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "app" / "nested" / "core.py").write_text("VALUE = 1\n", encoding="utf-8")
+    (tmp_path / "tests" / "test_core.py").write_text("def test_value(): assert True\n", encoding="utf-8")
+    graph = RepositoryIntelligenceBuilder().build(tmp_path, revision="deadbeef", include_paths=("app/**",))
+    file_paths = {node.path for node in graph.nodes if node.kind in {"file", "test"}}
+    assert "app/nested/core.py" in file_paths
+    assert "tests/test_core.py" not in file_paths
+
+
 def test_visual_regression_diff_is_deterministic(tmp_path: Path):
     baseline = tmp_path / "base.png"; candidate = tmp_path / "candidate.png"
     Image.new("RGB", (20, 20), (0, 0, 0)).save(baseline)
