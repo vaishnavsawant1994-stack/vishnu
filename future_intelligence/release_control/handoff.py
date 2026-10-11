@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
 from typing import Iterable
 
 from future_intelligence.engineering.evidence_finalizer import EvidenceAwareEngineeringFinalizer
 from future_intelligence.engineering.final_qualification import EngineeringFinalQualificationResult
 from future_intelligence.engineering.traceability import RequirementTrace
 from future_intelligence.engineering.verification import VerificationObservation
-from future_intelligence.engineering.workflow_evidence import GitHubPhysicalDeviceEvidenceVerifier
+from future_intelligence.engineering.workflow_evidence import (
+    GitHubPhysicalDeviceEvidenceVerifier,
+    GitHubWorkflowEvidenceConfig,
+)
 
 from .automation import ReleaseAutomationService
 
@@ -21,6 +25,20 @@ class ReleaseAwareEngineeringFinalizer(EvidenceAwareEngineeringFinalizer):
     arbitrary API.
     """
 
+    @staticmethod
+    def _default_physical_device_verifier(runtime) -> GitHubPhysicalDeviceEvidenceVerifier | None:
+        provider = getattr(runtime, "repository_provider", None)
+        repository = str(getattr(provider, "repository", "") or "").strip().strip("/")
+        parts = repository.split("/")
+        if len(parts) != 2 or not all(parts) or any("\\" in item or item in {".", ".."} for item in parts):
+            return None
+        return GitHubPhysicalDeviceEvidenceVerifier(
+            GitHubWorkflowEvidenceConfig(
+                repository=repository,
+                token=str(os.environ.get("VISHNU_ENGINEERING_GITHUB_TOKEN", "") or "").strip(),
+            )
+        )
+
     def __init__(
         self,
         *,
@@ -34,7 +52,11 @@ class ReleaseAwareEngineeringFinalizer(EvidenceAwareEngineeringFinalizer):
             runtime=runtime,
             models=models,
             reviewer=reviewer,
-            physical_device_verifier=physical_device_verifier,
+            physical_device_verifier=(
+                physical_device_verifier
+                if physical_device_verifier is not None
+                else self._default_physical_device_verifier(runtime)
+            ),
         )
         self.release_automation = release_automation
 
