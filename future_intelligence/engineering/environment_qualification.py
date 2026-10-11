@@ -31,7 +31,7 @@ class HttpQualificationProbe:
 
 
 class ReadOnlyHttpQualificationProvider:
-    """Bounded GET-only preview/production observer with no deploy or mutation authority."""
+    """Bounded GET-only, explicitly origin-scoped environment observer."""
 
     def __init__(
         self,
@@ -39,7 +39,7 @@ class ReadOnlyHttpQualificationProvider:
         *,
         timeout_seconds: float = 12.0,
         max_response_bytes: int = 2_000_000,
-        allowed_hosts: Iterable[str] = (),
+        allowed_hosts: Iterable[str],
         session: requests.Session | None = None,
     ) -> None:
         self.probes = tuple(probes)
@@ -48,6 +48,8 @@ class ReadOnlyHttpQualificationProvider:
         self.timeout_seconds = max(1.0, min(float(timeout_seconds), 120.0))
         self.max_response_bytes = max(1024, min(int(max_response_bytes), 10_000_000))
         self.allowed_hosts = frozenset(str(item).strip().casefold() for item in allowed_hosts if str(item).strip())
+        if not self.allowed_hosts:
+            raise ValueError("environment qualification requires at least one explicitly allowed host")
         self.session = session or requests.Session()
 
     def _target(self, target: str) -> tuple[str, str]:
@@ -56,7 +58,7 @@ class ReadOnlyHttpQualificationProvider:
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("qualification target must be an http(s) origin")
         host = parsed.hostname.casefold()
-        if self.allowed_hosts and host not in self.allowed_hosts:
+        if host not in self.allowed_hosts:
             raise PermissionError("qualification target host is outside the configured observer scope")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise ValueError("qualification target must not embed credentials, query data, or fragments")
