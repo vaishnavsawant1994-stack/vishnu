@@ -47,7 +47,8 @@
         if(!build)return;
         const title=row.querySelector('b');
         if(title&&!title.dataset.buildNumberApplied){
-          title.textContent=`Build #${build.build_number} · ${title.textContent}`;
+          const prefix=`Build #${build.build_number} · `;
+          if(!title.textContent.startsWith(prefix))title.textContent=`${prefix}${title.textContent}`;
           title.dataset.buildNumberApplied='true';
         }
         const status=row.querySelector('.status');

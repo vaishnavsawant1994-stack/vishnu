@@ -15,17 +15,26 @@ const components=[{id:'component-1',product_id:product.id,component_type:'agent'
 const activity=[{id:'activity-1',product_id:product.id,product_name:product.name,event_type:'product.updated',message:'Product settings updated',metadata:{},created_at:'2026-10-11T17:00:00Z'}];
 
 async function mockApi(page){
+  const builds=[];
   await page.route('**/iphone/api/products**',async route=>{
-    const request=route.request();const url=new URL(request.url());const path=url.pathname;const method=request.method();let body;
+    const request=route.request();const url=new URL(request.url());const path=url.pathname;const method=request.method();let body;let status=200;
     if(path==='/iphone/api/products'&&method==='GET')body={products:[product]};
     else if(path==='/iphone/api/products/summary')body={summary:{total:1,development:0,ready:0,live:1,clients:1,needs_attention:0}};
     else if(path==='/iphone/api/products/activity')body={activity};
-    else if(path===`/iphone/api/products/${product.id}`&&method==='GET')body={product,components,builds:[]};
-    else if(path===`/iphone/api/products/${product.id}/distribution/status`)body={signing_configured:true,portable_package:true,current_version:'2.1.0',current_version_frozen:true,frozen_versions:['2.1.0'],production_distribution_ready:true,native_builds:'target-builder qualification required'};
+    else if(path===`/iphone/api/products/${product.id}`&&method==='GET')body={product,components,builds};
+    else if(path===`/iphone/api/products/${product.id}/distribution/status`)body={signing_configured:true,portable_package:true,current_version:'2.1.0',current_version_frozen:true,frozen_versions:['2.1.0'],production_distribution_ready:true,verified_local_build_targets:['web','pwa','api','worker'],native_builds:'target-builder qualification required'};
+    else if(path===`/iphone/api/products/${product.id}/builds`&&method==='GET')body={builds};
+    else if(path===`/iphone/api/products/${product.id}/builds`&&method==='POST'){
+      const build={id:'build-web-1',product_id:product.id,version:'2.1.0',target:'web',status:'requested',build_number:1,artifact_name:null,checksum:null,metadata:{artifact_ready:false},created_at:'2026-10-11T17:10:00Z',completed_at:null};
+      builds.splice(0,builds.length,build);body={build};status=201;
+    }
+    else if(path===`/iphone/api/products/${product.id}/builds/build-web-1/execute`&&method==='POST'){
+      Object.assign(builds[0],{status:'succeeded',artifact_name:'ACME-Sales-Employee-2.1.0-web.zip',checksum:'a'.repeat(64),completed_at:'2026-10-11T17:11:00Z',metadata:{artifact_ready:true,artifact_uri:'product-artifact://product-acme/build-web-1/ACME-Sales-Employee-2.1.0-web.zip',signing_verified:false}});body={build:builds[0],builder:'verified-local-runtime',download_ready:true};
+    }
     else if(path===`/iphone/api/products/${product.id}/licenses`&&method==='GET')body={licenses:[]};
     else if(path===`/iphone/api/products/${product.id}/manifest`)body={manifest:{schema:'vishnu.product/v1',product_id:product.id,name:product.name,version:product.version,ai_policy:{mode:'hybrid',credentials:'runtime-provisioned'}}};
     if(body===undefined)return route.fulfill({status:404,contentType:'application/json',body:JSON.stringify({detail:`No mock for ${method} ${path}`})});
-    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(body)});
+    return route.fulfill({status,contentType:'application/json',body:JSON.stringify(body)});
   });
 }
 
@@ -55,6 +64,14 @@ try{
   assert.ok(await desktop.getByRole('button',{name:'Issue signed license'}).isEnabled());
   assert.ok(await desktop.getByText('Frozen / immutable').isVisible());
   await shot(desktop,'our-products-package-license-desktop.png');
+
+  await desktop.getByRole('button',{name:'Build & Export'}).click();
+  await desktop.getByText('Web',{exact:true}).first().waitFor();
+  await desktop.getByRole('button',{name:'Generate verified bundle'}).click();
+  await desktop.getByRole('button',{name:'Download',exact:true}).waitFor();
+  assert.ok(await desktop.getByText('Verified artifact generated').isVisible());
+  assert.ok(await desktop.getByText(/Build #1/).isVisible());
+  await noOverflow(desktop,'desktop build');await shot(desktop,'our-products-verified-build-desktop.png');
 
   const mobile=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true});await mockApi(mobile);
   await mobile.goto(`${base}/iphone/our-products.html`,{waitUntil:'networkidle'});

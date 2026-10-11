@@ -39,6 +39,18 @@ def _distribution_safe(value):
     return value
 
 
+def distribution_safe_manifest(manifest: dict) -> dict:
+    """Return the product contract that may cross the owner/client boundary.
+
+    Runtime/build adapters use this same sanitizer as portable package export so
+    owner-side secret bindings can never accidentally reappear in generated
+    client artifacts through a second implementation path.
+    """
+    if not isinstance(manifest, dict):
+        raise ValueError("Product manifest must be an object")
+    return _distribution_safe(manifest)
+
+
 def build_portable_package(manifest: dict, *, require_signature: bool = True) -> tuple[str, bytes, dict]:
     """Build a deterministic, secret-free Vishnu portable product package.
 
@@ -47,7 +59,7 @@ def build_portable_package(manifest: dict, *, require_signature: bool = True) ->
     does not copy the full Vishnu source tree, owner data, credentials, internal
     vault references, or other clients' state.
     """
-    distribution_manifest = _distribution_safe(manifest)
+    distribution_manifest = distribution_safe_manifest(manifest)
     manifest_bytes = canonical_json(distribution_manifest)
     manifest_sha = sha256_bytes(manifest_bytes)
     signature = sign_payload(manifest_bytes, require_key=require_signature)
