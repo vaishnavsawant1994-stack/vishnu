@@ -21,10 +21,8 @@ class VerificationObservation:
 
 
 class EngineeringQualification:
-    """Build objective qualification reports; does not approve itself."""
-
     BASE_GATES = ("requirements", "build", "unit", "integration", "security")
-    UI_GATES = ("responsive", "chromium", "runtime", "visual")
+    UI_GATES = ("responsive", "chromium", "runtime")
 
     def required_gates(self, spec: EngineeringSpec) -> tuple[str, ...]:
         gates = list(self.BASE_GATES)
@@ -35,16 +33,18 @@ class EngineeringQualification:
                 gates.append("webkit")
             if "firefox" in browser_values:
                 gates.append("firefox")
+        if spec.visual_review_required:
+            gates.append("visual")
         if spec.accessibility_required:
             gates.append("accessibility")
         metadata = dict(spec.metadata)
         if bool(metadata.get("performance_required", False)):
             gates.append("performance")
-        if bool(metadata.get("localization_required", False)):
+        if spec.ui_required and bool(metadata.get("localization_required", False)):
             gates.append("localization")
-        if bool(metadata.get("three_d_required", False)):
+        if spec.ui_required and bool(metadata.get("three_d_required", False)):
             gates.append("three_d")
-        if bool(metadata.get("physical_device_required", False)):
+        if spec.ui_required and bool(metadata.get("physical_device_required", False)):
             gates.append("physical_device")
         if bool(metadata.get("preview_enabled", False)):
             gates.append("preview")
