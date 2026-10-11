@@ -15,6 +15,10 @@ from future_intelligence.engineering.workflow_evidence import (
     PhysicalDeviceWorkflowRun,
     WorkflowEvidenceError,
 )
+from future_intelligence.engineering.workflow_orchestration import (
+    GitHubPhysicalDeviceOrchestrationConfig,
+    GitHubPhysicalDeviceWorkflowOrchestrator,
+)
 from security.request_context import current_trusted_request
 
 
@@ -32,6 +36,7 @@ class EngineeringPolicyBody(BaseModel):
     evidence_retention_days: int | None = Field(default=None, ge=1, le=3650)
     max_model_cost_per_work: float | None = Field(default=None, gt=0, le=100_000)
     physical_device_required: bool | None = None
+    physical_device_auto_dispatch: bool | None = None
     performance_required: bool | None = None
     localization_required: bool | None = None
     three_d_required: bool | None = None
@@ -52,10 +57,12 @@ def owner_engineering_router(runtime) -> APIRouter:
     """Trusted-owner Engineering Autonomy controls and read-only work visibility.
 
     This surface may configure local engineering limits, request execution of an
-    already-created Canonical WorkOrder, and submit GitHub workflow run IDs for
-    independent physical-device evidence verification. It cannot create repository
-    scope, claim a qualification gate passed, approve security authority, push,
-    merge, deploy, or activate a Body revision.
+    already-created Canonical WorkOrder, independently verify supplied GitHub
+    physical-device workflow run IDs, and—when explicitly enabled by owner policy
+    and a separate dispatch credential—start only the allowlisted physical-device
+    workflows for an exact candidate that is already published remotely. It cannot
+    create repository scope, claim a qualification gate passed, push, merge,
+    deploy, roll back, approve security authority, or activate a Body revision.
     """
 
     router = APIRouter(prefix="/iphone/api/owner/engineering", tags=["owner-engineering"])
@@ -120,6 +127,41 @@ def owner_engineering_router(runtime) -> APIRouter:
             except ValueError as exc:
                 raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured") from exc
         return value
+
+    def physical_orchestrator() -> GitHubPhysicalDeviceWorkflowOrchestrator:
+        existing = runtime.get("engineering_physical_device_orchestrator")
+        if existing is not None:
+            return existing
+        repository = str(engineering().repository_provider.repository or "").strip().strip("/")
+        token = str(os.environ.get("VISHNU_ENGINEERING_GITHUB_DISPATCH_TOKEN") or "").strip()
+        try:
+            value = GitHubPhysicalDeviceWorkflowOrchestrator(
+                GitHubPhysicalDeviceOrchestrationConfig(repository=repository, token=token)
+            )
+        except ValueError as exc:
+            raise HTTPException(503, "trusted GitHub physical-device workflow dispatch is not configured") from exc
+        runtime["engineering_physical_device_orchestrator"] = value
+        return value
+
+    def dispatch_and_record_physical_device_evidence(work_order_id: str, attempt_id: str):
+        qualified_finalizer = finalizer()
+        if not hasattr(qualified_finalizer, "_workspace_and_spec"):
+            raise RuntimeError("engineering finalizer cannot resolve the exact candidate workspace")
+        _attempt, workspace, spec, _session, candidate_revision, _changed = qualified_finalizer._workspace_and_spec(
+            str(work_order_id), str(attempt_id)
+        )
+        metadata = dict(spec.metadata or {})
+        if not (spec.ui_required and bool(metadata.get("physical_device_required", False))):
+            raise PermissionError("EngineeringSpec does not require physical-device qualification")
+        runs = physical_orchestrator().dispatch_required(
+            spec=spec,
+            candidate_revision=candidate_revision,
+            preferred_ref=str(workspace.branch_ref or ""),
+        )
+        observation = qualified_finalizer.verify_and_record_physical_device_evidence(
+            str(work_order_id), str(attempt_id), runs=runs
+        )
+        return observation, runs
 
     def emit(name: str, **payload: Any) -> None:
         if events is not None:
@@ -217,6 +259,10 @@ def owner_engineering_router(runtime) -> APIRouter:
                 or len(repository.split("/")) == 2
             )
         )
+        auto_dispatch_available = bool(
+            runtime.get("engineering_physical_device_orchestrator") is not None
+            or str(os.environ.get("VISHNU_ENGINEERING_GITHUB_DISPATCH_TOKEN") or "").strip()
+        )
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
@@ -226,6 +272,9 @@ def owner_engineering_router(runtime) -> APIRouter:
                 "verified_server_side": True,
                 "candidate_revision_bound": True,
                 "verifier_available": verifier_available,
+                "auto_dispatch_available": auto_dispatch_available,
+                "auto_dispatch_enabled": bool(policy.physical_device_auto_dispatch),
+                "remote_source_mutation": False,
             },
             "policy": policy.public(),
             "recent_work": recent_work(),
@@ -269,6 +318,31 @@ def owner_engineering_router(runtime) -> APIRouter:
                 runtime_epoch=int(runtime.get("code_worker_epoch", 0)),
                 base_revision="HEAD",
             )
+            policy = engineering().owner_policy.snapshot()
+            if result.status == "verifying" and policy.physical_device_auto_dispatch:
+                try:
+                    observation, runs = dispatch_and_record_physical_device_evidence(
+                        str(work_order_id), str(result.attempt_id)
+                    )
+                    emit(
+                        "owner.engineering.physical_evidence_auto_dispatched",
+                        device_id=device_id,
+                        work_order_id=str(work_order_id),
+                        attempt_id=str(result.attempt_id),
+                        platforms=list(dict(observation.metadata or {}).get("verified_platforms") or ()),
+                        workflow_run_ids=[item.run_id for item in runs],
+                    )
+                except Exception as exc:
+                    # External device infrastructure is a qualification gate, not
+                    # permission to invalidate an otherwise verified local candidate.
+                    # Keep the candidate in VERIFYING and expose the exact failure.
+                    emit(
+                        "owner.engineering.physical_evidence_auto_dispatch_failed",
+                        device_id=device_id,
+                        work_order_id=str(work_order_id),
+                        attempt_id=str(result.attempt_id),
+                        error_type=type(exc).__name__,
+                    )
             emit(
                 "owner.engineering.execution_finished",
                 device_id=device_id,
@@ -356,6 +430,46 @@ def owner_engineering_router(runtime) -> APIRouter:
             "observation": observation_to_dict(observation),
             "client_qualification_claim": False,
             "verified_server_side": True,
+        }
+
+    @router.post("/work/{work_order_id}/attempt/{attempt_id}/physical-evidence/dispatch")
+    def dispatch_physical_device_evidence(
+        work_order_id: str,
+        attempt_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        try:
+            observation, runs = dispatch_and_record_physical_device_evidence(
+                str(work_order_id), str(attempt_id)
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Engineering Work/Attempt not found") from exc
+        except WorkflowEvidenceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit(
+            "owner.engineering.physical_evidence_dispatched",
+            device_id=device_id,
+            work_order_id=str(work_order_id),
+            attempt_id=str(attempt_id),
+            platforms=list(dict(observation.metadata or {}).get("verified_platforms") or ()),
+            workflow_run_ids=[item.run_id for item in runs],
+        )
+        return {
+            "ok": True,
+            "work_order_id": str(work_order_id),
+            "attempt_id": str(attempt_id),
+            "observation": observation_to_dict(observation),
+            "workflow_runs": [item.to_dict() for item in runs],
+            "client_qualification_claim": False,
+            "verified_server_side": True,
+            "remote_push": False,
+            "merge": False,
+            "deploy": False,
         }
 
     @router.get("/work/{work_order_id}")
