@@ -1,0 +1,49 @@
+name: One-shot RTL panel hardening
+
+on:
+  push:
+    branches:
+      - feature/engineering-intelligence-qualification-20261011
+    paths:
+      - .github/workflows/one-shot-rtl-panel-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/engineering-intelligence-qualification-20261011
+          fetch-depth: 0
+      - name: Harden signed-out panel against hostile RTL content
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("personal-ai/pwa/index.html")
+          text = path.read_text(encoding="utf-8")
+          marker = "\n    .home{"
+          hardening = """
+    /* Keep signed-out access UI inside its grid track under RTL, long URLs,
+       unbroken text, text scaling, and narrow mobile viewports. */
+    .app-shell,.enroll{min-width:0}
+    .enroll{max-width:100%;overflow:hidden}
+    .enroll h1,.enroll>p,.enroll input{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+"""
+          if hardening.strip() in text:
+              raise SystemExit("hardening already present")
+          if marker not in text:
+              raise SystemExit("expected CSS insertion marker not found")
+          text = text.replace(marker, hardening + marker, 1)
+          path.write_text(text, encoding="utf-8")
+      - name: Commit product fix
+        run: |
+          git diff --check
+          git config user.name "vishnu-qualification-bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add personal-ai/pwa/index.html
+          git commit -m "Harden signed-out RTL content layout"
+          git push origin HEAD:feature/engineering-intelligence-qualification-20261011
