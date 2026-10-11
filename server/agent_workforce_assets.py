@@ -6,13 +6,16 @@ from fastapi import APIRouter
 from fastapi.responses import HTMLResponse, Response
 
 
-ENTRY_SCRIPT = '<script src="/iphone/agent-workforce-entry.js" defer></script>'
+ENTRY_SCRIPTS = (
+    '<script src="/iphone/agent-workforce-entry.js" defer></script>',
+    '<script src="/iphone/our-products-entry.js" defer></script>',
+)
 
 
 def agent_workforce_assets_router(settings) -> APIRouter:
-    """Serve only the explicitly approved Agent Workforce PWA assets.
+    """Serve the approved PWA shell entries without replacing canonical PWA routes.
 
-    The root shell is served here only to inject one isolated navigation script;
+    The root shell is served here only to inject isolated navigation scripts;
     every other existing Vishnu PWA asset/API remains owned by its original
     router. No generic filesystem route is exposed.
     """
@@ -25,13 +28,14 @@ def agent_workforce_assets_router(settings) -> APIRouter:
 
     def shell() -> str:
         html = read("index.html")
-        if ENTRY_SCRIPT not in html:
-            html = html.replace("</body>", f"  {ENTRY_SCRIPT}\n</body>")
+        for script in ENTRY_SCRIPTS:
+            if script not in html:
+                html = html.replace("</body>", f"  {script}\n</body>")
         return html
 
     @router.get("", response_class=HTMLResponse, include_in_schema=False)
     @router.get("/", response_class=HTMLResponse, include_in_schema=False)
-    def iphone_home_with_agents_entry():
+    def iphone_home_with_workspace_entries():
         return HTMLResponse(shell(), headers={"Cache-Control": "no-store"})
 
     @router.get("/agents.html", response_class=HTMLResponse, include_in_schema=False)
