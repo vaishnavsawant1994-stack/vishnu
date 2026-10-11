@@ -13,6 +13,12 @@ from .repository_editor import GovernedRepositoryEditor
 from .reviewer_adapter import EngineeringReviewDecision, ModelEngineeringReviewer
 from .traceability import RequirementTrace
 from .verification import collapse_observations, observation_from_dict, observation_to_dict
+from .workflow_evidence import (
+    GitHubPhysicalDeviceEvidenceVerifier,
+    PhysicalDeviceWorkflowRun,
+    load_trusted_external_observations,
+    record_trusted_external_observation,
+)
 
 
 @dataclass(frozen=True)
@@ -50,12 +56,30 @@ class EngineeringCandidateFinalizer:
     owner actions, or activate a Vishnu Body. It only combines persisted local
     verification with trusted revision-bound external evidence and exact
     requirement traces, then invokes independent review when every gate is ready.
+
+    Physical-device and regression-test gates are reserved. Callers cannot satisfy
+    them with raw observations. Physical-device evidence must be independently
+    verified against GitHub Actions and durably recorded for this exact Work,
+    Attempt and candidate revision. Regression evidence is produced only by the
+    governed repair executor and persisted with the attempt.
     """
 
-    def __init__(self, *, runtime, models=None, reviewer=None) -> None:
+    _RESERVED_EXTERNAL_GATES = {"physical_device", "regression_test"}
+
+    def __init__(
+        self,
+        *,
+        runtime,
+        models=None,
+        reviewer=None,
+        physical_device_verifier: GitHubPhysicalDeviceEvidenceVerifier | None = None,
+    ) -> None:
         self.runtime = runtime
         self.reviewer = reviewer or (ModelEngineeringReviewer(models) if models is not None else None)
         self.qualification = EngineeringQualification()
+        self.physical_device_verifier = physical_device_verifier or getattr(
+            runtime, "physical_device_verifier", None
+        )
 
     @staticmethod
     def _review_payload(decision: EngineeringReviewDecision) -> dict[str, object]:
@@ -167,6 +191,10 @@ class EngineeringCandidateFinalizer:
         for item in observations:
             if item.gate == "requirements":
                 raise ValueError("requirements gate must come from exact RequirementTrace evidence")
+            if item.gate in EngineeringCandidateFinalizer._RESERVED_EXTERNAL_GATES:
+                raise PermissionError(
+                    f"reserved qualification gate requires trusted persisted evidence: {item.gate}"
+                )
             if item.passed and not item.evidence:
                 raise ValueError(f"passing external qualification gate requires evidence: {item.gate}")
             metadata = dict(item.metadata or {})
@@ -175,6 +203,35 @@ class EngineeringCandidateFinalizer:
                 raise PermissionError(f"external qualification evidence is not bound to candidate revision: {item.gate}")
             result.append(item)
         return tuple(result)
+
+    def verify_and_record_physical_device_evidence(
+        self,
+        work_order_id: str,
+        attempt_id: str,
+        *,
+        runs: Iterable[PhysicalDeviceWorkflowRun],
+    ) -> VerificationObservation:
+        if self.physical_device_verifier is None:
+            raise RuntimeError("trusted physical-device workflow verifier is unavailable")
+        _attempt, _workspace, spec, _session, candidate_revision, _changed = self._workspace_and_spec(
+            str(work_order_id), str(attempt_id)
+        )
+        if not (spec.ui_required and bool(dict(spec.metadata).get("physical_device_required", False))):
+            raise PermissionError("EngineeringSpec does not require physical-device qualification")
+        observation = self.physical_device_verifier.verify(
+            spec=spec,
+            candidate_revision=candidate_revision,
+            runs=tuple(runs),
+        )
+        if not observation.passed:
+            raise PermissionError(observation.summary or "physical-device qualification did not pass")
+        record_trusted_external_observation(
+            work_store=self.runtime.work_store,
+            work_order_id=str(work_order_id),
+            attempt_id=str(attempt_id),
+            observation=observation,
+        )
+        return observation
 
     def finalize(
         self,
@@ -194,8 +251,14 @@ class EngineeringCandidateFinalizer:
             observation_from_dict(item) for item in raw_local if isinstance(item, Mapping)
         )
         external = self._validated_external(external_observations, candidate_revision=candidate_revision)
+        trusted_external = load_trusted_external_observations(
+            work_store=self.runtime.work_store,
+            work_order_id=str(work_order_id),
+            attempt_id=str(attempt_id),
+            candidate_revision=candidate_revision,
+        )
         requirements = self._requirements_observation(spec, requirement_traces)
-        combined = collapse_observations((*local_observations, *external, requirements))
+        combined = collapse_observations((*local_observations, *external, *trusted_external, requirements))
         ledger = EngineeringEvidenceLedger(
             self.runtime.evidence_root,
             work_order_id=spec.work_order_id,
@@ -204,6 +267,7 @@ class EngineeringCandidateFinalizer:
         ledger.append("engineering.external_qualification", {
             "candidate_revision": candidate_revision,
             "observations": [observation_to_dict(item) for item in external],
+            "trusted_persisted_observations": [observation_to_dict(item) for item in trusted_external],
             "requirements": observation_to_dict(requirements),
         })
         preliminary = self.qualification.report(
