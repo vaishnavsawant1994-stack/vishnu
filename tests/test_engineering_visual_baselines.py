@@ -26,7 +26,7 @@ def make_spec(**kwargs):
 
 
 def write_baseline(root: Path, *, tamper: bool = False):
-    root.mkdir()
+    root.mkdir(parents=True, exist_ok=True)
     image = root / "home.png"
     Image.new("RGB", (10, 10), (1, 2, 3)).save(image)
     digest = hashlib.sha256(image.read_bytes()).hexdigest()
