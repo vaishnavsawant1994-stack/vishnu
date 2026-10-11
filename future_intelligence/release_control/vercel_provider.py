@@ -122,8 +122,8 @@ class VercelReleaseProvider:
 
         The official endpoint is a stream and may be unavailable for some token
         scopes. Treat timeouts/permissions as telemetry unavailability, never as
-        authority to roll back. Only status/row identifiers are consumed later;
-        raw messages and request paths are discarded immediately.
+        authority to roll back. Only status/row identifiers/timestamps are used
+        later; raw messages and request paths are discarded immediately.
         """
         path = (
             f"/v1/projects/{parse.quote(self.config.project_id, safe='')}"
@@ -150,7 +150,10 @@ class VercelReleaseProvider:
             ) from exc
         if not raw:
             return ()
-        text = raw.decode("utf-8", errors="strict").strip()
+        try:
+            text = raw.decode("utf-8", errors="strict").strip()
+        except UnicodeDecodeError as exc:
+            raise ProductionTelemetryError("Vercel runtime-log telemetry was not valid UTF-8") from exc
         if not text:
             return ()
         rows: list[dict[str, Any]] = []
@@ -365,10 +368,22 @@ class VercelReleaseProvider:
             raise ProductionTelemetryError("Vercel telemetry requires the bound production deployment")
         window = max(30, min(int(window_seconds), 3_600))
         rows = self._runtime_log_rows(deployment.id)
+        now_ms = int(time.time() * 1000)
+        cutoff_ms = now_ms - (window * 1000)
         seen: set[str] = set()
         request_count = 0
         server_error_count = 0
+        ignored_outside_window = 0
         for row in rows:
+            try:
+                timestamp_ms = int(row.get("timestampInMs"))
+            except (TypeError, ValueError) as exc:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry omitted a valid timestamp") from exc
+            if timestamp_ms < cutoff_ms:
+                ignored_outside_window += 1
+                continue
+            if timestamp_ms > now_ms + 60_000:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry contained an implausible future timestamp")
             row_id = str(row.get("rowId") or "").strip()
             if not row_id:
                 raise ProductionTelemetryError("Vercel runtime-log telemetry omitted rowId")
@@ -398,6 +413,8 @@ class VercelReleaseProvider:
                 "project_id": self.config.project_id,
                 "deployment_scoped": True,
                 "runtime_log_rows_sampled": len(seen),
+                "rows_ignored_outside_window": ignored_outside_window,
+                "window_filtered_by_timestamp": True,
                 "raw_logs_persisted": False,
                 "p95_latency_available": False,
             },
