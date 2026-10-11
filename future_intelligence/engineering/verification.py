@@ -5,6 +5,39 @@ from typing import Iterable, Mapping
 from .qualification import VerificationObservation
 
 
+def observation_to_dict(item: VerificationObservation) -> dict[str, object]:
+    return {
+        "gate": item.gate,
+        "passed": bool(item.passed),
+        "summary": item.summary,
+        "evidence": list(item.evidence),
+        "warning": bool(item.warning),
+        "metadata": dict(item.metadata or {}),
+    }
+
+
+def observation_from_dict(data: Mapping[str, object]) -> VerificationObservation:
+    gate = str(data.get("gate") or "").strip()
+    if not gate:
+        raise ValueError("verification observation gate is required")
+    evidence_raw = data.get("evidence") or ()
+    if isinstance(evidence_raw, str):
+        evidence_raw = (evidence_raw,)
+    if not isinstance(evidence_raw, (list, tuple)):
+        raise ValueError("verification observation evidence must be a list")
+    metadata = data.get("metadata")
+    if metadata is not None and not isinstance(metadata, Mapping):
+        raise ValueError("verification observation metadata must be an object")
+    return VerificationObservation(
+        gate=gate,
+        passed=bool(data.get("passed", False)),
+        summary=str(data.get("summary") or "")[:4000],
+        evidence=tuple(str(item) for item in evidence_raw if str(item)),
+        warning=bool(data.get("warning", False)),
+        metadata=dict(metadata or {}),
+    )
+
+
 def observations_from_verification_report(report, *, gate_map: Mapping[str, str] | None = None) -> tuple[VerificationObservation, ...]:
     """Convert existing revision-bound verification checks into engineering gates."""
     mapping = dict(gate_map or {})
@@ -28,7 +61,7 @@ def observations_from_verification_report(report, *, gate_map: Mapping[str, str]
             evidence=(str(check.output_hash),),
             metadata={"returncode": int(check.returncode), "duration_ms": int(check.duration_ms), "command": list(check.command)},
         ))
-    return _collapse(observations)
+    return collapse_observations(observations)
 
 
 def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[VerificationObservation, ...]:
@@ -36,7 +69,10 @@ def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[Ve
     responsive = bool(payload.get("responsive_passed", False))
     runtime = bool(payload.get("runtime_passed", False))
     visual = bool(payload.get("visual_passed", False))
-    evidence = tuple(str(item) for item in payload.get("evidence", ()))  # type: ignore[arg-type]
+    evidence_raw = payload.get("evidence", ())
+    if isinstance(evidence_raw, str):
+        evidence_raw = (evidence_raw,)
+    evidence = tuple(str(item) for item in evidence_raw)  # type: ignore[arg-type]
     observations = [
         VerificationObservation("responsive", responsive, f"{browser} responsive qualification", evidence),
         VerificationObservation(browser, responsive and runtime, f"{browser} compatibility qualification", evidence),
@@ -57,7 +93,7 @@ def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[Ve
     return tuple(observations)
 
 
-def _collapse(observations: Iterable[VerificationObservation]) -> tuple[VerificationObservation, ...]:
+def collapse_observations(observations: Iterable[VerificationObservation]) -> tuple[VerificationObservation, ...]:
     grouped: dict[str, list[VerificationObservation]] = {}
     for item in observations:
         grouped.setdefault(item.gate, []).append(item)
@@ -72,3 +108,7 @@ def _collapse(observations: Iterable[VerificationObservation]) -> tuple[Verifica
             metadata={"checks": len(items)},
         ))
     return tuple(result)
+
+
+# Backwards-compatible private alias for earlier callers/tests.
+_collapse = collapse_observations
