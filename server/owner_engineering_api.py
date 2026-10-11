@@ -264,7 +264,7 @@ def owner_engineering_router(runtime) -> APIRouter:
             "repository": eng.repository_provider.repository,
             "final_qualification_available": finalizer_value is not None,
             "trusted_physical_device_evidence": {
-                "accepted_input": "github_workflow_run_ids_or_server_coordinator",
+                "accepted_input": "github_workflow_run_ids_only",
                 "verified_server_side": True,
                 "candidate_revision_bound": True,
                 "verifier_available": verifier_available,
