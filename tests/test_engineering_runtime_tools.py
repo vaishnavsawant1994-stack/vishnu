@@ -101,7 +101,7 @@ class FakeRepositoryProvider:
         if not changes:
             raise ValueError("nothing to commit")
         self.revision = COMMITTED
-        return RepositoryStatus(COMMITTED, False, changes)
+        return RepositoryStatus(COMMITTED, False, ())
 
     def preserve(self, session):
         assert session == self.session
@@ -114,6 +114,44 @@ class RecordingRegistry:
     def register(self, tool):
         assert tool.name not in self.tools
         self.tools[tool.name] = tool
+
+
+class EditModels:
+    def json(self, prompt, *, system="Return valid JSON only.", sensitivity="internal"):
+        assert sensitivity == "internal"
+        return {
+            "summary": "Change the requested constant",
+            "operations": [{
+                "operation": "replace_exact",
+                "path": "src/app.py",
+                "old": "VALUE = 1",
+                "new": "VALUE = 2",
+                "reason": "required outcome",
+            }],
+            "assumptions": [],
+        }
+
+
+class PassingVerifier:
+    def verify(self, session, *, revision):
+        assert revision == COMMITTED
+        return VerificationReport(
+            revision=revision,
+            checks=(
+                VerificationCheck("build", ("python", "-m", "compileall"), True, 0, 1, "h1", ""),
+                VerificationCheck("unit-tests", ("pytest",), True, 0, 2, "h2", ""),
+                VerificationCheck("integration-tests", ("pytest",), True, 0, 3, "h3", ""),
+                VerificationCheck("protected-code-scope", ("internal",), True, 0, 0, "h4", ""),
+            ),
+        )
+
+
+class ApprovingReviewer:
+    def review(self, **_kwargs):
+        return EngineeringReviewDecision(
+            decision="approved", reviewer="independent-test-reviewer",
+            summary="local evidence is internally consistent", findings=(),
+        )
 
 
 def build_runtime(tmp_path: Path, *, prepare: bool = True):
@@ -175,6 +213,7 @@ def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_p
 
     commit = runtime.commit("work-eng", attempt_id, message="Implement scoped change")
     assert commit["revision"] == COMMITTED
+    assert commit["changes"] == ["src/app.py"]
     assert commit["push_authority"] is False
     assert commit["merge_authority"] is False
     assert commit["deploy_authority"] is False
@@ -217,47 +256,11 @@ def test_runtime_rejects_paths_outside_engineering_spec(tmp_path: Path):
 
 def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
-
-    class FakeModels:
-        def json(self, prompt, *, system="Return valid JSON only.", sensitivity="internal"):
-            assert sensitivity == "internal"
-            return {
-                "summary": "Change the requested constant",
-                "operations": [{
-                    "operation": "replace_exact",
-                    "path": "src/app.py",
-                    "old": "VALUE = 1",
-                    "new": "VALUE = 2",
-                    "reason": "required outcome",
-                }],
-                "assumptions": [],
-            }
-
-    class FakeVerifier:
-        def verify(self, session, *, revision):
-            assert revision == COMMITTED
-            return VerificationReport(
-                revision=revision,
-                checks=(
-                    VerificationCheck("build", ("python", "-m", "compileall"), True, 0, 1, "h1", ""),
-                    VerificationCheck("unit-tests", ("pytest",), True, 0, 2, "h2", ""),
-                    VerificationCheck("integration-tests", ("pytest",), True, 0, 3, "h3", ""),
-                    VerificationCheck("protected-code-scope", ("internal",), True, 0, 0, "h4", ""),
-                ),
-            )
-
-    class FakeReviewer:
-        def review(self, **_kwargs):
-            return EngineeringReviewDecision(
-                decision="approved", reviewer="independent-test-reviewer",
-                summary="local evidence is internally consistent", findings=(),
-            )
-
     executor = EngineeringWorkExecutor(
         runtime=runtime,
-        models=FakeModels(),
-        verification_provider=FakeVerifier(),
-        reviewer=FakeReviewer(),
+        models=EditModels(),
+        verification_provider=PassingVerifier(),
+        reviewer=ApprovingReviewer(),
     )
     result = executor.execute("work-eng", runtime_epoch=7, base_revision=BASE)
     assert result.candidate_revision == COMMITTED
@@ -270,3 +273,54 @@ def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(
     assert attempt is not None and attempt.status.value == "succeeded"
     order = store.get_order("work-eng")
     assert order is not None and order.status is WorkOrderStatus.VERIFYING
+
+
+def test_interrupted_verification_marks_recovery_required_without_losing_candidate(tmp_path: Path):
+    runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+
+    class InterruptedVerifier:
+        def verify(self, session, *, revision):
+            assert revision == COMMITTED
+            raise RuntimeError("verification runner disappeared")
+
+    executor = EngineeringWorkExecutor(
+        runtime=runtime,
+        models=EditModels(),
+        verification_provider=InterruptedVerifier(),
+        reviewer=ApprovingReviewer(),
+    )
+    with pytest.raises(RuntimeError, match="verification runner disappeared"):
+        executor.execute("work-eng", runtime_epoch=8, base_revision=BASE)
+    order = store.get_order("work-eng")
+    assert order is not None and order.status is WorkOrderStatus.RECOVERY_REQUIRED
+    attempts = store.list_attempts("work-eng")
+    assert attempts and attempts[-1].status.value == "recovery_required"
+    assert store.get_lease("work-eng") is None
+    assert provider.revision == COMMITTED
+    assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+
+
+def test_reviewer_outage_preserves_candidate_in_verifying_state(tmp_path: Path):
+    runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+
+    class OfflineReviewer:
+        def review(self, **_kwargs):
+            raise RuntimeError("review provider unavailable")
+
+    executor = EngineeringWorkExecutor(
+        runtime=runtime,
+        models=EditModels(),
+        verification_provider=PassingVerifier(),
+        reviewer=OfflineReviewer(),
+    )
+    result = executor.execute("work-eng", runtime_epoch=9, base_revision=BASE)
+    assert result.candidate_revision == COMMITTED
+    assert result.status == "verifying"
+    assert result.review["decision"] == "rejected"
+    assert result.qualification["qualified"] is False
+    assert any("review unavailable" in item for item in result.qualification["limitations"])
+    order = store.get_order("work-eng")
+    assert order is not None and order.status is WorkOrderStatus.VERIFYING
+    attempts = store.list_attempts("work-eng")
+    assert attempts and attempts[-1].status.value == "succeeded"
+    assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
