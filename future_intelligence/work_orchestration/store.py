@@ -13,7 +13,15 @@ def _json(data: dict) -> str:
 
 
 class WorkStore:
-    """Normalized additive persistence for strategic work projections."""
+    """Normalized additive persistence for strategic work projections.
+
+    Vishnu builds the runtime on the desktop/main thread and serves trusted
+    control APIs from a dedicated server thread. Canonical Work therefore owns
+    a SQLite connection that is deliberately allowed to cross those runtime
+    threads. SQLite's serialized connection mode plus the store's transactional
+    write paths remain authoritative; callers must still use the WorkStore APIs
+    rather than sharing cursors or holding transactions outside the store.
+    """
 
     def __init__(
         self,
@@ -24,9 +32,13 @@ class WorkStore:
         if connection is not None and db_path is not None:
             raise ValueError("provide db_path or connection, not both")
         self._owns_connection = connection is None
-        self.connection = connection or sqlite3.connect(str(db_path or ":memory:"))
+        self.connection = connection or sqlite3.connect(
+            str(db_path or ":memory:"),
+            check_same_thread=False,
+        )
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA foreign_keys = ON")
+        self.connection.execute("PRAGMA busy_timeout = 5000")
         migrate_work_schema(self.connection)
 
     def close(self) -> None:
