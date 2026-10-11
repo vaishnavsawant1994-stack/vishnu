@@ -52,6 +52,7 @@
           <button data-factory-view="capabilities">Reusable Components</button>
           <button data-factory-view="templates">Templates</button>
         </nav>
+        <div id="message" class="message hidden" role="status"></div>
 
         <section id="factory-products" class="factory-view">
           <section class="metrics" aria-label="Product summary">
@@ -78,7 +79,6 @@
             <select id="sort" aria-label="Sort products"><option value="recent">Sort: Recent</option><option value="name">Sort: Name</option><option value="created">Sort: Created</option></select>
           </section>
 
-          <div id="message" class="message hidden" role="status"></div>
           <section id="productGrid" class="product-grid" aria-live="polite"></section>
           <section id="emptyState" class="empty hidden">
             <span>⬡</span><h2>No products yet</h2><p>Create a product from scratch, start from a client request, or promote an existing Vishnu project.</p><button class="button primary" id="emptyCreate">Create Product</button>
@@ -197,7 +197,7 @@
         <label>Product type<select name="product_type"><option value="">Auto-detect</option><option value="ai_employee">AI Employee</option><option value="agent">Agent</option><option value="agent_team">Agent Team</option><option value="automation">Automation</option><option value="workflow">Workflow</option><option value="tool">Tool</option><option value="knowledge_assistant">Knowledge Assistant</option><option value="integration">Integration</option><option value="business_system">Business System / SaaS</option><option value="custom">Custom</option></select></label>
         <label class="span-2">What should it do?<textarea name="requirement" required maxlength="12000" placeholder="Example: Find real-estate companies, identify decision makers, qualify leads, send personalized outreach, update CRM, schedule meetings and prepare weekly reports."></textarea></label>
         <label>AI mode<select name="ai_mode"><option value="disabled">No AI / decide later</option><option value="client_api">Client API / BYOK</option><option value="managed">Our managed AI</option><option value="local">Local / self-hosted</option><option value="hybrid">Hybrid</option></select></label>
-        <label>Purpose<select name="commercial_state"><option value="internal_reusable">Internal reusable</option><option value="internal_only">Internal only</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="client_specific">Client-specific</option><option value="template">Template</option><option value="experimental">Experimental</option></select></label>
+        <label>Purpose<select name="commercial_state"><option value="">Auto · client requests stay client-specific</option><option value="internal_reusable">Internal reusable</option><option value="internal_only">Internal only</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="client_specific">Client-specific</option><option value="template">Template</option><option value="experimental">Experimental</option></select></label>
         <fieldset class="span-2"><legend>Preferred platforms</legend><div class="target-checks"><label><input type="checkbox" name="targets" value="web" checked> Web</label><label><input type="checkbox" name="targets" value="pwa"> PWA</label><label><input type="checkbox" name="targets" value="android"> Android</label><label><input type="checkbox" name="targets" value="ios"> iOS</label><label><input type="checkbox" name="targets" value="windows"> Windows</label><label><input type="checkbox" name="targets" value="macos"> macOS</label><label><input type="checkbox" name="targets" value="linux"> Linux</label><label><input type="checkbox" name="targets" value="docker"> Server / Docker</label><label><input type="checkbox" name="targets" value="api"> API</label><label><input type="checkbox" name="targets" value="worker"> Worker</label></div></fieldset>
       </div>
       <div class="factory-note"><span>🔒</span><div><b>Only the product leaves Vishnu.</b><br>The resulting Product Project contains only the selected/generalized capabilities and its own client configuration. Vishnu itself, owner memory and unrelated systems are not part of the client deliverable.</div></div>
