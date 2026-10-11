@@ -11,6 +11,8 @@ on:
       - "packaging/product_desktop_container_runner.py"
       - "server/product_runner_queue_api.py"
       - "tests/test_product_runner_leases.py"
+      - "tests/test_product_runner_queue_api.py"
+      - "tests/test_product_runner_worker.py"
       - "tests/test_product_platform_callback_authority.py"
       - ".github/workflows/product-windows-runner.yml"
 
@@ -58,8 +60,11 @@ jobs:
           print(artifact)
           '@ | python -
           $Artifact = python -c 'import json;print(json.load(open(".runner-windows/result.json"))["artifact"])'
-          & $Artifact --check-file .runner-windows/runtime-check.json
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $ArtifactPath = (Resolve-Path $Artifact).Path
+          $CheckPath = Join-Path (Get-Location) '.runner-windows\runtime-check.json'
+          $Process = Start-Process -FilePath $ArtifactPath -ArgumentList @('--check-file', $CheckPath) -Wait -PassThru
+          if ($Process.ExitCode -ne 0) { exit $Process.ExitCode }
+          if (-not (Test-Path $CheckPath)) { throw "Windows product runtime did not write qualification evidence" }
           @'
           import json
           from pathlib import Path
