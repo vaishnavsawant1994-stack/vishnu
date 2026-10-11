@@ -84,7 +84,7 @@ def test_engineering_portability_is_explicit_and_unknown_artifacts_fail_closed()
     assert all(item["shared_learning_allowed_by_default"] is False for values in manifest.values() for item in values)
 
 
-def test_owner_policy_metadata_creates_extended_pending_qualification_gates():
+def test_owner_policy_metadata_creates_extended_pending_qualification_gates_for_ui_work():
     spec = EngineeringSpec(
         id="eng-extended",
         work_order_id="work-extended",
@@ -93,6 +93,8 @@ def test_owner_policy_metadata_creates_extended_pending_qualification_gates():
         base_revision="a" * 40,
         objective="qualify extended surfaces",
         allowed_paths=("src/",),
+        ui_required=True,
+        visual_review_required=True,
         metadata={
             "performance_required": True,
             "localization_required": True,
@@ -103,9 +105,36 @@ def test_owner_policy_metadata_creates_extended_pending_qualification_gates():
     )
     qualification = EngineeringQualification()
     required = qualification.required_gates(spec)
-    for gate in ("performance", "localization", "three_d", "physical_device", "preview"):
+    for gate in ("performance", "localization", "three_d", "physical_device", "preview", "visual"):
         assert gate in required
     report = qualification.report(spec=spec, candidate_revision="b" * 40, observations=())
     assert not report.qualified
     statuses = {gate.gate: gate.status.value for gate in report.gates}
-    assert all(statuses[gate] == "pending" for gate in ("performance", "localization", "three_d", "physical_device", "preview"))
+    assert all(statuses[gate] == "pending" for gate in ("performance", "localization", "three_d", "physical_device", "preview", "visual"))
+
+
+def test_backend_work_does_not_require_ui_only_owner_gates():
+    spec = EngineeringSpec(
+        id="eng-backend",
+        work_order_id="work-backend",
+        attempt_id="attempt-backend",
+        repository="owner/repo",
+        base_revision="a" * 40,
+        objective="qualify backend change",
+        allowed_paths=("server/",),
+        visual_review_required=True,
+        metadata={
+            "performance_required": True,
+            "localization_required": True,
+            "three_d_required": True,
+            "physical_device_required": True,
+            "preview_enabled": True,
+        },
+    )
+    required = EngineeringQualification().required_gates(spec)
+    assert "performance" in required
+    assert "preview" in required
+    assert "visual" in required
+    assert "localization" not in required
+    assert "three_d" not in required
+    assert "physical_device" not in required
