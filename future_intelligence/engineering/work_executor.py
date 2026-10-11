@@ -9,7 +9,12 @@ from future_intelligence.work_orchestration.recovery import RecoveryReason
 from security.projection_redaction import sanitize_sensitive_text
 
 from .change_planner import EngineeringEditPlan, ModelEngineeringChangePlanner
-from .regression_evidence import build_regression_proof, failure_fingerprint, is_test_path
+from .regression_evidence import (
+    build_regression_proof,
+    diff_introduces_test_suppression,
+    failure_fingerprint,
+    is_test_path,
+)
 from .reviewer_adapter import EngineeringReviewDecision, ModelEngineeringReviewer
 from .verification import observation_to_dict, observations_from_verification_report
 
@@ -97,6 +102,22 @@ class EngineeringWorkExecutor:
             excerpt = sanitize_sensitive_text(str(check.output_excerpt or ""))[:4000]
             defects.append(f"{check.name}: returncode={check.returncode}; output={excerpt}")
         return tuple(defects)
+
+    @staticmethod
+    def _qualified_regression_test_paths(coordinator, paths) -> tuple[str, ...]:
+        """Count only final-candidate test files that add no skip/xfail suppression."""
+        qualified = []
+        for path in dict.fromkeys(str(item) for item in paths if is_test_path(str(item))):
+            try:
+                content, _digest = coordinator.editor.read_text(path)
+            except (FileNotFoundError, PermissionError, UnicodeError, ValueError):
+                continue
+            if not content.strip():
+                continue
+            if diff_introduces_test_suppression(coordinator.editor.diff(path)):
+                continue
+            qualified.append(path)
+        return tuple(qualified)
 
     def _apply_plan(self, coordinator, plan: EngineeringEditPlan) -> tuple[str, ...]:
         if not plan.operations:
@@ -284,11 +305,12 @@ class EngineeringWorkExecutor:
 
             regression_proof = None
             if repairs > 0:
+                qualified_test_paths = self._qualified_regression_test_paths(coordinator, regression_test_paths)
                 regression_proof = build_regression_proof(
                     candidate_revision=revision,
                     repair_cycles=repairs,
                     failure_fingerprints=failure_fingerprints,
-                    changed_test_paths=regression_test_paths,
+                    changed_test_paths=qualified_test_paths,
                     verification_report=verification,
                 )
                 regression_observation = regression_proof.observation()
