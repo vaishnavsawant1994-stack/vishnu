@@ -96,6 +96,7 @@ jobs:
           node tests/engineering_ui/accessibility_qualification.mjs
           node tests/engineering_ui/state_content_qualification.mjs
           node tests/engineering_ui/mobile_keyboard_safe_area_qualification.mjs
+          node tests/engineering_ui/theme_motion_qualification.mjs
           node tests/engineering_ui/performance_3d_qualification.mjs
       - uses: actions/upload-artifact@v4
         if: always()
