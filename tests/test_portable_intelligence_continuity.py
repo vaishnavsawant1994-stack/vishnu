@@ -109,6 +109,29 @@ def test_legacy_checkpoint_hash_and_wire_shape_remain_compatible():
     assert ContinuityCheckpoint.from_dict(wire) == checkpoint
 
 
+def test_legacy_positional_checkpoint_constructor_remains_compatible():
+    checkpoint = ContinuityCheckpoint(
+        "ccp_positional",
+        "host-a",
+        7,
+        "continuity-test.paibackup",
+        "c" * 64,
+        123,
+        "d" * 64,
+        "e" * 64,
+        "body-1",
+        "abc123",
+        {"identity": (1,)},
+        {"file_count": 2},
+        "2026-10-11T10:00:00+00:00",
+    )
+
+    assert checkpoint.schema_versions == {"identity": (1,)}
+    assert checkpoint.state_summary == {"file_count": 2}
+    assert checkpoint.created_at == "2026-10-11T10:00:00+00:00"
+    assert checkpoint.intelligence_binding() == {}
+
+
 def test_manifest_binding_is_authenticated_by_checkpoint_hash():
     manifest = _manifest()
     checkpoint = _checkpoint(
