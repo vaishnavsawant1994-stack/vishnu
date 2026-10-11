@@ -45,10 +45,11 @@ async function mockApi(page){
     else if(path===`/iphone/api/products/composer/requests/${request.id}/analyze`&&method==='POST')body={request,matches:[]};
     else if(path===`/iphone/api/products/composer/requests/${request.id}/product-project`&&method==='POST'){
       request={...request,status:'product_project_created',product_id:'product-real-estate',project_id:'project-real-estate'};
-      body={request,product:{id:'product-real-estate',name:request.title},project:{id:'project-real-estate',name:request.title},existing:false};status=201;
+      body={request,product:{id:'product-real-estate',name:request.title},project:{id:'project-real-estate',name:request.title},existing:false,work_start:{status:'started',mode:'active',plan_created:true,stop_reason:'awaiting_approval',executed_task_ids:['task-1'],execution_authority:'governed'}};status=201;
     }
+    else if(path===`/iphone/api/products/composer/requests/${request.id}/start-work`&&method==='POST')body={request_id:request.id,project_id:'project-real-estate',work_start:{status:'started',mode:'active',plan_created:false,stop_reason:'awaiting_approval',executed_task_ids:[],execution_authority:'governed'}};
     else if(path==='/iphone/api/products/composer/capabilities'&&method==='GET')body={capabilities,summary:composerSummary.capabilities};
-    else if(path==='/iphone/api/products/composer/sync'&&method==='POST')body={synced:{tools:3,automations:1,workflows:1,integrations:1,products:1,components:1},summary:composerSummary.capabilities};
+    else if(path==='/iphone/api/products/composer/sync'&&method==='POST')body={synced:{agents:2,tools:3,automations:1,workflows:1,integrations:1,products:1,components:1},summary:composerSummary.capabilities};
     else if(path.startsWith('/iphone/api/products/composer/capabilities/')&&method==='PATCH')body={capability:capabilities.find(cap=>path.endsWith(cap.id))||capabilities[0]};
     else if(path==='/iphone/api/products/composer/capabilities/promote'&&method==='POST')body={capability:{...capabilities[0],id:'promoted-1'}};
     else if(path==='/iphone/api/products/composer/capabilities'&&method==='POST')body={capability:{...capabilities[0],id:'manual-1'}};
@@ -102,11 +103,12 @@ try{
   await desktop.getByRole('button',{name:'View Blueprint'}).click();
   await desktop.locator('#requestDetailDialog[open]').waitFor();
   await desktop.getByText('67% existing coverage').waitFor();
-  await desktop.getByText('property valuation',{exact:true}).waitFor();
-  assert.ok(await desktop.getByText(/No sufficiently close reusable capability/).isVisible());
+  await desktop.locator('.requirement-list').getByText('property valuation',{exact:true}).waitFor();
+  assert.ok(await desktop.locator('.requirement-list').getByText(/No sufficiently close reusable capability/).isVisible());
   await noOverflow(desktop,'blueprint desktop');await shot(desktop,'our-products-blueprint-desktop.png');
-  await desktop.getByRole('button',{name:'Create Product Project'}).click();
+  await desktop.getByRole('button',{name:/Create Product Project/}).click();
   await desktop.getByText('Product Project created',{exact:false}).first().waitFor();
+  await desktop.getByText('Vishnu work started').waitFor();
   await desktop.getByText('Created From').waitFor();
   await desktop.getByRole('button',{name:'Close'}).click();
 
