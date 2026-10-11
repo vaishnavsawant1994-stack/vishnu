@@ -25,8 +25,13 @@ for (const [name, engine] of Object.entries(engines)) {
     });
     await page.goto("http://127.0.0.1:4173/standalone/", { waitUntil: "domcontentloaded" });
     await page.waitForFunction(() => !document.querySelector("#enrollPanel")?.classList.contains("hidden"));
-    const input = page.locator("#enrollPanel input").first();
-    assert.ok(await input.count(), `${name} owner access input missing`);
+
+    const passwordChoice = page.locator("#passwordChoice");
+    await passwordChoice.waitFor({ state: "visible" });
+    await passwordChoice.click();
+    const input = page.locator("#ownerPassword");
+    await input.waitFor({ state: "visible" });
+    assert.ok(await input.isEditable(), `${name} owner password input is not editable after selecting password access`);
     await input.focus();
     await input.fill("keyboard-safe-area-fixture");
 
