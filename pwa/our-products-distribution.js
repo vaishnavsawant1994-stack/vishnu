@@ -97,7 +97,7 @@
     if(event.target.closest?.('[data-issue-license]')){
       const client=$('#licenseClient')?.value.trim();if(!client){alert('Client name is required');return}
       const rawExpiry=$('#licenseExpiry')?.value;
-      const payload={client_name:client,license_type:$('#licenseType').value,max_users:$('#licenseUsers').value?Number($('#licenseUsers').value):null,max_devices:$('#licenseDevices').value?Number($('#licenseDevices').value):null,expires_at:rawExpiry?new Date(rawExpiry).toISOString():null,managed_ai:$('#licenseManagedAI').value==='true',metadata:{issued_from:'our-products'}};
+      const payload={client_name:client,license_type:$('#licenseType').value,max_users:$('#licenseUsers').value?Number($('#licenseUsers').value):null,max_devices:$('#licenseDevices').value?Number($('#licenseDevices').value):null,expires_at:rawExpiry?new Date(rawExpiry).toISOString():null,managed_ai:$('#licenseManagedAI').value==='true'};
       try{await api(`/${encodeURIComponent(currentProductId)}/licenses`,{method:'POST',body:JSON.stringify(payload)});await render()}catch(error){alert(error.message)}
     }
   });
