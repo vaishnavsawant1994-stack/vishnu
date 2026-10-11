@@ -103,8 +103,14 @@ def test_http_environment_qualification_is_read_only_origin_bound_and_bounded():
         allowed_hosts=("preview.example.test",),
         session=session,
     )
-    result = provider.qualify_preview(target="https://preview.example.test", spec_id="eng-1")
+    candidate_revision = "b" * 40
+    result = provider.qualify_preview(
+        target="https://preview.example.test",
+        spec_id="eng-1",
+        candidate_revision=candidate_revision,
+    )
     assert result.passed
+    assert f"binding=spec:eng-1;revision:{candidate_revision}" in result.evidence
     assert all(item[1]["allow_redirects"] is False for item in session.urls)
     assert all(item[0].startswith("https://preview.example.test/") for item in session.urls)
     with pytest.raises(PermissionError):
