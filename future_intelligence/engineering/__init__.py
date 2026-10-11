@@ -27,6 +27,12 @@ from .owner_policy import EngineeringOwnerPolicy, EngineeringOwnerPolicyStore
 from .portability import EngineeringArtifactClass, EngineeringArtifactPolicy, classify_engineering_artifact, portability_manifest
 from .production_feedback import ProductionFeedbackWork, ProductionRegressionWorkBridge
 from .release_qualification import PreviewQualificationRequest
+from .specialists import (
+    ENGINEERING_SPECIALISTS,
+    EngineeringSpecialistAdvice,
+    EngineeringSpecialistSelector,
+    GovernedEngineeringSpecialistConsultations,
+)
 from .traceability import EngineeringTraceability, RequirementTrace, UserFlowExpectation, UserFlowObservation
 from .trusted_qualification import (
     EngineeringTrustedQualificationIntake,
@@ -47,6 +53,7 @@ __all__ = [
     "DependencyQualificationResult",
     "DependencyQualifier",
     "DeviceProfile",
+    "ENGINEERING_SPECIALISTS",
     "EngineeringArtifactClass",
     "EngineeringArtifactPolicy",
     "EngineeringAutonomyMode",
@@ -57,10 +64,13 @@ __all__ = [
     "EngineeringOwnerPolicy",
     "EngineeringOwnerPolicyStore",
     "EngineeringSpec",
+    "EngineeringSpecialistAdvice",
+    "EngineeringSpecialistSelector",
     "EngineeringTraceability",
     "EngineeringTrustedQualificationIntake",
     "FailureFingerprint",
     "FlakyAssessment",
+    "GovernedEngineeringSpecialistConsultations",
     "HttpQualificationProbe",
     "PhysicalDeviceQualificationEvidence",
     "PreviewQualificationRequest",
