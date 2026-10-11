@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from products.license_store import ProductLicenseStore
 from products.package_export import build_portable_package
 from products.signing import signing_available
+from products.versioning import frozen_version, list_frozen_versions
 from security.request_context import current_trusted_request
 
 
@@ -59,11 +60,17 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
     @router.get("/{product_id}/distribution/status")
     def distribution_status(product_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         authenticate(pa_device, pa_token)
-        product_or_404(product_id)
+        product = product_or_404(product_id)
+        versions = list_frozen_versions(product_store, product_id)
+        frozen_numbers = [item["version"] for item in versions]
+        current_frozen = product["version"] in frozen_numbers
         return {
             "signing_configured": signing_available(),
             "portable_package": True,
-            "production_distribution_ready": signing_available(),
+            "current_version": product["version"],
+            "current_version_frozen": current_frozen,
+            "frozen_versions": frozen_numbers,
+            "production_distribution_ready": signing_available() and current_frozen,
             "native_builds": "target-builder qualification required",
         }
 
@@ -71,16 +78,30 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
     def download_product_package(
         product_id: str,
         development: bool = Query(default=False),
+        version: str | None = Query(default=None, max_length=80),
         pa_device: str | None = Cookie(default=None),
         pa_token: str | None = Cookie(default=None),
     ):
         authenticate(pa_device, pa_token)
-        product_or_404(product_id)
-        manifest = product_store.manifest(product_id)
+        product = product_or_404(product_id)
+        selected_version = str(version or product["version"]).strip()
+        if development:
+            if version:
+                snapshot = frozen_version(product_store, product_id, selected_version)
+                if not snapshot:
+                    raise HTTPException(404, "Frozen product version not found")
+                manifest = snapshot["manifest"]
+            else:
+                manifest = product_store.manifest(product_id)
+        else:
+            if not signing_available():
+                raise HTTPException(503, "Production product signing is not configured")
+            snapshot = frozen_version(product_store, product_id, selected_version)
+            if not snapshot:
+                raise HTTPException(409, "Freeze this product version before production distribution")
+            manifest = snapshot["manifest"]
         if not manifest:
             raise HTTPException(404, "Product manifest not found")
-        if not development and not signing_available():
-            raise HTTPException(503, "Production product signing is not configured")
         try:
             filename, raw, metadata = build_portable_package(manifest, require_signature=not development)
         except ValueError as exc:
@@ -95,6 +116,7 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
                 "Content-Disposition": f'attachment; filename="{filename}"',
                 "X-Vishnu-Product-SHA256": metadata["package_sha256"],
                 "X-Vishnu-Product-Signed": "true" if metadata["signed"] else "false",
+                "X-Vishnu-Product-Version": str(manifest.get("version", selected_version)),
                 "Cache-Control": "no-store",
             },
         )
@@ -111,6 +133,8 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
         product = product_or_404(product_id)
         if not signing_available():
             raise HTTPException(503, "Production product signing is not configured")
+        if body.version_constraint is None and frozen_version(product_store, product_id, product["version"]) is None:
+            raise HTTPException(409, "Freeze the current product version before issuing its default commercial license")
         try:
             license_record = license_store.issue(
                 product=product,
