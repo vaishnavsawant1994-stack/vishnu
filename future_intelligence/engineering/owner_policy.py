@@ -121,15 +121,16 @@ class EngineeringOwnerPolicy:
             max_search_results=requested.max_search_results,
         )
         metadata = dict(spec.metadata)
+        ui_change = bool(spec.ui_required or "ui" in {str(item).casefold() for item in spec.affected_surfaces})
         metadata.update({
             "owner_engineering_mode": self.mode.value,
             "owner_browser_depth": self.browser_depth,
             "owner_visual_level": self.visual_level,
             "preview_enabled": self.preview_enabled,
             "performance_required": self.performance_required,
-            "physical_device_required": self.physical_device_required,
-            "localization_required": self.localization_required,
-            "three_d_required": self.three_d_required,
+            "physical_device_required": bool(self.physical_device_required and ui_change),
+            "localization_required": bool(self.localization_required and ui_change),
+            "three_d_required": bool(self.three_d_required and ui_change),
             "max_model_cost_per_work": self.max_model_cost_per_work,
         })
         return replace(spec, budget=budget, metadata=metadata)
