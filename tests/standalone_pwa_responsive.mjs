@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { chromium } from "playwright";
+import { STANDALONE_SWEEP_WIDTHS, assertNoViewportOverflow } from "./engineering_ui/device_matrix.mjs";
 
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
@@ -19,7 +20,7 @@ try {
   });
   await page.goto("http://127.0.0.1:4173/standalone/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => !document.querySelector("#enrollPanel").classList.contains("hidden"));
-  const widths = [320, 360, 375, 390, 430, 600, 768, 820, 1024, 1280, 1440, 1920, 2560];
+  const widths = STANDALONE_SWEEP_WIDTHS;
   for (const width of widths) {
     const height = width < 700 ? 568 : 960;
     await page.setViewportSize({ width, height });
@@ -31,7 +32,7 @@ try {
       }));
       return { viewport: innerWidth, document: document.documentElement.scrollWidth, boxes };
     });
-    assert.ok(layout.document <= width, `Standalone entry overflows at ${width}px: ${JSON.stringify(layout)}`);
+    assertNoViewportOverflow(assert, layout, width, "Standalone entry");
     for (const [selector, box] of Object.entries(layout.boxes)) {
       assert.ok(box.width > 0 && box.left >= -1 && box.right <= width + 1 && box.bottom <= height + 1,
         `${selector} moved outside ${width}x${height}: ${JSON.stringify(box)}`);
