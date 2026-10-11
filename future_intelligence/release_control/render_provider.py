@@ -41,6 +41,8 @@ class RenderReleaseConfig:
                 raise ValueError(f"Render release config requires {label}")
         if self.poll_interval_seconds <= 0 or self.deployment_timeout_seconds <= 0:
             raise ValueError("Render polling values must be positive")
+        if self.preview_service_id == self.production_service_id:
+            raise ValueError("Render preview and production must use distinct services")
 
 
 class RenderReleaseProvider:
@@ -48,6 +50,12 @@ class RenderReleaseProvider:
 
     The API token is held only by this provider instance. It is never written to
     ReleasePlan, evidence, logs, model context, or API responses.
+
+    Exact-revision release control is only sound when Render auto-deploy is off
+    for the bound services. Before every authority-bearing deploy this provider
+    reads service configuration and fails closed unless an explicit manual-only
+    setting is visible. This prevents an unrelated branch push from racing and
+    replacing the candidate that Vishnu actually qualified.
     """
 
     name = "render"
@@ -88,18 +96,49 @@ class RenderReleaseProvider:
     @staticmethod
     def _commit_id(payload: dict[str, Any]) -> str:
         commit = payload.get("commit") or {}
-        return str(commit.get("id") or "")
+        return str(commit.get("id") or "").strip()
+
+    @staticmethod
+    def _same_revision(left: str, right: str) -> bool:
+        left = str(left).strip().lower()
+        right = str(right).strip().lower()
+        if len(left) < 7 or len(right) < 7:
+            return False
+        return left == right or left.startswith(right) or right.startswith(left)
+
+    @staticmethod
+    def _auto_deploy_value(payload: dict[str, Any]) -> object:
+        details = payload.get("serviceDetails")
+        candidates = (
+            payload.get("autoDeployTrigger"),
+            payload.get("autoDeploy"),
+            details.get("autoDeployTrigger") if isinstance(details, dict) else None,
+            details.get("autoDeploy") if isinstance(details, dict) else None,
+        )
+        return next((value for value in candidates if value is not None), None)
+
+    def _require_manual_only(self, service_id: str) -> None:
+        service = self._call("GET", f"/services/{service_id}")
+        value = self._auto_deploy_value(service)
+        normalized = str(value).strip().lower() if value is not None else ""
+        if value is False:
+            return
+        if normalized in {"off", "no", "false", "manual", "disabled"}:
+            return
+        raise RenderProviderError(
+            "Render auto-deploy must be disabled for exact-revision governed releases"
+        )
 
     def _wait(self, service_id: str, deploy_id: str, expected_revision: str) -> dict[str, Any]:
         deadline = time.monotonic() + self.config.deployment_timeout_seconds
         while time.monotonic() < deadline:
             payload = self._call("GET", f"/services/{service_id}/deploys/{deploy_id}")
             commit_id = self._commit_id(payload)
-            if commit_id and commit_id != expected_revision:
+            if commit_id and not self._same_revision(commit_id, expected_revision):
                 raise RenderProviderError("Render deployment revision drifted from the release plan")
             status = str(payload.get("status") or "")
             if status in self._SUCCESS:
-                if commit_id != expected_revision:
+                if not commit_id or not self._same_revision(commit_id, expected_revision):
                     raise RenderProviderError("Render live deployment did not prove the exact candidate revision")
                 return payload
             if status in self._FAILURE:
@@ -116,6 +155,7 @@ class RenderReleaseProvider:
         public_url: str,
         revision: str,
     ) -> ReleaseDeployment:
+        self._require_manual_only(service_id)
         payload = self._call(
             "POST",
             f"/services/{service_id}/deploys",
@@ -125,7 +165,7 @@ class RenderReleaseProvider:
         if not deploy_id:
             raise RenderProviderError("Render did not return a deployment id")
         commit_id = self._commit_id(payload)
-        if commit_id and commit_id != revision:
+        if commit_id and not self._same_revision(commit_id, revision):
             raise RenderProviderError("Render accepted a different revision than requested")
         live = self._wait(service_id, deploy_id, revision)
         return ReleaseDeployment(
@@ -140,6 +180,7 @@ class RenderReleaseProvider:
                 "service_id": service_id,
                 "render_status": str(live.get("status") or "live"),
                 "trigger": str(live.get("trigger") or "api"),
+                "auto_deploy_verified_off": True,
             },
         )
 
@@ -169,7 +210,7 @@ class RenderReleaseProvider:
         )
         payload = self._call("GET", f"/services/{service_id}/deploys/{deployment.id}")
         commit_id = self._commit_id(payload)
-        if commit_id and commit_id != deployment.revision:
+        if commit_id and not self._same_revision(commit_id, deployment.revision):
             raise RenderProviderError("observed Render deployment revision does not match recorded evidence")
         status = str(payload.get("status") or deployment.state)
         return ReleaseDeployment(
