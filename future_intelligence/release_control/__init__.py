@@ -14,6 +14,7 @@ from .contracts import (
     ReleaseStatus,
 )
 from .controller import GovernedReleaseController, ReleaseControlError
+from .monitoring import ProductionReleaseMonitor, ReleaseMonitorResult
 from .policy import ReleaseAutonomyMode, ReleaseOwnerPolicy
 from .policy_store import ReleasePolicyStore
 from .providers import ReleaseDeployment, ReleaseProvider
@@ -26,6 +27,7 @@ from .vercel_provider import VercelReleaseConfig, VercelReleaseProvider
 __all__ = [
     "GovernedReleaseController",
     "JsonReleaseStore",
+    "ProductionReleaseMonitor",
     "ReleaseAutonomyMode",
     "ReleaseAutomationService",
     "ReleaseControlError",
@@ -34,6 +36,7 @@ __all__ = [
     "ReleaseEnvironment",
     "ReleaseEvidence",
     "ReleaseHandoffResult",
+    "ReleaseMonitorResult",
     "ReleaseOwnerPolicy",
     "ReleasePlan",
     "ReleasePolicyStore",
