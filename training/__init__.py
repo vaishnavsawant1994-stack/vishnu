@@ -15,6 +15,15 @@ from training.candidates import (
 )
 from training.collector import TrainingCollector
 from training.comprehensive_evaluation import ComprehensiveCheckpointEvaluator as LocalCheckpointEvaluator
+from training.contributions import (
+    ContributionDecision,
+    ContributionKind,
+    ContributionMode,
+    ContributionPreferences,
+    ContributorPseudonymizer,
+    StrategySignalAggregator,
+    evaluate_contribution,
+)
 from training.deployment import (
     DeploymentResult,
     ModelDeploymentBackend,
@@ -118,6 +127,13 @@ __all__ = [
     'TrainingCollector',
     'TrainingDatasetExporter',
     'TrainingExport',
+    'ContributionDecision',
+    'ContributionKind',
+    'ContributionMode',
+    'ContributionPreferences',
+    'ContributorPseudonymizer',
+    'StrategySignalAggregator',
+    'evaluate_contribution',
     'AutoTrainingCoordinator',
     'AutoTrainingRuntime',
     'AutoTrainingSettings',
