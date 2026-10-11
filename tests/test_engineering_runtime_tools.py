@@ -5,7 +5,10 @@ from pathlib import Path
 
 import pytest
 
+from evolution.verification import VerificationCheck, VerificationReport
+from future_intelligence.engineering.reviewer_adapter import EngineeringReviewDecision
 from future_intelligence.engineering.runtime import EngineeringRuntime
+from future_intelligence.engineering.work_executor import EngineeringWorkExecutor
 from future_intelligence.work_orchestration import (
     DurableWorkStore,
     GoalSpec,
@@ -113,7 +116,7 @@ class RecordingRegistry:
         self.tools[tool.name] = tool
 
 
-def build_runtime(tmp_path: Path):
+def build_runtime(tmp_path: Path, *, prepare: bool = True):
     base = tmp_path / "base"
     workspace = tmp_path / "workspaces"
     (base / "src").mkdir(parents=True)
@@ -146,14 +149,17 @@ def build_runtime(tmp_path: Path):
         work_store=store,
         evidence_root=tmp_path / "engineering-evidence",
     )
-    coordinator = runtime.prepare(
-        order.id, worker_id="coding-agent", runtime_epoch=1, base_revision=BASE
-    )
+    coordinator = None
+    if prepare:
+        coordinator = runtime.prepare(
+            order.id, worker_id="coding-agent", runtime_epoch=1, base_revision=BASE
+        )
     return runtime, store, provider, coordinator
 
 
 def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_path: Path):
     runtime, store, provider, coordinator = build_runtime(tmp_path)
+    assert coordinator is not None
     attempt_id = coordinator.spec.attempt_id
     read = runtime.execute("work-eng", attempt_id, "read", {"path": "src/app.py"})
     assert read["content"] == "VALUE = 1\n"
@@ -177,6 +183,7 @@ def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_p
 
 def test_repository_tools_are_model_visible_but_work_attempt_bound(tmp_path: Path):
     runtime, _store, _provider, coordinator = build_runtime(tmp_path)
+    assert coordinator is not None
     attempt_id = coordinator.spec.attempt_id
     registry = RecordingRegistry()
     engineering_repository.register(registry, runtime)
@@ -203,5 +210,63 @@ def test_repository_tools_are_model_visible_but_work_attempt_bound(tmp_path: Pat
 
 def test_runtime_rejects_paths_outside_engineering_spec(tmp_path: Path):
     runtime, _store, _provider, coordinator = build_runtime(tmp_path)
+    assert coordinator is not None
     with pytest.raises(PermissionError):
         runtime.execute("work-eng", coordinator.spec.attempt_id, "read", {"path": "tools/registry.py"})
+
+
+def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(tmp_path: Path):
+    runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+
+    class FakeModels:
+        def json(self, prompt, *, system="Return valid JSON only.", sensitivity="internal"):
+            assert sensitivity == "internal"
+            return {
+                "summary": "Change the requested constant",
+                "operations": [{
+                    "operation": "replace_exact",
+                    "path": "src/app.py",
+                    "old": "VALUE = 1",
+                    "new": "VALUE = 2",
+                    "reason": "required outcome",
+                }],
+                "assumptions": [],
+            }
+
+    class FakeVerifier:
+        def verify(self, session, *, revision):
+            assert revision == COMMITTED
+            return VerificationReport(
+                revision=revision,
+                checks=(
+                    VerificationCheck("build", ("python", "-m", "compileall"), True, 0, 1, "h1", ""),
+                    VerificationCheck("unit-tests", ("pytest",), True, 0, 2, "h2", ""),
+                    VerificationCheck("integration-tests", ("pytest",), True, 0, 3, "h3", ""),
+                    VerificationCheck("protected-code-scope", ("internal",), True, 0, 0, "h4", ""),
+                ),
+            )
+
+    class FakeReviewer:
+        def review(self, **_kwargs):
+            return EngineeringReviewDecision(
+                decision="approved", reviewer="independent-test-reviewer",
+                summary="local evidence is internally consistent", findings=(),
+            )
+
+    executor = EngineeringWorkExecutor(
+        runtime=runtime,
+        models=FakeModels(),
+        verification_provider=FakeVerifier(),
+        reviewer=FakeReviewer(),
+    )
+    result = executor.execute("work-eng", runtime_epoch=7, base_revision=BASE)
+    assert result.candidate_revision == COMMITTED
+    assert result.verification_passed is True
+    assert result.status == "verifying"
+    assert result.qualification["qualified"] is False
+    assert "src/app.py" in result.changed_paths
+    assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
+    attempt = store.get_attempt(result.attempt_id)
+    assert attempt is not None and attempt.status.value == "succeeded"
+    order = store.get_order("work-eng")
+    assert order is not None and order.status is WorkOrderStatus.VERIFYING
