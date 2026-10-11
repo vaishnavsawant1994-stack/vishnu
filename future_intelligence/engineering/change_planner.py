@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from .contracts import EngineeringSpec
+from .contracts import EngineeringSpec, SecurityClass
 from .repository_intelligence import RepositoryGraph
 
 
@@ -181,7 +181,12 @@ class ModelEngineeringChangePlanner:
             "Generate the smallest edit plan that satisfies the objective and success criteria. If the supplied evidence is "
             "insufficient to make a safe edit, return an empty operations list and explain the missing information in assumptions."
         )
-        payload = self.models.json(prompt, system=system, sensitivity="internal")
+        sensitivity = (
+            "sensitive"
+            if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}
+            else "internal"
+        )
+        payload = self.models.json(prompt, system=system, sensitivity=sensitivity)
         if not isinstance(payload, Mapping):
             raise ValueError("engineering change planner did not return an object")
         return EngineeringEditPlan.from_dict(payload, max_operations=max_operations)
