@@ -170,7 +170,12 @@ class ProductRunnerLeases:
         token = secrets.token_urlsafe(32)
         digest = _token_hash(token)
         candidate = None
+        attempt = 0
+        # BEGIN IMMEDIATE serializes the read-then-claim sequence across separate
+        # Vishnu processes sharing this SQLite database. The in-process RLock is
+        # not sufficient when multiple API workers or runner coordinators exist.
         with self.store.lock, self.store.con() as con:
+            con.execute("BEGIN IMMEDIATE")
             row = con.execute(
                 """
                 SELECT b.id,b.product_id,b.version,b.target,b.status,b.created_at,
@@ -252,6 +257,12 @@ class ProductRunnerLeases:
         if expires is None or expires <= _now():
             self.recover_expired()
             raise RunnerLeaseError("Runner lease has expired")
+        return lease
+
+    def validate(self, build_id: str, token: str) -> dict:
+        """Validate an active lease without exposing its persisted token hash."""
+        lease = self._active(build_id, token)
+        lease.pop("lease_token_hash", None)
         return lease
 
     def heartbeat(self, build_id: str, token: str, *, ttl_seconds: int | None = None) -> dict:
