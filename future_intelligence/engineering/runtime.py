@@ -303,6 +303,12 @@ class EngineeringRuntime:
         if not before.dirty:
             raise ValueError("engineering workspace has no changes to commit")
         result = self.repository_provider.commit_all(coordinator.session, message=str(message)[:500])
+        changed_paths = self.repository_provider.changed_paths(
+            base_revision=coordinator.session.base_revision,
+            working_revision=result.revision,
+        )
+        if not changed_paths:
+            raise RuntimeError("candidate commit has no base-to-candidate changes")
         stamp = _now()
         with self.work_store.connection:
             self.work_store.connection.execute(
@@ -315,17 +321,17 @@ class EngineeringRuntime:
         self.work_store.append_work_event(
             str(work_order_id),
             "engineering.workspace.committed",
-            {"working_revision": result.revision, "changed_paths": list(result.changes)},
+            {"working_revision": result.revision, "changed_paths": list(changed_paths)},
             attempt_id=str(attempt_id),
         )
         coordinator.evidence.append(
             "engineering.commit",
-            {"revision": result.revision, "changes": list(result.changes), "remote_mutation": False},
+            {"revision": result.revision, "changes": list(changed_paths), "remote_mutation": False},
         )
         return {
             "revision": result.revision,
             "dirty": result.dirty,
-            "changes": list(result.changes),
+            "changes": list(changed_paths),
             "push_authority": False,
             "merge_authority": False,
             "deploy_authority": False,
