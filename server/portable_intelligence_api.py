@@ -147,8 +147,13 @@ def portable_intelligence_router(runtime) -> APIRouter:
             result = portable().prepare_offline_pack()
         except (ValueError, RuntimeError, PermissionError, FileNotFoundError) as exc:
             raise HTTPException(409, str(exc)) from exc
-        emit("owner.portable_intelligence.offline_pack_prepared", device_id=device_id, pack_id=result.manifest.pack_id)
-        return {"ok": True, "offline_pack": result.public()}
+        payload = result.public()
+        emit(
+            "owner.portable_intelligence.offline_pack_prepared",
+            device_id=device_id,
+            pack_id=str(payload.get("pack_id") or ""),
+        )
+        return {"ok": True, "offline_pack": payload}
 
     @router.post("/activation/preflight")
     def activation_preflight(
