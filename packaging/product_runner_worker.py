@@ -61,6 +61,14 @@ def _safe_error(exc: Exception) -> str:
     return f"{type(exc).__name__}: {message[:1200]}"
 
 
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 class ProductRunnerWorker:
     def __init__(
         self,
@@ -179,25 +187,42 @@ class ProductRunnerWorker:
         evidence = result.get("evidence")
         if not artifact.is_file() or not isinstance(evidence, dict):
             raise WorkerError("Compiler did not return a valid artifact and evidence object")
-        digest = hashlib.sha256(artifact.read_bytes()).hexdigest()
+        digest = _sha256_file(artifact)
         if digest != str(result.get("sha256") or "").lower() or digest != str(evidence.get("sha256") or "").lower():
             raise WorkerError("Compiler artifact digest is inconsistent with runner evidence")
         raw_evidence = json.dumps(evidence, sort_keys=True, separators=(",", ":"))
         if len(raw_evidence) > 16 * 1024:
             raise WorkerError("Runner evidence is too large for the callback contract")
-        with artifact.open("rb") as stream:
-            response = self._request(
-                "PUT",
-                self._url(f"/{claim['build_id']}/artifact"),
-                headers={
-                    "X-Vishnu-Runner-Lease": claim["lease"],
-                    "X-Vishnu-Artifact-Name": artifact.name,
-                    "X-Vishnu-Artifact-SHA256": digest,
-                    "X-Vishnu-Runner-Evidence": raw_evidence,
-                    "Content-Type": "application/octet-stream",
-                },
-                data=stream,
-            )
+        headers = {
+            "X-Vishnu-Runner-Lease": claim["lease"],
+            "X-Vishnu-Artifact-Name": artifact.name,
+            "X-Vishnu-Artifact-SHA256": digest,
+            "X-Vishnu-Runner-Evidence": raw_evidence,
+            "Content-Type": "application/octet-stream",
+        }
+        response = None
+        last_error: Exception | None = None
+        # Reopen the file for every retry. Reusing a consumed stream can turn a
+        # safe idempotent replay into an empty-body callback after a transient 5xx.
+        for attempt in range(1, 4):
+            try:
+                with artifact.open("rb") as stream:
+                    response = self.session.put(
+                        self._url(f"/{claim['build_id']}/artifact"),
+                        headers=headers,
+                        data=stream,
+                        timeout=self.request_timeout,
+                    )
+                if response.status_code < 500 or attempt == 3:
+                    break
+                last_error = WorkerError(f"Server returned {response.status_code}")
+            except requests.RequestException as exc:
+                last_error = exc
+                response = None
+            if attempt < 3:
+                time.sleep(min(2 ** (attempt - 1), 4))
+        if response is None:
+            raise WorkerError(_safe_error(last_error or WorkerError("artifact callback failed")))
         if response.status_code != 200:
             raise WorkerError(f"Artifact callback failed with HTTP {response.status_code}: {response.text[:500]}")
         return response.json()
