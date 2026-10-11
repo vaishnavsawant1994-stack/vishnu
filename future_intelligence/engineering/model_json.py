@@ -7,7 +7,15 @@ from models.contracts import ModelRequest
 from models.router import InvalidModelResponse
 
 
-def governed_engineering_json(models, *, spec, prompt: str, system: str, role: str) -> Mapping[str, object]:
+def governed_engineering_json(
+    models,
+    *,
+    spec,
+    prompt: str,
+    system: str,
+    role: str,
+    sensitivity: str = "internal",
+) -> Mapping[str, object]:
     """Use the Intelligence Fabric typed request path when available.
 
     This binds engineering model calls to the Canonical Work/Attempt and applies
@@ -27,7 +35,7 @@ def governed_engineering_json(models, *, spec, prompt: str, system: str, role: s
             routing_policy="coding" if role != "independent-engineering-reviewer" else "review",
             required_capabilities=("chat",),
             preferred_capabilities=("json",),
-            sensitivity="internal",
+            sensitivity=str(sensitivity),
             max_cost=(None if max_cost in {None, ""} else float(max_cost)),
             metadata={
                 "temperature": 0.1,
@@ -48,7 +56,7 @@ def governed_engineering_json(models, *, spec, prompt: str, system: str, role: s
         if not isinstance(payload, Mapping):
             raise InvalidModelResponse("Engineering model JSON must be an object", provider=response.provider_id)
         return payload
-    payload = models.json(prompt, system=system, sensitivity="internal")
+    payload = models.json(prompt, system=system, sensitivity=str(sensitivity))
     if not isinstance(payload, Mapping):
         raise ValueError("engineering model did not return an object")
     return payload
