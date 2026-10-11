@@ -137,11 +137,10 @@ class BuildBody(BaseModel):
 
 
 class BuildUpdateBody(BaseModel):
+    # Owner HTTP is intentionally lifecycle-only. Artifact name/URI/checksum and
+    # signing evidence are internal builder-adapter data and are never accepted
+    # from this API surface.
     status: str | None = None
-    artifact_name: str | None = Field(default=None, max_length=300)
-    artifact_uri: str | None = Field(default=None, max_length=2000)
-    checksum: str | None = Field(default=None, max_length=256)
-    signing_verified: bool | None = None
     failure_reason: str | None = Field(default=None, max_length=2000)
 
     @field_validator("status")
