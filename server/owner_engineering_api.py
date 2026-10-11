@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Literal
 
@@ -9,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from future_intelligence.engineering.verification import observation_to_dict
 from future_intelligence.engineering.workflow_evidence import (
+    GitHubPhysicalDeviceEvidenceVerifier,
+    GitHubWorkflowEvidenceConfig,
     PhysicalDeviceWorkflowRun,
     WorkflowEvidenceError,
 )
@@ -104,7 +107,18 @@ def owner_engineering_router(runtime) -> APIRouter:
         if not hasattr(value, "verify_and_record_physical_device_evidence"):
             raise HTTPException(503, "trusted physical-device evidence verification is unavailable on this host")
         if getattr(value, "physical_device_verifier", None) is None:
-            raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured")
+            repository = str(engineering().repository_provider.repository or "").strip().strip("/")
+            token = str(
+                os.environ.get("VISHNU_ENGINEERING_GITHUB_EVIDENCE_TOKEN")
+                or os.environ.get("VISHNU_ENGINEERING_GITHUB_TOKEN")
+                or ""
+            ).strip()
+            try:
+                value.physical_device_verifier = GitHubPhysicalDeviceEvidenceVerifier(
+                    GitHubWorkflowEvidenceConfig(repository=repository, token=token)
+                )
+            except ValueError as exc:
+                raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured") from exc
         return value
 
     def emit(name: str, **payload: Any) -> None:
@@ -194,6 +208,15 @@ def owner_engineering_router(runtime) -> APIRouter:
         eng = engineering()
         policy = eng.owner_policy.snapshot()
         finalizer_value = runtime.get("engineering_finalizer")
+        repository = str(eng.repository_provider.repository or "").strip().strip("/")
+        verifier_available = bool(
+            finalizer_value is not None
+            and hasattr(finalizer_value, "verify_and_record_physical_device_evidence")
+            and (
+                getattr(finalizer_value, "physical_device_verifier", None) is not None
+                or len(repository.split("/")) == 2
+            )
+        )
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
@@ -202,10 +225,7 @@ def owner_engineering_router(runtime) -> APIRouter:
                 "accepted_input": "github_workflow_run_ids_only",
                 "verified_server_side": True,
                 "candidate_revision_bound": True,
-                "verifier_available": bool(
-                    finalizer_value is not None
-                    and getattr(finalizer_value, "physical_device_verifier", None) is not None
-                ),
+                "verifier_available": verifier_available,
             },
             "policy": policy.public(),
             "recent_work": recent_work(),
