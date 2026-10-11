@@ -47,12 +47,21 @@ def config():
 
 
 class FakeVercelProvider(VercelReleaseProvider):
-    def __init__(self, *, candidate_revision=CANDIDATE, base_revision=BASE, auto_assign=False, project_id="prj_test"):
+    def __init__(
+        self,
+        *,
+        candidate_revision=CANDIDATE,
+        base_revision=BASE,
+        auto_assign=False,
+        project_id="prj_test",
+        candidate_target="production",
+    ):
         super().__init__(config())
         self.candidate_revision = candidate_revision
         self.base_revision = base_revision
         self.auto_assign = auto_assign
         self.project_id = project_id
+        self.candidate_target = candidate_target
         self.calls = []
 
     def _call(self, method, path, body=None, *, query=None):
@@ -75,7 +84,7 @@ class FakeVercelProvider(VercelReleaseProvider):
                 "id": "dpl_candidate",
                 "url": "candidate-staged.vercel.app",
                 "readyState": "READY",
-                "target": "production",
+                "target": self.candidate_target,
                 "gitSource": {"sha": self.candidate_revision},
             }
         if method == "POST" and "/promote/dpl_candidate" in path:
@@ -153,6 +162,12 @@ def test_vercel_staging_rejects_project_identity_drift():
     assert not any(item[0] == "POST" and item[1] == "/v13/deployments" for item in provider.calls)
 
 
+def test_vercel_staging_requires_ready_deployment_to_prove_production_target():
+    provider = FakeVercelProvider(candidate_target="preview")
+    with pytest.raises(VercelProviderError, match="staged Production-target"):
+        provider.create_preview(plan())
+
+
 def test_vercel_promotion_reuses_qualified_staged_production_without_rebuild():
     provider = FakeVercelProvider()
     bound = plan(
@@ -166,6 +181,17 @@ def test_vercel_promotion_reuses_qualified_staged_production_without_rebuild():
     assert deployment.metadata["promoted_from_staged_production"] is True
     assert sum(1 for item in provider.calls if item[1] == "/v13/deployments") == 0
     assert any(item[0] == "POST" and "/promote/dpl_candidate" in item[1] for item in provider.calls)
+
+
+def test_vercel_promotion_rejects_legacy_preview_environment_artifact_even_with_same_sha():
+    provider = FakeVercelProvider(candidate_target="preview")
+    bound = plan(
+        preview_deployment_id="dpl_candidate",
+        preview_url="https://legacy-preview.vercel.app",
+    )
+    with pytest.raises(VercelProviderError, match="staged Production-target"):
+        provider.promote(bound)
+    assert not any(item[0] == "POST" and "/promote/dpl_candidate" in item[1] for item in provider.calls)
 
 
 def test_vercel_staging_rejects_revision_drift():
