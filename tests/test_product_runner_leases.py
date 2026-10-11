@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -49,6 +51,35 @@ def test_claim_is_exclusive_and_hashes_lease_token(tmp_path):
     assert claimed["lease_token"] not in json.dumps(row)
 
 
+def test_claim_is_exclusive_across_independent_store_instances(tmp_path):
+    path = tmp_path / "products.sqlite3"
+    primary = ProductStore(path)
+    product, build = android_build(primary)
+    barrier = threading.Barrier(2)
+
+    def claim(runner_id: str):
+        # Separate ProductStore/Lifecycle objects simulate independent API worker
+        # processes; only SQLite transaction locking is shared between them.
+        store = ProductStore(path)
+        leases = ProductRunnerLeases(store, ProductBuildLifecycle(path))
+        barrier.wait(timeout=5)
+        return leases.claim(target="android", runner_id=runner_id)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(claim, ["runner-process-1", "runner-process-2"]))
+
+    claimed = [value for value in results if value is not None]
+    assert len(claimed) == 1
+    assert claimed[0]["build_id"] == build["id"]
+    with primary.con() as con:
+        rows = con.execute(
+            "SELECT build_id,state,count(*) OVER() row_count FROM product_runner_leases WHERE build_id=?",
+            (build["id"],),
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["state"] == "active"
+
+
 def test_claim_skips_unfrozen_build(tmp_path):
     store, _lifecycle, leases = runtime(tmp_path)
     product = store.create(name="Unfrozen", targets=["android"])
@@ -67,6 +98,15 @@ def test_heartbeat_requires_exact_token(tmp_path):
     assert beat["build_id"] == build["id"]
     assert beat["state"] == "active"
     assert "lease_token_hash" not in beat
+
+
+def test_validate_never_exposes_persisted_token_hash(tmp_path):
+    store, _lifecycle, leases = runtime(tmp_path)
+    _product, build = android_build(store)
+    claimed = leases.claim(target="android", runner_id="runner-1")
+    value = leases.validate(build["id"], claimed["lease_token"])
+    assert value["state"] == "active"
+    assert "lease_token_hash" not in value
 
 
 def test_release_requeues_running_build(tmp_path):
