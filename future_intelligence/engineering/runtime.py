@@ -32,9 +32,7 @@ class EngineeringRuntime:
     operation.
     """
 
-    MUTATING_OPERATIONS = {
-        "create", "replace", "replace_exact", "delete", "rename", "restore"
-    }
+    MUTATING_OPERATIONS = {"create", "replace", "replace_exact", "delete", "rename", "restore"}
 
     def __init__(
         self,
@@ -56,8 +54,7 @@ class EngineeringRuntime:
     def _workspace_for(self, work_order_id: str, attempt_id: str):
         row = self.work_store.connection.execute(
             """
-            SELECT id
-            FROM work_workspaces
+            SELECT id FROM work_workspaces
             WHERE work_order_id = ? AND attempt_id = ?
             ORDER BY updated_at DESC, id DESC
             LIMIT 1
@@ -91,12 +88,22 @@ class EngineeringRuntime:
         lease_seconds: int = 900,
         overrides: Mapping[str, object] | None = None,
     ) -> EngineeringCandidateCoordinator:
-        """Claim Canonical Work and prepare one isolated local coding workspace."""
+        """Claim explicitly scoped Canonical Work and prepare one isolated workspace."""
         self._assert_continuation_authority()
         order = self.work_store.get_order(str(work_order_id))
         if order is None:
             raise KeyError(work_order_id)
+        if not self.work_store.dependencies_ready(order.id):
+            raise PermissionError("engineering WorkOrder dependencies are not ready")
         repository = self.repository_provider.repository
+        allowed_repositories = tuple(str(item) for item in order.resource_scope.allowed_repositories if str(item))
+        allowed_paths = tuple(str(item) for item in order.resource_scope.allowed_paths if str(item))
+        if not allowed_repositories:
+            raise PermissionError("engineering WorkOrder requires an explicit repository resource scope")
+        if repository not in allowed_repositories:
+            raise PermissionError("configured engineering repository is outside WorkOrder resource scope")
+        if not allowed_paths:
+            raise PermissionError("engineering WorkOrder requires an explicit path resource scope")
         resolved_base = self.repository_provider.resolve_revision(str(base_revision))
         claim = self.work_store.claim_work_order(
             order.id,
@@ -157,6 +164,7 @@ class EngineeringRuntime:
             )
             return self._coordinator(session=session, spec=spec)
         except Exception as exc:
+            max_attempts = max(1, int(dict(order.retry_policy or {}).get("max_attempts", 1)))
             self.work_store.finish_attempt(
                 claim.attempt.id,
                 lease_token=claim.lease.lease_token,
@@ -166,7 +174,7 @@ class EngineeringRuntime:
                     code="engineering_workspace_prepare_failed",
                     message=type(exc).__name__,
                 ),
-                max_attempts=1,
+                max_attempts=max_attempts,
             )
             raise
 
@@ -206,17 +214,13 @@ class EngineeringRuntime:
         with self.work_store.connection:
             self.work_store.connection.execute(
                 """
-                UPDATE work_workspaces
-                SET state = ?, updated_at = ?
+                UPDATE work_workspaces SET state = ?, updated_at = ?
                 WHERE work_order_id = ? AND attempt_id = ?
                 """,
                 (WorkspaceState.DIRTY.value, stamp, str(work_order_id), str(attempt_id)),
             )
         self.work_store.append_work_event(
-            str(work_order_id),
-            "engineering.workspace.dirty",
-            {},
-            attempt_id=str(attempt_id),
+            str(work_order_id), "engineering.workspace.dirty", {}, attempt_id=str(attempt_id)
         )
 
     def execute(self, work_order_id: str, attempt_id: str, operation: str, parameters: Mapping[str, Any] | None = None) -> dict[str, Any]:
@@ -303,8 +307,7 @@ class EngineeringRuntime:
         with self.work_store.connection:
             self.work_store.connection.execute(
                 """
-                UPDATE work_workspaces
-                SET working_revision = ?, state = ?, updated_at = ?
+                UPDATE work_workspaces SET working_revision = ?, state = ?, updated_at = ?
                 WHERE work_order_id = ? AND attempt_id = ?
                 """,
                 (result.revision, WorkspaceState.ACTIVE.value, stamp, str(work_order_id), str(attempt_id)),
