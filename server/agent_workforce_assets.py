@@ -74,6 +74,10 @@ def agent_workforce_assets_router(settings) -> APIRouter:
     def products_build_lifecycle_script():
         return Response(read("our-products-build-lifecycle.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
+    @router.get("/our-products-commercial.js", include_in_schema=False)
+    def products_commercial_script():
+        return Response(read("our-products-commercial.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
     @router.get("/our-products-entry.js", include_in_schema=False)
     def products_entry_script():
         return Response(read("our-products-entry.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
