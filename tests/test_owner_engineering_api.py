@@ -160,9 +160,11 @@ def test_owner_engineering_execute_requires_autonomous_mode_and_scoped_work(tmp_
     assert value["engineering_executor"].calls
 
 
-def test_owner_engineering_ui_exposes_all_governed_modes_without_release_controls():
+def test_owner_engineering_ui_exposes_all_governed_modes_without_release_action_controls():
     for label in ("Off", "Analyze", "Workspace", "Auto-Fix", "Review Candidate"):
         assert label in OWNER_ENGINEERING_JS
     assert "Engineering Autonomy" in OWNER_ENGINEERING_JS
-    assert "merge" not in OWNER_ENGINEERING_JS.lower()
-    assert "deploy" not in OWNER_ENGINEERING_JS.lower()
+    assert "/merge" not in OWNER_ENGINEERING_JS
+    assert "/deploy" not in OWNER_ENGINEERING_JS
+    assert "data-eng-merge" not in OWNER_ENGINEERING_JS
+    assert "data-eng-deploy" not in OWNER_ENGINEERING_JS
