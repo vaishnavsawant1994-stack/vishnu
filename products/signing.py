@@ -10,8 +10,8 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 
-SIGNING_KEY_ENV = "PERSONAL_AI_RELEASE_PRIVATE_KEY_B64"
-PUBLIC_KEY_ENV = "RELEASE_PUBLIC_KEY_B64"
+SIGNING_KEY_ENV = "VISHNU_PRODUCT_SIGNING_PRIVATE_KEY_B64"
+PUBLIC_KEY_ENV = "VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64"
 
 
 def canonical_json(value: object) -> bytes:
@@ -72,7 +72,7 @@ def sign_payload(payload: bytes, *, require_key: bool = True) -> SignatureEnvelo
         except Exception as exc:
             raise ValueError(f"{PUBLIC_KEY_ENV} must be valid base64") from exc
         if expected != public_key:
-            raise ValueError("Configured release public key does not match the product signing private key")
+            raise ValueError("Configured product signing public key does not match the product signing private key")
     signature = key.sign(payload)
     return SignatureEnvelope(
         algorithm="ed25519",
