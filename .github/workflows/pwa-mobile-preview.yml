@@ -10,10 +10,14 @@ on:
       - 'pwa/**'
       - 'server/owner_engineering_api.py'
       - 'server/owner_engineering_ui.py'
+      - 'server/owner_release_api.py'
+      - 'server/owner_release_ui.py'
+      - 'future_intelligence/release_control/runtime.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
       - 'tests/engineering_ui/**'
+      - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -32,10 +36,14 @@ on:
       - 'pwa/**'
       - 'server/owner_engineering_api.py'
       - 'server/owner_engineering_ui.py'
+      - 'server/owner_release_api.py'
+      - 'server/owner_release_ui.py'
+      - 'future_intelligence/release_control/runtime.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
       - 'tests/engineering_ui/**'
+      - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -87,6 +95,7 @@ jobs:
           mkdir -p artifacts/agent-workforce
           mkdir -p artifacts/visualize
           mkdir -p artifacts/engineering-ui
+          mkdir -p artifacts/owner-release-ui
           PROJECT_SCREENSHOT_DIR=artifacts/project-workspace node tests/projects_workspace_browser.mjs
           node tests/projects_canonical_work_browser.mjs
           node tests/projects_canonical_visualizations_browser.mjs
@@ -106,6 +115,7 @@ jobs:
           node tests/engineering_ui/mobile_keyboard_safe_area_qualification.mjs
           node tests/engineering_ui/theme_motion_qualification.mjs
           node tests/engineering_ui/performance_3d_qualification.mjs
+          OWNER_RELEASE_UI_SCREENSHOT_DIR=artifacts/owner-release-ui node tests/owner_release_ui_browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

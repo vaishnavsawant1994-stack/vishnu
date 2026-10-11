@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from future_intelligence.release_control.runtime import build_release_control_runtime
@@ -34,6 +36,7 @@ def test_runtime_without_provider_stays_operational_but_has_no_deploy_authority(
     clear_provider_env(monkeypatch)
     runtime = build_release_control_runtime(data_dir=tmp_path)
     assert runtime.providers == {}
+    assert runtime.summary()["provider_capabilities"] == {}
     assert runtime.controller.preview_qualifier is None
     assert runtime.controller.production_smoke is None
     assert runtime.policy().mode.value == "approval_required"
@@ -83,15 +86,33 @@ def test_full_render_and_vercel_configuration_registers_both_without_network_cal
     assert "vishnu.example.test" in qualifier._allowed
     assert ".vercel.app" in qualifier._suffixes
 
+    summary = runtime.summary()
+    assert summary["provider_capabilities"] == {
+        "render": {
+            "production_observation": True,
+            "production_telemetry": True,
+            "telemetry_evidence_sanitized": True,
+        },
+        "vercel": {
+            "production_observation": True,
+            "production_telemetry": True,
+            "telemetry_evidence_sanitized": True,
+        },
+    }
+    serialized = json.dumps(summary, sort_keys=True)
+    assert "render-token" not in serialized
+    assert "vercel-token" not in serialized
+
 
 def test_release_policy_persists_across_runtime_restart(tmp_path, monkeypatch):
     clear_provider_env(monkeypatch)
     runtime = build_release_control_runtime(data_dir=tmp_path)
-    runtime.update_policy(mode="auto_low_risk", canary_min_requests=77)
+    runtime.update_policy(mode="auto_low_risk", canary_min_requests=77, max_monitoring_observations=222)
 
     restored = build_release_control_runtime(data_dir=tmp_path)
     assert restored.policy().mode.value == "auto_low_risk"
     assert restored.policy().canary_min_requests == 77
+    assert restored.policy().max_monitoring_observations == 222
 
 
 def test_invalid_preview_suffix_is_rejected_at_runtime_construction(tmp_path, monkeypatch):
