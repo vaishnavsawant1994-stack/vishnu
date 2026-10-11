@@ -8,7 +8,7 @@ Vishnu can turn an explicitly scoped Canonical WorkOrder into an isolated softwa
 
 The implemented loop is:
 
-`User request -> Canonical Work -> EngineeringSpec -> repository intelligence/impact -> governed model plan -> isolated worktree -> typed source edits -> local commit -> trusted verification -> bounded repair -> VERIFYING candidate -> browser/device/visual/accessibility/performance evidence -> trusted final qualification -> independent review -> qualified candidate -> separate owner/release authority`
+`User request -> Canonical Work -> EngineeringSpec -> repository intelligence/impact -> governed specialist consultations -> governed model plan -> isolated worktree -> typed source edits -> local commit -> trusted verification -> bounded repair -> VERIFYING candidate -> browser/device/visual/accessibility/performance/preview evidence -> trusted final qualification -> independent review -> qualified candidate -> separate owner/release authority`
 
 ## Non-negotiable authority boundary
 
@@ -75,6 +75,8 @@ Engineering overrides cannot weaken the authoritative Work contract. Projection 
 
 Path overrides may narrow a concrete Canonical Work scope, including to a true subdirectory. They cannot add a sibling or unrelated path. Arbitrary glob-subset claims fail closed when the relationship cannot be proven safely.
 
+For repair Work, Canonical Work may also carry a sanitized failure fingerprint. A failure fingerprint or explicit `regression_test_required` flag projects monotonically into the EngineeringSpec and adds a blocking permanent-regression-test gate.
+
 ## Repository editing
 
 The model-visible repository surface is bound to `work_order_id + attempt_id`. It never accepts repository roots, local paths, remotes, shell commands, merge targets, or deployment targets.
@@ -85,9 +87,13 @@ Delete consumes the changed-file budget. Rename is treated as a governed text mu
 
 The end-to-end planner itself emits only `replace_exact`, `create`, `delete`, and `rename` operations. It cannot emit commands.
 
-## Model governance and budgets
+## Model governance, specialists, and budgets
 
-Engineering planning and independent review use typed `ModelRequest` when the governed Intelligence Fabric is available. Requests are bound to the same Canonical WorkOrder and attempt, retain sensitive routing, carry `model_output_authority=false`, and use the owner per-Work model cost ceiling through the existing hierarchical BudgetEngine. Test doubles may use the simpler JSON protocol without becoming production authority.
+Engineering planning, specialist consultation, and independent review use typed `ModelRequest` when the governed Intelligence Fabric is available. Requests are bound to the same Canonical WorkOrder and attempt, retain sensitive routing, carry `model_output_authority=false`, and use the owner per-Work model cost ceiling through the existing hierarchical BudgetEngine. Test doubles may use the simpler JSON protocol without becoming production authority.
+
+Engineering specialists reuse the existing `WorkerProfile` contract rather than creating another agent architecture. Proposal-only profiles cover Architect, Frontend, Backend, Database, Mobile, UI QA, Visual Review, Accessibility Review, Security Review, Performance Review, Code Review and Release Review. The planner selects a bounded subset from the EngineeringSpec surfaces/risk and may consult those roles through the governed model fabric. Specialist output is advisory context only and cannot expand repository scope, invoke tools, edit files, approve, merge or deploy.
+
+Different specialist `agent_id` values allow the existing model-binding/routing layer to use different configured models while all calls remain under the same Work/Attempt budget and authority boundary.
 
 ## Repository intelligence and impact
 
@@ -132,7 +138,8 @@ When relevant, qualification also requires:
 - localization/content stress for UI Work;
 - living Vishnu/3D behavior for UI Work;
 - physical-device evidence for UI Work;
-- deployed-preview evidence.
+- deployed-preview evidence;
+- permanent regression-test evidence for a fingerprinted/reproducible defect.
 
 A `WARN` does not hide a `FAIL` or `PENDING`. Independent review cannot convert missing gate evidence into a pass.
 
@@ -155,7 +162,9 @@ Local engineering no longer asks the independent reviewer to approve a half-qual
 - emits `engineering.candidate.qualified`, review-rejected, or final-qualification-pending Work events;
 - never edits, commits, pushes, merges, deploys, rolls back, approves owner actions, or activates a Body revision.
 
-Owner Controls projects these final Work events so live engineering status does not remain stuck on stale local-attempt metadata.
+`EngineeringTrustedQualificationIntake` is the release/device handoff into that finalizer. It produces revision-bound preview requests with zero deployment authority, accepts only exact-revision preview results, rejects production results masquerading as previews, distinguishes real physical-device evidence from simulator evidence, and validates permanent regression-test evidence against the EngineeringSpec failure fingerprint when one is present.
+
+Owner Controls projects final Work events so live engineering status does not remain stuck on stale local-attempt metadata.
 
 ## Browser and responsive qualification
 
@@ -179,6 +188,8 @@ The shared browser qualification covers phone through large desktop widths and b
 - performance safety budgets;
 - WebGL-unavailable living-presence fallback.
 
+Short mobile Home layouts are qualified against the fixed composer, including a 320×480 stress viewport, so the final action must remain reachable rather than being hidden behind the composer.
+
 Browser qualification payloads can carry `candidate_revision`; the adapter copies that binding into each generated observation so the trusted finalizer can reject cross-revision evidence.
 
 ## Visual qualification
@@ -193,13 +204,15 @@ SQLite migration qualification runs trusted migration callbacks only against tem
 
 API contract qualification validates observed status codes and required/forbidden JSON keys. It does not send external requests itself; trusted API/browser runners provide observations.
 
+Canonical Work uses a cross-thread-capable SQLite connection because Vishnu constructs the runtime on the desktop/main thread and serves trusted control APIs on a dedicated server thread. The owned connection sets `check_same_thread=False` and a bounded busy timeout; this does not change Work authority or permit raw database access to models/tools.
+
 ## Dependency and supply-chain checks
 
 Offline dependency qualification inspects supported manifests for direct VCS/URL/editable sources, unversioned dependencies, version ranges, lockfile transport, and integrity metadata. It does not contact package registries or mutate dependencies.
 
 ## Failure and flaky-test intelligence
 
-Failure history stores sanitized normalized fingerprints. Secret-bearing excerpts are redacted before persistence. Repeated failures may require a permanent regression test. Flaky-test detection may identify instability but has no authority to suppress or auto-pass a gate.
+Failure history stores sanitized normalized fingerprints. Secret-bearing excerpts are redacted before persistence. Reproducible/fingerprinted repair Work requires permanent regression-test evidence before final qualification. Flaky-test detection may identify instability but has no authority to suppress or auto-pass a gate.
 
 ## Requirement and user-flow traceability
 
@@ -208,6 +221,8 @@ Completion can be projected as an exact matrix from EngineeringSpec requirement/
 ## Preview and production qualification
 
 The environment observer is GET-only, explicitly host/origin allowlisted, redirect-disabled, response-size bounded, latency bounded, and does not embed credentials. An empty host allowlist is rejected. It can inspect a separately created preview or production origin and return evidence. It cannot create, promote, or delete deployments.
+
+Preview qualification is bound to both `spec_id` and the exact `candidate_revision`. `PreviewQualificationRequest` is a release-system handoff only: it records the Work/Attempt/spec/repository/revision and explicitly carries no push, merge, deployment or activation authority. A trusted external preview system may fulfill that request; only a returned observation containing the exact spec+revision binding can satisfy the preview gate.
 
 Production smoke regressions can be converted idempotently into Canonical Work for diagnosis. Automatically generated production-regression Work has no repository/path scope and no automatic mutation/deploy authority. A normal governed planning step must create separately scoped repair Work before code can change.
 
@@ -245,7 +260,7 @@ Unknown artifact kinds fail closed as sensitive evidence. Shared learning is dis
 
 The existing Owner Controls Permissions surface receives an Engineering Autonomy panel. It shows policy controls plus recent WorkOrder, attempt, workspace, branch/candidate revision, repair count, final qualification state, and reviewer decision. Policy changes and starting full engineering Work require trusted owner context/fresh verification.
 
-API tests verify trusted-admin access, fresh owner verification, mode gating, explicitly scoped Work execution, and absence of merge/deploy action controls.
+API tests verify trusted-admin access, fresh owner verification, mode gating, explicitly scoped Work execution, and absence of merge/deploy action controls. Cross-thread Canonical Work access is separately regression-tested because the control server executes outside the desktop/main runtime thread.
 
 ## CI qualification behavior
 
@@ -253,7 +268,7 @@ CI, package, reliability/security, P3 iPhone PWA, and PWA visual qualification u
 
 ## Definition of an engineering candidate
 
-A local candidate commit is not a release. A candidate may be marked qualified only when every required gate has evidence, all blocking gates are clear, exact requirement traces pass, and the required independent review approves the exact candidate revision. Even then, merge/deployment/body activation are separate authorities.
+A local candidate commit is not a release. A candidate may be marked qualified only when every required gate has evidence, all blocking gates are clear, exact requirement traces pass, any required permanent regression test is evidenced, and the required independent review approves the exact candidate revision. Even then, merge/deployment/body activation are separate authorities.
 
 ## Current release rule
 
