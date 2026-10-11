@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sqlite3
 import time
 from types import SimpleNamespace
 
@@ -49,7 +50,9 @@ class FakeExecutor:
 
 
 def runtime(tmp_path, *, with_executor=True):
-    store = DurableWorkStore(tmp_path / "work.sqlite3")
+    connection = sqlite3.connect(tmp_path / "work.sqlite3", check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    store = DurableWorkStore(connection=connection)
     policy = EngineeringOwnerPolicyStore(tmp_path / "engineering-owner-policy.json")
     engineering = SimpleNamespace(
         owner_policy=policy,
