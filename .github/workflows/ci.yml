@@ -25,10 +25,11 @@ jobs:
           node --check pwa/our-products.js
           node --check pwa/our-products-build-lifecycle.js
           node --check pwa/our-products-distribution.js
+          node --check pwa/our-products-composer.js
           node --check pwa/our-products-entry.js
           node --check tests/our_products_browser.mjs
           python -m py_compile packaging/product_platform_runner.py packaging/product_desktop_container_runner.py packaging/product_apple_runner.py packaging/product_runner_worker.py packaging/product_production_preflight.py packaging/create_product_platform_job.py
-          pytest -q tests/test_our_products.py tests/test_product_distribution.py tests/test_product_artifact_builders.py tests/test_product_platform_jobs.py tests/test_product_runner_leases.py tests/test_product_runner_queue_api.py tests/test_product_platform_callback_authority.py tests/test_product_native_runner_adapters.py tests/test_product_runner_worker.py tests/test_product_runner_readiness_api.py tests/test_product_production_preflight.py
+          pytest -q tests/test_our_products.py tests/test_product_composer.py tests/test_product_distribution.py tests/test_product_artifact_builders.py tests/test_product_platform_jobs.py tests/test_product_runner_leases.py tests/test_product_runner_queue_api.py tests/test_product_platform_callback_authority.py tests/test_product_native_runner_adapters.py tests/test_product_runner_worker.py tests/test_product_runner_readiness_api.py tests/test_product_production_preflight.py
       - name: Advanced Intelligence governance gate
         run: >-
           pytest -q
