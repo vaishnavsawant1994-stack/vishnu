@@ -53,6 +53,10 @@ class ReleaseOwnerPolicy:
     max_monitoring_observations: int = 1000
 
     def __post_init__(self) -> None:
+        if self.automatic_risk_ceiling is not ReleaseRiskClass.LOW:
+            raise ValueError("automatic production is permanently limited to low-risk releases")
+        if not self.owner_approval_for_sensitive_surfaces:
+            raise ValueError("sensitive release surfaces always require owner approval")
         if self.canary_min_requests < 1:
             raise ValueError("canary_min_requests must be positive")
         if not 0.0 <= self.canary_max_error_rate_regression <= 1.0:
@@ -75,9 +79,12 @@ class ReleaseOwnerPolicy:
             return False
         if self.mode in {ReleaseAutonomyMode.OFF, ReleaseAutonomyMode.PREVIEW_ONLY, ReleaseAutonomyMode.APPROVAL_REQUIRED}:
             return True
-        if plan.risk_class > self.automatic_risk_ceiling:
+        # AUTO_LOW_RISK is a hard product boundary, not a soft owner preference.
+        # Medium/high/critical releases and all sensitive surfaces always remain
+        # owner-approved even if a persisted policy file is manually edited.
+        if plan.risk_class is not ReleaseRiskClass.LOW:
             return True
-        if self.owner_approval_for_sensitive_surfaces and self.has_sensitive_surface(plan):
+        if self.has_sensitive_surface(plan):
             return True
         return False
 
@@ -85,6 +92,8 @@ class ReleaseOwnerPolicy:
         return (
             self.mode is ReleaseAutonomyMode.AUTO_LOW_RISK
             and self.allow_production
+            and plan.risk_class is ReleaseRiskClass.LOW
+            and not self.has_sensitive_surface(plan)
             and not self.requires_owner_approval(plan)
         )
 
