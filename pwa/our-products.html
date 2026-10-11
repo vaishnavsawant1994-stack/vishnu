@@ -106,7 +106,7 @@
         <label>Client / internal owner<input name="client_name" maxlength="200" placeholder="Optional client name"></label>
         <label class="span-2">Description<textarea name="description" maxlength="5000" rows="3" placeholder="What should this product do?"></textarea></label>
         <label>AI mode<select name="ai_mode"><option value="disabled">No AI</option><option value="client_api">Client provides API</option><option value="managed">Our managed AI</option><option value="local">Local / self-hosted AI</option><option value="hybrid">Hybrid</option></select></label>
-        <fieldset><legend>Initial delivery targets</legend><div class="target-checks"><label><input type="checkbox" name="targets" value="web"> Web</label><label><input type="checkbox" name="targets" value="pwa"> PWA</label><label><input type="checkbox" name="targets" value="android"> Android</label><label><input type="checkbox" name="targets" value="ios"> iOS</label><label><input type="checkbox" name="targets" value="windows"> Windows</label><label><input type="checkbox" name="targets" value="docker"> Server</label><label><input type="checkbox" name="targets" value="api"> API</label></div></fieldset>
+        <fieldset><legend>Initial delivery targets</legend><div class="target-checks"><label><input type="checkbox" name="targets" value="web"> Web</label><label><input type="checkbox" name="targets" value="pwa"> PWA</label><label><input type="checkbox" name="targets" value="android"> Android</label><label><input type="checkbox" name="targets" value="ios"> iOS</label><label><input type="checkbox" name="targets" value="windows"> Windows</label><label><input type="checkbox" name="targets" value="macos"> macOS</label><label><input type="checkbox" name="targets" value="linux"> Linux</label><label><input type="checkbox" name="targets" value="docker"> Server</label><label><input type="checkbox" name="targets" value="api"> API</label><label><input type="checkbox" name="targets" value="worker"> Worker</label></div></fieldset>
       </div>
       <div class="security-note">🔒 API keys and raw credentials are never stored in a product definition or downloadable manifest.</div>
       <div class="dialog-actions"><button type="button" class="button secondary" data-close>Cancel</button><button type="submit" class="button primary">Create Product</button></div>
@@ -115,7 +115,7 @@
 
   <dialog id="detailDialog" class="dialog detail-dialog">
     <div class="dialog-head"><div><small id="detailKind">PRODUCT</small><h2 id="detailName">Product</h2><p id="detailSubtitle"></p></div><button type="button" class="icon-button" data-close-detail>×</button></div>
-    <div class="detail-tabs" id="detailTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="ai">AI & Models</button><button data-tab="platforms">Platforms</button><button data-tab="components">Components</button><button data-tab="build">Build & Export</button><button data-tab="manifest">Manifest</button></div>
+    <div class="detail-tabs" id="detailTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="ai">AI & Models</button><button data-tab="platforms">Platforms</button><button data-tab="components">Components</button><button data-tab="permissions">Permissions</button><button data-tab="branding">Branding</button><button data-tab="licensing">Licensing</button><button data-tab="build">Build & Export</button><button data-tab="manifest">Manifest</button></div>
     <div id="detailBody" class="detail-body"></div>
   </dialog>
 
@@ -132,5 +132,6 @@
 
   <script src="/iphone/our-products.js" defer></script>
   <script src="/iphone/our-products-build-lifecycle.js" defer></script>
+  <script src="/iphone/our-products-commercial.js" defer></script>
 </body>
 </html>
