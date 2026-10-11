@@ -31,12 +31,54 @@ class EnvironmentQualificationResult:
 
 class PreviewQualificationProvider(Protocol):
     """Observe an already-created preview; this interface cannot deploy one."""
-    def qualify_preview(self, *, target: str, spec_id: str) -> EnvironmentQualificationResult: ...
+    def qualify_preview(
+        self, *, target: str, spec_id: str, candidate_revision: str
+    ) -> EnvironmentQualificationResult: ...
 
 
 class ProductionSmokeProvider(Protocol):
     """Read-only/safe smoke checks against an already-approved deployment."""
     def smoke_production(self, *, target: str, release_revision: str) -> EnvironmentQualificationResult: ...
+
+
+@dataclass(frozen=True)
+class PreviewQualificationRequest:
+    """Read-only handoff asking an external release system for a preview.
+
+    This request describes what must be deployed by an existing release/preview
+    authority. It is not itself a deployment command and intentionally carries
+    no credential, push, merge or deployment authority.
+    """
+
+    work_order_id: str
+    attempt_id: str
+    spec_id: str
+    repository: str
+    candidate_revision: str
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("work_order_id", self.work_order_id),
+            ("attempt_id", self.attempt_id),
+            ("spec_id", self.spec_id),
+            ("repository", self.repository),
+            ("candidate_revision", self.candidate_revision),
+        ):
+            if not str(value).strip():
+                raise ValueError(f"preview qualification request requires {name}")
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "work_order_id": self.work_order_id,
+            "attempt_id": self.attempt_id,
+            "spec_id": self.spec_id,
+            "repository": self.repository,
+            "candidate_revision": self.candidate_revision,
+            "push_authority": False,
+            "merge_authority": False,
+            "deployment_authority": False,
+            "activation_authority": False,
+        }
 
 
 @dataclass(frozen=True)
