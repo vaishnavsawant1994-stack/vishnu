@@ -1,0 +1,189 @@
+(()=>{
+  'use strict';
+  const $=selector=>document.querySelector(selector);
+  const $$=selector=>[...document.querySelectorAll(selector)];
+  const state={view:'products',requests:[],capabilities:[],templates:[],summary:{},activeRequest:null,activeProductId:null,query:'',type:'all',commercial:'all'};
+  const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
+  const typeLabels={agent:'Agent',agent_team:'Agent Team',workflow:'Workflow',automation:'Automation',tool:'Tool',integration:'Integration',knowledge:'Knowledge',ocr:'OCR',browser:'Browser',api:'API',ui:'UI',backend:'Backend',database:'Database',document:'Document',product_template:'Product Template',saas_module:'SaaS Module',business_logic:'Business Logic',custom:'Custom'};
+  const commercialLabels={internal_only:'Internal only',internal_reusable:'Internal reusable',internal_sellable:'Internal + sellable',commercial:'Commercial',client_specific:'Client-specific',template:'Template',experimental:'Experimental'};
+  const productTypeLabels={ai_employee:'AI Employee',agent:'Agent',agent_team:'Agent Team',automation:'Automation',workflow:'Workflow',tool:'Tool',knowledge_assistant:'Knowledge Assistant',integration:'Integration',business_system:'Business System',custom:'Custom Product'};
+
+  async function api(path,options={}){
+    const response=await fetch(`/iphone/api/products/composer${path}`,{credentials:'same-origin',headers:{'Content-Type':'application/json',...(options.headers||{})},...options});
+    let body=null;
+    if(response.status!==204){try{body=await response.json()}catch{body={detail:`Request failed (${response.status})`}}}
+    if(!response.ok)throw new Error(typeof body?.detail==='string'?body.detail:`Request failed (${response.status})`);
+    return body;
+  }
+  function notify(message,error=false){
+    const node=$('#message');if(!node)return;node.textContent=message;node.classList.toggle('error',error);node.classList.remove('hidden');clearTimeout(notify.timer);notify.timer=setTimeout(()=>node.classList.add('hidden'),5000);
+  }
+  function stateLabel(value){return String(value||'').replaceAll('_',' ').replace(/\b\w/g,c=>c.toUpperCase())}
+  function setView(view){
+    state.view=view;
+    $$('.factory-nav [data-factory-view]').forEach(button=>button.classList.toggle('active',button.dataset.factoryView===view));
+    $$('.factory-view').forEach(section=>section.classList.toggle('hidden',section.id!==`factory-${view}`));
+    if(view==='requests')loadRequests();
+    else if(view==='capabilities')loadCapabilities();
+    else if(view==='templates')loadTemplates();
+  }
+  function renderSummary(){
+    const summary=state.summary||{},cap=summary.capabilities||{};
+    if($('#composerRequestCount'))$('#composerRequestCount').textContent=summary.requests??0;
+    if($('#composerOpenCount'))$('#composerOpenCount').textContent=summary.open_requests??0;
+    if($('#composerProjectCount'))$('#composerProjectCount').textContent=summary.product_projects_created??0;
+    if($('#composerCapabilityCount'))$('#composerCapabilityCount').textContent=cap.total??0;
+    if($('#catalogTotal'))$('#catalogTotal').textContent=cap.total??0;
+    if($('#catalogReusable'))$('#catalogReusable').textContent=cap.reusable??0;
+    if($('#catalogSellable'))$('#catalogSellable').textContent=cap.sellable??0;
+    if($('#catalogQualified'))$('#catalogQualified').textContent=cap.qualified??0;
+  }
+  async function loadSummary(){
+    try{const body=await api('/summary');state.summary=body.summary||{};renderSummary()}catch(error){notify(error.message,true)}
+  }
+  function requestCard(request){
+    const b=request.blueprint||{},coverage=Number(b.coverage_percent||0);
+    return `<article class="request-card" data-request-id="${esc(request.id)}"><div><div class="request-meta"><span class="factory-pill">${esc(stateLabel(request.status))}</span>${request.client_name?`<span class="factory-pill private">${esc(request.client_name)}</span>`:'<span class="factory-pill">Internal</span>'}<span class="factory-pill commercial">${esc(commercialLabels[request.commercial_state]||stateLabel(request.commercial_state))}</span></div><h3>${esc(request.title)}</h3><p>${esc(request.requirement)}</p><div class="request-meta">${b.reuse_count!=null?`<span class="factory-pill reuse">Reuse ${Number(b.reuse_count)}</span><span class="factory-pill extend">Extend ${Number(b.extend_count||0)}</span><span class="factory-pill create">Create ${Number(b.create_count||0)}</span>`:''}${b.recommended_product_type?`<span class="factory-pill">${esc(productTypeLabels[b.recommended_product_type]||stateLabel(b.recommended_product_type))}</span>`:''}</div><div class="request-actions"><button class="button secondary" data-open-request="${esc(request.id)}">View Blueprint</button>${request.product_id?'<button class="button primary" data-open-product-from-request>Product Project created</button>':''}</div></div><div class="request-score" style="--score:${coverage}"><span>${coverage}%</span></div></article>`;
+  }
+  function renderRequests(){
+    const node=$('#requestList'),empty=$('#requestsEmpty');if(!node)return;
+    node.innerHTML=state.requests.map(requestCard).join('');
+    empty?.classList.toggle('hidden',state.requests.length>0);
+  }
+  async function loadRequests(){
+    try{const body=await api('/requests');state.requests=body.requests||[];renderRequests();await loadSummary()}catch(error){notify(error.message,true)}
+  }
+  function capabilityCard(cap){
+    const scope=cap.client_scope==='shared'?'Shared reusable':`Client: ${cap.client_scope}`;
+    return `<article class="capability-card" data-capability-id="${esc(cap.id)}"><div><div class="request-meta"><span class="factory-pill">${esc(typeLabels[cap.capability_type]||stateLabel(cap.capability_type))}</span><span class="factory-pill ${cap.client_scope==='shared'?'reuse':'private'}">${esc(scope)}</span><span class="factory-pill">${esc(stateLabel(cap.qualification_state))}</span>${cap.exportable?'<span class="factory-pill reuse">Exportable</span>':'<span class="factory-pill create">Internal boundary</span>'}</div><h3>${esc(cap.name)}</h3><p>${esc(cap.description||'Reusable Vishnu capability')}</p><div class="capability-source">${esc(cap.source_kind)} · ${esc(cap.source_ref)}</div></div><div class="capability-controls"><select data-capability-state aria-label="Commercial state"><option value="internal_only" ${cap.commercial_state==='internal_only'?'selected':''}>Internal only</option><option value="internal_reusable" ${cap.commercial_state==='internal_reusable'?'selected':''}>Internal reusable</option><option value="internal_sellable" ${cap.commercial_state==='internal_sellable'?'selected':''}>Internal + sellable</option><option value="commercial" ${cap.commercial_state==='commercial'?'selected':''}>Commercial</option><option value="client_specific" ${cap.commercial_state==='client_specific'?'selected':''}>Client-specific</option><option value="template" ${cap.commercial_state==='template'?'selected':''}>Template</option><option value="experimental" ${cap.commercial_state==='experimental'?'selected':''}>Experimental</option></select></div></article>`;
+  }
+  function renderCapabilities(){
+    const node=$('#capabilityList'),empty=$('#capabilitiesEmpty');if(!node)return;
+    const query=state.query.toLowerCase();
+    const rows=state.capabilities.filter(cap=>(state.type==='all'||cap.capability_type===state.type)&&(state.commercial==='all'||cap.commercial_state===state.commercial)&&(!query||`${cap.name} ${cap.description} ${(cap.tags||[]).join(' ')}`.toLowerCase().includes(query)));
+    node.innerHTML=rows.map(capabilityCard).join('');empty?.classList.toggle('hidden',rows.length>0);
+  }
+  async function loadCapabilities(){
+    try{const body=await api('/capabilities?limit=1000');state.capabilities=body.capabilities||[];state.summary={...(state.summary||{}),capabilities:body.summary||{}};renderSummary();renderCapabilities()}catch(error){notify(error.message,true)}
+  }
+  function templateCard(cap){
+    const meta=cap.metadata||{};
+    return `<article class="template-card" data-template-id="${esc(cap.id)}"><div class="request-meta"><span class="factory-pill commercial">${esc(cap.commercial_state==='template'?'Template':'Reusable product')}</span><span class="factory-pill">${esc(meta.version||'Reusable')}</span></div><h3>${esc(cap.name)}</h3><p>${esc(cap.description||'Start a Product Project from this reusable product foundation.')}</p><div class="template-footer"><small class="muted">${esc(cap.client_scope==='shared'?'Shared foundation':`Scoped: ${cap.client_scope}`)}</small><button class="button secondary" data-use-template="${esc(cap.id)}">Use as starting point</button></div></article>`;
+  }
+  function renderTemplates(){
+    const node=$('#templateList'),empty=$('#templatesEmpty');if(!node)return;
+    node.innerHTML=state.templates.map(templateCard).join('');empty?.classList.toggle('hidden',state.templates.length>0);
+  }
+  async function loadTemplates(){
+    try{
+      const body=await api('/capabilities?limit=1000');
+      state.templates=(body.capabilities||[]).filter(cap=>cap.capability_type==='product_template'||['template','internal_sellable','commercial'].includes(cap.commercial_state));renderTemplates();
+    }catch(error){notify(error.message,true)}
+  }
+  function requirementRows(blueprint){
+    return (blueprint.requirements||[]).map(item=>{
+      const cap=item.capability;const pct=Math.round(Number(item.score||0)*100);
+      return `<div class="requirement-row"><span class="decision-dot ${esc(item.decision)}"></span><div><b>${esc(item.requirement)}</b><p>${esc(item.explanation||'')}</p>${cap?`<p>Matched: <strong>${esc(cap.name)}</strong> · ${esc(typeLabels[cap.capability_type]||stateLabel(cap.capability_type))}</p>`:''}</div><span class="match">${esc(item.decision.toUpperCase())} · ${pct}%</span></div>`;
+    }).join('');
+  }
+  async function openRequest(requestId){
+    try{
+      const body=await api(`/requests/${encodeURIComponent(requestId)}`);state.activeRequest=body.request;renderRequestDetail(body.request);
+      $('#requestDetailDialog')?.showModal();
+    }catch(error){notify(error.message,true)}
+  }
+  async function lineageHtml(productId){
+    try{
+      const body=await api(`/products/${encodeURIComponent(productId)}/lineage`);const c=body.classification||{};
+      const rows=(body.lineage||[]).map(item=>`<div class="lineage-item"><span>↳</span><div><strong>${esc(stateLabel(item.relation))} · ${esc(item.source_kind)}</strong><small>${esc(item.source_ref)}${item.source_version?` · ${esc(item.source_version)}`:''}</small></div></div>`).join('')||'<p class="muted">No lineage records yet.</p>';
+      return `<div class="commercial-state-row"><div><b>Commercial use</b><div class="muted">Controls how this Product Project may be reused or sold.</div></div><select id="requestProductCommercial"><option value="internal_only" ${c.commercial_state==='internal_only'?'selected':''}>Internal only</option><option value="internal_reusable" ${c.commercial_state==='internal_reusable'?'selected':''}>Internal reusable</option><option value="internal_sellable" ${c.commercial_state==='internal_sellable'?'selected':''}>Internal + sellable</option><option value="commercial" ${c.commercial_state==='commercial'?'selected':''}>Commercial</option><option value="client_specific" ${c.commercial_state==='client_specific'?'selected':''}>Client-specific</option><option value="template" ${c.commercial_state==='template'?'selected':''}>Template</option><option value="experimental" ${c.commercial_state==='experimental'?'selected':''}>Experimental</option></select></div><h3>Product lineage</h3><div class="lineage-list">${rows}</div>`;
+    }catch{return '<p class="muted">Product lineage is unavailable.</p>'}
+  }
+  function renderRequestDetail(request){
+    const body=$('#requestDetailBody');if(!body)return;const b=request.blueprint||{};const coverage=Number(b.coverage_percent||0);
+    body.innerHTML=`<div class="blueprint-hero"><div class="blueprint-hero-top"><div><small>PRODUCT BLUEPRINT</small><h3>${esc(request.title)}</h3><p>${esc(request.client_name||'Internal use')} · ${esc(productTypeLabels[b.recommended_product_type]||stateLabel(b.recommended_product_type||'custom'))} · AI ${esc(stateLabel(b.ai_mode||request.requested_ai_mode))}</p></div><strong>${coverage}% existing coverage</strong></div><div class="coverage-bar"><span style="--coverage:${coverage}%;width:${coverage}%"></span></div><div class="blueprint-stats"><div class="blueprint-stat"><strong>${Number(b.reuse_count||0)}</strong><small>Reuse</small></div><div class="blueprint-stat"><strong>${Number(b.extend_count||0)}</strong><small>Extend</small></div><div class="blueprint-stat"><strong>${Number(b.create_count||0)}</strong><small>Create</small></div></div></div><div class="request-detail-grid"><section><h3>Requirement map</h3><div class="requirement-list">${requirementRows(b)||'<p class="muted">Analyze this request to create the capability map.</p>'}</div></section><aside class="work-panel"><h3>Missing work Vishnu will create</h3>${(b.missing_work||[]).map(item=>`<div class="work-item"><b>${esc(item.title)}</b><p>${esc(item.requirement)}</p></div>`).join('')||'<p class="muted">No missing work detected. Existing capabilities can compose this product.</p>'}<div class="factory-note" style="margin-top:14px"><span>🔒</span><div><b>Product boundary</b><br>Only selected/generalized capabilities enter the Product Project. Vishnu owner memory, private system state, unrelated products and credentials stay out.</div></div></aside></div>${request.product_id?`<div class="product-project-result"><b>✓ Product Project created</b><code>Product: ${esc(request.product_id)}<br>Project: ${esc(request.project_id||'')}</code><div id="requestLineage" style="margin-top:13px"></div></div>`:''}<div class="request-detail-actions"><button class="button secondary" id="reanalyzeRequest">Analyze again</button>${request.product_id?'':'<button class="button primary" id="createProductProject">Create Product Project</button>'}<button class="button secondary" data-close-request-detail>Close</button></div>`;
+    if(request.product_id)lineageHtml(request.product_id).then(html=>{const node=$('#requestLineage');if(node)node.innerHTML=html});
+  }
+  function openRequestDialog(prefill={}){
+    const form=$('#requestForm');form?.reset();
+    if(prefill.title)form.elements.title.value=prefill.title;
+    if(prefill.requirement)form.elements.requirement.value=prefill.requirement;
+    if(prefill.product_type)form.elements.product_type.value=prefill.product_type;
+    $('#requestDialog')?.showModal();
+  }
+  function openCapabilityDialog(){$('#capabilityForm')?.reset();$('#capabilityDialog')?.showModal()}
+  async function syncCatalog(){
+    try{const body=await api('/sync',{method:'POST'});notify(`Capability catalog synced · ${Object.values(body.synced||{}).reduce((a,b)=>a+Number(b||0),0)} sources scanned`);await Promise.all([loadCapabilities(),loadSummary(),loadTemplates()])}catch(error){notify(error.message,true)}
+  }
+  function installProductDetailComposerTabs(){
+    const tabs=$('#detailTabs');if(!tabs||tabs.querySelector('[data-composer-tab="commercial"]'))return;
+    const commercial=document.createElement('button');commercial.textContent='Commercial';commercial.dataset.composerTab='commercial';tabs.append(commercial);
+    const lineage=document.createElement('button');lineage.textContent='Lineage';lineage.dataset.composerTab='lineage';tabs.append(lineage);
+    tabs.addEventListener('click',async event=>{
+      const button=event.target.closest('[data-composer-tab]');if(!button)return;event.preventDefault();event.stopPropagation();if(!state.activeProductId)return;
+      $$('#detailTabs button').forEach(item=>item.classList.toggle('active',item===button));
+      const body=$('#detailBody');body.innerHTML='<p class="muted">Loading product governance…</p>';
+      try{
+        const data=await api(`/products/${encodeURIComponent(state.activeProductId)}/lineage`);const c=data.classification||{};
+        if(button.dataset.composerTab==='commercial')body.innerHTML=`<div class="detail-section"><div class="warning">This classification controls how the Product Project is used by us. It does not expose Vishnu or client-private data.</div><div class="commercial-state-row"><div><b>Product purpose</b><div class="muted">Internal, reusable, sellable, commercial, client-specific, template or experimental.</div></div><select id="productCommercialState"><option value="internal_only" ${c.commercial_state==='internal_only'?'selected':''}>Internal only</option><option value="internal_reusable" ${c.commercial_state==='internal_reusable'?'selected':''}>Internal reusable</option><option value="internal_sellable" ${c.commercial_state==='internal_sellable'?'selected':''}>Internal + sellable</option><option value="commercial" ${c.commercial_state==='commercial'?'selected':''}>Commercial</option><option value="client_specific" ${c.commercial_state==='client_specific'?'selected':''}>Client-specific</option><option value="template" ${c.commercial_state==='template'?'selected':''}>Template</option><option value="experimental" ${c.commercial_state==='experimental'?'selected':''}>Experimental</option></select></div></div>`;
+        else body.innerHTML=`<div class="detail-section"><div class="warning">Lineage records which internal capabilities, Product Requests and Vishnu Projects produced this standalone Product Project.</div><div class="lineage-list">${(data.lineage||[]).map(item=>`<div class="lineage-item"><span>↳</span><div><strong>${esc(stateLabel(item.relation))}</strong><small>${esc(item.source_kind)} · ${esc(item.source_ref)}${item.source_version?` · ${esc(item.source_version)}`:''}</small></div></div>`).join('')||'<p class="muted">No lineage recorded yet.</p>'}</div></div>`;
+      }catch(error){body.innerHTML=`<p class="message error">${esc(error.message)}</p>`}
+    },true);
+  }
+  function installComponentPromotionObserver(){
+    const detail=$('#detailBody');if(!detail)return;
+    const observer=new MutationObserver(()=>{
+      if(!state.activeProductId)return;
+      detail.querySelectorAll('[data-remove-component]').forEach(remove=>{
+        const componentId=remove.dataset.removeComponent;if(!componentId||remove.parentElement.querySelector(`[data-promote-component="${CSS.escape(componentId)}"]`))return;
+        const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='Promote reusable';button.dataset.promoteComponent=componentId;remove.before(button);
+      });
+    });
+    observer.observe(detail,{childList:true,subtree:true});
+  }
+
+  document.addEventListener('click',event=>{
+    const card=event.target.closest('[data-product-id]');if(card&&event.target.closest('[data-action="open"]')){state.activeProductId=card.dataset.productId;installProductDetailComposerTabs()}
+    const nav=event.target.closest('[data-factory-view]');if(nav){setView(nav.dataset.factoryView);return}
+    const open=event.target.closest('[data-open-request]');if(open){openRequest(open.dataset.openRequest);return}
+    if(event.target.closest('[data-close-request]'))$('#requestDialog')?.close();
+    if(event.target.closest('[data-close-request-detail]'))$('#requestDetailDialog')?.close();
+    if(event.target.closest('[data-close-capability]'))$('#capabilityDialog')?.close();
+    const use=event.target.closest('[data-use-template]');if(use){const cap=state.templates.find(item=>item.id===use.dataset.useTemplate);if(cap)openRequestDialog({title:`${cap.name} · New Product`,requirement:`Create a new Product Project using ${cap.name} as the reusable starting point. Customize only the capabilities required for the new internal/client requirement.`,product_type:'custom'});return}
+    const promote=event.target.closest('[data-promote-component]');if(promote){const form=$('#promoteCapabilityForm');if(form){form.elements.product_id.value=state.activeProductId||'';form.elements.component_id.value=promote.dataset.promoteComponent;form.reset?.();form.elements.product_id.value=state.activeProductId||'';form.elements.component_id.value=promote.dataset.promoteComponent;$('#promoteCapabilityDialog')?.showModal()}return}
+  });
+
+  document.addEventListener('change',async event=>{
+    const select=event.target.closest('[data-capability-state]');
+    if(select){const card=select.closest('[data-capability-id]');try{await api(`/capabilities/${encodeURIComponent(card.dataset.capabilityId)}`,{method:'PATCH',body:JSON.stringify({commercial_state:select.value})});notify('Capability classification updated');await loadCapabilities()}catch(error){notify(error.message,true)}return}
+    if(event.target.id==='capabilityTypeFilter'){state.type=event.target.value;renderCapabilities();return}
+    if(event.target.id==='capabilityCommercialFilter'){state.commercial=event.target.value;renderCapabilities();return}
+    if(event.target.id==='productCommercialState'&&state.activeProductId){try{await api(`/products/${encodeURIComponent(state.activeProductId)}/classification`,{method:'PUT',body:JSON.stringify({commercial_state:event.target.value})});notify('Product commercial classification updated')}catch(error){notify(error.message,true)}return}
+    if(event.target.id==='requestProductCommercial'&&state.activeRequest?.product_id){try{await api(`/products/${encodeURIComponent(state.activeRequest.product_id)}/classification`,{method:'PUT',body:JSON.stringify({commercial_state:event.target.value})});notify('Product commercial classification updated')}catch(error){notify(error.message,true)}}
+  });
+  $('#capabilitySearch')?.addEventListener('input',event=>{state.query=event.target.value.trim();renderCapabilities()});
+  $('#newRequestButton')?.addEventListener('click',()=>openRequestDialog());
+  $('#requestSectionNew')?.addEventListener('click',()=>openRequestDialog());
+  $('#newCapabilityButton')?.addEventListener('click',openCapabilityDialog);
+  $('#syncCapabilities')?.addEventListener('click',syncCatalog);
+  $('#syncTemplates')?.addEventListener('click',syncCatalog);
+  $('#requestForm')?.addEventListener('submit',async event=>{
+    event.preventDefault();const data=new FormData(event.currentTarget);const payload={title:data.get('title'),requirement:data.get('requirement'),client_name:data.get('client_name'),product_type:data.get('product_type')||'',ai_mode:data.get('ai_mode'),commercial_state:data.get('commercial_state')||null,targets:data.getAll('targets')};
+    try{const body=await api('/requests?analyze=true',{method:'POST',body:JSON.stringify(payload)});$('#requestDialog')?.close();notify('Request analyzed. Vishnu mapped reusable, extendable and missing capabilities.');await loadRequests();await openRequest(body.request.id);setView('requests')}catch(error){notify(error.message,true)}
+  });
+  $('#capabilityForm')?.addEventListener('submit',async event=>{
+    event.preventDefault();const data=new FormData(event.currentTarget);const payload={name:data.get('name'),capability_type:data.get('capability_type'),description:data.get('description'),source_kind:'manual',source_ref:`manual:${crypto.randomUUID()}`,client_scope:data.get('client_scope')||'shared',commercial_state:data.get('commercial_state'),qualification_state:data.get('qualification_state'),exportable:data.get('exportable')==='on',reusable:data.get('reusable')==='on',tags:String(data.get('tags')||'').split(',').map(v=>v.trim()).filter(Boolean)};
+    try{await api('/capabilities',{method:'POST',body:JSON.stringify(payload)});$('#capabilityDialog')?.close();notify('Reusable capability added');await loadCapabilities();setView('capabilities')}catch(error){notify(error.message,true)}
+  });
+  $('#promoteCapabilityForm')?.addEventListener('submit',async event=>{
+    event.preventDefault();const data=new FormData(event.currentTarget);const payload={product_id:data.get('product_id'),component_id:data.get('component_id'),commercial_state:data.get('commercial_state'),generalized:data.get('generalized')==='on',notes:data.get('notes')||''};
+    try{await api('/capabilities/promote',{method:'POST',body:JSON.stringify(payload)});$('#promoteCapabilityDialog')?.close();notify(payload.generalized?'Generalized capability added to the shared reusable catalog':'Capability promoted with its existing client scope');await loadCapabilities()}catch(error){notify(error.message,true)}
+  });
+  $('#requestDetailDialog')?.addEventListener('click',async event=>{
+    if(event.target.id==='reanalyzeRequest'&&state.activeRequest){try{const body=await api(`/requests/${encodeURIComponent(state.activeRequest.id)}/analyze`,{method:'POST'});state.activeRequest=body.request;renderRequestDetail(body.request);notify('Blueprint refreshed');await loadRequests()}catch(error){notify(error.message,true)}}
+    if(event.target.id==='createProductProject'&&state.activeRequest){try{const body=await api(`/requests/${encodeURIComponent(state.activeRequest.id)}/product-project`,{method:'POST'});state.activeRequest=body.request;renderRequestDetail(body.request);notify('Product Project created. Missing work is now in Vishnu Projects.');await Promise.all([loadRequests(),loadSummary()])}catch(error){notify(error.message,true)}}
+  });
+
+  installProductDetailComposerTabs();installComponentPromotionObserver();
+  Promise.all([loadSummary(),loadRequests(),loadCapabilities(),loadTemplates()]).catch(()=>{});
+})();
