@@ -19,11 +19,13 @@ from .contracts import (
     VisualDefect,
 )
 from .database_qualification import DatabaseQualificationResult, SqliteMigrationSandbox
+from .dependency_qualification import DependencyFinding, DependencyQualificationResult, DependencyQualifier
 from .environment_qualification import HttpQualificationProbe, ReadOnlyHttpQualificationProvider
 from .failure_intelligence import EngineeringFailureStore, FailureFingerprint, FlakyAssessment
 from .owner_policy import EngineeringOwnerPolicy, EngineeringOwnerPolicyStore
 from .portability import EngineeringArtifactClass, EngineeringArtifactPolicy, classify_engineering_artifact, portability_manifest
 from .production_feedback import ProductionFeedbackWork, ProductionRegressionWorkBridge
+from .traceability import EngineeringTraceability, RequirementTrace, UserFlowExpectation, UserFlowObservation
 
 __all__ = [
     "ApiContractCase",
@@ -33,6 +35,9 @@ __all__ = [
     "CanaryMetrics",
     "CanaryThresholds",
     "DatabaseQualificationResult",
+    "DependencyFinding",
+    "DependencyQualificationResult",
+    "DependencyQualifier",
     "DeviceProfile",
     "EngineeringArtifactClass",
     "EngineeringArtifactPolicy",
@@ -42,6 +47,7 @@ __all__ = [
     "EngineeringOwnerPolicy",
     "EngineeringOwnerPolicyStore",
     "EngineeringSpec",
+    "EngineeringTraceability",
     "FailureFingerprint",
     "FlakyAssessment",
     "HttpQualificationProbe",
@@ -51,9 +57,12 @@ __all__ = [
     "QualificationGateStatus",
     "QualificationReport",
     "ReadOnlyHttpQualificationProvider",
+    "RequirementTrace",
     "RollbackRecommendation",
     "SecurityClass",
     "SqliteMigrationSandbox",
+    "UserFlowExpectation",
+    "UserFlowObservation",
     "VisualDefect",
     "classify_engineering_artifact",
     "compare_canary",
