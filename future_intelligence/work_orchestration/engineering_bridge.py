@@ -172,6 +172,18 @@ def engineering_spec_from_work_order(
     }
     if data:
         raise ValueError(f"unsupported engineering override keys: {sorted(data)}")
+
+    failure_fingerprint = str(verification.get("failure_fingerprint") or "").strip()
+    regression_required = bool(verification.get("regression_test_required", False) or failure_fingerprint)
+    metadata = {
+        "plan_id": work_order.plan_id,
+        "project_id": work_order.project_id,
+        "worker_type": work_order.worker_type,
+        "regression_test_required": regression_required,
+    }
+    if failure_fingerprint:
+        metadata["failure_fingerprint"] = failure_fingerprint
+
     return EngineeringSpec(
         id=spec_id,
         work_order_id=work_order.id,
@@ -184,6 +196,6 @@ def engineering_spec_from_work_order(
         security_class=security_class,
         ui_required=ui_required,
         budget=budget,
-        metadata={"plan_id": work_order.plan_id, "project_id": work_order.project_id, "worker_type": work_order.worker_type},
+        metadata=metadata,
         **known,
     )
