@@ -45,7 +45,7 @@ class RecordingAutomation(ReleaseAutomationService):
         return True
 
 
-def spec(*, surfaces=("pwa/home",), security_class=SecurityClass.STANDARD):
+def spec(*, surfaces=("pwa/home",), security_class=SecurityClass.ORDINARY):
     return EngineeringSpec(
         id="spec-auto-1",
         work_order_id="work-auto-1",
