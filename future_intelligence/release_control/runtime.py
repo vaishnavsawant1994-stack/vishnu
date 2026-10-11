@@ -15,6 +15,7 @@ from .policy_store import ReleasePolicyStore
 from .providers import ReleaseProvider
 from .render_provider import RenderReleaseConfig, RenderReleaseProvider
 from .store import JsonReleaseStore
+from .vercel_provider import VercelReleaseConfig, VercelReleaseProvider
 
 
 @dataclass
@@ -28,8 +29,6 @@ class ReleaseControlRuntime:
 
     def update_policy(self, **changes: Any) -> ReleaseOwnerPolicy:
         policy = self.policy_store.update(**changes)
-        # Atomic object assignment keeps controller reads coherent; every
-        # request receives one immutable ReleaseOwnerPolicy snapshot.
         self.controller.policy = policy
         return policy
 
@@ -55,12 +54,21 @@ def _host(url: str) -> str:
     return str(urlsplit(url).hostname or "").lower()
 
 
+def _require_complete_provider(name: str, values: dict[str, str]) -> bool:
+    configured = [bool(value) for value in values.values()]
+    if any(configured) and not all(configured):
+        missing = sorted(key for key, value in values.items() if not value)
+        raise RuntimeError(f"{name} release provider configuration is incomplete: {', '.join(missing)}")
+    return bool(configured) and all(configured)
+
+
 def build_release_control_runtime(*, data_dir: str | Path, work_store=None) -> ReleaseControlRuntime:
     root = Path(data_dir)
     policy_store = ReleasePolicyStore(root / "release-policy.json")
     release_store = JsonReleaseStore(root / "releases")
     providers: dict[str, ReleaseProvider] = {}
-    qualifier = None
+    allowed_hosts: set[str] = set()
+    allowed_suffixes: set[str] = set()
 
     render_values = {
         "api_token": _env("VISHNU_RELEASE_RENDER_API_TOKEN"),
@@ -69,19 +77,43 @@ def build_release_control_runtime(*, data_dir: str | Path, work_store=None) -> R
         "preview_url": _env("VISHNU_RELEASE_RENDER_PREVIEW_URL"),
         "production_url": _env("VISHNU_RELEASE_RENDER_PRODUCTION_URL"),
     }
-    configured = [bool(value) for value in render_values.values()]
-    if any(configured) and not all(configured):
-        # Partial credentials/configuration must never silently downgrade into a
-        # different provider or unqualified deployment path.
-        raise RuntimeError("Render release provider configuration is incomplete")
-    if all(configured):
+    if _require_complete_provider("Render", render_values):
         render = RenderReleaseProvider(RenderReleaseConfig(**render_values))
         providers[render.name] = render
-        allowed_hosts = tuple(sorted({_host(render_values["preview_url"]), _host(render_values["production_url"])} - {""}))
+        allowed_hosts.update(
+            host for host in (_host(render_values["preview_url"]), _host(render_values["production_url"])) if host
+        )
+
+    vercel_required = {
+        "api_token": _env("VISHNU_RELEASE_VERCEL_API_TOKEN"),
+        "project_id": _env("VISHNU_RELEASE_VERCEL_PROJECT_ID"),
+        "project_name": _env("VISHNU_RELEASE_VERCEL_PROJECT_NAME"),
+        "github_org": _env("VISHNU_RELEASE_VERCEL_GITHUB_ORG"),
+        "github_repo": _env("VISHNU_RELEASE_VERCEL_GITHUB_REPO"),
+        "production_url": _env("VISHNU_RELEASE_VERCEL_PRODUCTION_URL"),
+    }
+    if _require_complete_provider("Vercel", vercel_required):
+        vercel = VercelReleaseProvider(
+            VercelReleaseConfig(
+                **vercel_required,
+                git_ref=_env("VISHNU_RELEASE_VERCEL_GIT_REF") or "main",
+                team_id=_env("VISHNU_RELEASE_VERCEL_TEAM_ID"),
+            )
+        )
+        providers[vercel.name] = vercel
+        production_host = _host(vercel_required["production_url"])
+        if production_host:
+            allowed_hosts.add(production_host)
+        preview_suffix = _env("VISHNU_RELEASE_VERCEL_PREVIEW_HOST_SUFFIX") or ".vercel.app"
+        allowed_suffixes.add(preview_suffix.lower())
+
+    qualifier = None
+    if allowed_hosts or allowed_suffixes:
         qualifier = ReadOnlyHttpEnvironmentQualifier(
             HttpQualificationConfig(
-                allowed_hosts=allowed_hosts,
-                paths=("/", str(os.environ.get("VISHNU_RELEASE_HEALTH_PATH", "/health")).strip() or "/health"),
+                allowed_hosts=tuple(sorted(allowed_hosts)),
+                allowed_host_suffixes=tuple(sorted(allowed_suffixes)),
+                paths=("/", _env("VISHNU_RELEASE_HEALTH_PATH") or "/health"),
             )
         )
 
