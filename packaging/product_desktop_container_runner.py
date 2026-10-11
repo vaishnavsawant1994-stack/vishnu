@@ -98,20 +98,34 @@ def _result(
 
 def _runtime_script(manifest: dict) -> str:
     serialized = json.dumps(manifest, sort_keys=True, ensure_ascii=False)
+    # Avoid str.format on the HTML/CSS template: CSS braces are literal and
+    # must never become format placeholders in the generated standalone binary.
     return f'''from __future__ import annotations
-import html,json,threading,webbrowser
+import argparse,html,json,threading,webbrowser
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
+from pathlib import Path
 MANIFEST=json.loads({serialized!r})
-PAGE="""<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{{name}}</title><style>body{{background:#07101a;color:#eff6fb;font-family:system-ui;margin:0}}main{{max-width:760px;margin:auto;padding:48px 24px}}p{{color:#a8bacb;line-height:1.55}}section{{border:1px solid #263d50;border-radius:18px;padding:20px;background:#0d1924}}</style><main><small>VISHNU PRODUCT</small><h1>{{name}}</h1><p>{{description}}</p><section><b>Desktop client runtime</b><p>Version {{version}}</p><p>Owner Vishnu memory, credentials and source code are not embedded in this application. Product execution uses separately approved runtime connectors.</p></section></main>"""
+PAGE="""<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>__NAME__</title><style>body{{background:#07101a;color:#eff6fb;font-family:system-ui;margin:0}}main{{max-width:760px;margin:auto;padding:48px 24px}}p{{color:#a8bacb;line-height:1.55}}section{{border:1px solid #263d50;border-radius:18px;padding:20px;background:#0d1924}}</style><main><small>VISHNU PRODUCT</small><h1>__NAME__</h1><p>__DESCRIPTION__</p><section><b>Desktop client runtime</b><p>Version __VERSION__</p><p>Owner Vishnu memory, credentials and source code are not embedded in this application. Product execution uses separately approved runtime connectors.</p></section></main>"""
+def status(): return {{'ok':True,'schema':'vishnu.desktop-product-runtime/v1','product_id':MANIFEST.get('product_id'),'name':MANIFEST.get('name'),'version':MANIFEST.get('version'),'ai_mode':(MANIFEST.get('ai_policy') or {{}}).get('mode','disabled'),'component_count':len(MANIFEST.get('components') or []),'owner_source_bundled':False,'credentials_bundled':False}}
+def page():
+ value=PAGE
+ value=value.replace('__NAME__',html.escape(str(MANIFEST.get('name') or 'Vishnu Product')))
+ value=value.replace('__DESCRIPTION__',html.escape(str(MANIFEST.get('description') or '')))
+ value=value.replace('__VERSION__',html.escape(str(MANIFEST.get('version') or '')))
+ return value
 class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   if self.path=='/manifest.json': raw=json.dumps(MANIFEST,separators=(',',':')).encode();kind='application/json'
-  elif self.path=='/health': raw=json.dumps({{'ok':True,'product_id':MANIFEST.get('product_id'),'version':MANIFEST.get('version')}}).encode();kind='application/json'
-  else: raw=PAGE.format(name=html.escape(str(MANIFEST.get('name') or 'Vishnu Product')),description=html.escape(str(MANIFEST.get('description') or '')),version=html.escape(str(MANIFEST.get('version') or ''))).encode();kind='text/html; charset=utf-8'
+  elif self.path=='/health': raw=json.dumps(status(),separators=(',',':')).encode();kind='application/json'
+  else: raw=page().encode();kind='text/html; charset=utf-8'
   self.send_response(200);self.send_header('Content-Type',kind);self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
  def log_message(self,*_): pass
 if __name__=='__main__':
- server=ThreadingHTTPServer(('127.0.0.1',0),Handler);url=f'http://127.0.0.1:{{server.server_port}}/';threading.Timer(.35,lambda:webbrowser.open(url)).start();server.serve_forever()
+ parser=argparse.ArgumentParser();parser.add_argument('--check-file');args=parser.parse_args()
+ if args.check_file:
+  Path(args.check_file).write_text(json.dumps(status(),sort_keys=True),encoding='utf-8')
+ else:
+  server=ThreadingHTTPServer(('127.0.0.1',0),Handler);url=f'http://127.0.0.1:{{server.server_port}}/';threading.Timer(.35,lambda:webbrowser.open(url)).start();server.serve_forever()
 '''
 
 
@@ -258,7 +272,7 @@ class Handler(BaseHTTPRequestHandler):
  def out(self,status,value):
   raw=json.dumps(value,separators=(',',':')).encode();self.send_response(status);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw)
  def do_GET(self):
-  if self.path=='/health': return self.out(200,{{'ok':True,'product_id':MANIFEST.get('product_id'),'version':MANIFEST.get('version')}})
+  if self.path=='/health': return self.out(200,{{'ok':True,'product_id':MANIFEST.get('product_id'),'version':MANIFEST.get('version'),'owner_source_bundled':False,'credentials_bundled':False}})
   if self.path=='/product': return self.out(200,MANIFEST)
   return self.out(404,{{'error':'not_found'}})
  def do_POST(self): return self.out(501,{{'error':'runtime_connector_required'}})
