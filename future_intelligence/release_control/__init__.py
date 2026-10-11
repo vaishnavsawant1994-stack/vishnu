@@ -14,6 +14,7 @@ from .contracts import (
     ReleaseStatus,
 )
 from .controller import GovernedReleaseController, ReleaseControlError
+from .feedback import RegressionAwareProductionSmokeProvider
 from .monitoring import ProductionReleaseMonitor, ReleaseMonitorResult
 from .policy import ReleaseAutonomyMode, ReleaseOwnerPolicy
 from .policy_store import ReleasePolicyStore
@@ -28,6 +29,7 @@ __all__ = [
     "GovernedReleaseController",
     "JsonReleaseStore",
     "ProductionReleaseMonitor",
+    "RegressionAwareProductionSmokeProvider",
     "ReleaseAutonomyMode",
     "ReleaseAutomationService",
     "ReleaseControlError",
