@@ -5,12 +5,14 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import uuid4
+import zipfile
 
 from evidence.migrations import EVIDENCE_SCHEMA_VERSION
 from evolution.migrations import EVOLUTION_SCHEMA_VERSION
 from future_intelligence.work_orchestration.durability_migrations import WORK_DURABILITY_SCHEMA_VERSION
 from identity.migrations import IDENTITY_SCHEMA_VERSION
 from identity.store import IdentityStore
+from models.portable_intelligence import IntelligenceManifest
 from recovery.backup import BackupService
 
 from .authority import HostContinuationAuthority
@@ -30,6 +32,44 @@ def _sha256(path: Path) -> str:
 def _manifest_hash(manifest: dict) -> str:
     raw = json.dumps(manifest, sort_keys=True, separators=(",", ":"), default=str)
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _snapshot_intelligence_manifest(payload: Path) -> IntelligenceManifest | None:
+    """Read the active intelligence manifest from the already-authenticated snapshot.
+
+    Binding the checkpoint to the snapshot rather than to the live data directory
+    prevents a concurrent manifest activation from creating a checkpoint that
+    describes state different from the bytes actually being transported.
+    """
+
+    active_name = "intelligence/active-manifest.json"
+    with zipfile.ZipFile(payload) as archive:
+        names = set(archive.namelist())
+        if active_name not in names:
+            return None
+        try:
+            pointer = json.loads(archive.read(active_name))
+        except Exception as exc:
+            raise ValueError("snapshot active intelligence manifest pointer is unreadable") from exc
+        if not isinstance(pointer, dict):
+            raise ValueError("snapshot active intelligence manifest pointer must be an object")
+        manifest_id = str(pointer.get("manifest_id") or "")
+        fingerprint = str(pointer.get("fingerprint") or "").lower()
+        if not manifest_id:
+            raise ValueError("snapshot active intelligence manifest id is missing")
+        manifest_name = f"intelligence/manifests/{manifest_id}.json"
+        if manifest_name not in names:
+            raise ValueError("snapshot active intelligence manifest is missing")
+        try:
+            manifest_payload = json.loads(archive.read(manifest_name))
+        except Exception as exc:
+            raise ValueError("snapshot active intelligence manifest is unreadable") from exc
+        if not isinstance(manifest_payload, dict):
+            raise ValueError("snapshot active intelligence manifest must be an object")
+        manifest = IntelligenceManifest.from_dict(manifest_payload)
+        if manifest.manifest_id != manifest_id or manifest.fingerprint != fingerprint:
+            raise RuntimeError("snapshot active intelligence manifest pointer mismatch")
+        return manifest
 
 
 @dataclass(frozen=True)
@@ -80,6 +120,7 @@ class ContinuityCheckpointService:
         payload = self.backups._decrypt_payload(backup)
         try:
             payload_sha = _sha256(payload)
+            intelligence_manifest = _snapshot_intelligence_manifest(payload)
         finally:
             payload.unlink(missing_ok=True)
 
@@ -96,6 +137,10 @@ class ContinuityCheckpointService:
             data_manifest_hash=_manifest_hash(manifest),
             active_body_revision_id=(str(active_body["revision_id"]) if active_body else None),
             active_body_git_revision=self.running_git_revision,
+            intelligence_manifest_id=(intelligence_manifest.manifest_id if intelligence_manifest else ""),
+            intelligence_manifest_fingerprint=(
+                intelligence_manifest.fingerprint if intelligence_manifest else ""
+            ),
             schema_versions=self.supported_schema_versions(),
             state_summary={
                 "file_count": len(files),
@@ -103,6 +148,7 @@ class ContinuityCheckpointService:
                 "backup_encrypted": bool(manifest.get("encrypted")),
                 "credentials_rebind_required": True,
                 "security_authority_restored": False,
+                "intelligence_manifest_bound": intelligence_manifest is not None,
             },
         )
         self.store.record_checkpoint(checkpoint)
@@ -126,6 +172,18 @@ class ContinuityCheckpointService:
         try:
             if _sha256(payload) != checkpoint.payload_sha256:
                 raise ValueError("checkpoint portable payload digest mismatch")
+            snapshot_manifest = _snapshot_intelligence_manifest(payload)
+            binding = checkpoint.intelligence_binding()
+            if not binding:
+                if snapshot_manifest is not None:
+                    raise ValueError("checkpoint is missing snapshot intelligence manifest binding")
+            elif snapshot_manifest is None:
+                raise ValueError("checkpoint-bound intelligence manifest is missing from snapshot")
+            elif (
+                snapshot_manifest.manifest_id != checkpoint.intelligence_manifest_id
+                or snapshot_manifest.fingerprint != checkpoint.intelligence_manifest_fingerprint
+            ):
+                raise ValueError("checkpoint intelligence manifest does not match snapshot")
         finally:
             payload.unlink(missing_ok=True)
         return manifest

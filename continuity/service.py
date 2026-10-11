@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from models.portable_intelligence import FilesystemIntelligenceManifestStore
 from recovery.backup import BackupService
 
 from .authority import HostContinuationAuthority
@@ -229,6 +230,24 @@ class AgentContinuityService:
         if str(row["status"]) != "active":
             raise RuntimeError("checkpoint Body revision is not active after restore")
 
+    @staticmethod
+    def _verify_restored_intelligence(data_dir: Path, checkpoint: ContinuityCheckpoint) -> None:
+        binding = checkpoint.intelligence_binding()
+        if not binding:
+            return
+        active_path = data_dir / "intelligence" / "active-manifest.json"
+        if not active_path.is_file() or active_path.is_symlink():
+            raise RuntimeError("restored active intelligence manifest is missing")
+        store = FilesystemIntelligenceManifestStore(data_dir)
+        active = store.active()
+        if active is None:
+            raise RuntimeError("restored active intelligence manifest is missing")
+        if (
+            active.manifest_id != checkpoint.intelligence_manifest_id
+            or active.fingerprint != checkpoint.intelligence_manifest_fingerprint
+        ):
+            raise RuntimeError("restored intelligence manifest does not match checkpoint")
+
     def import_bundle(self, *, bundle_path: str | Path, transfer_token: str) -> dict:
         if not self.maintenance_mode:
             raise ContinuityAuthorityError(
@@ -271,6 +290,7 @@ class AgentContinuityService:
             claimed_grant_id = grant.id
             try:
                 restore = self.backups.restore(rewrapped)
+                self._verify_restored_intelligence(self.backups.data_dir, checkpoint)
 
                 # The source snapshot intentionally predates checkpoint/grant rows
                 # to avoid circular checkpoint hashes. Recreate those records from
