@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
 from .contracts import EngineeringSpec, QualificationReport, SecurityClass
+from .model_json import governed_engineering_json
 
 
 @dataclass(frozen=True)
@@ -43,13 +44,14 @@ class ModelEngineeringReviewer:
             if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}
             else "internal"
         )
-        payload = self.models.json(
-            f"EngineeringSpec={spec.to_dict()}\nQualification={report.to_dict()}\nDiff={diff[:120000]}\nEvidence={dict(evidence)}",
+        payload = governed_engineering_json(
+            self.models,
+            spec=spec,
+            prompt=f"EngineeringSpec={spec.to_dict()}\nQualification={report.to_dict()}\nDiff={diff[:120000]}\nEvidence={dict(evidence)}",
             system=system,
+            role=self.reviewer_name,
             sensitivity=sensitivity,
         )
-        if not isinstance(payload, Mapping):
-            raise ValueError("review model did not return an object")
         decision = str(payload.get("decision") or "rejected").lower()
         findings = payload.get("findings") or ()
         if not isinstance(findings, (list, tuple)):
