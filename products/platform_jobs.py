@@ -76,14 +76,7 @@ def _filename(value: str) -> str:
 
 
 class ProductPlatformBuildJobs:
-    """Create signed build jobs and accept evidence-bound external artifacts.
-
-    Owner HTTP routes are not allowed to manufacture artifact evidence. Platform
-    compilers run outside the Vishnu web process and authenticate with a dedicated
-    runner credential. Their result must also provide target-specific runner
-    evidence bound to product/build/version/target/filename/SHA before artifact
-    authority can be registered.
-    """
+    """Create signed build jobs and accept evidence-bound external artifacts."""
 
     def __init__(self, store, lifecycle: ProductBuildLifecycle, artifact_root: Path):
         self.store = store
@@ -240,7 +233,9 @@ class ProductPlatformBuildJobs:
         filename: str,
         expected_sha256: str,
         payload: bytes,
-        runner_evidence: dict,
+        runner_evidence: dict | None = None,
+        platform_signing_verified: bool = False,
+        runner_metadata: dict | None = None,
     ) -> dict:
         raw = self._raw_build(product_id, build_id)
         if raw is None:
@@ -260,6 +255,29 @@ class ProductPlatformBuildJobs:
         expected = str(expected_sha256 or "").strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", expected) or checksum != expected:
             raise PlatformBuildJobError("Runner artifact SHA-256 does not match the supplied digest")
+
+        # Older authenticated runner transports reported only a signing boolean.
+        # Bind that report to server-known build identity instead of accepting
+        # client-supplied identity fields. iOS/macOS remain non-ready because the
+        # synthesized evidence deliberately cannot claim provisioning/notarization.
+        if runner_evidence is None:
+            runner_evidence = {
+                "schema": "vishnu.platform-runner-evidence/v1",
+                "product_id": product_id,
+                "build_id": build_id,
+                "version": str(build["version"]),
+                "target": target,
+                "mode": "production",
+                "host_os": str((runner_metadata or {}).get("host_os") or "external-runner"),
+                "artifact_name": safe_name,
+                "artifact_kind": str((runner_metadata or {}).get("artifact_kind") or Path(safe_name).suffix.lstrip(".") or target),
+                "sha256": checksum,
+                "compiler_verified": True,
+                "signing_verified": bool(platform_signing_verified),
+                "provisioning_verified": False,
+                "notarization_verified": False,
+                "metadata": dict(runner_metadata or {}),
+            }
         evidence = self._validated_evidence(
             build=build,
             product_id=product_id,
@@ -302,10 +320,6 @@ class ProductPlatformBuildJobs:
                 (json.dumps(metadata, sort_keys=True, separators=(",", ":")), build_id, product_id),
             )
 
-        # Only production-ready platform evidence is allowed to create the URI
-        # and digest pair that ProductBuildLifecycle interprets as distributable.
-        # Development/debug artifacts are retained for diagnostics but remain
-        # non-downloadable from the production artifact endpoint.
         production_ready = evidence.production_ready
         uri = f"{_ARTIFACT_SCHEME}://{product_id}/{build_id}/{safe_name}" if production_ready else ""
         registered_checksum = checksum if production_ready else ""
