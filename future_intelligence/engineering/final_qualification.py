@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable, Mapping
 
 from future_intelligence.work_orchestration.attempts import WorkAttemptStatus
@@ -75,6 +75,27 @@ class EngineeringCandidateFinalizer:
             "findings": [str(item)[:2000] for item in findings],
         }
 
+    @staticmethod
+    def _with_attempt_requirements(spec: EngineeringSpec, attempt_metadata: Mapping[str, object]) -> EngineeringSpec:
+        """Strengthen final qualification from durable execution facts only.
+
+        A repair cycle means Vishnu encountered a reproducible verification
+        defect and changed the candidate again. Regardless of whether the
+        original WorkOrder was labelled as a bug, that candidate must carry a
+        permanent regression-test gate before independent final review.
+        """
+        raw_cycles = attempt_metadata.get("repair_cycles", 0)
+        try:
+            repair_cycles = max(0, int(raw_cycles or 0))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("engineering attempt repair cycle metadata is malformed") from exc
+        if repair_cycles <= 0:
+            return spec
+        metadata = dict(spec.metadata)
+        metadata["repair_cycles"] = repair_cycles
+        metadata["regression_test_required"] = True
+        return replace(spec, metadata=metadata)
+
     def _workspace_and_spec(self, work_order_id: str, attempt_id: str):
         attempt = self.runtime.work_store.get_attempt(str(attempt_id))
         if attempt is None or attempt.work_order_id != str(work_order_id):
@@ -90,6 +111,7 @@ class EngineeringCandidateFinalizer:
         spec = EngineeringSpec.from_dict(raw_spec)
         if spec.work_order_id != str(work_order_id) or spec.attempt_id != str(attempt_id):
             raise RuntimeError("persisted EngineeringSpec does not match candidate identity")
+        spec = self._with_attempt_requirements(spec, attempt.metadata)
         candidate_revision = str(workspace.working_revision or attempt.metadata.get("candidate_revision") or "").strip()
         if not candidate_revision:
             raise RuntimeError("engineering candidate has no committed revision")
