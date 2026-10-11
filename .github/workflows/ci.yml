@@ -72,4 +72,6 @@ jobs:
         run: pytest -q tests/test_e9_convergence.py tests/conformance
       - name: Canonical Work release qualification gate
         run: pytest -q tests/test_work_release_qualification.py tests/test_work_final_qualification.py
+      - name: Governed release and production autonomy gate
+        run: pytest -q tests/test_release_control.py tests/test_owner_release_api.py
       - run: pytest -q
