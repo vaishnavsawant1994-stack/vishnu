@@ -55,6 +55,10 @@ def spec(*, surfaces=("pwa/home",), security_class=SecurityClass.ORDINARY):
         objective="Release a qualified candidate",
         affected_surfaces=tuple(surfaces),
         security_class=security_class,
+        # Preserve the engineering authority boundary in the fixture itself.
+        # Release-control tests must never bypass the contract that an
+        # authority-class EngineeringSpec needs explicit authority-path scope.
+        allow_authority_paths=security_class is SecurityClass.AUTHORITY,
     )
 
 
