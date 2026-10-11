@@ -13,14 +13,14 @@ ENTRY_SCRIPTS = (
 
 
 def agent_workforce_assets_router(settings) -> APIRouter:
-    """Serve the approved PWA shell entries without replacing canonical PWA routes.
+    """Serve approved isolated workspace assets without replacing canonical PWA routes.
 
     The root shell is served here only to inject isolated navigation scripts;
     every other existing Vishnu PWA asset/API remains owned by its original
     router. No generic filesystem route is exposed.
     """
 
-    router = APIRouter(prefix="/iphone", tags=["agent-workforce-assets"])
+    router = APIRouter(prefix="/iphone", tags=["workspace-assets"])
     web_dir = Path(settings.base_dir) / "pwa"
 
     def read(name: str) -> str:
@@ -44,34 +44,34 @@ def agent_workforce_assets_router(settings) -> APIRouter:
 
     @router.get("/agents-workforce.css", include_in_schema=False)
     def agents_styles():
-        return Response(
-            read("agents-workforce.css"),
-            media_type="text/css",
-            headers={"Cache-Control": "no-cache"},
-        )
+        return Response(read("agents-workforce.css"), media_type="text/css", headers={"Cache-Control": "no-cache"})
 
     @router.get("/agents-workforce.js", include_in_schema=False)
     def agents_script():
-        return Response(
-            read("agents-workforce.js"),
-            media_type="application/javascript",
-            headers={"Cache-Control": "no-cache"},
-        )
+        return Response(read("agents-workforce.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
     @router.get("/agents-workforce-work-mode.js", include_in_schema=False)
     def agents_work_mode_script():
-        return Response(
-            read("agents-workforce-work-mode.js"),
-            media_type="application/javascript",
-            headers={"Cache-Control": "no-cache"},
-        )
+        return Response(read("agents-workforce-work-mode.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
     @router.get("/agent-workforce-entry.js", include_in_schema=False)
     def agents_entry_script():
-        return Response(
-            read("agent-workforce-entry.js"),
-            media_type="application/javascript",
-            headers={"Cache-Control": "no-cache"},
-        )
+        return Response(read("agent-workforce-entry.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+    @router.get("/our-products.html", response_class=HTMLResponse, include_in_schema=False)
+    def products_page():
+        return HTMLResponse(read("our-products.html"), headers={"Cache-Control": "no-store"})
+
+    @router.get("/our-products.css", include_in_schema=False)
+    def products_styles():
+        return Response(read("our-products.css"), media_type="text/css", headers={"Cache-Control": "no-cache"})
+
+    @router.get("/our-products.js", include_in_schema=False)
+    def products_script():
+        return Response(read("our-products.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
+
+    @router.get("/our-products-entry.js", include_in_schema=False)
+    def products_entry_script():
+        return Response(read("our-products-entry.js"), media_type="application/javascript", headers={"Cache-Control": "no-cache"})
 
     return router
