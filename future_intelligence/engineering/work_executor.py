@@ -5,10 +5,10 @@ from typing import Any, Mapping
 
 from future_intelligence.work_orchestration.attempts import WorkAttemptStatus
 from future_intelligence.work_orchestration.failure_policy import FailureClass, WorkFailure
+from future_intelligence.work_orchestration.recovery import RecoveryReason
 from security.projection_redaction import sanitize_sensitive_text
 
 from .change_planner import EngineeringEditPlan, ModelEngineeringChangePlanner
-from .qualification import VerificationObservation
 from .reviewer_adapter import EngineeringReviewDecision, ModelEngineeringReviewer
 from .verification import observations_from_verification_report
 
@@ -85,9 +85,7 @@ class EngineeringWorkExecutor:
             if check.passed:
                 continue
             excerpt = sanitize_sensitive_text(str(check.output_excerpt or ""))[:4000]
-            defects.append(
-                f"{check.name}: returncode={check.returncode}; output={excerpt}"
-            )
+            defects.append(f"{check.name}: returncode={check.returncode}; output={excerpt}")
         return tuple(defects)
 
     def _apply_plan(self, coordinator, plan: EngineeringEditPlan) -> tuple[str, ...]:
@@ -102,9 +100,7 @@ class EngineeringWorkExecutor:
                     work_order_id, attempt_id, "create", {"path": edit.path, "content": edit.content}
                 )
             else:
-                current = self.runtime.execute(
-                    work_order_id, attempt_id, "read", {"path": edit.path}
-                )
+                current = self.runtime.execute(work_order_id, attempt_id, "read", {"path": edit.path})
                 digest = str(current["sha256"])
                 if edit.operation == "replace_exact":
                     result = self.runtime.execute(
@@ -216,11 +212,7 @@ class EngineeringWorkExecutor:
                 coordinator, message=f"Vishnu engineering candidate: {spec.objective[:120]}"
             )
             repairs = 0
-            while (
-                verification is not None
-                and not verification.passed
-                and repairs < spec.budget.max_repair_cycles
-            ):
+            while verification is not None and not verification.passed and repairs < spec.budget.max_repair_cycles:
                 repairs += 1
                 current_context = coordinator.inspect()
                 defects = self._verification_defects(verification)
@@ -232,41 +224,36 @@ class EngineeringWorkExecutor:
                     cycle=repairs,
                 )
                 coordinator.evidence.append(
-                    "engineering.repair_plan",
-                    {"cycle": repairs, **repair_plan.to_dict()},
+                    "engineering.repair_plan", {"cycle": repairs, **repair_plan.to_dict()}
                 )
                 self._apply_plan(coordinator, repair_plan)
                 revision, verification, observations = self._commit_and_verify(
-                    coordinator,
-                    message=f"Vishnu engineering repair {repairs}: {spec.objective[:100]}",
+                    coordinator, message=f"Vishnu engineering repair {repairs}: {spec.objective[:100]}"
                 )
 
             if verification is not None and not verification.passed:
-                coordinator.evidence.append(
-                    "engineering.execution_failed",
-                    {
-                        "revision": revision,
-                        "repair_cycles": repairs,
-                        "reason": "local_verification_failed",
-                    },
-                )
-                self._finish_attempt(
-                    coordinator,
-                    succeeded=False,
-                    metadata={"candidate_revision": revision, "repair_cycles": repairs},
-                )
+                failed_context = coordinator.inspect()
                 preliminary = coordinator.finalize(
                     candidate_revision=revision,
                     observations=observations,
                     review_decision="pending",
                     limitations=("local verification failed",),
                 )
+                coordinator.evidence.append(
+                    "engineering.execution_failed",
+                    {"revision": revision, "repair_cycles": repairs, "reason": "local_verification_failed"},
+                )
+                self._finish_attempt(
+                    coordinator,
+                    succeeded=False,
+                    metadata={"candidate_revision": revision, "repair_cycles": repairs},
+                )
                 return EngineeringExecutionResult(
                     work_order_id=work_order_id,
                     attempt_id=spec.attempt_id,
                     spec_id=spec.id,
                     candidate_revision=revision,
-                    changed_paths=coordinator.inspect().changed_paths,
+                    changed_paths=failed_context.changed_paths,
                     verification_passed=False,
                     repair_cycles=repairs,
                     qualification=preliminary.to_dict(),
@@ -344,5 +331,9 @@ class EngineeringWorkExecutor:
                         max_attempts=max_attempts,
                     )
                 except Exception:
-                    self.runtime.work_store.mark_recovery_required(spec.work_order_id, attempt_id=spec.attempt_id, reason="unknown_effect")
+                    self.runtime.work_store.mark_recovery_required(
+                        spec.work_order_id,
+                        attempt_id=spec.attempt_id,
+                        reason=RecoveryReason.UNKNOWN_EFFECT,
+                    )
             raise
