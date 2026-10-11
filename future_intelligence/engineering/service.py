@@ -48,8 +48,38 @@ class EngineeringCandidateCoordinator:
         self.qualification = qualification or EngineeringQualification()
         self.evidence = EngineeringEvidenceLedger(evidence_root, work_order_id=spec.work_order_id, attempt_id=spec.attempt_id)
 
+    @staticmethod
+    def _dirty_paths(changes: Iterable[str]) -> tuple[str, ...]:
+        """Best-effort extraction of safe paths from Git porcelain status lines.
+
+        The authoritative mutation list remains the governed editor's evidence.
+        This fallback exists so inspection still surfaces pre-existing dirty work
+        without changing repository authority or invoking shell parsing.
+        """
+        paths: list[str] = []
+        for raw in changes:
+            value = str(raw or "")
+            payload = value[3:].strip() if len(value) >= 4 else value.strip()
+            candidates = payload.split(" -> ", 1) if " -> " in payload else (payload,)
+            for candidate in candidates:
+                path = candidate.strip().strip('"').replace("\\", "/")
+                if path and path not in paths:
+                    paths.append(path)
+        return tuple(paths)
+
+    def _workspace_changed_paths(self) -> tuple[str, ...]:
+        status = self.provider.status(self.session)
+        committed = self.provider.changed_paths(
+            base_revision=self.session.base_revision,
+            working_revision=status.revision,
+        )
+        dirty = self.editor.mutated_paths
+        if status.dirty:
+            dirty = tuple(dict.fromkeys((*dirty, *self._dirty_paths(status.changes))))
+        return tuple(dict.fromkeys((*committed, *dirty)))
+
     def inspect(self, *, changed_paths: Iterable[str] | None = None) -> EngineeringContext:
-        current_paths = tuple(changed_paths or self.provider.changed_paths(self.session))
+        current_paths = tuple(changed_paths) if changed_paths is not None else self._workspace_changed_paths()
         graph = self.graph_builder.build(self.session.local_path, revision=self.spec.base_revision, include_paths=self.spec.allowed_paths)
         impact = self.impact_analyzer.analyze(graph, current_paths)
         context = EngineeringContext(self.spec, graph, impact, current_paths)
