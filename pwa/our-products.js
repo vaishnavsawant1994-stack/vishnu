@@ -4,7 +4,8 @@
   const $$=selector=>[...document.querySelectorAll(selector)];
   const state={products:[],summary:{},activity:[],type:'all',sort:'recent',query:'',detail:null,detailTab:'overview'};
   const labels={ai_employee:'AI Employee',agent:'Agent',agent_team:'Agent Team',automation:'Automation',workflow:'Workflow',tool:'Tool',knowledge_assistant:'Knowledge Assistant',integration:'Integration',business_system:'Business System',custom:'Custom Product'};
-  const platformLabels={web:'Web',pwa:'PWA',android:'Android',ios:'iOS',windows:'Windows',macos:'Mac',linux:'Linux',docker:'Server',api:'API'};
+  const platformLabels={web:'Web',pwa:'PWA',android:'Android',ios:'iOS',windows:'Windows',macos:'Mac',linux:'Linux',docker:'Server',api:'API',worker:'Worker'};
+  const localBuildTargets=new Set(['web','pwa','api','worker']);
   const aiLabels={disabled:'AI: Disabled',client_api:'AI: Client-owned',managed:'AI: Our Managed AI',local:'AI: Local / self-hosted',hybrid:'AI: Hybrid'};
   const icons={ai_employee:'♙',agent:'◇',agent_team:'♙',automation:'⚙',workflow:'⌁',tool:'⌘',knowledge_assistant:'▤',integration:'↔',business_system:'▦',custom:'⬡'};
   const esc=value=>String(value??'').replace(/[&<>'"]/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[char]));
@@ -102,7 +103,7 @@
 
   function renderPlatforms(product){
     const enabled=new Set((product.targets||[]).filter(item=>item.enabled).map(item=>item.target));
-    return `<div class="detail-section"><p class="muted">Choose where this product is intended to run. A selected target does not claim a signed binary exists; build adapters and signing must qualify the artifact.</p><div class="platform-list">${Object.entries(platformLabels).map(([value,label])=>`<label class="platform-toggle"><input type="checkbox" data-platform="${value}" ${enabled.has(value)?'checked':''}><span><b>${esc(label)}</b></span></label>`).join('')}</div><button class="button primary" id="savePlatforms">Save platforms</button></div>`;
+    return `<div class="detail-section"><p class="muted">Choose where this product is intended to run. Web, PWA, API and Worker have verified runtime-bundle builders. Native mobile/desktop selections do not claim a signed binary exists until their platform runner and signing flow qualify it.</p><div class="platform-list">${Object.entries(platformLabels).map(([value,label])=>`<label class="platform-toggle"><input type="checkbox" data-platform="${value}" ${enabled.has(value)?'checked':''}><span><b>${esc(label)}</b></span></label>`).join('')}</div><button class="button primary" id="savePlatforms">Save platforms</button></div>`;
   }
 
   function renderComponents(components){
@@ -112,7 +113,17 @@
 
   function renderBuild(product,builds){
     const targets=(product.targets||[]).filter(item=>item.enabled);
-    return `<div class="detail-section"><div class="warning">Build requests are governed records. Until a target-specific builder and signing flow completes, Vishnu will not label an APK, IPA, EXE or other native artifact as ready.</div>${targets.length?targets.map(item=>`<div class="build-row"><div><b>${esc(platformLabels[item.target]||item.target)}</b><div class="muted">Target enabled for version ${esc(product.version)}</div></div><button class="button primary" data-build-target="${esc(item.target)}">Request build</button></div>`).join(''):'<p class="muted">Enable at least one platform first.</p>'}<h3>Build history</h3>${builds.length?builds.map(build=>`<div class="build-row"><div><b>${esc(platformLabels[build.target]||build.target)} · ${esc(build.version)}</b><div class="muted">${esc(statusLabel(build.status))} · ${esc(timeAgo(build.created_at))}</div></div><span class="status ${esc(build.status)}">${build.metadata?.artifact_ready?'Artifact ready':'No artifact yet'}</span></div>`).join(''):'<p class="muted">No builds requested yet.</p>'}</div>`;
+    const targetRows=targets.map(item=>{
+      const local=localBuildTargets.has(item.target);const action=local?'Generate verified bundle':'Request platform build';
+      const detail=local?'Local builder available · frozen version required':`External ${platformLabels[item.target]||item.target} compiler/signing evidence required`;
+      return `<div class="build-row"><div><b>${esc(platformLabels[item.target]||item.target)}</b><div class="muted">${esc(detail)}</div></div><button class="button primary" data-build-target="${esc(item.target)}">${esc(action)}</button></div>`;
+    }).join('');
+    const history=builds.map(build=>{
+      const ready=Boolean(build.metadata?.artifact_ready);const local=localBuildTargets.has(build.target);
+      const actions=ready?`<button class="button secondary" data-download-build="${esc(build.id)}">Download</button>`:(local&&['failed','cancelled'].includes(build.status)?`<button class="button secondary" data-retry-build="${esc(build.id)}">Retry</button>`:`<span class="status ${esc(build.status)}">${esc(statusLabel(build.status))}</span>`);
+      return `<div class="build-row"><div><b>Build #${Number(build.build_number||0)} · ${esc(platformLabels[build.target]||build.target)} · ${esc(build.version)}</b><div class="muted">${ready?'Verified artifact generated':`${esc(statusLabel(build.status))} · ${esc(timeAgo(build.created_at))}`}</div></div>${actions}</div>`;
+    }).join('');
+    return `<div class="detail-section"><div class="warning">Web/PWA/API/Worker builders generate bounded client bundles from frozen manifests and verify their checksum before marking the file downloadable. APK, IPA, EXE, MSI, DMG and other native artifacts remain unavailable until a platform-specific compiler and signing runner supplies verified evidence.</div>${targets.length?targetRows:'<p class="muted">Enable at least one platform first.</p>'}<h3>Build history</h3>${builds.length?history:'<p class="muted">No builds requested yet.</p>'}</div>`;
   }
 
   async function renderManifest(product){
@@ -176,8 +187,21 @@
         await api(`/${encodeURIComponent(id)}/components`,{method:'POST',body:JSON.stringify({component_type:$('#componentType').value.trim()||'custom',name,component_ref:$('#componentRef').value.trim()||null,config:{}})});notice('Component added.');await refreshDetail(id,'components');await load();
       }else if(event.target.dataset.removeComponent){
         await api(`/${encodeURIComponent(id)}/components/${encodeURIComponent(event.target.dataset.removeComponent)}`,{method:'DELETE'});notice('Component removed.');await refreshDetail(id,'components');await load();
+      }else if(event.target.dataset.downloadBuild){
+        window.location.assign(`/iphone/api/products/${encodeURIComponent(id)}/builds/${encodeURIComponent(event.target.dataset.downloadBuild)}/artifact`);
+      }else if(event.target.dataset.retryBuild){
+        const buildId=event.target.dataset.retryBuild;await api(`/${encodeURIComponent(id)}/builds/${encodeURIComponent(buildId)}/execute`,{method:'POST'});notice('Verified runtime bundle generated.');await refreshDetail(id,'build');await load();
       }else if(event.target.dataset.buildTarget){
-        const target=event.target.dataset.buildTarget;await api(`/${encodeURIComponent(id)}/builds`,{method:'POST',body:JSON.stringify({target})});notice(`Build request recorded for ${platformLabels[target]||target}.`);await refreshDetail(id,'build');await load();
+        const target=event.target.dataset.buildTarget;
+        if(localBuildTargets.has(target)){
+          const distribution=await api(`/${encodeURIComponent(id)}/distribution/status`);
+          if(!distribution.current_version_frozen)throw new Error(`Freeze version ${state.detail.product.version} in Manifest before generating a verified bundle.`);
+        }
+        const requested=await api(`/${encodeURIComponent(id)}/builds`,{method:'POST',body:JSON.stringify({target})});
+        if(localBuildTargets.has(target)){
+          await api(`/${encodeURIComponent(id)}/builds/${encodeURIComponent(requested.build.id)}/execute`,{method:'POST'});notice(`Verified ${platformLabels[target]||target} bundle generated.`);
+        }else notice(`Build request recorded for ${platformLabels[target]||target}; waiting for a verified platform runner.`);
+        await refreshDetail(id,'build');await load();
       }else if(event.target.id==='freezeVersion'){
         await api(`/${encodeURIComponent(id)}/versions`,{method:'POST',body:JSON.stringify({version:state.detail.product.version,notes:'Frozen from Our Products workspace'})});notice(`Version ${state.detail.product.version} frozen.`);await refreshDetail(id,'manifest');
       }
