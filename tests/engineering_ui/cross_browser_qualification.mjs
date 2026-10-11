@@ -12,8 +12,29 @@ for (const [name, engine] of Object.entries(engines)) {
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
+  const unexpectedResponses = [];
+  let expectedSignedOutStatusResponses = 0;
   page.on("pageerror", error => pageErrors.push(error.message));
-  page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("response", response => {
+    if (response.status() < 400) return;
+    const path = new URL(response.url()).pathname;
+    if (response.status() === 401 && path.endsWith("/iphone/api/status")) {
+      expectedSignedOutStatusResponses += 1;
+      return;
+    }
+    unexpectedResponses.push(`${response.status()} ${path}`);
+  });
+  page.on("console", message => {
+    if (message.type() !== "error") return;
+    const text = message.text();
+    // Chromium/WebKit surface an intentionally mocked signed-out 401 as a
+    // generic console resource error. HTTP failures are independently tracked
+    // above, so this generic browser diagnostic may be ignored only when the
+    // exact expected /iphone/api/status 401 was actually observed. Arbitrary
+    // 4xx/5xx responses remain blocking via unexpectedResponses.
+    if (text.includes("Failed to load resource") && text.includes("401") && expectedSignedOutStatusResponses > 0) return;
+    consoleErrors.push(text);
+  });
   await page.route("https://accounts.google.com/**", route => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
   await page.route("**/iphone/api/**", route => {
     const path = new URL(route.request().url()).pathname;
@@ -42,6 +63,8 @@ for (const [name, engine] of Object.entries(engines)) {
     await page.locator("#historyButton").focus();
     await page.keyboard.press("Tab");
     assert.notEqual(await page.evaluate(() => document.activeElement?.id), "historyButton", `${name} keyboard focus must advance`);
+    assert.ok(expectedSignedOutStatusResponses > 0, `${name} must exercise the signed-out 401 status transition`);
+    assert.deepEqual(unexpectedResponses, [], `${name} has unexpected HTTP failures: ${JSON.stringify(unexpectedResponses)}`);
     assert.deepEqual(pageErrors, [], `${name} has uncaught page errors: ${JSON.stringify(pageErrors)}`);
     assert.deepEqual(consoleErrors, [], `${name} has console errors: ${JSON.stringify(consoleErrors)}`);
     console.log(`${name} engineering UI qualification passed at ${widths.join(", ")}px.`);
