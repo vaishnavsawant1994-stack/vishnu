@@ -1,0 +1,66 @@
+name: Our Products Windows Runner
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "products/platform_jobs.py"
+      - "products/platform_runners.py"
+      - "products/runner_leases.py"
+      - "packaging/create_product_platform_job.py"
+      - "packaging/product_desktop_container_runner.py"
+      - "server/product_runner_queue_api.py"
+      - "tests/test_product_runner_leases.py"
+      - "tests/test_product_platform_callback_authority.py"
+      - ".github/workflows/product-windows-runner.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-product-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Create isolated Windows development build job
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path .runner-windows/output | Out-Null
+          python packaging/create_product_platform_job.py --target windows --workspace .runner-windows/state --output .runner-windows/windows.vishnu-build-job | Tee-Object -FilePath .runner-windows/job.log
+      - name: Compile real Windows EXE product
+        shell: pwsh
+        run: |
+          python packaging/product_desktop_container_runner.py .runner-windows/windows.vishnu-build-job --output .runner-windows/output --allow-unsigned-job | Tee-Object -FilePath .runner-windows/runner.log
+          Get-Content .runner-windows/runner.log | Select-Object -Last 1 | Set-Content .runner-windows/result.json
+          python -m json.tool .runner-windows/result.json
+      - name: Verify Windows executable and runner evidence
+        shell: pwsh
+        run: |
+          @'
+          import hashlib,json
+          from pathlib import Path
+          result=json.loads(Path('.runner-windows/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file(), artifact
+          assert artifact.suffix.lower()=='.exe', artifact
+          assert result['evidence']['target']=='windows'
+          assert result['evidence']['mode']=='development'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['signing_verified'] is False
+          assert result['evidence']['sha256']==result['sha256']
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          assert artifact.stat().st_size > 100000
+          print(artifact)
+          '@ | python -
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-windows-exe-qualification
+          path: |
+            .runner-windows/output/*.exe
+            .runner-windows/result.json
+          if-no-files-found: error
