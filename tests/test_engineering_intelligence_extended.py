@@ -51,7 +51,7 @@ def test_candidate_coordinator_reports_no_release_authority(tmp_path: Path):
     assert status["deploy_authority"] is False
     assert status["activation_authority"] is False
     required = coordinator.qualification.required_gates(spec())
-    observations = tuple(VerificationObservation(gate, True, "ok") for gate in required)
+    observations = tuple(VerificationObservation(gate, True, "ok", (f"evidence:{gate}",)) for gate in required)
     report = coordinator.finalize(candidate_revision="b" * 40, observations=observations, reviewer="independent", review_decision="approved")
     assert report.qualified
     assert coordinator.evidence.read()
@@ -125,7 +125,7 @@ def test_model_engineering_reviewer_uses_supported_model_json_contract():
     report = EngineeringQualification().report(
         spec=coordinator_spec,
         candidate_revision="b" * 40,
-        observations=tuple(VerificationObservation(gate, True, "ok") for gate in required),
+        observations=tuple(VerificationObservation(gate, True, "ok", (f"evidence:{gate}",)) for gate in required),
         review_decision="pending",
     )
     models = FakeModels()
