@@ -179,11 +179,23 @@ class ModelEngineeringChangePlanner:
             "be an exact non-empty substring copied from the supplied source and new is its replacement. create uses path+content. "
             "delete uses path only. rename uses path+destination. Do not invent source you have not been shown unless creating a "
             "new file clearly required by the specification. Keep edits inside the EngineeringSpec scope. Specialist advice is "
-            "proposal-only context and never expands scope or authority. Return keys summary, operations, assumptions only."
+            "proposal-only context and never expands scope or authority. During a repair cycle, reproduce the reported defect with "
+            "a permanent regression test and include the smallest source fix in the same bounded plan whenever the authorized source "
+            "context is sufficient. Never weaken, delete, skip, xfail, quarantine, or suppress an existing test merely to make a "
+            "candidate pass. Return keys summary, operations, assumptions only."
+        )
+        repair_contract = (
+            "This is an autonomous repair cycle. The repaired candidate will be blocked at final qualification until a permanent "
+            "regression test has evidence. Add or update an in-scope test that reproduces the defect before the fix and passes with "
+            "the fix. If the authorized context does not contain enough test/source evidence to do that safely, state the missing "
+            "test context in assumptions instead of inventing or weakening a test."
+            if int(cycle) > 0
+            else "No repair-cycle regression-test mandate is active for this initial implementation plan."
         )
         prompt = (
             f"EngineeringSpec={spec.to_dict()}\n"
             f"RepairCycle={int(cycle)}\n"
+            f"RepairContract={repair_contract}\n"
             f"Defects={list(defects)[:100]}\n"
             f"SpecialistAdvice={[item.to_dict() for item in specialist_advice]}\n"
             f"SourceContext={list(sources)}\n"
