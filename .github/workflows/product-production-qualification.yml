@@ -178,7 +178,6 @@ jobs:
           VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
           VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
           VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
-          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: >-
           python packaging/product_production_preflight.py
           --scope worker
@@ -201,7 +200,6 @@ jobs:
         run: >-
           python packaging/product_runner_worker.py
           --target ${{ inputs.target }}
-          --runner-id "${{ inputs.runner_id }}"
           --once
           > .production-qualification/worker.log 2>&1
 
