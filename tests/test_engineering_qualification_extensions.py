@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
+
+import pytest
 
 from future_intelligence.engineering.api_contracts import ApiContractCase, ApiContractQualifier
 from future_intelligence.engineering.canary import CanaryMetrics, CanaryThresholds, compare_canary
 from future_intelligence.engineering.contracts import EngineeringSpec
 from future_intelligence.engineering.database_qualification import SqliteMigrationSandbox
+from future_intelligence.engineering.evidence import EngineeringEvidenceLedger
 from future_intelligence.engineering.failure_intelligence import EngineeringFailureStore
 from future_intelligence.engineering.portability import EngineeringArtifactClass, classify_engineering_artifact, portability_manifest
 from future_intelligence.engineering.qualification import EngineeringQualification
@@ -30,6 +34,31 @@ def test_sqlite_migration_sandbox_qualifies_clone_without_touching_source(tmp_pa
     assert source.read_bytes() == before
     with sqlite3.connect(source) as con:
         assert con.execute("SELECT name FROM sqlite_master WHERE name='candidate'").fetchone() is None
+
+
+def test_sqlite_migration_sandbox_rejects_symlink_source(tmp_path: Path):
+    source = tmp_path / "source.sqlite3"
+    with sqlite3.connect(source) as con:
+        con.execute("CREATE TABLE existing(id INTEGER PRIMARY KEY)")
+    link = tmp_path / "linked.sqlite3"
+    try:
+        os.symlink(source, link)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable on this platform")
+    with pytest.raises(ValueError, match="non-symlink"):
+        SqliteMigrationSandbox().qualify(link, migrate=lambda _connection: None)
+
+
+def test_engineering_evidence_ledger_rejects_symlink_root(tmp_path: Path):
+    real = tmp_path / "real-evidence"
+    real.mkdir()
+    link = tmp_path / "linked-evidence"
+    try:
+        os.symlink(real, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable on this platform")
+    with pytest.raises(PermissionError, match="root cannot be a symlink"):
+        EngineeringEvidenceLedger(link, work_order_id="work-1", attempt_id="attempt-1")
 
 
 def test_api_contract_qualification_fails_closed_for_missing_or_forbidden_keys():
