@@ -10,7 +10,7 @@ from security.projection_redaction import sanitize_sensitive_text
 
 from .change_planner import EngineeringEditPlan, ModelEngineeringChangePlanner
 from .reviewer_adapter import EngineeringReviewDecision, ModelEngineeringReviewer
-from .verification import observations_from_verification_report
+from .verification import observation_to_dict, observations_from_verification_report
 
 
 @dataclass(frozen=True)
@@ -46,12 +46,12 @@ class EngineeringExecutionResult:
 
 
 class EngineeringWorkExecutor:
-    """Bounded model -> governed edits -> local verify -> candidate review executor.
+    """Bounded model -> governed edits -> local verification candidate builder.
 
-    This class deliberately stops at a local candidate in canonical VERIFYING
-    state. It cannot approve owner actions, push, merge, deploy, publish, or
-    activate a Body revision. Browser/device/visual evidence may be added by the
-    external qualification lanes before the WorkOrder can progress further.
+    Independent final review is deferred until every required qualification gate
+    has evidence. This executor stops at a local candidate in canonical VERIFYING
+    state and cannot approve owner actions, push, merge, deploy, publish, or
+    activate a Body revision.
     """
 
     def __init__(
@@ -76,6 +76,15 @@ class EngineeringWorkExecutor:
             "reviewer": decision.reviewer,
             "summary": decision.summary,
             "findings": list(decision.findings),
+        }
+
+    @staticmethod
+    def _pending_review() -> dict[str, object]:
+        return {
+            "decision": "pending",
+            "reviewer": "",
+            "summary": "Independent review is deferred until all required qualification evidence is complete.",
+            "findings": (),
         }
 
     @staticmethod
@@ -157,6 +166,7 @@ class EngineeringWorkExecutor:
             {
                 "revision": report.revision,
                 "passed": report.passed,
+                "observations": [observation_to_dict(item) for item in observations],
                 "checks": [
                     {
                         "name": item.name,
@@ -250,6 +260,7 @@ class EngineeringWorkExecutor:
                     coordinator, message=f"Vishnu engineering repair {repairs}: {spec.objective[:100]}"
                 )
 
+            serialized_observations = [observation_to_dict(item) for item in observations]
             if verification is not None and not verification.passed:
                 failed_context = coordinator.inspect()
                 preliminary = coordinator.finalize(
@@ -265,7 +276,11 @@ class EngineeringWorkExecutor:
                 self._finish_attempt(
                     coordinator,
                     succeeded=False,
-                    metadata={"candidate_revision": revision, "repair_cycles": repairs},
+                    metadata={
+                        "candidate_revision": revision,
+                        "repair_cycles": repairs,
+                        "engineering_local_observations": serialized_observations,
+                    },
                 )
                 return EngineeringExecutionResult(
                     work_order_id=work_order_id,
@@ -292,7 +307,11 @@ class EngineeringWorkExecutor:
                 review_decision="pending",
                 limitations=limitations,
             )
-            if spec.review_required:
+            gates_complete = all(not gate.blocking for gate in preliminary.gates)
+            review_payload = self._pending_review()
+            review_decision = "pending"
+            reviewer_name = ""
+            if gates_complete and spec.review_required:
                 try:
                     review = self.reviewer.review(
                         spec=spec,
@@ -304,32 +323,46 @@ class EngineeringWorkExecutor:
                             "local_verification_passed": None if verification is None else verification.passed,
                         },
                     )
+                    review_payload = self._review_payload(review)
+                    review_decision = review.decision
+                    reviewer_name = review.reviewer
                 except Exception as exc:
                     limitations.append("independent review unavailable; candidate requires external review retry")
-                    review = EngineeringReviewDecision(
-                        decision="rejected",
-                        reviewer="independent-engineering-reviewer",
-                        summary=f"Independent review unavailable: {type(exc).__name__}",
-                        findings=("Retry independent review before qualification can pass.",),
-                    )
+                    review_payload = {
+                        "decision": "pending",
+                        "reviewer": "independent-engineering-reviewer",
+                        "summary": f"Independent review unavailable: {type(exc).__name__}",
+                        "findings": ["Retry independent review before qualification can pass."],
+                    }
                     coordinator.evidence.append(
                         "engineering.review_unavailable",
                         {"revision": revision, "error_type": type(exc).__name__},
                     )
+            elif gates_complete and not spec.review_required:
+                review_payload = {
+                    "decision": "approved",
+                    "reviewer": "review-not-required",
+                    "summary": "EngineeringSpec does not require independent review.",
+                    "findings": [],
+                }
+                review_decision = "approved"
+                reviewer_name = "review-not-required"
             else:
-                review = EngineeringReviewDecision(
-                    decision="approved",
-                    reviewer="review-not-required",
-                    summary="EngineeringSpec does not require independent review.",
-                    findings=(),
+                coordinator.evidence.append(
+                    "engineering.review_deferred",
+                    {
+                        "revision": revision,
+                        "pending_gates": [gate.gate for gate in preliminary.gates if gate.blocking],
+                    },
                 )
+
             final_report = coordinator.finalize(
                 candidate_revision=revision,
                 observations=observations,
-                reviewer=review.reviewer,
-                review_decision=review.decision,
+                reviewer=reviewer_name,
+                review_decision=review_decision,
                 limitations=limitations,
-                review_evidence=self._review_payload(review),
+                review_evidence=review_payload,
             )
             self._finish_attempt(
                 coordinator,
@@ -337,8 +370,9 @@ class EngineeringWorkExecutor:
                 metadata={
                     "candidate_revision": revision,
                     "qualification_status": "qualified" if final_report.qualified else "pending_external_qualification",
-                    "review_decision": review.decision,
+                    "review_decision": review_decision,
                     "repair_cycles": repairs,
+                    "engineering_local_observations": serialized_observations,
                 },
             )
             return EngineeringExecutionResult(
@@ -350,7 +384,7 @@ class EngineeringWorkExecutor:
                 verification_passed=None if verification is None else verification.passed,
                 repair_cycles=repairs,
                 qualification=final_report.to_dict(),
-                review=self._review_payload(review),
+                review=review_payload,
                 status="qualified" if final_report.qualified else "verifying",
             )
         except Exception as exc:
