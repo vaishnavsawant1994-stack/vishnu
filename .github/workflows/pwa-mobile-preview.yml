@@ -46,6 +46,10 @@ on:
       - 'personal-ai/pwa/**'
       - '.github/workflows/pwa-mobile-preview.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
