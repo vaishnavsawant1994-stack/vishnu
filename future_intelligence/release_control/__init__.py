@@ -14,7 +14,9 @@ from .contracts import (
 )
 from .controller import GovernedReleaseController, ReleaseControlError
 from .policy import ReleaseAutonomyMode, ReleaseOwnerPolicy
+from .policy_store import ReleasePolicyStore
 from .providers import ReleaseDeployment, ReleaseProvider
+from .runtime import ReleaseControlRuntime, build_release_control_runtime
 from .store import JsonReleaseStore, ReleaseStore
 
 __all__ = [
@@ -22,13 +24,16 @@ __all__ = [
     "JsonReleaseStore",
     "ReleaseAutonomyMode",
     "ReleaseControlError",
+    "ReleaseControlRuntime",
     "ReleaseDeployment",
     "ReleaseEnvironment",
     "ReleaseEvidence",
     "ReleaseOwnerPolicy",
     "ReleasePlan",
+    "ReleasePolicyStore",
     "ReleaseProvider",
     "ReleaseRiskClass",
     "ReleaseStatus",
     "ReleaseStore",
+    "build_release_control_runtime",
 ]
