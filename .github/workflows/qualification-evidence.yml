@@ -61,7 +61,7 @@ jobs:
           assert 'workflow_dispatch' in workflow
           assert 'artifact is missing or expired' in workflow
           assert 'require_exact_remote_branch' in automation
-          assert 'remote branch does not point to the exact candidate revision' in automation
+          assert 'remote engineering branch does not point to the exact candidate revision' in automation
           assert 'GitHub token is required for physical-device workflow dispatch' in automation
           assert 'physical-qualification' in owner_api
           assert 'remote_push": False' in owner_api
