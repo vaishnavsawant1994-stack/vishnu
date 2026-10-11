@@ -20,7 +20,7 @@ jobs:
       - run: pip-audit -r requirements.txt
       - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products security server tools training ui updates vision voice packaging
       - name: Our Products distribution security boundary
-        run: pytest -q tests/test_our_products.py tests/test_product_distribution.py tests/test_product_artifact_builders.py
+        run: pytest -q tests/test_our_products.py tests/test_product_distribution.py tests/test_product_artifact_builders.py tests/test_product_platform_jobs.py
       - name: Self-improvement training and evolution security boundary
         run: >-
           pytest -q
