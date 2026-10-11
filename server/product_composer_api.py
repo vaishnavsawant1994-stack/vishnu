@@ -154,7 +154,9 @@ class PromoteComponentBody(BaseModel):
 
 
 def product_composer_router(runtime, catalog: CapabilityCatalog, composer: ProductComposer):
-    router = APIRouter(prefix="/iphone/api/product-composer", tags=["product-composer"])
+    # This router is nested below /iphone/api/products so Product Composer remains
+    # an owner-only part of Our Products rather than a separate product surface.
+    router = APIRouter(prefix="/composer", tags=["product-composer"])
     registry = runtime["device_registry"]
 
     def authenticate(device_id: str | None, token: str | None, *, write=False):
