@@ -30,12 +30,14 @@ jobs:
           future_intelligence/engineering/regression_evidence.py
           future_intelligence/engineering/work_executor.py
           future_intelligence/engineering/workflow_evidence.py
+          future_intelligence/engineering/physical_device_automation.py
           future_intelligence/release_control/handoff.py
           server/owner_engineering_api.py
       - name: Trusted qualification evidence tests
         run: >-
           pytest -q
           tests/test_engineering_qualification_evidence.py
+          tests/test_physical_device_automation.py
           tests/test_owner_engineering_api.py
       - name: Qualification evidence authority invariants
         run: |
@@ -45,6 +47,7 @@ jobs:
           finalizer = Path('future_intelligence/engineering/final_qualification.py').read_text()
           regression = Path('future_intelligence/engineering/regression_evidence.py').read_text()
           workflow = Path('future_intelligence/engineering/workflow_evidence.py').read_text()
+          automation = Path('future_intelligence/engineering/physical_device_automation.py').read_text()
           owner_api = Path('server/owner_engineering_api.py').read_text()
           ios = Path('.github/workflows/ios-physical-device.yml').read_text()
           android = Path('.github/workflows/android-real-device.yml').read_text()
@@ -57,6 +60,11 @@ jobs:
           assert 'head_sha' in workflow
           assert 'workflow_dispatch' in workflow
           assert 'artifact is missing or expired' in workflow
+          assert 'require_exact_remote_branch' in automation
+          assert 'remote branch does not point to the exact candidate revision' in automation
+          assert 'GitHub token is required for physical-device workflow dispatch' in automation
+          assert 'physical-qualification' in owner_api
+          assert 'remote_push": False' in owner_api
           assert 'client_qualification_claim' in owner_api
           assert 'GitHub workflow run IDs' in owner_api
           assert 'qualification-manifest.json' in ios
