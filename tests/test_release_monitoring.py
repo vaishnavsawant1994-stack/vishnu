@@ -10,6 +10,10 @@ from future_intelligence.release_control.policy_store import ReleasePolicyStore
 from future_intelligence.release_control.providers import InMemoryReleaseProvider, ReleaseDeployment
 from future_intelligence.release_control.runtime import ReleaseControlRuntime
 from future_intelligence.release_control.store import InMemoryReleaseStore
+from future_intelligence.release_control.telemetry import (
+    ProductionTelemetryError,
+    ProductionTelemetryObservation,
+)
 
 
 BASE = "a" * 40
@@ -36,6 +40,30 @@ class FailingObserveProvider(InMemoryReleaseProvider):
 class DriftObserveProvider(InMemoryReleaseProvider):
     def observe(self, deployment: ReleaseDeployment) -> ReleaseDeployment:
         return replace(deployment, revision="c" * 40)
+
+
+class TelemetryProvider(InMemoryReleaseProvider):
+    def __init__(self, *, requests: int, errors: int):
+        super().__init__()
+        self.requests = requests
+        self.errors = errors
+
+    def collect_production_telemetry(self, deployment, *, window_seconds=300):
+        return ProductionTelemetryObservation(
+            provider=self.name,
+            deployment_id=deployment.id,
+            request_count=self.requests,
+            server_error_count=self.errors,
+            window_seconds=window_seconds,
+            p95_latency_ms=120.0,
+            references=(f"memory:telemetry:{deployment.id}",),
+            metadata={"raw_logs_persisted": False},
+        )
+
+
+class UnavailableTelemetryProvider(InMemoryReleaseProvider):
+    def collect_production_telemetry(self, deployment, *, window_seconds=300):
+        raise ProductionTelemetryError("provider plan does not expose telemetry")
 
 
 class RegressionBridge:
@@ -97,6 +125,80 @@ def test_healthy_monitor_observation_is_trusted_and_read_only(tmp_path):
     assert evidence.trusted is True
     assert evidence.revision == CANDIDATE
     assert evidence.metadata["smoke"]["passed"] is True
+    assert evidence.metadata["provider_telemetry_available"] is False
+
+
+def test_provider_telemetry_is_persisted_as_sanitized_aggregate_evidence(tmp_path):
+    runtime, plan = make_runtime(tmp_path, provider=TelemetryProvider(requests=100, errors=1))
+    monitor = ProductionReleaseMonitor(runtime)
+
+    result = monitor.check_once(plan.id)
+    persisted = runtime.controller.require(plan.id)
+
+    assert result.outcome == "healthy"
+    telemetry = next(item for item in persisted.evidence if item.kind == "production_provider_telemetry")
+    assert telemetry.trusted is True
+    assert telemetry.metadata["request_count"] == 100
+    assert telemetry.metadata["server_error_count"] == 1
+    assert telemetry.metadata["error_rate"] == 0.01
+    assert telemetry.metadata["raw_logs_persisted"] is False
+    assert persisted.evidence[-1].kind == "production_monitor_observation"
+
+
+def test_sufficient_high_error_telemetry_recommends_rollback_and_creates_canonical_regression(tmp_path):
+    bridge = RegressionBridge()
+    runtime, plan = make_runtime(
+        tmp_path,
+        provider=TelemetryProvider(requests=20, errors=2),
+        bridge=bridge,
+    )
+    monitor = ProductionReleaseMonitor(runtime)
+
+    result = monitor.check_once(plan.id)
+    persisted = runtime.controller.require(plan.id)
+
+    assert result.outcome == "rollback_recommended"
+    assert persisted.status is ReleaseStatus.ROLLBACK_RECOMMENDED
+    assert len(bridge.rows) == 1
+    assert "provider telemetry detected elevated production server errors" in bridge.rows[0].signal
+    assert "2/20" in bridge.rows[0].signal
+    assert not any(item.kind == "rollback_execution" for item in persisted.evidence)
+
+
+def test_low_sample_telemetry_never_manufactures_an_incident(tmp_path):
+    bridge = RegressionBridge()
+    runtime, plan = make_runtime(
+        tmp_path,
+        provider=TelemetryProvider(requests=5, errors=5),
+        bridge=bridge,
+    )
+    monitor = ProductionReleaseMonitor(runtime)
+
+    result = monitor.check_once(plan.id)
+    persisted = runtime.controller.require(plan.id)
+
+    assert result.outcome == "healthy"
+    assert persisted.status is ReleaseStatus.MONITORING
+    assert bridge.rows == []
+
+
+def test_telemetry_transport_failure_is_recorded_without_becoming_rollback_authority(tmp_path):
+    bridge = RegressionBridge()
+    runtime, plan = make_runtime(tmp_path, provider=UnavailableTelemetryProvider(), bridge=bridge)
+    monitor = ProductionReleaseMonitor(runtime, failure_threshold=1)
+
+    result = monitor.check_once(plan.id)
+    persisted = runtime.controller.require(plan.id)
+
+    assert result.outcome == "healthy_telemetry_unavailable"
+    assert persisted.status is ReleaseStatus.MONITORING
+    telemetry_error = next(
+        item for item in persisted.evidence if item.kind == "production_provider_telemetry_error"
+    )
+    assert telemetry_error.metadata["application_regression_proven"] is False
+    assert telemetry_error.metadata["automatic_rollback_authority"] is False
+    assert bridge.rows == []
+    assert not any(item.kind == "production_monitor_error" for item in persisted.evidence)
 
 
 def test_transient_monitor_failure_does_not_immediately_recommend_rollback(tmp_path):

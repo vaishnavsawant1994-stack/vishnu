@@ -30,6 +30,7 @@ jobs:
           tests/test_release_policy_hardening.py
           tests/test_release_control_render.py
           tests/test_release_control_vercel.py
+          tests/test_release_provider_telemetry.py
           tests/test_release_runtime.py
           tests/test_release_recovery.py
           tests/test_release_monitoring.py
@@ -42,6 +43,7 @@ jobs:
           from pathlib import Path
           controller = Path('future_intelligence/release_control/controller.py').read_text()
           policy = Path('future_intelligence/release_control/policy.py').read_text()
+          telemetry = Path('future_intelligence/release_control/telemetry.py').read_text()
           render = Path('future_intelligence/release_control/render_provider.py').read_text()
           vercel = Path('future_intelligence/release_control/vercel_provider.py').read_text()
           recovery = Path('future_intelligence/release_control/recovery.py').read_text()
@@ -55,6 +57,13 @@ jobs:
           assert 'provider returned a deployment for a different revision' in controller
           assert 'automatic production is permanently limited to low-risk releases' in policy
           assert 'sensitive release surfaces always require owner approval' in policy
+          assert 'raw_logs_persisted' in telemetry and 'False' in telemetry
+          assert '/metrics/http-requests' in render
+          assert '/metrics/http-latency' in render
+          assert 'aggregateBy' in render and 'statusCode' in render
+          assert '/runtime-logs' in vercel
+          assert 'responseStatusCode' in vercel
+          assert 'raw_logs_persisted' in vercel
           assert 'auto-deploy must be disabled' in render
           assert 'autoAssignCustomDomains' in vercel
           assert '"target": "production"' in vercel
@@ -63,6 +72,9 @@ jobs:
           assert 'RECOVERY_REQUIRED' in recovery
           assert 'automatic replay is prohibited' in recovery
           assert 'ProductionReleaseMonitor' in monitor
+          assert 'production_provider_telemetry' in monitor
+          assert 'application_regression_proven' in monitor
+          assert 'automatic_rollback_authority' in monitor
           assert 'observe_regression' in monitor
           assert 'ProductionRegression' in feedback
           assert 'regression_bridge.create' in feedback

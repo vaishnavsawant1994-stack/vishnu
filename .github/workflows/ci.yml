@@ -79,6 +79,7 @@ jobs:
           tests/test_release_policy_hardening.py
           tests/test_release_control_render.py
           tests/test_release_control_vercel.py
+          tests/test_release_provider_telemetry.py
           tests/test_release_runtime.py
           tests/test_release_recovery.py
           tests/test_release_monitoring.py

@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Mapping
 from urllib import error, parse, request
 
 from .contracts import ReleaseEnvironment, ReleasePlan
 from .providers import ReleaseDeployment
+from .telemetry import ProductionTelemetryError, ProductionTelemetryObservation
 
 
 class VercelProviderError(RuntimeError):
@@ -115,6 +116,79 @@ class VercelReleaseProvider:
         if not isinstance(value, dict):
             raise VercelProviderError("Vercel API returned an unexpected payload")
         return value
+
+    def _runtime_log_rows(self, deployment_id: str) -> tuple[dict[str, Any], ...]:
+        """Read a bounded deployment-scoped runtime-log response.
+
+        The official endpoint is a stream and may be unavailable for some token
+        scopes. Treat timeouts/permissions as telemetry unavailability, never as
+        authority to roll back. Only status/row identifiers/timestamps are used
+        later; raw messages and request paths are discarded immediately.
+        """
+        path = (
+            f"/v1/projects/{parse.quote(self.config.project_id, safe='')}"
+            f"/deployments/{parse.quote(deployment_id, safe='')}/runtime-logs"
+        )
+        req = request.Request(
+            f"{self._BASE}{path}{self._query()}",
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.config.api_token}",
+                "User-Agent": "Vishnu-Production-Telemetry/1",
+            },
+        )
+        try:
+            with self._opener.open(req, timeout=10) as response:
+                raw = response.read(500_001)
+                if len(raw) > 500_000:
+                    raise ProductionTelemetryError("Vercel runtime-log telemetry exceeded the safety bound")
+        except (error.HTTPError, error.URLError, TimeoutError) as exc:
+            code = getattr(exc, "code", None)
+            raise ProductionTelemetryError(
+                f"Vercel runtime-log telemetry request failed{f' ({code})' if code else ''}"
+            ) from exc
+        if not raw:
+            return ()
+        try:
+            text = raw.decode("utf-8", errors="strict").strip()
+        except UnicodeDecodeError as exc:
+            raise ProductionTelemetryError("Vercel runtime-log telemetry was not valid UTF-8") from exc
+        if not text:
+            return ()
+        rows: list[dict[str, Any]] = []
+        try:
+            decoded = json.loads(text)
+        except json.JSONDecodeError:
+            decoded = None
+        if isinstance(decoded, dict):
+            maybe_rows = decoded.get("logs")
+            if isinstance(maybe_rows, list):
+                rows = [item for item in maybe_rows if isinstance(item, dict)]
+                if len(rows) != len(maybe_rows):
+                    raise ProductionTelemetryError("Vercel runtime-log telemetry contained malformed rows")
+            elif "rowId" in decoded and "responseStatusCode" in decoded:
+                rows = [decoded]
+            else:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry returned an unexpected object")
+        elif isinstance(decoded, list):
+            if any(not isinstance(item, dict) for item in decoded):
+                raise ProductionTelemetryError("Vercel runtime-log telemetry contained malformed rows")
+            rows = list(decoded)
+        else:
+            for line in text.splitlines():
+                if not line.strip():
+                    continue
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError as exc:
+                    raise ProductionTelemetryError("Vercel runtime-log stream was malformed") from exc
+                if not isinstance(item, dict):
+                    raise ProductionTelemetryError("Vercel runtime-log stream contained a malformed row")
+                rows.append(item)
+        if len(rows) > 1_000:
+            raise ProductionTelemetryError("Vercel runtime-log telemetry exceeded the row safety bound")
+        return tuple(rows)
 
     @staticmethod
     def _same_revision(left: str, right: str) -> bool:
@@ -241,8 +315,6 @@ class VercelReleaseProvider:
         if not plan.preview_deployment_id or not plan.preview_url:
             raise VercelProviderError("Vercel production promotion requires the qualified staged deployment")
         inspected = self._wait(plan.preview_deployment_id, plan.candidate_revision)
-        # Protect restarts/upgrades: a release created by older code might point
-        # at a Preview-environment artifact with the same SHA. Never promote it.
         self._assert_production_target(inspected)
         self._call(
             "POST",
@@ -284,6 +356,68 @@ class VercelReleaseProvider:
             url=deployment.url,
             state="ready" if state == "READY" else state.lower(),
             metadata={**dict(deployment.metadata), "vercel_ready_state": state},
+        )
+
+    def collect_production_telemetry(
+        self,
+        deployment: ReleaseDeployment,
+        *,
+        window_seconds: int = 300,
+    ) -> ProductionTelemetryObservation:
+        if deployment.provider != self.name or deployment.environment is not ReleaseEnvironment.PRODUCTION:
+            raise ProductionTelemetryError("Vercel telemetry requires the bound production deployment")
+        window = max(30, min(int(window_seconds), 3_600))
+        rows = self._runtime_log_rows(deployment.id)
+        now_ms = int(time.time() * 1000)
+        cutoff_ms = now_ms - (window * 1000)
+        seen: set[str] = set()
+        request_count = 0
+        server_error_count = 0
+        ignored_outside_window = 0
+        for row in rows:
+            try:
+                timestamp_ms = int(row.get("timestampInMs"))
+            except (TypeError, ValueError) as exc:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry omitted a valid timestamp") from exc
+            if timestamp_ms < cutoff_ms:
+                ignored_outside_window += 1
+                continue
+            if timestamp_ms > now_ms + 60_000:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry contained an implausible future timestamp")
+            row_id = str(row.get("rowId") or "").strip()
+            if not row_id:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry omitted rowId")
+            if row_id in seen:
+                continue
+            seen.add(row_id)
+            try:
+                status = int(row.get("responseStatusCode"))
+            except (TypeError, ValueError) as exc:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry returned an invalid status code") from exc
+            if status < -1 or status > 599:
+                raise ProductionTelemetryError("Vercel runtime-log telemetry returned an invalid status code")
+            request_count += 1
+            if status == -1 or 500 <= status <= 599:
+                server_error_count += 1
+        return ProductionTelemetryObservation(
+            provider=self.name,
+            deployment_id=deployment.id,
+            request_count=request_count,
+            server_error_count=server_error_count,
+            window_seconds=window,
+            p95_latency_ms=None,
+            references=(
+                f"vercel:runtime-logs:{self.config.project_id}:{deployment.id}",
+            ),
+            metadata={
+                "project_id": self.config.project_id,
+                "deployment_scoped": True,
+                "runtime_log_rows_sampled": len(seen),
+                "rows_ignored_outside_window": ignored_outside_window,
+                "window_filtered_by_timestamp": True,
+                "raw_logs_persisted": False,
+                "p95_latency_available": False,
+            },
         )
 
     def _find_deployment_for_revision(self, revision: str) -> dict[str, Any]:
