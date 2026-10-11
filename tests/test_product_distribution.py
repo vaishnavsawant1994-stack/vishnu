@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import ValidationError
 
 from products.license_store import ProductLicenseStore
 from products.licensing import verify_license_document
@@ -16,6 +17,7 @@ from products.signing import SIGNING_KEY_ENV, PUBLIC_KEY_ENV, canonical_json, ve
 from products.store import ProductStore
 from products.verification import verify_portable_product, verify_product_license
 from products.versioning import frozen_version, list_frozen_versions
+from server.product_distribution_api import LicenseCreateBody
 
 
 def configure_signing(monkeypatch):
@@ -42,6 +44,11 @@ def make_stores():
     products = ProductStore(path)
     licenses = ProductLicenseStore(path)
     return directory, products, licenses
+
+
+def test_license_request_rejects_arbitrary_signed_metadata():
+    with pytest.raises(ValidationError):
+        LicenseCreateBody(client_name="ACME", metadata={"secret": "must-not-be-signed"})
 
 
 def test_signed_portable_package_contains_only_canonical_distribution_files(monkeypatch):
