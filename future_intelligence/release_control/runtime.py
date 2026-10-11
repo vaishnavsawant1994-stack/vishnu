@@ -9,6 +9,7 @@ from urllib.parse import urlsplit
 from future_intelligence.engineering.production_feedback import ProductionRegressionWorkBridge
 
 from .controller import GovernedReleaseController, ReleaseControlError
+from .feedback import RegressionAwareProductionSmokeProvider
 from .http_qualification import HttpQualificationConfig, ReadOnlyHttpEnvironmentQualifier
 from .policy import ReleaseOwnerPolicy
 from .policy_store import ReleasePolicyStore
@@ -118,11 +119,16 @@ def build_release_control_runtime(*, data_dir: str | Path, work_store=None) -> R
         )
 
     bridge = ProductionRegressionWorkBridge(work_store) if work_store is not None else None
+    production_smoke = (
+        RegressionAwareProductionSmokeProvider(qualifier, bridge)
+        if qualifier is not None and bridge is not None
+        else qualifier
+    )
     controller = GovernedReleaseController(
         store=release_store,
         policy=policy_store.snapshot(),
         preview_qualifier=qualifier,
-        production_smoke=qualifier,
+        production_smoke=production_smoke,
         regression_bridge=bridge,
     )
     return ReleaseControlRuntime(controller=controller, policy_store=policy_store, providers=providers)
