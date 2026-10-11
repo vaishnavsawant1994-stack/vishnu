@@ -53,7 +53,8 @@ class CapabilityCatalog:
     """Durable inventory of things Vishnu may safely reuse in Product Projects.
 
     Client-private capabilities remain scoped to that client. A capability becomes
-    globally reusable only through an explicit owner classification/promotion.
+    globally reusable only through the explicit Product Composer generalization
+    path; generic classification edits cannot cross that privacy boundary.
     """
 
     def __init__(self, path: Path):
@@ -254,6 +255,9 @@ class CapabilityCatalog:
         qualification_state: str | None = None,
         client_scope: str | None = None,
     ):
+        existing = self.get(capability_id)
+        if not existing:
+            return None
         values = {}
         if commercial_state is not None:
             if commercial_state not in COMMERCIAL_STATES:
@@ -268,9 +272,14 @@ class CapabilityCatalog:
         if exportable is not None:
             values["exportable"] = int(bool(exportable))
         if client_scope is not None:
-            values["client_scope"] = _text(client_scope) or "shared"
+            requested_scope = _text(client_scope) or "shared"
+            if existing.get("client_scope") != "shared" and requested_scope == "shared":
+                raise ValueError(
+                    "Client-scoped capabilities can become shared only through explicit generalized product-component promotion"
+                )
+            values["client_scope"] = requested_scope
         if not values:
-            return self.get(capability_id)
+            return existing
         values["updated_at"] = _now()
         with self.lock, self.con() as con:
             cur = con.execute(
@@ -293,7 +302,56 @@ class CapabilityCatalog:
 
     def sync_from_runtime(self, runtime: dict, product_store) -> dict:
         """Refresh safe discoverable sources without promoting private data to shared reuse."""
-        counts = {"tools": 0, "automations": 0, "workflows": 0, "integrations": 0, "products": 0, "components": 0}
+        counts = {
+            "agents": 0,
+            "tools": 0,
+            "automations": 0,
+            "workflows": 0,
+            "integrations": 0,
+            "products": 0,
+            "components": 0,
+        }
+
+        # The Project/P10 worker registry is Vishnu's qualified internal agent
+        # workforce. Profiles are cataloged as reusable design/build capabilities;
+        # this records descriptors only and never exports the master Vishnu runtime.
+        autonomy = runtime.get("advanced_autonomy")
+        worker_registry = getattr(autonomy, "_worker_registry", None) if autonomy is not None else None
+        if worker_registry is not None and hasattr(worker_registry, "all"):
+            try:
+                for profile in worker_registry.all():
+                    profile_id = _text(getattr(profile, "id", ""))
+                    if not profile_id or profile_id == "tool":
+                        continue
+                    supported = [
+                        _text(item)
+                        for item in (getattr(profile, "supported_capabilities", ()) or ())
+                        if _text(item)
+                    ]
+                    description = _text(getattr(profile, "description", "")) or (
+                        "Vishnu worker profile for " + ", ".join(supported[:8])
+                        if supported else "Vishnu qualified worker profile"
+                    )
+                    self.upsert(
+                        name=_text(getattr(profile, "name", "")) or profile_id.replace("_", " ").title(),
+                        capability_type="agent",
+                        source_kind="worker_profile",
+                        source_ref=profile_id,
+                        description=description,
+                        commercial_state="internal_reusable",
+                        qualification_state="qualified",
+                        exportable=True,
+                        reusable=True,
+                        tags=[profile_id, *supported],
+                        metadata={
+                            "worker_profile_id": profile_id,
+                            "supported_capabilities": supported,
+                            "master_runtime_bundled": False,
+                        },
+                    )
+                    counts["agents"] += 1
+            except Exception:
+                pass
 
         tools = runtime.get("tools")
         if tools is not None and hasattr(tools, "all"):
