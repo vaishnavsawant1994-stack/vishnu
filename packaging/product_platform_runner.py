@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -14,9 +15,6 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-# This file is an executable runner entry point. Add the repository root before
-# importing Vishnu's product-signing module so `python packaging/...py` works
-# from a clean CI checkout as well as from an installed environment.
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
@@ -54,12 +52,6 @@ def _run(*cmd: str, cwd: Path | None = None) -> None:
 
 
 def _assert_no_credentials(value, path: tuple[str, ...] = ()) -> None:
-    """Reject credential-bearing fields without false-positive scanning values.
-
-    Product descriptions/instructions may legitimately mention words such as
-    "password". The distribution boundary is concerned with credential fields,
-    not ordinary prose values.
-    """
     if isinstance(value, dict):
         for key, item in value.items():
             normalized = str(key).strip().lower()
@@ -113,6 +105,36 @@ def _load_job(path: Path, *, allow_unsigned: bool) -> tuple[dict, dict]:
         raise RunnerError("Platform build job identity does not match its manifest")
     _assert_no_credentials(manifest)
     return payload, manifest
+
+
+def _runner_result(payload: dict, artifact: Path, *, artifact_kind: str, signing_verified: bool, variant: str) -> dict:
+    raw = artifact.read_bytes()
+    digest = _sha256(raw)
+    evidence = {
+        "schema": "vishnu.platform-runner-evidence/v1",
+        "product_id": str(payload["product_id"]),
+        "build_id": str(payload["build_id"]),
+        "version": str(payload["version"]),
+        "target": str(payload["target"]),
+        "mode": "development" if payload.get("development") else "production",
+        "host_os": platform.system().lower(),
+        "artifact_name": artifact.name,
+        "artifact_kind": artifact_kind,
+        "sha256": digest,
+        "compiler_verified": True,
+        "signing_verified": bool(signing_verified),
+        "provisioning_verified": False,
+        "notarization_verified": False,
+        "metadata": {"variant": variant, "runner": "vishnu-product-platform-runner"},
+    }
+    return {
+        "artifact": str(artifact),
+        "sha256": digest,
+        "size": len(raw),
+        "platform_signing_verified": bool(signing_verified),
+        "variant": variant,
+        "evidence": evidence,
+    }
 
 
 def _android_identifier(product_id: str) -> str:
@@ -237,8 +259,7 @@ def build_android(job_path: Path, output_dir: Path, *, allow_unsigned_job: bool 
         if not compile_artifact:
             source_zip = output_dir / f"{payload['product_id']}-{payload['version']}-android-source.zip"
             shutil.make_archive(str(source_zip.with_suffix("")), "zip", project)
-            raw = source_zip.read_bytes()
-            return {"artifact": str(source_zip), "sha256": _sha256(raw), "size": len(raw), "platform_signing_verified": False, "variant": "source"}
+            return _runner_result(payload, source_zip, artifact_kind="android-source", signing_verified=False, variant="source")
         signing_env = all(
             os.environ.get(key, "").strip()
             for key in ("VISHNU_ANDROID_KEYSTORE_PATH", "VISHNU_ANDROID_KEY_ALIAS", "VISHNU_ANDROID_KEYSTORE_PASSWORD", "VISHNU_ANDROID_KEY_PASSWORD")
@@ -259,8 +280,7 @@ def build_android(job_path: Path, output_dir: Path, *, allow_unsigned_job: bool 
                 raise RunnerError("Release APK was built but apksigner is unavailable for verification")
             _run(signer, "verify", "--verbose", str(final))
             signing_verified = True
-        raw = final.read_bytes()
-        return {"artifact": str(final), "sha256": _sha256(raw), "size": len(raw), "platform_signing_verified": signing_verified, "variant": variant}
+        return _runner_result(payload, final, artifact_kind="apk", signing_verified=signing_verified, variant=variant)
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
