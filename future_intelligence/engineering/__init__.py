@@ -26,7 +26,14 @@ from .final_qualification import EngineeringCandidateFinalizer, EngineeringFinal
 from .owner_policy import EngineeringOwnerPolicy, EngineeringOwnerPolicyStore
 from .portability import EngineeringArtifactClass, EngineeringArtifactPolicy, classify_engineering_artifact, portability_manifest
 from .production_feedback import ProductionFeedbackWork, ProductionRegressionWorkBridge
+from .release_qualification import PreviewQualificationRequest
 from .traceability import EngineeringTraceability, RequirementTrace, UserFlowExpectation, UserFlowObservation
+from .trusted_qualification import (
+    EngineeringTrustedQualificationIntake,
+    PhysicalDeviceQualificationEvidence,
+    RegressionTestEvidence,
+    preview_observation,
+)
 
 __all__ = [
     "ApiContractCase",
@@ -51,15 +58,19 @@ __all__ = [
     "EngineeringOwnerPolicyStore",
     "EngineeringSpec",
     "EngineeringTraceability",
+    "EngineeringTrustedQualificationIntake",
     "FailureFingerprint",
     "FlakyAssessment",
     "HttpQualificationProbe",
+    "PhysicalDeviceQualificationEvidence",
+    "PreviewQualificationRequest",
     "ProductionFeedbackWork",
     "ProductionRegressionWorkBridge",
     "QualificationGateResult",
     "QualificationGateStatus",
     "QualificationReport",
     "ReadOnlyHttpQualificationProvider",
+    "RegressionTestEvidence",
     "RequirementTrace",
     "RollbackRecommendation",
     "SecurityClass",
@@ -70,4 +81,5 @@ __all__ = [
     "classify_engineering_artifact",
     "compare_canary",
     "portability_manifest",
+    "preview_observation",
 ]
