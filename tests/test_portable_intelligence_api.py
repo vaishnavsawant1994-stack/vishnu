@@ -22,7 +22,9 @@ class Registry:
 
 class PublicValue:
     def __init__(self, payload):
-        self.payload = payload
+        self.payload = dict(payload)
+        for key, value in self.payload.items():
+            setattr(self, key, value)
 
     def public(self):
         return dict(self.payload)
