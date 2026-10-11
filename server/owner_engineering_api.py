@@ -83,6 +83,21 @@ def owner_engineering_router(runtime) -> APIRouter:
         if events is not None:
             events.emit(name, **payload)
 
+    @staticmethod
+    def _final_status(work_events, attempt_id: str | None, attempt_metadata: dict[str, Any]) -> tuple[Any, Any]:
+        qualification_status = attempt_metadata.get("qualification_status")
+        review_decision = attempt_metadata.get("review_decision")
+        for event in reversed(work_events):
+            if attempt_id is not None and event.attempt_id != attempt_id:
+                continue
+            if event.event_type == "engineering.candidate.qualified":
+                return "qualified", event.payload.get("review_decision", "approved")
+            if event.event_type == "engineering.candidate.review_rejected":
+                return "review_rejected", event.payload.get("review_decision", "rejected")
+            if event.event_type == "engineering.final_qualification_pending":
+                return "pending_external_qualification", event.payload.get("review_decision", "pending")
+        return qualification_status, review_decision
+
     def recent_work(limit: int = 30) -> list[dict[str, Any]]:
         eng = engineering()
         rows = eng.work_store.connection.execute(
@@ -102,6 +117,7 @@ def owner_engineering_router(runtime) -> APIRouter:
             (max(1, min(int(limit), 100)),),
         ).fetchall()
         output = []
+        event_cache: dict[str, list[Any]] = {}
         for row in rows:
             try:
                 work_payload = json.loads(row["work_payload"] or "{}")
@@ -111,9 +127,15 @@ def owner_engineering_router(runtime) -> APIRouter:
                 attempt_metadata = json.loads(row["attempt_metadata"] or "{}")
             except (TypeError, json.JSONDecodeError):
                 attempt_metadata = {}
+            work_order_id = str(row["work_order_id"])
+            if work_order_id not in event_cache:
+                event_cache[work_order_id] = eng.work_store.list_work_events(work_order_id)
+            qualification_status, review_decision = _final_status(
+                event_cache[work_order_id], row["attempt_id"], attempt_metadata
+            )
             output.append({
                 "workspace_id": str(row["workspace_id"]),
-                "work_order_id": str(row["work_order_id"]),
+                "work_order_id": work_order_id,
                 "attempt_id": row["attempt_id"],
                 "title": str(work_payload.get("title") or row["work_order_id"]),
                 "objective": str(work_payload.get("objective") or "")[:2000],
@@ -128,8 +150,8 @@ def owner_engineering_router(runtime) -> APIRouter:
                 "started_at": row["started_at"],
                 "finished_at": row["finished_at"],
                 "updated_at": row["updated_at"],
-                "qualification_status": attempt_metadata.get("qualification_status"),
-                "review_decision": attempt_metadata.get("review_decision"),
+                "qualification_status": qualification_status,
+                "review_decision": review_decision,
                 "repair_cycles": attempt_metadata.get("repair_cycles"),
             })
         return output
@@ -145,6 +167,7 @@ def owner_engineering_router(runtime) -> APIRouter:
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
+            "final_qualification_available": runtime.get("engineering_finalizer") is not None,
             "policy": policy.public(),
             "recent_work": recent_work(),
             "authorities": {
