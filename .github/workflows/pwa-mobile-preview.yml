@@ -52,7 +52,7 @@ permissions:
 jobs:
   mobile-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -94,6 +94,9 @@ jobs:
           ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
           node tests/engineering_ui/breakpoint_network_qualification.mjs
           node tests/engineering_ui/accessibility_qualification.mjs
+          node tests/engineering_ui/state_content_qualification.mjs
+          node tests/engineering_ui/mobile_keyboard_safe_area_qualification.mjs
+          node tests/engineering_ui/performance_3d_qualification.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
