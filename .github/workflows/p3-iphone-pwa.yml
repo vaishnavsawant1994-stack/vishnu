@@ -23,6 +23,7 @@ on:
       - 'tests/test_owner_release_api.py'
       - 'tests/test_release_control.py'
       - 'tests/test_release_policy_hardening.py'
+      - 'tests/test_release_monitoring.py'
       - 'tests/test_self_improvement_*.py'
       - 'tests/test_training_*.py'
       - 'core/config.py'
@@ -73,6 +74,7 @@ jobs:
           tests/test_owner_release_api.py
           tests/test_release_control.py
           tests/test_release_policy_hardening.py
+          tests/test_release_monitoring.py
           tests/test_self_improvement_governance.py
           tests/test_training_runtime_controls.py
           tests/test_training_export_governance.py
@@ -93,4 +95,7 @@ jobs:
           release_api=Path('server/owner_release_api.py').read_text()
           assert 'release_plan_creation_from_api' in release_api
           assert 'body_activation' in release_api
+          monitor=Path('future_intelligence/release_control/monitoring.py').read_text()
+          assert 'ProductionReleaseMonitor' in monitor
+          assert 'observe_regression' in monitor
           PY
