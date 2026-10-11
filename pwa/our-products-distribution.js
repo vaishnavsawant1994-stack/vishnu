@@ -34,15 +34,18 @@
       const product=productResponse.product||{};
       const licenses=licensesResponse.licenses||[];
       const signing=statusResponse.signing_configured;
+      const frozen=statusResponse.current_version_frozen;
+      const productionReady=statusResponse.production_distribution_ready;
       body.innerHTML=`<div class="detail-section">
         <div class="detail-grid">
           <div class="detail-tile"><small>Portable package</small><strong>Ready</strong></div>
           <div class="detail-tile"><small>Production signing</small><strong>${signing?'Configured':'Not configured'}</strong></div>
-          <div class="detail-tile"><small>Native apps</small><strong>Builder qualification required</strong></div>
+          <div class="detail-tile"><small>Version ${esc(statusResponse.current_version||product.version)}</small><strong>${frozen?'Frozen / immutable':'Working / not frozen'}</strong></div>
         </div>
-        <div class="warning">A <b>.vishnu-product</b> package contains the client product contract, integrity metadata and optional Ed25519 signature—not your full Vishnu source, owner memories, API keys or other client data.</div>
-        <div class="build-row"><div><b>Production portable package</b><div class="muted">Signed and suitable for client distribution when production signing is configured.</div></div><button class="button primary" data-download-production ${signing?'':'disabled'}>Download</button></div>
-        <div class="build-row"><div><b>Development portable package</b><div class="muted">Explicitly unsigned. For development/testing only, never commercial distribution.</div></div><button class="button secondary" data-download-development>Download dev package</button></div>
+        <div class="warning">A <b>.vishnu-product</b> package contains the client product contract, integrity metadata and Ed25519 signature—not your full Vishnu source, owner memories, API keys or other client data. Production packages are created only from frozen product versions.</div>
+        <div class="build-row"><div><b>Production portable package</b><div class="muted">Signed, immutable version snapshot for client distribution.</div></div><button class="button primary" data-download-production ${productionReady?'':'disabled'}>Download</button></div>
+        <div class="build-row"><div><b>Development portable package</b><div class="muted">Uses the current working manifest and is explicitly unsigned. Development/testing only.</div></div><button class="button secondary" data-download-development>Download dev package</button></div>
+        ${!frozen?`<div class="warning">Freeze version <b>${esc(product.version)}</b> from the Manifest tab before production download or default license issuance.</div>`:''}
         ${signing?'':`<div class="warning">Configure <code>VISHNU_PRODUCT_SIGNING_PRIVATE_KEY_B64</code> and the matching product public key before issuing commercial packages or licenses.</div>`}
         <div class="detail-tile">
           <b>Issue client license</b>
@@ -54,7 +57,7 @@
             <label>Expires at<input id="licenseExpiry" type="datetime-local"></label>
             <label><span>Managed AI</span><select id="licenseManagedAI"><option value="false">Not included</option><option value="true">Included</option></select></label>
           </div>
-          <button class="button primary" data-issue-license ${signing?'':'disabled'}>Issue signed license</button>
+          <button class="button primary" data-issue-license ${signing&&frozen?'':'disabled'}>Issue signed license</button>
         </div>
         <h3>Licenses</h3>
         <div data-license-list>${licenses.length?licenses.map(record=>licenseRow(record)).join(''):'<p class="muted">No licenses issued yet.</p>'}</div>
