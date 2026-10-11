@@ -18,11 +18,18 @@ class ProductType(StrEnum):
 
 class ProductStatus(StrEnum):
     DRAFT = "draft"
+    DESIGNING = "designing"
     DEVELOPMENT = "development"
+    TESTING = "testing"
+    BLOCKED = "blocked"
     READY = "ready"
+    BUILDING = "building"
+    QUALIFIED = "qualified"
+    RELEASED = "released"
     LIVE = "live"
     PAUSED = "paused"
     NEEDS_ATTENTION = "needs_attention"
+    DEPRECATED = "deprecated"
     ARCHIVED = "archived"
 
 
@@ -44,6 +51,7 @@ class PlatformTarget(StrEnum):
     LINUX = "linux"
     DOCKER = "docker"
     API = "api"
+    WORKER = "worker"
 
 
 PRODUCT_TYPES = tuple(item.value for item in ProductType)
