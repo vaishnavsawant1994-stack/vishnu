@@ -9,6 +9,7 @@ from core.config import settings
 from core.storage import validate_runtime_storage
 from future_intelligence.release_control.automation import ReleaseAutomationService
 from future_intelligence.release_control.handoff import ReleaseAwareEngineeringFinalizer
+from future_intelligence.release_control.monitoring import ProductionReleaseMonitor
 from future_intelligence.release_control.runtime import build_release_control_runtime
 from security.pwa_sessions import PwaSessionStore
 from server.api import create_app
@@ -79,12 +80,19 @@ class CanonicalConversationProjection:
             return {'event_id':None,'sequence':None,'thread_id':thread_id,'duplicate':True,'projection':'canonical-turn-runtime'}
         return self._continuity.append(thread_id,device_id=device_id,kind=kind,payload=payload,event_id=event_id)
 
+def _release_monitor_interval_seconds():
+    try:
+        value=float(str(os.environ.get('VISHNU_RELEASE_MONITOR_INTERVAL_SECONDS','60')).strip() or '60')
+    except (TypeError,ValueError):
+        value=60.0
+    return max(30.0,min(value,3600.0))
+
 storage_status=validate_runtime_storage(settings)
 runtime=build_runtime();runtime['storage_status']=storage_status;runtime['pwa_sessions']=PwaSessionStore(settings.data_dir/'pwa-sessions.sqlite3')
 runtime['visual_intelligence']=VisualIntelligenceService(settings.data_dir/'visual-intelligence.sqlite3',events=runtime.get('events'))
 base_project_store=ProjectStore(settings.data_dir/'projects.sqlite3')
 project_store=ProjectWorkforceStoreAdapter(base_project_store,runtime['agent_workforce'],events=runtime.get('events'));runtime['project_store']=project_store;runtime['base_project_store']=base_project_store
-runtime['release_control']=None;runtime['release_automation']=None
+runtime['release_control']=None;runtime['release_automation']=None;runtime['release_monitor']=None
 try:
     dispatcher=runtime.get('work_dispatcher');engineering=runtime.get('engineering')
     work_store=getattr(dispatcher,'store',None) or getattr(engineering,'work_store',None)
@@ -94,7 +102,8 @@ try:
         default_provider=str(os.environ.get('VISHNU_RELEASE_DEFAULT_PROVIDER','')).strip(),
         default_target=str(os.environ.get('VISHNU_RELEASE_TARGET','')).strip(),
     )
-    runtime['release_control']=release_control;runtime['release_automation']=release_automation
+    release_monitor=ProductionReleaseMonitor(release_control)
+    runtime['release_control']=release_control;runtime['release_automation']=release_automation;runtime['release_monitor']=release_monitor
     if engineering is not None:
         runtime['engineering_finalizer']=ReleaseAwareEngineeringFinalizer(
             runtime=engineering,
@@ -107,10 +116,12 @@ try:
             providers=sorted(release_control.providers),
             mode=release_control.policy().mode.value,
             finalizer_handoff=engineering is not None,
+            production_monitoring=True,
+            monitor_interval_seconds=_release_monitor_interval_seconds(),
             body_activation_authority=False,
         )
 except Exception as exc:
-    runtime['release_control']=None;runtime['release_automation']=None
+    runtime['release_control']=None;runtime['release_automation']=None;runtime['release_monitor']=None
     if runtime.get('events') is not None:
         runtime['events'].emit('release.runtime_unavailable',error_type=type(exc).__name__)
 print(json.dumps({'event':'storage.ready',**storage_status}),flush=True)
@@ -131,6 +142,25 @@ async def lifespan(app):
         except Exception as exc:
             if runtime.get('events') is not None:
                 runtime['events'].emit('release.recovery_failed',error_type=type(exc).__name__)
+    async def release_monitor_worker():
+        monitor=runtime.get('release_monitor')
+        interval=_release_monitor_interval_seconds()
+        while True:
+            try:
+                results=await asyncio.to_thread(monitor.poll_all)
+                if results and runtime.get('events') is not None:
+                    runtime['events'].emit(
+                        'release.monitoring_cycle',
+                        releases=len(results),
+                        healthy=sum(1 for item in results if item.outcome=='healthy'),
+                        transient_failures=sum(1 for item in results if item.outcome=='transient_failure'),
+                        rollback_recommended=sum(1 for item in results if item.outcome=='rollback_recommended'),
+                    )
+            except Exception as exc:
+                if runtime.get('events') is not None:
+                    runtime['events'].emit('release.monitoring_cycle_failed',error_type=type(exc).__name__)
+            await asyncio.sleep(interval)
+    release_monitor_task=asyncio.create_task(release_monitor_worker()) if runtime.get('release_monitor') is not None else None
     async def ambient_retention_worker():
         governed = runtime['second_brain']
         while True:
@@ -144,6 +174,10 @@ async def lifespan(app):
         evaluation_task=asyncio.create_task(evaluate_model())
     try:yield
     finally:
+        if release_monitor_task is not None:
+            release_monitor_task.cancel()
+            try: await release_monitor_task
+            except asyncio.CancelledError: pass
         retention_task.cancel()
         try: await retention_task
         except asyncio.CancelledError: pass
