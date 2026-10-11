@@ -8,6 +8,9 @@ from typing import Any, Literal
 from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from future_intelligence.engineering.physical_device_automation import (
+    GitHubPhysicalDeviceWorkflowCoordinator,
+)
 from future_intelligence.engineering.verification import observation_to_dict
 from future_intelligence.engineering.workflow_evidence import (
     GitHubPhysicalDeviceEvidenceVerifier,
@@ -48,14 +51,22 @@ class PhysicalDeviceEvidenceBody(BaseModel):
     runs: list[PhysicalDeviceRunBody] = Field(min_length=1, max_length=2)
 
 
+class PhysicalDeviceAutomationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    mode: Literal["discover", "dispatch"] = "discover"
+    remote_branch: str | None = Field(default=None, min_length=1, max_length=240)
+
+
 def owner_engineering_router(runtime) -> APIRouter:
     """Trusted-owner Engineering Autonomy controls and read-only work visibility.
 
     This surface may configure local engineering limits, request execution of an
-    already-created Canonical WorkOrder, and submit GitHub workflow run IDs for
-    independent physical-device evidence verification. It cannot create repository
-    scope, claim a qualification gate passed, approve security authority, push,
-    merge, deploy, or activate a Body revision.
+    already-created Canonical WorkOrder, submit GitHub workflow run IDs for
+    independent physical-device evidence verification, or coordinate allowlisted
+    real-device workflows against an already-existing exact-revision remote branch.
+    It cannot create repository scope, create/push a remote ref, claim a
+    qualification gate passed, approve security authority, merge, deploy, or
+    activate a Body revision.
     """
 
     router = APIRouter(prefix="/iphone/api/owner/engineering", tags=["owner-engineering"])
@@ -120,6 +131,27 @@ def owner_engineering_router(runtime) -> APIRouter:
             except ValueError as exc:
                 raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured") from exc
         return value
+
+    def physical_device_coordinator() -> GitHubPhysicalDeviceWorkflowCoordinator:
+        value = finalizer()
+        verifier = getattr(value, "physical_device_verifier", None)
+        if verifier is None:
+            raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured")
+        return GitHubPhysicalDeviceWorkflowCoordinator(verifier)
+
+    def physical_device_context(work_order_id: str, attempt_id: str):
+        value = finalizer()
+        if not hasattr(value, "_workspace_and_spec"):
+            raise HTTPException(503, "engineering candidate context is unavailable on this host")
+        try:
+            _attempt, workspace, spec, _session, candidate_revision, _changed = value._workspace_and_spec(
+                str(work_order_id), str(attempt_id)
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Engineering Work/Attempt not found") from exc
+        if not (spec.ui_required and bool(dict(spec.metadata).get("physical_device_required", False))):
+            raise HTTPException(409, "EngineeringSpec does not require physical-device qualification")
+        return value, workspace, spec, candidate_revision
 
     def emit(name: str, **payload: Any) -> None:
         if events is not None:
@@ -217,15 +249,28 @@ def owner_engineering_router(runtime) -> APIRouter:
                 or len(repository.split("/")) == 2
             )
         )
+        verifier_token_available = bool(
+            getattr(getattr(finalizer_value, "physical_device_verifier", None), "config", None)
+            and getattr(finalizer_value.physical_device_verifier.config, "token", "")
+        ) or bool(
+            str(
+                os.environ.get("VISHNU_ENGINEERING_GITHUB_EVIDENCE_TOKEN")
+                or os.environ.get("VISHNU_ENGINEERING_GITHUB_TOKEN")
+                or ""
+            ).strip()
+        )
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
             "final_qualification_available": finalizer_value is not None,
             "trusted_physical_device_evidence": {
-                "accepted_input": "github_workflow_run_ids_only",
+                "accepted_input": "github_workflow_run_ids_or_server_coordinator",
                 "verified_server_side": True,
                 "candidate_revision_bound": True,
                 "verifier_available": verifier_available,
+                "automatic_discovery": verifier_available,
+                "exact_remote_branch_dispatch": verifier_available and verifier_token_available,
+                "remote_push_authority": False,
             },
             "policy": policy.public(),
             "recent_work": recent_work(),
@@ -313,6 +358,132 @@ def owner_engineering_router(runtime) -> APIRouter:
             "merge": False,
             "deploy": False,
             "body_activation": False,
+        }
+
+    def run_physical_device_dispatch(
+        work_order_id: str,
+        attempt_id: str,
+        remote_branch: str,
+        device_id: str,
+    ) -> None:
+        try:
+            value, _workspace, engineering_spec, candidate_revision = physical_device_context(
+                str(work_order_id), str(attempt_id)
+            )
+            result = physical_device_coordinator().dispatch_and_wait(
+                spec=engineering_spec,
+                candidate_revision=candidate_revision,
+                remote_branch=remote_branch,
+            )
+            observation = value.verify_and_record_physical_device_evidence(
+                str(work_order_id),
+                str(attempt_id),
+                runs=result.runs,
+            )
+            emit(
+                "owner.engineering.physical_qualification_finished",
+                device_id=device_id,
+                work_order_id=str(work_order_id),
+                attempt_id=str(attempt_id),
+                candidate_revision=candidate_revision,
+                platforms=list(dict(observation.metadata or {}).get("verified_platforms") or ()),
+                workflow_run_ids=[item.run_id for item in result.runs],
+            )
+        except Exception as exc:
+            emit(
+                "owner.engineering.physical_qualification_failed",
+                device_id=device_id,
+                work_order_id=str(work_order_id),
+                attempt_id=str(attempt_id),
+                error_type=type(exc).__name__,
+            )
+
+    @router.post("/work/{work_order_id}/attempt/{attempt_id}/physical-qualification")
+    def coordinate_physical_device_qualification(
+        work_order_id: str,
+        attempt_id: str,
+        body: PhysicalDeviceAutomationBody,
+        background: BackgroundTasks,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        value, workspace, engineering_spec, candidate_revision = physical_device_context(
+            str(work_order_id), str(attempt_id)
+        )
+        coordinator = physical_device_coordinator()
+
+        if body.mode == "discover":
+            try:
+                runs = coordinator.discover_runs(
+                    spec=engineering_spec,
+                    candidate_revision=candidate_revision,
+                )
+                observation = value.verify_and_record_physical_device_evidence(
+                    str(work_order_id),
+                    str(attempt_id),
+                    runs=runs,
+                )
+            except WorkflowEvidenceError as exc:
+                raise HTTPException(409, str(exc)) from exc
+            except (ValueError, PermissionError, RuntimeError) as exc:
+                raise HTTPException(422, str(exc)) from exc
+            emit(
+                "owner.engineering.physical_evidence_discovered",
+                device_id=device_id,
+                work_order_id=str(work_order_id),
+                attempt_id=str(attempt_id),
+                platforms=list(dict(observation.metadata or {}).get("verified_platforms") or ()),
+            )
+            return {
+                "ok": True,
+                "scheduled": False,
+                "mode": "discover",
+                "work_order_id": str(work_order_id),
+                "attempt_id": str(attempt_id),
+                "observation": observation_to_dict(observation),
+                "client_qualification_claim": False,
+                "verified_server_side": True,
+            }
+
+        remote_branch = str(body.remote_branch or getattr(workspace, "branch_ref", "") or "").strip()
+        if not remote_branch:
+            raise HTTPException(422, "An existing remote engineering branch is required for physical-device dispatch")
+        if not coordinator.verifier.config.token:
+            raise HTTPException(503, "GitHub token is required for physical-device workflow dispatch")
+        try:
+            remote_branch = coordinator.require_exact_remote_branch(
+                remote_branch=remote_branch,
+                candidate_revision=candidate_revision,
+            )
+        except WorkflowEvidenceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        background.add_task(
+            run_physical_device_dispatch,
+            str(work_order_id),
+            str(attempt_id),
+            remote_branch,
+            device_id,
+        )
+        emit(
+            "owner.engineering.physical_qualification_requested",
+            device_id=device_id,
+            work_order_id=str(work_order_id),
+            attempt_id=str(attempt_id),
+            candidate_revision=candidate_revision,
+            remote_branch=remote_branch,
+        )
+        return {
+            "ok": True,
+            "scheduled": True,
+            "mode": "dispatch",
+            "work_order_id": str(work_order_id),
+            "attempt_id": str(attempt_id),
+            "candidate_revision": candidate_revision,
+            "remote_branch": remote_branch,
+            "remote_push": False,
+            "client_qualification_claim": False,
         }
 
     @router.post("/work/{work_order_id}/attempt/{attempt_id}/physical-evidence")
