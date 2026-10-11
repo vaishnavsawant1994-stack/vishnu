@@ -56,6 +56,12 @@ class EngineeringRuntime:
         if self._continuation_authority_guard is not None:
             self._continuation_authority_guard()
 
+    def _assert_workspace_mutation_allowed(self) -> None:
+        if not self.owner_policy.snapshot().allows_workspace_mutation():
+            raise PermissionError(
+                "Engineering Autonomy must be Workspace, Auto-Fix, or Review Candidate for source mutations"
+            )
+
     def _workspace_for(self, work_order_id: str, attempt_id: str):
         row = self.work_store.connection.execute(
             """
@@ -267,6 +273,8 @@ class EngineeringRuntime:
                 "merge_authority": False,
                 "deploy_authority": False,
             }
+        if op in self.MUTATING_OPERATIONS:
+            self._assert_workspace_mutation_allowed()
 
         evidence: Any
         if op == "create":
@@ -306,6 +314,7 @@ class EngineeringRuntime:
     def commit(self, work_order_id: str, attempt_id: str, *, message: str) -> dict[str, Any]:
         """Create a local candidate commit only; no remote or release authority."""
         self._assert_continuation_authority()
+        self._assert_workspace_mutation_allowed()
         coordinator = self.open(work_order_id, attempt_id)
         before = self.repository_provider.status(coordinator.session)
         if not before.dirty:
