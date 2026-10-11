@@ -7,7 +7,7 @@ from urllib import error, parse, request
 
 from .contracts import EngineeringSpec
 from .qualification import VerificationObservation
-from .verification import observation_to_dict
+from .verification import observation_from_dict, observation_to_dict
 
 
 class WorkflowEvidenceError(RuntimeError):
@@ -245,3 +245,37 @@ def record_trusted_external_observation(*, work_store, work_order_id: str, attem
         {"observation": observation_to_dict(observation)},
         attempt_id=str(attempt_id),
     )
+
+
+def load_trusted_external_observations(
+    *,
+    work_store,
+    work_order_id: str,
+    attempt_id: str,
+    candidate_revision: str,
+) -> tuple[VerificationObservation, ...]:
+    """Load only observations previously written by a trusted verifier.
+
+    Work events are durable/auditable and attempt-bound. Re-validate the trust
+    markers and exact candidate revision when reading so a stale or malformed
+    event can never satisfy final qualification.
+    """
+    result: list[VerificationObservation] = []
+    for event in work_store.list_work_events(str(work_order_id)):
+        if event.attempt_id != str(attempt_id) or event.event_type != "engineering.external_evidence.verified":
+            continue
+        raw = event.payload.get("observation") if isinstance(event.payload, Mapping) else None
+        if not isinstance(raw, Mapping):
+            continue
+        observation = observation_from_dict(raw)
+        metadata = dict(observation.metadata or {})
+        if metadata.get("trusted_source") != "github-actions":
+            continue
+        if metadata.get("verified_by") != "github-physical-device-evidence-verifier":
+            continue
+        if str(metadata.get("candidate_revision") or "").strip() != str(candidate_revision).strip():
+            continue
+        if observation.gate != "physical_device":
+            continue
+        result.append(observation)
+    return tuple(result)
