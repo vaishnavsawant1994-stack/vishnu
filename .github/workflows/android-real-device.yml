@@ -46,6 +46,28 @@ jobs:
           sleep 4
           adb -s "$ANDROID_SERIAL" shell pidof ai.personal.companion | tee physical-device-pid.txt
           test -s physical-device-pid.txt
+      - name: Write revision-bound qualification manifest
+        shell: bash
+        run: |
+          mkdir -p physical-device-evidence
+          python3 - <<'PY'
+          import json, os
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "candidate_revision": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_name": os.environ["GITHUB_WORKFLOW"],
+              "workflow_path": ".github/workflows/android-real-device.yml",
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "platform": "android",
+              "physical_device": True,
+              "test_result": "success",
+              "artifact_name": "physical-android-evidence",
+          }
+          with open("physical-device-evidence/qualification-manifest.json", "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, sort_keys=True, indent=2)
+          PY
       - name: Capture physical-device evidence
         if: always()
         shell: bash
