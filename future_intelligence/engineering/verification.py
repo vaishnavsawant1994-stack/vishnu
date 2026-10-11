@@ -35,14 +35,26 @@ def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[Ve
     browser = str(payload.get("browser") or "chromium").lower()
     responsive = bool(payload.get("responsive_passed", False))
     runtime = bool(payload.get("runtime_passed", False))
-    visual = bool(payload.get("visual_passed", True))
+    visual = bool(payload.get("visual_passed", False))
     evidence = tuple(str(item) for item in payload.get("evidence", ()))  # type: ignore[arg-type]
-    return (
+    observations = [
         VerificationObservation("responsive", responsive, f"{browser} responsive qualification", evidence),
         VerificationObservation(browser, responsive and runtime, f"{browser} compatibility qualification", evidence),
         VerificationObservation("runtime", runtime, f"{browser} console/network/runtime qualification", evidence),
         VerificationObservation("visual", visual, f"{browser} visual qualification", evidence),
-    )
+    ]
+    optional = {
+        "accessibility_passed": ("accessibility", "accessibility qualification"),
+        "performance_passed": ("performance", "performance budget qualification"),
+        "localization_passed": ("localization", "localization/content-stress qualification"),
+        "three_d_passed": ("three_d", "living Vishnu / 3D qualification"),
+        "physical_device_passed": ("physical_device", "physical-device qualification"),
+        "preview_passed": ("preview", "deployed-preview qualification"),
+    }
+    for key, (gate, label) in optional.items():
+        if key in payload:
+            observations.append(VerificationObservation(gate, bool(payload.get(key)), label, evidence))
+    return tuple(observations)
 
 
 def _collapse(observations: Iterable[VerificationObservation]) -> tuple[VerificationObservation, ...]:
