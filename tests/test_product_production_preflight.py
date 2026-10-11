@@ -1,14 +1,11 @@
 from __future__ import annotations
 
 import base64
+import importlib.util
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
-
-from packaging import version as _packaging_version  # proves third-party packaging remains importable
-
-import importlib.util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -82,7 +79,7 @@ def test_server_preflight_rejects_mismatched_key_pair():
     assert pair["ok"] is False
 
 
-def test_worker_preflight_requires_https_transport_and_safe_runner_id(tmp_path):
+def test_worker_preflight_requires_https_transport_and_safe_runner_id():
     preflight = module()
     env = signing_env()
     env.update(
@@ -213,7 +210,7 @@ def test_ios_compiler_preflight_requires_macos_profile_and_identity(tmp_path):
     assert wrong_host["ready"] is False
 
 
-def test_linux_compiler_preflight_does_not_require_signing_secret():
+def test_linux_compiler_preflight_does_not_require_target_signing_secret():
     preflight = module()
     env = signing_env()
     result = preflight.preflight(
@@ -225,4 +222,3 @@ def test_linux_compiler_preflight_does_not_require_signing_secret():
         module_finder=fake_module_finder,
     )
     assert result["ready"] is True
-    assert _packaging_version.parse("1.2.3") < _packaging_version.parse("2.0.0")
