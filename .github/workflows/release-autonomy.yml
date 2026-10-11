@@ -32,6 +32,7 @@ jobs:
           tests/test_release_control_vercel.py
           tests/test_release_runtime.py
           tests/test_release_recovery.py
+          tests/test_release_monitoring.py
           tests/test_owner_release_api.py
       - name: Release authority invariants
         run: |
@@ -42,6 +43,8 @@ jobs:
           render = Path('future_intelligence/release_control/render_provider.py').read_text()
           vercel = Path('future_intelligence/release_control/vercel_provider.py').read_text()
           recovery = Path('future_intelligence/release_control/recovery.py').read_text()
+          monitor = Path('future_intelligence/release_control/monitoring.py').read_text()
+          cloud = Path('server/cloud_app.py').read_text()
           api = Path('server/owner_release_api.py').read_text()
           assert 'candidate_revision' in controller
           assert 'provider returned a deployment for a different revision' in controller
@@ -51,6 +54,9 @@ jobs:
           assert 'promotion_rebuilds' in vercel and 'False' in vercel
           assert 'RECOVERY_REQUIRED' in recovery
           assert 'automatic replay is prohibited' in recovery
+          assert 'ProductionReleaseMonitor' in monitor
+          assert 'observe_regression' in monitor
+          assert 'release_monitor_worker' in cloud
           assert 'release_plan_creation_from_api' in api
           assert 'automatic_rollback' in api
           assert 'body_activation' in api
