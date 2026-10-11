@@ -51,7 +51,7 @@ try{
   await desktop.locator('#detailDialog[open]').waitFor();
   await desktop.getByRole('button',{name:'Package & License'}).click();
   await desktop.getByText('Production portable package').waitFor();
-  assert.ok(await desktop.getByRole('button',{name:'Download'}).isEnabled());
+  assert.ok(await desktop.locator('[data-download-production]').isEnabled());
   assert.ok(await desktop.getByRole('button',{name:'Issue signed license'}).isEnabled());
   assert.ok(await desktop.getByText('Frozen / immutable').isVisible());
   await shot(desktop,'our-products-package-license-desktop.png');
