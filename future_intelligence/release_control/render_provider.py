@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import json
+import time
+from dataclasses import dataclass
+from typing import Any
+from urllib import error, request
+
+from .contracts import ReleaseEnvironment, ReleasePlan
+from .providers import ReleaseDeployment
+
+
+class RenderProviderError(RuntimeError):
+    pass
+
+
+class _NoRedirect(request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise RenderProviderError("Render API redirects are not accepted")
+
+
+@dataclass(frozen=True)
+class RenderReleaseConfig:
+    api_token: str
+    preview_service_id: str
+    production_service_id: str
+    preview_url: str
+    production_url: str
+    poll_interval_seconds: float = 2.0
+    deployment_timeout_seconds: float = 900.0
+
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("api_token", self.api_token),
+            ("preview_service_id", self.preview_service_id),
+            ("production_service_id", self.production_service_id),
+            ("preview_url", self.preview_url),
+            ("production_url", self.production_url),
+        ):
+            if not str(value).strip():
+                raise ValueError(f"Render release config requires {label}")
+        if self.poll_interval_seconds <= 0 or self.deployment_timeout_seconds <= 0:
+            raise ValueError("Render polling values must be positive")
+
+
+class RenderReleaseProvider:
+    """Deploy exact Git revisions through Render's authenticated REST API.
+
+    The API token is held only by this provider instance. It is never written to
+    ReleasePlan, evidence, logs, model context, or API responses.
+    """
+
+    name = "render"
+    _BASE = "https://api.render.com/v1"
+    _SUCCESS = {"live"}
+    _FAILURE = {"deactivated", "build_failed", "update_failed", "canceled", "pre_deploy_failed"}
+
+    def __init__(self, config: RenderReleaseConfig) -> None:
+        self.config = config
+        self._opener = request.build_opener(_NoRedirect())
+
+    def _call(self, method: str, path: str, body: dict[str, Any] | None = None) -> dict[str, Any]:
+        payload = None if body is None else json.dumps(body, separators=(",", ":")).encode("utf-8")
+        req = request.Request(
+            f"{self._BASE}{path}",
+            data=payload,
+            method=method,
+            headers={
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.config.api_token}",
+                "User-Agent": "Vishnu-Governed-Release/1",
+            },
+        )
+        try:
+            with self._opener.open(req, timeout=30) as response:
+                raw = response.read(1_000_001)
+                if len(raw) > 1_000_000:
+                    raise RenderProviderError("Render API response exceeded the safety bound")
+                value = json.loads(raw.decode("utf-8")) if raw else {}
+        except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            code = getattr(exc, "code", None)
+            raise RenderProviderError(f"Render API request failed{f' ({code})' if code else ''}") from exc
+        if not isinstance(value, dict):
+            raise RenderProviderError("Render API returned an unexpected payload")
+        return value
+
+    @staticmethod
+    def _commit_id(payload: dict[str, Any]) -> str:
+        commit = payload.get("commit") or {}
+        return str(commit.get("id") or "")
+
+    def _wait(self, service_id: str, deploy_id: str, expected_revision: str) -> dict[str, Any]:
+        deadline = time.monotonic() + self.config.deployment_timeout_seconds
+        while time.monotonic() < deadline:
+            payload = self._call("GET", f"/services/{service_id}/deploys/{deploy_id}")
+            commit_id = self._commit_id(payload)
+            if commit_id and commit_id != expected_revision:
+                raise RenderProviderError("Render deployment revision drifted from the release plan")
+            status = str(payload.get("status") or "")
+            if status in self._SUCCESS:
+                if commit_id != expected_revision:
+                    raise RenderProviderError("Render live deployment did not prove the exact candidate revision")
+                return payload
+            if status in self._FAILURE:
+                raise RenderProviderError(f"Render deployment failed with status {status}")
+            time.sleep(self.config.poll_interval_seconds)
+        raise RenderProviderError("Render deployment timed out before reaching live status")
+
+    def _deploy(
+        self,
+        plan: ReleasePlan,
+        *,
+        service_id: str,
+        environment: ReleaseEnvironment,
+        public_url: str,
+        revision: str,
+    ) -> ReleaseDeployment:
+        payload = self._call(
+            "POST",
+            f"/services/{service_id}/deploys",
+            {"commitId": revision, "clearCache": "do_not_clear"},
+        )
+        deploy_id = str(payload.get("id") or "")
+        if not deploy_id:
+            raise RenderProviderError("Render did not return a deployment id")
+        commit_id = self._commit_id(payload)
+        if commit_id and commit_id != revision:
+            raise RenderProviderError("Render accepted a different revision than requested")
+        live = self._wait(service_id, deploy_id, revision)
+        return ReleaseDeployment(
+            id=deploy_id,
+            provider=self.name,
+            target=plan.target,
+            revision=revision,
+            environment=environment,
+            url=public_url,
+            state="ready",
+            metadata={
+                "service_id": service_id,
+                "render_status": str(live.get("status") or "live"),
+                "trigger": str(live.get("trigger") or "api"),
+            },
+        )
+
+    def create_preview(self, plan: ReleasePlan) -> ReleaseDeployment:
+        return self._deploy(
+            plan,
+            service_id=self.config.preview_service_id,
+            environment=ReleaseEnvironment.PREVIEW,
+            public_url=self.config.preview_url,
+            revision=plan.candidate_revision,
+        )
+
+    def promote(self, plan: ReleasePlan) -> ReleaseDeployment:
+        return self._deploy(
+            plan,
+            service_id=self.config.production_service_id,
+            environment=ReleaseEnvironment.PRODUCTION,
+            public_url=self.config.production_url,
+            revision=plan.candidate_revision,
+        )
+
+    def observe(self, deployment: ReleaseDeployment) -> ReleaseDeployment:
+        service_id = (
+            self.config.preview_service_id
+            if deployment.environment is ReleaseEnvironment.PREVIEW
+            else self.config.production_service_id
+        )
+        payload = self._call("GET", f"/services/{service_id}/deploys/{deployment.id}")
+        commit_id = self._commit_id(payload)
+        if commit_id and commit_id != deployment.revision:
+            raise RenderProviderError("observed Render deployment revision does not match recorded evidence")
+        status = str(payload.get("status") or deployment.state)
+        return ReleaseDeployment(
+            id=deployment.id,
+            provider=deployment.provider,
+            target=deployment.target,
+            revision=deployment.revision,
+            environment=deployment.environment,
+            url=deployment.url,
+            state="ready" if status == "live" else status,
+            metadata={**dict(deployment.metadata), "render_status": status},
+        )
+
+    def rollback(self, plan: ReleasePlan, deployment: ReleaseDeployment) -> ReleaseDeployment:
+        # The controller separately checks owner policy and explicit approval.
+        return self._deploy(
+            plan,
+            service_id=self.config.production_service_id,
+            environment=ReleaseEnvironment.PRODUCTION,
+            public_url=self.config.production_url,
+            revision=plan.base_revision,
+        )
