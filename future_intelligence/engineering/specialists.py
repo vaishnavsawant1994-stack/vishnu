@@ -127,6 +127,10 @@ class EngineeringSpecialistSelector:
     def select(self, spec: EngineeringSpec, *, max_roles: int = 4) -> tuple[WorkerProfile, ...]:
         surfaces = {str(item).casefold() for item in spec.affected_surfaces}
         roles = ["engineering-architect"]
+        # Security-sensitive analysis has priority over optional specialty review
+        # when the bounded consultation count is saturated.
+        if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}:
+            roles.append("engineering-security-reviewer")
         if spec.ui_required or "ui" in surfaces or "frontend" in surfaces:
             roles.extend(("engineering-frontend", "engineering-ui-qa"))
         if "api" in surfaces or "backend" in surfaces:
@@ -139,8 +143,6 @@ class EngineeringSpecialistSelector:
             roles.append("engineering-visual-reviewer")
         if spec.accessibility_required:
             roles.append("engineering-accessibility-reviewer")
-        if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}:
-            roles.append("engineering-security-reviewer")
         if bool(dict(spec.metadata).get("performance_required", False)):
             roles.append("engineering-performance-reviewer")
         unique = tuple(dict.fromkeys(roles))
