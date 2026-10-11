@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 
 from products.builders import build_plan
+from products.licensing import LicenseAuthority, LicenseVerifier
 from products.manifest import ManifestValidationError, manifest_for_product, validate_manifest
+from products.package import create_package, inspect_package
 from products.policies import normalize_ai_policy, normalize_permissions, permission_state
 from products.runtime import ProductRuntimeSpec
 from products.store import ProductStore
@@ -124,3 +128,45 @@ def test_builder_rejects_non_enabled_target(tmp_path):
     spec = ProductRuntimeSpec.load(manifest_for_product(store, product["id"]))
     with pytest.raises(ValueError, match="not enabled"):
         build_plan(spec, "android")
+
+
+def test_portable_product_package_round_trip(tmp_path):
+    store = _store(tmp_path)
+    product = store.create(
+        name="Portable Operations Worker",
+        product_type="automation",
+        targets=["worker"],
+    )
+    spec = ProductRuntimeSpec.load(manifest_for_product(store, product["id"]))
+    result = create_package(spec, tmp_path / "operations")
+    assert result["path"].endswith(".vishnu-product")
+    loaded = inspect_package(result["path"])
+    assert loaded.product_id == spec.product_id
+    assert loaded.version == spec.version
+    assert loaded.targets == ("worker",)
+
+
+def test_signed_license_is_product_bound_and_tamper_evident():
+    authority = LicenseAuthority.generate()
+    verifier = LicenseVerifier({authority.key_id: authority.public_key})
+    expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    document = authority.issue(
+        license_id="LIC-1",
+        product_id="VP-1",
+        client_id="ACME",
+        license_type="annual",
+        expires_at=expires,
+        device_limit=25,
+        managed_ai_allowed=True,
+        entitlements={"edition": "professional"},
+    ).as_dict()
+    payload = verifier.verify(document, product_id="VP-1")
+    assert payload["client_id"] == "ACME"
+    assert payload["managed_ai_allowed"] is True
+
+    tampered = {**document, "payload": {**document["payload"], "device_limit": 999}}
+    with pytest.raises(ValueError, match="signature"):
+        verifier.verify(tampered, product_id="VP-1")
+
+    with pytest.raises(ValueError, match="different product"):
+        verifier.verify(document, product_id="VP-OTHER")
