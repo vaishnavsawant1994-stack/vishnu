@@ -4,7 +4,7 @@ from hashlib import sha256
 import json
 import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 from uuid import uuid4
 
 from models.fresh_machine_activation import (
@@ -18,6 +18,10 @@ from models.intelligence_restore import (
     RestoreArtifactKind,
 )
 from models.intelligence_vault import FilesystemIntelligenceVault
+from models.model_bundle import (
+    checkpoint_inventory_sha256,
+    create_portable_model_bundle,
+)
 from models.offline_pack import OfflinePackManager
 from models.portable_intelligence import (
     ExecutionTarget,
@@ -186,6 +190,8 @@ class PortableIntelligenceRuntime:
         self.active_package_path = self.data_dir / "intelligence" / "active-restore-package.json"
         self.offline_root = self.data_dir / "intelligence" / "offline-packs"
         self.offline_root.mkdir(parents=True, exist_ok=True)
+        self.model_bundles_root = self.data_dir / "intelligence" / "model-bundles"
+        self.model_bundles_root.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
     def _safe_package_id(package_id: str) -> str:
@@ -284,6 +290,29 @@ class PortableIntelligenceRuntime:
                 )
         return tuple(rows)
 
+    def _active_training_model(self):
+        if self.training_registry is None:
+            return None
+        governance = getattr(self.training_registry, "governance", None)
+        active = governance.active_model() if governance is not None else None
+        if not active:
+            return None
+        return self.training_registry.get_model(active["model_id"])
+
+    @staticmethod
+    def _canonical_checkpoint_digest(model) -> str:
+        metrics = dict(getattr(model, "metrics", {}) or {})
+        for key in ("artifact_sha256", "checkpoint_sha256"):
+            value = str(metrics.get(key) or "").strip().lower()
+            if len(value) == 64 and all(char in "0123456789abcdef" for char in value):
+                return value
+        checkpoint = Path(str(getattr(model, "checkpoint_ref", "") or "")).expanduser()
+        if checkpoint.is_dir() and not checkpoint.is_symlink():
+            return checkpoint_inventory_sha256(checkpoint)
+        if checkpoint.is_file() and not checkpoint.is_symlink():
+            return _sha256_file(checkpoint.resolve())[0]
+        return ""
+
     def _model_references(self) -> tuple[IntelligenceReference, ...]:
         refs: list[IntelligenceReference] = []
         providers = getattr(self.model_router, "providers", {}) or {}
@@ -296,21 +325,17 @@ class PortableIntelligenceRuntime:
                         version=str(provider.model),
                     )
                 )
-        if self.training_registry is not None:
-            governance = getattr(self.training_registry, "governance", None)
-            active = governance.active_model() if governance is not None else None
-            if active:
-                model = self.training_registry.get_model(active["model_id"])
-                if model is not None:
-                    digest = str((getattr(model, "metrics", {}) or {}).get("checkpoint_sha256") or "")
-                    refs.append(
-                        IntelligenceReference(
-                            name="trained:active",
-                            ref_id=str(model.model_id),
-                            version=str(getattr(model, "created_at", None) or model.model_id),
-                            sha256=digest if len(digest) == 64 else "",
-                        )
-                    )
+        model = self._active_training_model()
+        if model is not None:
+            digest = self._canonical_checkpoint_digest(model)
+            refs.append(
+                IntelligenceReference(
+                    name="trained:active",
+                    ref_id=str(model.model_id),
+                    version=str(getattr(model, "created_at", None) or model.model_id),
+                    sha256=digest,
+                )
+            )
         return tuple(refs)
 
     def _agent_references(self) -> tuple[IntelligenceReference, ...]:
@@ -340,6 +365,7 @@ class PortableIntelligenceRuntime:
                 "restore_package": "1",
                 "offline_pack": "1",
                 "fresh_machine_activation": "1",
+                "portable_model_bundle": "1",
             },
             registries={
                 "training": "canonical",
@@ -355,32 +381,50 @@ class PortableIntelligenceRuntime:
             self.events.emit("intelligence.manifest_published", manifest_id=manifest.manifest_id)
         return manifest
 
+    def _portable_training_artifact(self, owner_id: str) -> RestoreArtifact | None:
+        model = self._active_training_model()
+        if model is None:
+            return None
+        checkpoint = Path(str(getattr(model, "checkpoint_ref", "") or "")).expanduser()
+        method = str(getattr(model, "method", "") or "").lower()
+        kind = RestoreArtifactKind.ADAPTER if method in {"lora", "qlora"} else RestoreArtifactKind.MODEL
+        expected_inventory = self._canonical_checkpoint_digest(model)
+
+        if checkpoint.is_dir() and not checkpoint.is_symlink():
+            bundle_path = self.model_bundles_root / f"{model.model_id}.zip"
+            bundle = create_portable_model_bundle(
+                checkpoint,
+                bundle_path,
+                model_id=str(model.model_id),
+                expected_inventory_sha256=expected_inventory or None,
+            )
+            source = bundle.path
+            digest = bundle.bundle_sha256
+            size = bundle.size_bytes
+            name = "active-trained-model-bundle"
+        elif checkpoint.is_file() and not checkpoint.is_symlink():
+            source = checkpoint.resolve()
+            digest, size = _sha256_file(source)
+            name = "active-trained-model"
+        else:
+            raise RuntimeError("active trained-model checkpoint is missing or unsafe")
+
+        artifact = RestoreArtifact(
+            name=name,
+            artifact_id=str(model.model_id),
+            version=str(getattr(model, "created_at", None) or model.model_id),
+            sha256=digest,
+            locator=f"vault://sha256/{digest}",
+            kind=kind,
+            required=True,
+            size_bytes=size,
+        )
+        return self.vault.put(owner_id, artifact, source).artifact
+
     def publish_current_restore_package(self, *, core_version: str, owner_id: str = "owner") -> IntelligenceRestorePackage:
         manifest = self.publish_current_manifest(core_version=core_version, owner_id=owner_id)
-        artifacts: list[RestoreArtifact] = []
-        if self.training_registry is not None:
-            governance = getattr(self.training_registry, "governance", None)
-            active = governance.active_model() if governance is not None else None
-            if active:
-                model = self.training_registry.get_model(active["model_id"])
-                checkpoint = Path(str(getattr(model, "checkpoint_ref", "") or "")).expanduser()
-                if checkpoint.is_file() and not checkpoint.is_symlink():
-                    resolved = checkpoint.resolve()
-                    digest, size = _sha256_file(resolved)
-                    method = str(getattr(model, "method", "") or "").lower()
-                    kind = RestoreArtifactKind.ADAPTER if method in {"lora", "qlora"} else RestoreArtifactKind.MODEL
-                    artifact = RestoreArtifact(
-                        name="active-trained-model",
-                        artifact_id=str(model.model_id),
-                        version=str(getattr(model, "created_at", None) or model.model_id),
-                        sha256=digest,
-                        locator=f"vault://sha256/{digest}",
-                        kind=kind,
-                        required=True,
-                        size_bytes=size,
-                    )
-                    record = self.vault.put(owner_id, artifact, resolved)
-                    artifacts.append(record.artifact)
+        artifact = self._portable_training_artifact(owner_id)
+        artifacts = () if artifact is None else (artifact,)
         package = IntelligenceRestorePackage.create(manifest=manifest, artifacts=artifacts, owner_id=owner_id)
         saved = self.save_restore_package(package, activate=True)
         if self.events is not None:
@@ -477,6 +521,7 @@ class PortableIntelligenceRuntime:
             "activation": self.activation.status(),
             "specialist_bindings": specialists,
             "offline_pack_available": bool(package and (self.offline_root / package.package_id).is_dir()),
+            "active_trained_model_artifact_included": bool(package and package.artifacts),
             "backup_restore_authority": "recovery.BackupService/continuity",
             "model_execution_authority": "models.GovernedModelRouter",
             "model_promotion_authority": "training.TrainingRegistry",
