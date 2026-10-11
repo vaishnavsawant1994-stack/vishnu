@@ -65,7 +65,7 @@ jobs:
           assert 'will not push or create that ref' in orchestration
           assert 'VISHNU_ENGINEERING_GITHUB_DISPATCH_TOKEN' in owner_api
           assert 'client_qualification_claim' in owner_api
-          assert 'GitHub workflow run IDs' in owner_api
+          assert '"github_workflow_run_ids_only"' in owner_api
           assert 'qualification-manifest.json' in ios
           assert 'qualification-manifest.json' in android
           assert 'physical_device' in ios and 'physical_device' in android
