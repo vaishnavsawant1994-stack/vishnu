@@ -15,6 +15,7 @@ from products.package_export import build_portable_package, inspect_portable_pac
 from products.signing import SIGNING_KEY_ENV, PUBLIC_KEY_ENV, canonical_json, verify_payload
 from products.store import ProductStore
 from products.verification import verify_portable_product, verify_product_license
+from products.versioning import frozen_version, list_frozen_versions
 
 
 def configure_signing(monkeypatch):
@@ -103,6 +104,23 @@ def test_production_package_fails_closed_without_signing(monkeypatch):
     assert metadata["signed"] is False
     assert verify_portable_product(raw).code == "signature_required"
     assert verify_portable_product(raw, allow_unsigned_development=True).valid is True
+
+
+def test_frozen_versions_are_immutable_distribution_snapshots():
+    directory, products, _ = make_stores()
+    try:
+        product = products.create(name="Versioned Worker", product_type="automation", description="v1 description")
+        frozen = products.create_version(product["id"], version="0.1.0", notes="first commercial snapshot")
+        products.update(product["id"], {"description": "working copy changed after freeze"})
+
+        snapshot = frozen_version(products, product["id"], "0.1.0")
+        assert snapshot is not None
+        assert snapshot["manifest"]["description"] == "v1 description"
+        assert products.manifest(product["id"])["description"] == "working copy changed after freeze"
+        assert [item["version"] for item in list_frozen_versions(products, product["id"])] == ["0.1.0"]
+        assert frozen["manifest"] == snapshot["manifest"]
+    finally:
+        directory.cleanup()
 
 
 def test_signed_license_is_persisted_downloadable_and_revocable(monkeypatch):
