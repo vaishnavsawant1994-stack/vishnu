@@ -56,6 +56,9 @@ jobs:
           assert 'automatic production is permanently limited to low-risk releases' in policy
           assert 'sensitive release surfaces always require owner approval' in policy
           assert 'auto-deploy must be disabled' in render
+          assert 'autoAssignCustomDomains' in vercel
+          assert '"target": "production"' in vercel
+          assert 'staged_production' in vercel
           assert 'promotion_rebuilds' in vercel and 'False' in vercel
           assert 'RECOVERY_REQUIRED' in recovery
           assert 'automatic replay is prohibited' in recovery
