@@ -19,26 +19,19 @@ jobs:
           ref: feature/engineering-intelligence-qualification-20261011
           fetch-depth: 0
       - name: Harden signed-out panel against hostile RTL content
-        shell: python
         run: |
+          python - <<'PY'
           from pathlib import Path
-
           path = Path("personal-ai/pwa/index.html")
           text = path.read_text(encoding="utf-8")
           marker = "\n    .home{"
-          hardening = """
-    /* Keep signed-out access UI inside its grid track under RTL, long URLs,
-       unbroken text, text scaling, and narrow mobile viewports. */
-    .app-shell,.enroll{min-width:0}
-    .enroll{max-width:100%;overflow:hidden}
-    .enroll h1,.enroll>p,.enroll input{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
-"""
+          hardening = "\n    /* Keep signed-out access UI inside its grid track under RTL, long URLs, unbroken text, text scaling, and narrow mobile viewports. */\n    .app-shell,.enroll{min-width:0}\n    .enroll{max-width:100%;overflow:hidden}\n    .enroll h1,.enroll>p,.enroll input{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word}\n"
           if hardening.strip() in text:
               raise SystemExit("hardening already present")
           if marker not in text:
               raise SystemExit("expected CSS insertion marker not found")
-          text = text.replace(marker, hardening + marker, 1)
-          path.write_text(text, encoding="utf-8")
+          path.write_text(text.replace(marker, hardening + marker, 1), encoding="utf-8")
+          PY
       - name: Commit product fix
         run: |
           git diff --check
