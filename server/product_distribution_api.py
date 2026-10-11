@@ -4,7 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Cookie, HTTPException, Query
+from fastapi import APIRouter, Cookie, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -12,6 +12,13 @@ from products.artifact_builders import ArtifactBuilderError, ProductArtifactBuil
 from products.build_lifecycle import ProductBuildLifecycle
 from products.license_store import ProductLicenseStore
 from products.package_export import build_portable_package
+from products.platform_jobs import (
+    PlatformBuildJobError,
+    ProductPlatformBuildJobs,
+    max_artifact_bytes,
+    runner_configured,
+    runner_token_matches,
+)
 from products.signing import signing_available
 from products.versioning import frozen_version, list_frozen_versions
 from security.request_context import current_trusted_request
@@ -47,8 +54,11 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
     lifecycle = ProductBuildLifecycle(product_store.path)
     settings = runtime.get("settings")
     data_dir = Path(getattr(settings, "data_dir", product_store.path.parent))
-    artifact_builder = ProductArtifactBuilder(product_store, lifecycle, data_dir / "product-artifacts")
+    artifact_root = data_dir / "product-artifacts"
+    artifact_builder = ProductArtifactBuilder(product_store, lifecycle, artifact_root)
+    platform_jobs = ProductPlatformBuildJobs(product_store, lifecycle, artifact_root)
     runtime["product_artifact_builder"] = artifact_builder
+    runtime["product_platform_jobs"] = platform_jobs
 
     def authenticate(device_id: str | None, token: str | None, *, write=False):
         if not device_id or not token or not registry.authenticate(device_id, token):
@@ -58,6 +68,13 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
         context = current_trusted_request()
         if write and (context is None or context.device_id != device_id):
             raise HTTPException(401, "A current trusted owner session is required to change product distribution")
+
+    def authenticate_runner(authorization: str | None):
+        if not runner_configured():
+            raise HTTPException(503, "Product platform runner authentication is not configured")
+        prefix = "Bearer "
+        if not authorization or not authorization.startswith(prefix) or not runner_token_matches(authorization[len(prefix):]):
+            raise HTTPException(401, "Product platform runner authentication failed")
 
     def product_or_404(product_id: str):
         product = product_store.get(product_id)
@@ -80,7 +97,9 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
             "frozen_versions": frozen_numbers,
             "production_distribution_ready": signing_available() and current_frozen,
             "verified_local_build_targets": list(artifact_builder.available_targets()),
-            "native_builds": "target-builder qualification required",
+            "platform_runner_configured": runner_configured(),
+            "platform_runner_targets": ["android", "ios", "windows", "macos", "linux", "docker"],
+            "native_builds": "platform runner required",
         }
 
     @router.get("/{product_id}/package")
@@ -146,8 +165,6 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
         except ArtifactBuilderError as exc:
             raise HTTPException(409, str(exc)) from exc
         except Exception as exc:
-            # Detailed diagnostics are retained in the owner-only build lifecycle.
-            # The HTTP boundary exposes only the exception class, never local paths.
             raise HTTPException(500, f"Product artifact build failed ({type(exc).__name__})") from exc
         return {
             "build": build,
@@ -172,7 +189,7 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
             raise HTTPException(409, str(exc)) from exc
         return FileResponse(
             path,
-            media_type="application/zip",
+            media_type="application/octet-stream" if path.suffix.lower() != ".zip" else "application/zip",
             filename=build.get("artifact_name") or path.name,
             headers={
                 "Cache-Control": "no-store",
@@ -180,6 +197,129 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
                 "X-Vishnu-Artifact-SHA256": str(build.get("checksum") or ""),
             },
         )
+
+    @router.get("/{product_id}/builds/{build_id}/platform-job")
+    def owner_download_platform_job(
+        product_id: str,
+        build_id: str,
+        development: bool = Query(default=False),
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token, write=True)
+        product_or_404(product_id)
+        try:
+            filename, raw, metadata = platform_jobs.prepare_job(product_id, build_id, development=development)
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except PlatformBuildJobError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(
+            raw,
+            media_type="application/vnd.vishnu.product-build-job+zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Vishnu-Build-Job-SHA256": metadata["sha256"],
+                "X-Vishnu-Build-Job-Signed": "true" if metadata["signed"] else "false",
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @router.get("/runner/{product_id}/{build_id}/job")
+    def runner_download_job(
+        product_id: str,
+        build_id: str,
+        authorization: str | None = Header(default=None),
+    ):
+        authenticate_runner(authorization)
+        product_or_404(product_id)
+        try:
+            filename, raw, metadata = platform_jobs.prepare_job(product_id, build_id, development=False)
+            platform_jobs.mark_running(product_id, build_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except PlatformBuildJobError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(
+            raw,
+            media_type="application/vnd.vishnu.product-build-job+zip",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+                "X-Vishnu-Build-Job-SHA256": metadata["sha256"],
+                "Cache-Control": "no-store",
+            },
+        )
+
+    @router.put("/runner/{product_id}/{build_id}/artifact")
+    async def runner_upload_artifact(
+        product_id: str,
+        build_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        x_vishnu_artifact_name: str | None = Header(default=None),
+        x_vishnu_artifact_sha256: str | None = Header(default=None),
+        x_vishnu_platform_signing_verified: str | None = Header(default=None),
+        x_vishnu_runner_metadata: str | None = Header(default=None),
+        content_length: int | None = Header(default=None),
+    ):
+        authenticate_runner(authorization)
+        product_or_404(product_id)
+        if content_length is not None and content_length > max_artifact_bytes():
+            raise HTTPException(413, "Platform artifact exceeds the configured size limit")
+        raw = await request.body()
+        metadata = {}
+        if x_vishnu_runner_metadata:
+            if len(x_vishnu_runner_metadata) > 4096:
+                raise HTTPException(422, "Runner metadata header is too large")
+            try:
+                parsed = json.loads(x_vishnu_runner_metadata)
+            except ValueError as exc:
+                raise HTTPException(422, "Runner metadata must be valid JSON") from exc
+            if not isinstance(parsed, dict):
+                raise HTTPException(422, "Runner metadata must be a JSON object")
+            metadata = parsed
+        signing_verified = str(x_vishnu_platform_signing_verified or "").strip().lower() in {"1", "true", "yes"}
+        try:
+            build = platform_jobs.accept_artifact(
+                product_id,
+                build_id,
+                filename=str(x_vishnu_artifact_name or ""),
+                expected_sha256=str(x_vishnu_artifact_sha256 or ""),
+                payload=raw,
+                platform_signing_verified=signing_verified,
+                runner_metadata=metadata,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except PlatformBuildJobError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"build": build, "accepted": True}
+
+    @router.post("/runner/{product_id}/{build_id}/failed")
+    async def runner_report_failure(
+        product_id: str,
+        build_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+    ):
+        authenticate_runner(authorization)
+        product_or_404(product_id)
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        reason = str(payload.get("reason") or "Platform runner failed")[:2000] if isinstance(payload, dict) else "Platform runner failed"
+        try:
+            build = platform_jobs.mark_failed(product_id, build_id, reason)
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except PlatformBuildJobError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"build": build, "accepted": True}
 
     @router.get("/{product_id}/licenses")
     def list_licenses(product_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):

@@ -1,0 +1,91 @@
+name: Our Products Android Runner
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "products/platform_jobs.py"
+      - "products/package_export.py"
+      - "products/build_lifecycle.py"
+      - "packaging/product_platform_runner.py"
+      - "server/product_distribution_api.py"
+      - "tests/test_product_platform_jobs.py"
+      - ".github/workflows/product-android-runner.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-product-debug:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+      - run: pip install -r requirements.txt
+      - name: Create isolated unsigned development build job
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from products.build_lifecycle import ProductBuildLifecycle
+          from products.platform_jobs import ProductPlatformBuildJobs
+          from products.store import ProductStore
+
+          root=Path('.runner-qualification')
+          root.mkdir(exist_ok=True)
+          store=ProductStore(root/'products.sqlite3')
+          product=store.create(name='Qualified Android Employee',product_type='ai_employee',targets=['android'])
+          store.set_ai_policy(product['id'],{'mode':'disabled'})
+          store.add_component(product['id'],component_type='workflow',component_ref='qualification.workflow',name='Qualification Workflow',config={'portable':True})
+          store.create_version(product['id'],version='0.1.0')
+          build=store.request_build(product['id'],target='android')
+          jobs=ProductPlatformBuildJobs(store,ProductBuildLifecycle(store.path),root/'artifacts')
+          _name,raw,meta=jobs.prepare_job(product['id'],build['id'],development=True)
+          (root/'android.vishnu-build-job').write_bytes(raw)
+          print(meta)
+          PY
+      - name: Compile real Android APK from product job
+        run: |
+          mkdir -p .runner-qualification/output
+          python packaging/product_platform_runner.py .runner-qualification/android.vishnu-build-job --output .runner-qualification/output --allow-unsigned-job | tee .runner-qualification/runner.log
+          tail -n 1 .runner-qualification/runner.log > .runner-qualification/result.json
+          python -m json.tool .runner-qualification/result.json
+      - name: Verify generated Android artifact
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          result=json.loads(Path('.runner-qualification/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file(), artifact
+          assert artifact.suffix=='.apk', artifact
+          assert result['variant']=='debug'
+          assert result['platform_signing_verified'] is False
+          assert result['evidence']['schema']=='vishnu.platform-runner-evidence/v1'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['mode']=='development'
+          assert result['evidence']['signing_verified'] is False
+          assert result['evidence']['sha256']==result['sha256']
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          print(f"qualified={artifact} sha256={result['sha256']}")
+          PY
+          APKSIGNER=$(find "${ANDROID_HOME:-${ANDROID_SDK_ROOT}}/build-tools" -type f -name apksigner | sort -V | tail -1)
+          test -n "$APKSIGNER"
+          "$APKSIGNER" verify --verbose "$(python -c 'import json;print(json.load(open(".runner-qualification/result.json"))["artifact"])')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-android-debug-qualification
+          path: |
+            .runner-qualification/output/*.apk
+            .runner-qualification/result.json
+            .runner-qualification/runner.log
+          if-no-files-found: error
