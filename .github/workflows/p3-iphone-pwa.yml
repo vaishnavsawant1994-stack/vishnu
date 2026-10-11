@@ -12,12 +12,18 @@ on:
       - 'server/owner_intelligence_ui.py'
       - 'server/owner_engineering_api.py'
       - 'server/owner_engineering_ui.py'
+      - 'server/owner_release_api.py'
+      - 'server/owner_release_ui.py'
       - 'server/self_improvement_ui.py'
       - 'pwa/**'
       - 'tests/test_p3_iphone_pwa.py'
       - 'tests/test_p3_voice_qualification.py'
       - 'tests/test_advanced_intelligence_integration.py'
       - 'tests/test_owner_engineering_controls.py'
+      - 'tests/test_owner_release_api.py'
+      - 'tests/test_release_control.py'
+      - 'tests/test_release_policy_hardening.py'
+      - 'tests/test_release_monitoring.py'
       - 'tests/test_self_improvement_*.py'
       - 'tests/test_training_*.py'
       - 'core/config.py'
@@ -60,11 +66,15 @@ jobs:
         run: python -m compileall -q server core tests
       - name: iPhone PWA integration tests
         run: pytest -q tests/test_p3_iphone_pwa.py tests/test_p3_voice_qualification.py
-      - name: Owner Intelligence and Engineering responsive/API qualification
+      - name: Owner Intelligence, Engineering and Release responsive/API qualification
         run: >-
           pytest -q
           tests/test_advanced_intelligence_integration.py
           tests/test_owner_engineering_controls.py
+          tests/test_owner_release_api.py
+          tests/test_release_control.py
+          tests/test_release_policy_hardening.py
+          tests/test_release_monitoring.py
           tests/test_self_improvement_governance.py
           tests/test_training_runtime_controls.py
           tests/test_training_export_governance.py
@@ -82,4 +92,10 @@ jobs:
           router=Path('server/iphone_pwa.py').read_text()
           for requirement in ('httponly=True','secure=True',"samesite='strict'",'hmac.compare_digest'):
               assert requirement in router
+          release_api=Path('server/owner_release_api.py').read_text()
+          assert 'release_plan_creation_from_api' in release_api
+          assert 'body_activation' in release_api
+          monitor=Path('future_intelligence/release_control/monitoring.py').read_text()
+          assert 'ProductionReleaseMonitor' in monitor
+          assert 'observe_regression' in monitor
           PY
