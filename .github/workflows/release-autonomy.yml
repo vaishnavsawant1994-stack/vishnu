@@ -24,15 +24,18 @@ jobs:
       - name: Compile release authority surfaces
         run: python -m compileall -q future_intelligence/release_control server/owner_release_api.py server/owner_release_ui.py server/cloud_app.py
       - name: Governed release control qualification
-        run: pytest -q tests/test_release_control.py tests/test_owner_release_api.py
+        run: pytest -q tests/test_release_control.py tests/test_release_policy_hardening.py tests/test_owner_release_api.py
       - name: Release authority invariants
         run: |
           python - <<'PY'
           from pathlib import Path
           controller = Path('future_intelligence/release_control/controller.py').read_text()
+          policy = Path('future_intelligence/release_control/policy.py').read_text()
           api = Path('server/owner_release_api.py').read_text()
           assert 'candidate_revision' in controller
           assert 'provider returned a deployment for a different revision' in controller
+          assert 'automatic production is permanently limited to low-risk releases' in policy
+          assert 'sensitive release surfaces always require owner approval' in policy
           assert 'release_plan_creation_from_api' in api
           assert 'automatic_rollback' in api
           assert 'body_activation' in api
