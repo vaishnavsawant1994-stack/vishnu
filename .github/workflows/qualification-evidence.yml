@@ -1,0 +1,65 @@
+name: Qualification Evidence Closure
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  qualification-evidence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pip check
+      - name: Compile evidence qualification surfaces
+        run: >-
+          python -m compileall -q
+          future_intelligence/engineering/final_qualification.py
+          future_intelligence/engineering/evidence_finalizer.py
+          future_intelligence/engineering/regression_evidence.py
+          future_intelligence/engineering/work_executor.py
+          future_intelligence/engineering/workflow_evidence.py
+          future_intelligence/release_control/handoff.py
+          server/owner_engineering_api.py
+      - name: Trusted qualification evidence tests
+        run: >-
+          pytest -q
+          tests/test_engineering_qualification_evidence.py
+          tests/test_owner_engineering_api.py
+      - name: Qualification evidence authority invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          finalizer = Path('future_intelligence/engineering/final_qualification.py').read_text()
+          regression = Path('future_intelligence/engineering/regression_evidence.py').read_text()
+          workflow = Path('future_intelligence/engineering/workflow_evidence.py').read_text()
+          owner_api = Path('server/owner_engineering_api.py').read_text()
+          ios = Path('.github/workflows/ios-physical-device.yml').read_text()
+          android = Path('.github/workflows/android-real-device.yml').read_text()
+
+          assert '_RESERVED_EXTERNAL_GATES = {"physical_device", "regression_test"}' in finalizer
+          assert 'reserved qualification gate requires trusted persisted evidence' in finalizer
+          assert 'load_trusted_external_observations' in finalizer
+          assert 'changed regression test' in regression
+          assert 'integration/full-suite' in regression
+          assert 'head_sha' in workflow
+          assert 'workflow_dispatch' in workflow
+          assert 'artifact is missing or expired' in workflow
+          assert 'client_qualification_claim' in owner_api
+          assert 'GitHub workflow run IDs' in owner_api
+          assert 'qualification-manifest.json' in ios
+          assert 'qualification-manifest.json' in android
+          assert 'physical_device' in ios and 'physical_device' in android
+          PY
