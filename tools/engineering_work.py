@@ -12,6 +12,11 @@ def register(registry, executor, *, runtime_epoch_provider):
     """
 
     def handler(params):
+        policy_store = getattr(getattr(executor, "runtime", None), "owner_policy", None)
+        if policy_store is not None and not policy_store.snapshot().allows_autonomous_execution():
+            raise PermissionError(
+                "Engineering Autonomy is not in Auto-Fix or Review Candidate mode"
+            )
         work_order_id = str(params["work_order_id"])
         result = executor.execute(
             work_order_id,
