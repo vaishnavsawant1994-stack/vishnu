@@ -34,6 +34,7 @@ jobs:
           tests/test_release_recovery.py
           tests/test_release_monitoring.py
           tests/test_release_feedback.py
+          tests/test_release_automation.py
           tests/test_owner_release_api.py
       - name: Release authority invariants
         run: |
@@ -46,6 +47,8 @@ jobs:
           recovery = Path('future_intelligence/release_control/recovery.py').read_text()
           monitor = Path('future_intelligence/release_control/monitoring.py').read_text()
           feedback = Path('future_intelligence/release_control/feedback.py').read_text()
+          automation = Path('future_intelligence/release_control/automation.py').read_text()
+          handoff = Path('future_intelligence/release_control/handoff.py').read_text()
           cloud = Path('server/cloud_app.py').read_text()
           api = Path('server/owner_release_api.py').read_text()
           assert 'candidate_revision' in controller
@@ -60,6 +63,8 @@ jobs:
           assert 'observe_regression' in monitor
           assert 'ProductionRegression' in feedback
           assert 'regression_bridge.create' in feedback
+          assert 'allows_automatic_production' in automation
+          assert 'engineering.release_handoff' in handoff
           assert 'release_monitor_worker' in cloud
           assert 'release_plan_creation_from_api' in api
           assert 'automatic_rollback' in api
