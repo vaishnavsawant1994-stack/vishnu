@@ -352,7 +352,13 @@ class PortableIntelligenceRuntime:
             )
         return tuple(refs)
 
-    def publish_current_manifest(self, *, core_version: str, owner_id: str = "owner") -> IntelligenceManifest:
+    def publish_current_manifest(
+        self,
+        *,
+        core_version: str,
+        owner_id: str = "owner",
+        activate: bool = True,
+    ) -> IntelligenceManifest:
         candidates = self._provider_candidates()
         privacy = str(getattr(self.model_router, "owner_privacy", "local_preferred") or "local_preferred")
         manifest = IntelligenceManifest.create(
@@ -376,9 +382,10 @@ class PortableIntelligenceRuntime:
                 "runtime_candidates": [runtime_candidate_public(item) for item in candidates],
             },
         )
-        self.manifests.activate(manifest)
-        if self.events is not None:
-            self.events.emit("intelligence.manifest_published", manifest_id=manifest.manifest_id)
+        if activate:
+            self.manifests.activate(manifest)
+            if self.events is not None:
+                self.events.emit("intelligence.manifest_published", manifest_id=manifest.manifest_id)
         return manifest
 
     def _portable_training_artifact(self, owner_id: str) -> RestoreArtifact | None:
@@ -422,12 +429,20 @@ class PortableIntelligenceRuntime:
         return self.vault.put(owner_id, artifact, source).artifact
 
     def publish_current_restore_package(self, *, core_version: str, owner_id: str = "owner") -> IntelligenceRestorePackage:
-        manifest = self.publish_current_manifest(core_version=core_version, owner_id=owner_id)
+        # Build and verify all fallible transport state before changing the active
+        # identity pointer. This prevents a failed model bundle from leaving a
+        # new active manifest without its corresponding restore package.
         artifact = self._portable_training_artifact(owner_id)
+        manifest = self.publish_current_manifest(
+            core_version=core_version,
+            owner_id=owner_id,
+            activate=False,
+        )
         artifacts = () if artifact is None else (artifact,)
         package = IntelligenceRestorePackage.create(manifest=manifest, artifacts=artifacts, owner_id=owner_id)
         saved = self.save_restore_package(package, activate=True)
         if self.events is not None:
+            self.events.emit("intelligence.manifest_published", manifest_id=manifest.manifest_id)
             self.events.emit("intelligence.restore_package_published", package_id=saved.package_id)
         return saved
 
