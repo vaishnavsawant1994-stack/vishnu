@@ -56,6 +56,8 @@ class EngineeringQualification:
             gates.append("physical_device")
         if bool(metadata.get("preview_enabled", False)):
             gates.append("preview")
+        if bool(metadata.get("regression_test_required", False)) or str(metadata.get("failure_fingerprint") or "").strip():
+            gates.append("regression_test")
         return tuple(dict.fromkeys(gates))
 
     def report(
