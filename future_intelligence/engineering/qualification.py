@@ -16,6 +16,14 @@ class VerificationObservation:
     metadata: Mapping[str, object] | None = None
 
     def to_gate(self) -> QualificationGateResult:
+        if self.passed and not self.evidence:
+            return QualificationGateResult(
+                self.gate,
+                QualificationGateStatus.PENDING,
+                self.summary or "passing qualification observation has no evidence",
+                (),
+                dict(self.metadata or {}),
+            )
         status = QualificationGateStatus.WARN if self.warning and self.passed else (QualificationGateStatus.PASS if self.passed else QualificationGateStatus.FAIL)
         return QualificationGateResult(self.gate, status, self.summary, self.evidence, dict(self.metadata or {}))
 
