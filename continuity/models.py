@@ -105,11 +105,11 @@ class ContinuityCheckpoint:
     data_manifest_hash: str
     active_body_revision_id: str | None
     active_body_git_revision: str | None
-    intelligence_manifest_id: str = ""
-    intelligence_manifest_fingerprint: str = ""
     schema_versions: Mapping[str, tuple[int, ...]] = field(default_factory=dict)
     state_summary: Mapping[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now_iso)
+    intelligence_manifest_id: str = ""
+    intelligence_manifest_fingerprint: str = ""
 
     def intelligence_binding(self) -> dict[str, str]:
         return _validated_intelligence_binding(
@@ -170,14 +170,14 @@ class ContinuityCheckpoint:
             data_manifest_hash=str(data["data_manifest_hash"]),
             active_body_revision_id=data.get("active_body_revision_id"),
             active_body_git_revision=data.get("active_body_git_revision"),
-            intelligence_manifest_id=str(data.get("intelligence_manifest_id") or ""),
-            intelligence_manifest_fingerprint=str(data.get("intelligence_manifest_fingerprint") or ""),
             schema_versions={
                 str(key): tuple(int(version) for version in value)
                 for key, value in dict(data.get("schema_versions") or {}).items()
             },
             state_summary=dict(data.get("state_summary") or {}),
             created_at=str(data.get("created_at") or utc_now_iso()),
+            intelligence_manifest_id=str(data.get("intelligence_manifest_id") or ""),
+            intelligence_manifest_fingerprint=str(data.get("intelligence_manifest_fingerprint") or ""),
         )
         supplied = str(data.get("checkpoint_hash") or "")
         if supplied and supplied != checkpoint.checkpoint_hash:
