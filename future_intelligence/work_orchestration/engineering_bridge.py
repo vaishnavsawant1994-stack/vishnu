@@ -27,6 +27,32 @@ def _tuple_value(value):
     return (value,)
 
 
+def _merge_required(canonical, requested) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(str(item) for item in (*_tuple_value(canonical), *_tuple_value(requested)) if str(item)))
+
+
+def _scope_rule_within(requested: str, canonical: str) -> bool:
+    req = str(requested or "").strip().replace("\\", "/")
+    can = str(canonical or "").strip().replace("\\", "/")
+    if not req or not can:
+        return False
+    if req == can:
+        return True
+    if can in {".", "./", "*", "**", "**/*"}:
+        return True
+    # Proving subset relationships between arbitrary glob patterns is error-prone;
+    # only exact glob matches are accepted. Plain directory/path scopes can narrow.
+    if any(char in req for char in "*?[") or any(char in can for char in "*?["):
+        return False
+    req = req.lstrip("./").rstrip("/")
+    can = can.lstrip("./").rstrip("/")
+    return bool(req and can and (req == can or req.startswith(can + "/")))
+
+
+def _device_profiles(value) -> tuple[DeviceProfile, ...]:
+    return tuple(item if isinstance(item, DeviceProfile) else DeviceProfile.from_dict(item) for item in _tuple_value(value))
+
+
 def engineering_spec_from_work_order(
     work_order: WorkOrder,
     *,
@@ -35,11 +61,11 @@ def engineering_spec_from_work_order(
     base_revision: str,
     overrides: Mapping[str, object] | None = None,
 ) -> EngineeringSpec:
-    """Project Canonical Work into a bounded engineering contract.
+    """Project Canonical Work into a bounded, monotonic engineering contract.
 
-    Overrides may tune verification/qualification detail but cannot broaden the
-    repository/path authority granted by Canonical Work. Authority-sensitive
-    source changes additionally require an explicit Work approval policy flag.
+    Overrides may narrow repository/path authority or add requirements and
+    qualification gates. They cannot remove Canonical Work success criteria,
+    tests, review, browser coverage, UI gates, or security classification.
     This projection never prepares a workspace, approves, merges or deploys.
     """
     data = dict(overrides or {})
@@ -52,10 +78,10 @@ def engineering_spec_from_work_order(
     requested_paths = tuple(str(item) for item in _tuple_value(data.pop("allowed_paths", canonical_paths)))
     if not canonical_paths:
         raise PermissionError("canonical Work has no engineering path authority")
-    if any(item not in canonical_paths for item in requested_paths):
-        raise PermissionError("engineering allowed_paths override cannot broaden canonical Work resource scope")
     if not requested_paths:
         raise PermissionError("engineering path scope cannot be empty")
+    if any(not any(_scope_rule_within(item, canonical) for canonical in canonical_paths) for item in requested_paths):
+        raise PermissionError("engineering allowed_paths override cannot broaden canonical Work resource scope")
     allowed_paths = requested_paths
 
     canonical_authority = bool(dict(work_order.approval_policy or {}).get("allow_authority_paths", False))
@@ -65,15 +91,30 @@ def engineering_spec_from_work_order(
 
     seed = f"{work_order.id}:{attempt_id}:{repository}:{base_revision}".encode("utf-8")
     spec_id = str(data.pop("id", f"eng-{hashlib.sha256(seed).hexdigest()[:24]}"))
-    verification = dict(work_order.verification_strategy)
-    surfaces = tuple(str(item) for item in _tuple_value(data.pop("affected_surfaces", verification.get("affected_surfaces", ()))))
-    ui_required = bool(data.pop("ui_required", "ui" in surfaces or verification.get("ui_required", False)))
-    browsers_raw = _tuple_value(data.pop("browsers", verification.get("browsers", ("chromium",))))
-    browsers = tuple(item if isinstance(item, BrowserEngine) else BrowserEngine(str(item)) for item in browsers_raw)
-    if not browsers:
-        browsers = (BrowserEngine.CHROMIUM,)
-    security_raw = data.pop("security_class", verification.get("security_class", SecurityClass.ORDINARY.value))
-    security_class = security_raw if isinstance(security_raw, SecurityClass) else SecurityClass(str(security_raw))
+    verification = dict(work_order.verification_strategy or {})
+
+    canonical_surfaces = _tuple_value(verification.get("affected_surfaces", ()))
+    requested_surfaces = _tuple_value(data.pop("affected_surfaces", ()))
+    surfaces = _merge_required(canonical_surfaces, requested_surfaces)
+    canonical_ui_required = bool("ui" in canonical_surfaces or verification.get("ui_required", False))
+    requested_ui_required = bool(data.pop("ui_required", False))
+    ui_required = bool(canonical_ui_required or requested_ui_required or "ui" in surfaces)
+
+    canonical_browsers_raw = _tuple_value(verification.get("browsers", ("chromium",)))
+    requested_browsers_raw = _tuple_value(data.pop("browsers", ()))
+    canonical_browsers = tuple(item if isinstance(item, BrowserEngine) else BrowserEngine(str(item)) for item in canonical_browsers_raw)
+    requested_browsers = tuple(item if isinstance(item, BrowserEngine) else BrowserEngine(str(item)) for item in requested_browsers_raw)
+    browsers = tuple(dict.fromkeys((*canonical_browsers, *requested_browsers))) or (BrowserEngine.CHROMIUM,)
+
+    canonical_security_raw = verification.get("security_class", SecurityClass.ORDINARY.value)
+    canonical_security = canonical_security_raw if isinstance(canonical_security_raw, SecurityClass) else SecurityClass(str(canonical_security_raw))
+    requested_security_raw = data.pop("security_class", canonical_security.value)
+    requested_security = requested_security_raw if isinstance(requested_security_raw, SecurityClass) else SecurityClass(str(requested_security_raw))
+    security_rank = {SecurityClass.ORDINARY: 0, SecurityClass.SENSITIVE: 1, SecurityClass.AUTHORITY: 2}
+    if security_rank[requested_security] < security_rank[canonical_security]:
+        raise PermissionError("engineering security_class override cannot weaken canonical Work verification")
+    security_class = requested_security
+
     budget_data = data.pop("budget", {})
     if isinstance(budget_data, EngineeringBudget):
         budget = budget_data
@@ -82,23 +123,51 @@ def engineering_spec_from_work_order(
         if work_order.retry_policy.get("max_attempts") is not None and "max_repair_cycles" not in merged_budget:
             merged_budget["max_repair_cycles"] = min(3, max(0, int(work_order.retry_policy["max_attempts"]) - 1))
         budget = EngineeringBudget.from_dict(merged_budget)
-    devices_raw = _tuple_value(data.pop("devices", ()))
-    devices = tuple(item if isinstance(item, DeviceProfile) else DeviceProfile.from_dict(item) for item in devices_raw)
+
+    canonical_devices = _device_profiles(verification.get("devices", ()))
+    requested_devices = _device_profiles(data.pop("devices", ()))
+    devices = tuple(dict.fromkeys((*canonical_devices, *requested_devices)))
+
+    canonical_prohibited = _tuple_value(dict(resources.metadata or {}).get("prohibited_paths", ()))
+    requested_prohibited = _tuple_value(data.pop("prohibited_paths", ()))
+    prohibited_paths = _merge_required(canonical_prohibited, requested_prohibited)
+
+    canonical_requirements = (work_order.objective,)
+    requirements = _merge_required(canonical_requirements, data.pop("requirements", ()))
+    success_criteria = _merge_required(work_order.success_criteria, data.pop("success_criteria", ()))
+    required_tests = _merge_required(verification.get("tests", ()), data.pop("required_tests", ()))
+    required_states = _merge_required(verification.get("states", ()), data.pop("required_states", ()))
+    reference_designs = _merge_required(verification.get("reference_designs", ()), data.pop("reference_designs", ()))
+    api_impacts = _merge_required(verification.get("api_impacts", ()), data.pop("api_impacts", ()))
+    schema_impacts = _merge_required(verification.get("schema_impacts", ()), data.pop("schema_impacts", ()))
+
+    canonical_accessibility = bool(verification.get("accessibility_required", canonical_ui_required))
+    requested_accessibility = bool(data.pop("accessibility_required", False))
+    accessibility_required = bool(ui_required or canonical_accessibility or requested_accessibility)
+
+    canonical_visual = bool(verification.get("visual_review_required", canonical_ui_required))
+    requested_visual = bool(data.pop("visual_review_required", False))
+    visual_review_required = bool(ui_required or canonical_visual or requested_visual)
+
+    canonical_review = bool(work_order.evidence_contract.require_review)
+    requested_review = bool(data.pop("review_required", canonical_review))
+    review_required = bool(canonical_review or requested_review)
+
     known = {
-        "requirements": tuple(str(item) for item in _tuple_value(data.pop("requirements", (work_order.objective,)))),
-        "non_requirements": tuple(str(item) for item in _tuple_value(data.pop("non_requirements", ()))),
-        "prohibited_paths": tuple(str(item) for item in _tuple_value(data.pop("prohibited_paths", ()))),
+        "requirements": requirements,
+        "non_requirements": tuple(str(item) for item in _tuple_value(data.pop("non_requirements", ())) if str(item)),
+        "prohibited_paths": prohibited_paths,
         "affected_surfaces": surfaces,
-        "api_impacts": tuple(str(item) for item in _tuple_value(data.pop("api_impacts", ()))),
-        "schema_impacts": tuple(str(item) for item in _tuple_value(data.pop("schema_impacts", ()))),
-        "success_criteria": tuple(str(item) for item in _tuple_value(data.pop("success_criteria", work_order.success_criteria))),
-        "required_tests": tuple(str(item) for item in _tuple_value(data.pop("required_tests", verification.get("tests", ())))),
-        "required_states": tuple(str(item) for item in _tuple_value(data.pop("required_states", verification.get("states", ())))),
-        "reference_designs": tuple(str(item) for item in _tuple_value(data.pop("reference_designs", verification.get("reference_designs", ())))),
+        "api_impacts": api_impacts,
+        "schema_impacts": schema_impacts,
+        "success_criteria": success_criteria,
+        "required_tests": required_tests,
+        "required_states": required_states,
+        "reference_designs": reference_designs,
         "devices": devices,
-        "accessibility_required": bool(data.pop("accessibility_required", verification.get("accessibility_required", ui_required))),
-        "visual_review_required": bool(data.pop("visual_review_required", verification.get("visual_review_required", ui_required))),
-        "review_required": bool(data.pop("review_required", work_order.evidence_contract.require_review)),
+        "accessibility_required": accessibility_required,
+        "visual_review_required": visual_review_required,
+        "review_required": review_required,
         "allow_authority_paths": allow_authority_paths,
     }
     if data:
@@ -113,6 +182,7 @@ def engineering_spec_from_work_order(
         allowed_paths=allowed_paths,
         browsers=browsers,
         security_class=security_class,
+        ui_required=ui_required,
         budget=budget,
         metadata={"plan_id": work_order.plan_id, "project_id": work_order.project_id, "worker_type": work_order.worker_type},
         **known,
