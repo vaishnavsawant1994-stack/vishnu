@@ -12,6 +12,7 @@ from typing import Iterable, Mapping
 _TEXT_SUFFIXES = {".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".html", ".css", ".json", ".yaml", ".yml", ".md"}
 _JS_IMPORT = re.compile(r"(?:from\s+|import\s*\(|require\s*\()\s*['\"]([^'\"]+)['\"]")
 _ROUTE_HINT = re.compile(r"(?:route|path|href)\s*[:=]\s*['\"]([^'\"]+)['\"]", re.I)
+_ROOT_SCOPES = {".", "./", "*", "**", "**/*"}
 
 
 @dataclass(frozen=True)
@@ -74,11 +75,18 @@ class RepositoryIntelligenceBuilder:
     def _symbol_id(path: str, name: str, line: int) -> str:
         return f"symbol:{path}:{line}:{name}"
 
+    @staticmethod
+    def _normalize_prefixes(include_paths: Iterable[str]) -> tuple[str, ...]:
+        raw = tuple(str(item).strip().replace("\\", "/") for item in include_paths if str(item).strip())
+        if any(item in _ROOT_SCOPES for item in raw):
+            return ()
+        return tuple(dict.fromkeys(item.strip("/") for item in raw if item.strip("/")))
+
     def build(self, root: str | Path, *, revision: str, include_paths: Iterable[str] = ()) -> RepositoryGraph:
         base = Path(root).expanduser().resolve()
         if not base.is_dir():
             raise ValueError("repository intelligence root must be a directory")
-        prefixes = tuple(str(item).strip().strip("/") for item in include_paths if str(item).strip())
+        prefixes = self._normalize_prefixes(include_paths)
         nodes: list[RepositoryNode] = []
         edges: list[RepositoryEdge] = []
         file_ids: dict[str, str] = {}
