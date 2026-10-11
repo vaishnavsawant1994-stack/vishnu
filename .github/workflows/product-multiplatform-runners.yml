@@ -1,0 +1,157 @@
+name: Our Products Multi-Platform Runners
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packaging/create_product_platform_job.py"
+      - "packaging/product_desktop_container_runner.py"
+      - "packaging/product_apple_runner.py"
+      - "products/builders.py"
+      - "products/platform_jobs.py"
+      - "products/platform_runners.py"
+      - "products/runner_leases.py"
+      - "server/product_runner_queue_api.py"
+      - "tests/test_product_runner_leases.py"
+      - "tests/test_product_platform_callback_authority.py"
+      - ".github/workflows/product-multiplatform-runners.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-product:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p .runner-qualification/linux/output
+          python packaging/create_product_platform_job.py --target linux --workspace .runner-qualification/linux/work --output .runner-qualification/linux/job.vishnu-build-job
+          python packaging/product_desktop_container_runner.py .runner-qualification/linux/job.vishnu-build-job --output .runner-qualification/linux/output --allow-unsigned-job | tee .runner-qualification/linux/runner.log
+          tail -n 1 .runner-qualification/linux/runner.log > .runner-qualification/linux/result.json
+      - name: Verify Linux evidence
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          result=json.loads(Path('.runner-qualification/linux/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file() and artifact.suffix == '.deb'
+          assert result['evidence']['target']=='linux'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['production_ready'] is False
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-linux-qualification
+          path: |
+            .runner-qualification/linux/output/*
+            .runner-qualification/linux/result.json
+          if-no-files-found: error
+
+  windows-product:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .runner-qualification/windows/output | Out-Null
+          python packaging/create_product_platform_job.py --target windows --workspace .runner-qualification/windows/work --output .runner-qualification/windows/job.vishnu-build-job
+          python packaging/product_desktop_container_runner.py .runner-qualification/windows/job.vishnu-build-job --output .runner-qualification/windows/output --allow-unsigned-job | Tee-Object -FilePath .runner-qualification/windows/runner.log
+          (Get-Content .runner-qualification/windows/runner.log | Select-Object -Last 1) | Set-Content .runner-qualification/windows/result.json
+          python -c "import hashlib,json,pathlib; r=json.loads(pathlib.Path('.runner-qualification/windows/result.json').read_text()); a=pathlib.Path(r['artifact']); assert a.is_file() and a.suffix.lower()=='.exe'; assert r['evidence']['target']=='windows' and r['evidence']['compiler_verified'] is True and r['evidence']['production_ready'] is False; assert hashlib.sha256(a.read_bytes()).hexdigest()==r['sha256']"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-windows-qualification
+          path: |
+            .runner-qualification/windows/output/*
+            .runner-qualification/windows/result.json
+          if-no-files-found: error
+
+  docker-product:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p .runner-qualification/docker/output
+          python packaging/create_product_platform_job.py --target docker --workspace .runner-qualification/docker/work --output .runner-qualification/docker/job.vishnu-build-job
+          python packaging/product_desktop_container_runner.py .runner-qualification/docker/job.vishnu-build-job --output .runner-qualification/docker/output --allow-unsigned-job | tee .runner-qualification/docker/runner.log
+          tail -n 1 .runner-qualification/docker/runner.log > .runner-qualification/docker/result.json
+      - name: Verify Docker evidence
+        run: |
+          python - <<'PY'
+          import hashlib,json,zipfile
+          from pathlib import Path
+          result=json.loads(Path('.runner-qualification/docker/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file() and artifact.suffix == '.zip'
+          assert result['evidence']['target']=='docker'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['production_ready'] is False
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          with zipfile.ZipFile(artifact) as z: assert {'image.tar','manifest.json','image.sha256'} <= set(z.namelist())
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-docker-qualification
+          path: |
+            .runner-qualification/docker/output/*
+            .runner-qualification/docker/result.json
+          if-no-files-found: error
+
+  apple-products:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos, ios]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: |
+          mkdir -p .runner-qualification/${{ matrix.target }}/output
+          python packaging/create_product_platform_job.py --target ${{ matrix.target }} --workspace .runner-qualification/${{ matrix.target }}/work --output .runner-qualification/${{ matrix.target }}/job.vishnu-build-job
+          python packaging/product_apple_runner.py .runner-qualification/${{ matrix.target }}/job.vishnu-build-job --output .runner-qualification/${{ matrix.target }}/output --allow-unsigned-job | tee .runner-qualification/${{ matrix.target }}/runner.log
+          tail -n 1 .runner-qualification/${{ matrix.target }}/runner.log > .runner-qualification/${{ matrix.target }}/result.json
+      - name: Verify Apple evidence
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          target=os.environ['TARGET']
+          result=json.loads(Path(f'.runner-qualification/{target}/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file()
+          assert result['evidence']['target']==target
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['production_ready'] is False
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          if target=='macos': assert artifact.suffix=='.dmg'
+          if target=='ios': assert artifact.suffix=='.zip' and result['variant']=='simulator'
+          PY
+        env:
+          TARGET: ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-${{ matrix.target }}-qualification
+          path: |
+            .runner-qualification/${{ matrix.target }}/output/*
+            .runner-qualification/${{ matrix.target }}/result.json
+          if-no-files-found: error
