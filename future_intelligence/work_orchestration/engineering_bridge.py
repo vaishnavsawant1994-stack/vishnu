@@ -35,17 +35,34 @@ def engineering_spec_from_work_order(
     base_revision: str,
     overrides: Mapping[str, object] | None = None,
 ) -> EngineeringSpec:
-    """Project canonical Work into a bounded engineering contract.
+    """Project Canonical Work into a bounded engineering contract.
 
-    This is a projection only: it does not create a second Work authority, mutate
-    Work state, prepare a workspace, approve, review, merge, deploy, or activate.
+    Overrides may tune verification/qualification detail but cannot broaden the
+    repository/path authority granted by Canonical Work. Authority-sensitive
+    source changes additionally require an explicit Work approval policy flag.
+    This projection never prepares a workspace, approves, merges or deploys.
     """
     data = dict(overrides or {})
     resources = work_order.resource_scope
-    allowed_repositories = tuple(resources.allowed_repositories)
-    if allowed_repositories and repository not in allowed_repositories:
+    allowed_repositories = tuple(str(item) for item in resources.allowed_repositories if str(item))
+    if repository not in allowed_repositories:
         raise PermissionError("repository is outside canonical Work resource scope")
-    allowed_paths = tuple(str(item) for item in _tuple_value(data.pop("allowed_paths", resources.allowed_paths)))
+
+    canonical_paths = tuple(str(item) for item in resources.allowed_paths if str(item))
+    requested_paths = tuple(str(item) for item in _tuple_value(data.pop("allowed_paths", canonical_paths)))
+    if not canonical_paths:
+        raise PermissionError("canonical Work has no engineering path authority")
+    if any(item not in canonical_paths for item in requested_paths):
+        raise PermissionError("engineering allowed_paths override cannot broaden canonical Work resource scope")
+    if not requested_paths:
+        raise PermissionError("engineering path scope cannot be empty")
+    allowed_paths = requested_paths
+
+    canonical_authority = bool(dict(work_order.approval_policy or {}).get("allow_authority_paths", False))
+    allow_authority_paths = bool(data.pop("allow_authority_paths", canonical_authority))
+    if allow_authority_paths and not canonical_authority:
+        raise PermissionError("authority-sensitive engineering paths require explicit canonical Work approval policy")
+
     seed = f"{work_order.id}:{attempt_id}:{repository}:{base_revision}".encode("utf-8")
     spec_id = str(data.pop("id", f"eng-{hashlib.sha256(seed).hexdigest()[:24]}"))
     verification = dict(work_order.verification_strategy)
@@ -66,10 +83,7 @@ def engineering_spec_from_work_order(
             merged_budget["max_repair_cycles"] = min(3, max(0, int(work_order.retry_policy["max_attempts"]) - 1))
         budget = EngineeringBudget.from_dict(merged_budget)
     devices_raw = _tuple_value(data.pop("devices", ()))
-    devices = tuple(
-        item if isinstance(item, DeviceProfile) else DeviceProfile.from_dict(item)
-        for item in devices_raw
-    )
+    devices = tuple(item if isinstance(item, DeviceProfile) else DeviceProfile.from_dict(item) for item in devices_raw)
     known = {
         "requirements": tuple(str(item) for item in _tuple_value(data.pop("requirements", (work_order.objective,)))),
         "non_requirements": tuple(str(item) for item in _tuple_value(data.pop("non_requirements", ()))),
@@ -85,7 +99,7 @@ def engineering_spec_from_work_order(
         "accessibility_required": bool(data.pop("accessibility_required", verification.get("accessibility_required", ui_required))),
         "visual_review_required": bool(data.pop("visual_review_required", verification.get("visual_review_required", ui_required))),
         "review_required": bool(data.pop("review_required", work_order.evidence_contract.require_review)),
-        "allow_authority_paths": bool(data.pop("allow_authority_paths", False)),
+        "allow_authority_paths": allow_authority_paths,
     }
     if data:
         raise ValueError(f"unsupported engineering override keys: {sorted(data)}")
