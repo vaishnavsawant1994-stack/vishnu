@@ -8,7 +8,7 @@ from future_intelligence.engineering.release_qualification import EnvironmentQua
 from future_intelligence.engineering.repository_intelligence import RepositoryIntelligenceBuilder
 from future_intelligence.engineering.service import EngineeringCandidateCoordinator
 from future_intelligence.engineering.source_correlation import VisualSourceCorrelator
-from future_intelligence.work_orchestration.repository import RepositoryWorkspaceSession
+from future_intelligence.work_orchestration.repository import RepositoryStatus, RepositoryWorkspaceSession
 
 
 class Provider:
@@ -17,7 +17,11 @@ class Provider:
     def __init__(self, root: Path): self.root = root
     def resolve_revision(self, revision): return "a" * 40
     def read_text_at(self, revision, path): return (self.root / path).read_text(encoding="utf-8")
-    def changed_paths(self, session): return ("app/ui.css",)
+    def status(self, session): return RepositoryStatus("b" * 40, True, (" M app/ui.css",))
+    def changed_paths(self, *, base_revision, working_revision):
+        assert base_revision == "a" * 40
+        assert working_revision == "b" * 40
+        return ("app/ui.css",)
 
 
 def spec():
@@ -50,6 +54,20 @@ def test_candidate_coordinator_reports_no_release_authority(tmp_path: Path):
     report = coordinator.finalize(candidate_revision="b" * 40, observations=observations, reviewer="independent", review_decision="approved")
     assert report.qualified
     assert coordinator.evidence.read()
+
+
+def test_coordinator_includes_governed_dirty_mutations(tmp_path: Path):
+    workspace = tmp_path / "workspace"; (workspace / "app").mkdir(parents=True)
+    path = workspace / "app" / "ui.css"
+    path.write_text(".composer { bottom: 0; }\n", encoding="utf-8")
+    provider = Provider(workspace)
+    coordinator = EngineeringCandidateCoordinator(
+        repository_provider=provider, session=session(workspace), spec=spec(), evidence_root=tmp_path / "evidence",
+    )
+    _, digest = coordinator.editor.read_text("app/ui.css")
+    coordinator.editor.replace_text("app/ui.css", ".composer { bottom: 8px; }\n", expected_sha256=digest)
+    context = coordinator.inspect()
+    assert context.changed_paths == ("app/ui.css",)
 
 
 def test_pending_gate_is_blocking_even_when_review_approved():
