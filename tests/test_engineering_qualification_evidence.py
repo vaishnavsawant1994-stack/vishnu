@@ -9,9 +9,11 @@ from future_intelligence.engineering.final_qualification import EngineeringCandi
 from future_intelligence.engineering.qualification import VerificationObservation
 from future_intelligence.engineering.regression_evidence import (
     build_regression_proof,
+    diff_introduces_test_suppression,
     failure_fingerprint,
     is_test_path,
 )
+from future_intelligence.engineering.work_executor import EngineeringWorkExecutor
 from future_intelligence.engineering.workflow_evidence import (
     GitHubPhysicalDeviceEvidenceVerifier,
     GitHubWorkflowEvidenceConfig,
@@ -227,6 +229,39 @@ def test_regression_proof_requires_failure_fingerprint_changed_test_and_broad_pa
     )
     assert no_broad_test.passed is False
     assert "full-suite" in no_broad_test.observation().summary
+
+
+def test_regression_proof_does_not_count_deleted_or_newly_suppressed_tests():
+    class FakeEditor:
+        contents = {
+            "tests/test_real_regression.py": "def test_fixed():\n    assert True\n",
+            "tests/test_suppressed.py": "import pytest\n@pytest.mark.xfail\ndef test_bug():\n    assert False\n",
+        }
+        diffs = {
+            "tests/test_real_regression.py": "--- a/tests/test_real_regression.py\n+++ b/tests/test_real_regression.py\n+def test_fixed():\n+    assert True\n",
+            "tests/test_suppressed.py": "--- a/tests/test_suppressed.py\n+++ b/tests/test_suppressed.py\n+@pytest.mark.xfail\n+def test_bug():\n+    assert False\n",
+        }
+
+        def read_text(self, path):
+            if path not in self.contents:
+                raise FileNotFoundError(path)
+            return self.contents[path], "digest"
+
+        def diff(self, path):
+            return self.diffs[path]
+
+    coordinator = SimpleNamespace(editor=FakeEditor())
+    qualified = EngineeringWorkExecutor._qualified_regression_test_paths(
+        coordinator,
+        (
+            "tests/test_deleted.py",
+            "tests/test_suppressed.py",
+            "tests/test_real_regression.py",
+        ),
+    )
+    assert qualified == ("tests/test_real_regression.py",)
+    assert diff_introduces_test_suppression(FakeEditor.diffs["tests/test_suppressed.py"]) is True
+    assert diff_introduces_test_suppression(FakeEditor.diffs["tests/test_real_regression.py"]) is False
 
 
 def test_test_path_detection_covers_python_and_web_conventions():
