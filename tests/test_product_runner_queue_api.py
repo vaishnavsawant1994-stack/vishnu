@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import json
 from types import SimpleNamespace
 
 from cryptography.hazmat.primitives import serialization
@@ -94,6 +96,110 @@ def test_runner_heartbeat_is_bound_to_lease_token(tmp_path, monkeypatch):
     )
     assert heartbeat.status_code == 200
     assert heartbeat.json()["lease"]["state"] == "active"
+
+
+def test_runner_artifact_callback_requires_matching_lease_and_full_evidence(tmp_path, monkeypatch):
+    client, _store, product, build = app_client(tmp_path, monkeypatch)
+    claimed = client.post("/iphone/api/products/runner/claim?target=linux", headers=auth_headers())
+    token = claimed.headers["x-vishnu-runner-lease"]
+    artifact = b"qualified-linux-product-artifact"
+    digest = hashlib.sha256(artifact).hexdigest()
+    evidence = {
+        "schema": "vishnu.platform-runner-evidence/v1",
+        "product_id": product["id"],
+        "build_id": build["id"],
+        "version": "0.1.0",
+        "target": "linux",
+        "mode": "production",
+        "host_os": "linux",
+        "artifact_name": "qualified.deb",
+        "artifact_kind": "deb",
+        "sha256": digest,
+        "compiler_verified": True,
+        "signing_verified": False,
+        "provisioning_verified": False,
+        "notarization_verified": False,
+        "metadata": {"runner": "qualification"},
+    }
+    base = {
+        "Authorization": "Bearer qualification-runner-token",
+        "X-Vishnu-Artifact-Name": "qualified.deb",
+        "X-Vishnu-Artifact-SHA256": digest,
+        "X-Vishnu-Runner-Evidence": json.dumps(evidence, separators=(",", ":")),
+    }
+
+    denied = client.put(
+        f"/iphone/api/products/runner/{build['id']}/artifact",
+        headers={**base, "X-Vishnu-Runner-Lease": "wrong"},
+        content=artifact,
+    )
+    assert denied.status_code == 409
+
+    missing_evidence = client.put(
+        f"/iphone/api/products/runner/{build['id']}/artifact",
+        headers={
+            "Authorization": "Bearer qualification-runner-token",
+            "X-Vishnu-Runner-Lease": token,
+            "X-Vishnu-Artifact-Name": "qualified.deb",
+            "X-Vishnu-Artifact-SHA256": digest,
+        },
+        content=artifact,
+    )
+    assert missing_evidence.status_code == 422
+
+    accepted = client.put(
+        f"/iphone/api/products/runner/{build['id']}/artifact",
+        headers={**base, "X-Vishnu-Runner-Lease": token},
+        content=artifact,
+    )
+    assert accepted.status_code == 200
+    payload = accepted.json()
+    assert payload["accepted"] is True
+    assert payload["lease_completion_required"] is True
+    assert payload["build"]["status"] == "succeeded"
+    assert payload["build"]["metadata"]["artifact_ready"] is True
+
+    completed = client.post(
+        f"/iphone/api/products/runner/{build['id']}/complete",
+        headers={"Authorization": "Bearer qualification-runner-token", "X-Vishnu-Runner-Lease": token},
+    )
+    assert completed.status_code == 200
+    assert completed.json()["lease"]["state"] == "completed"
+
+
+def test_runner_artifact_callback_rejects_evidence_identity_mismatch(tmp_path, monkeypatch):
+    client, _store, product, build = app_client(tmp_path, monkeypatch)
+    claimed = client.post("/iphone/api/products/runner/claim?target=linux", headers=auth_headers())
+    token = claimed.headers["x-vishnu-runner-lease"]
+    artifact = b"mismatched-evidence"
+    digest = hashlib.sha256(artifact).hexdigest()
+    evidence = {
+        "schema": "vishnu.platform-runner-evidence/v1",
+        "product_id": product["id"],
+        "build_id": "another-build",
+        "version": "0.1.0",
+        "target": "linux",
+        "mode": "production",
+        "host_os": "linux",
+        "artifact_name": "qualified.deb",
+        "artifact_kind": "deb",
+        "sha256": digest,
+        "compiler_verified": True,
+        "metadata": {},
+    }
+    response = client.put(
+        f"/iphone/api/products/runner/{build['id']}/artifact",
+        headers={
+            "Authorization": "Bearer qualification-runner-token",
+            "X-Vishnu-Runner-Lease": token,
+            "X-Vishnu-Artifact-Name": "qualified.deb",
+            "X-Vishnu-Artifact-SHA256": digest,
+            "X-Vishnu-Runner-Evidence": json.dumps(evidence, separators=(",", ":")),
+        },
+        content=artifact,
+    )
+    assert response.status_code == 409
+    assert "evidence identity" in response.json()["detail"].lower()
 
 
 def test_queue_status_never_returns_lease_material(tmp_path, monkeypatch):
