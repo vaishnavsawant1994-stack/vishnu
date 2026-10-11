@@ -8,6 +8,8 @@ on:
       - 'feature/**'
     paths:
       - 'pwa/**'
+      - 'server/owner_engineering_api.py'
+      - 'server/owner_engineering_ui.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
@@ -28,6 +30,8 @@ on:
   pull_request:
     paths:
       - 'pwa/**'
+      - 'server/owner_engineering_api.py'
+      - 'server/owner_engineering_ui.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
