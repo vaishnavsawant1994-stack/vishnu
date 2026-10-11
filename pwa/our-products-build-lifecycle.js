@@ -51,9 +51,10 @@
           title.dataset.buildNumberApplied='true';
         }
         const status=row.querySelector('.status');
-        if(status){
+        if(status&&!status.dataset.buildLifecycleApplied){
           status.textContent=evidenceLabel(build);
           status.title=build.metadata?.signing_verified?'Signing verified':'No signing claim recorded';
+          status.dataset.buildLifecycleApplied='true';
         }
       });
     }catch{
