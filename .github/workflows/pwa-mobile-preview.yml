@@ -27,6 +27,7 @@ on:
       - 'tests/work_attention_center_browser.mjs'
       - 'tests/chat_experience_browser.mjs'
       - 'tests/agent_workforce_browser.mjs'
+      - 'tests/our_products_browser.mjs'
       - 'tests/visualize_workspace_browser.mjs'
       - 'tests/visualize_workspace_browser_runner.mjs'
       - 'personal-ai/pwa/**'
@@ -53,6 +54,7 @@ on:
       - 'tests/work_attention_center_browser.mjs'
       - 'tests/chat_experience_browser.mjs'
       - 'tests/agent_workforce_browser.mjs'
+      - 'tests/our_products_browser.mjs'
       - 'tests/visualize_workspace_browser.mjs'
       - 'tests/visualize_workspace_browser_runner.mjs'
       - 'personal-ai/pwa/**'
@@ -93,6 +95,7 @@ jobs:
           curl --fail --silent http://127.0.0.1:4173/standalone/ >/dev/null
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
+          mkdir -p artifacts/our-products
           mkdir -p artifacts/visualize
           mkdir -p artifacts/engineering-ui
           mkdir -p artifacts/owner-release-ui
@@ -105,6 +108,7 @@ jobs:
           node tests/work_attention_center_browser.mjs
           node tests/chat_experience_browser.mjs
           AGENT_WORKFORCE_SCREENSHOT_DIR=artifacts/agent-workforce node tests/agent_workforce_browser.mjs
+          OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
           node tests/pwa_mobile_preview_runner.mjs
           node tests/standalone_pwa_responsive.mjs

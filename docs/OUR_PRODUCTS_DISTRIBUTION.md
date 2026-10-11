@@ -1,0 +1,104 @@
+# Our Products distribution contract
+
+## Purpose
+
+`Our Products` turns selected Vishnu capabilities into client-specific products without exporting the complete Vishnu owner system. A product can represent an AI employee, agent, agent team, automation, workflow, tool, knowledge assistant, integration, business system, or custom product.
+
+The owner-side product record remains inside Vishnu. Client delivery uses a sanitized distribution manifest and separate client/runtime configuration.
+
+## Portable product package
+
+The canonical portable artifact uses the `.vishnu-product` extension. It is a ZIP-compatible envelope containing exactly:
+
+- `manifest.json` — sanitized `vishnu.product/v1` product contract
+- `package.json` — package schema, manifest digest and signing envelope
+- `checksums.json` — SHA-256 integrity metadata
+
+It does **not** contain:
+
+- the complete Vishnu source tree
+- owner conversations, memory or knowledge
+- unrelated agents, projects or client products
+- raw API keys, passwords, tokens or signing keys
+- Vishnu owner-vault references such as `secret_ref`
+
+Owner-side secret references are converted to a runtime requirement (`credentials: runtime-provisioned`). The client runtime must provision credentials independently through its approved secret store or onboarding flow.
+
+## Production signing
+
+Commercial product packages and product licenses use a dedicated Ed25519 signing trust domain:
+
+- `VISHNU_PRODUCT_SIGNING_PRIVATE_KEY_B64`
+- `VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64`
+
+Both values represent raw 32-byte Ed25519 keys encoded as base64. The private key belongs only in the protected deployment secret store. Never put it in Git, a product manifest, an application bundle, or a downloadable package.
+
+These keys are intentionally separate from `PERSONAL_AI_RELEASE_PRIVATE_KEY_B64` / `RELEASE_PUBLIC_KEY_B64`, which protect Vishnu application releases. Compromise or rotation of one trust domain must not automatically compromise the other.
+
+Production package generation fails closed when product signing is unavailable. An unsigned package can be generated only through the explicit development path and is marked `UNSIGNED-DEVELOPMENT`.
+
+## Client runtime verification
+
+A production runtime must pin the trusted Vishnu Product public key. It must not trust a public key merely because that key is embedded in the package or license.
+
+Before loading a product, the runtime verifies:
+
+1. package structure contains only the allowed files
+2. SHA-256 checksums match
+3. a production signature is present
+4. the embedded signing key matches the trusted/pinned product public key
+5. the Ed25519 signature over the sanitized manifest is valid
+6. the manifest schema is supported
+
+Unsigned packages are accepted only when the runtime explicitly enables development mode.
+
+## Product licenses
+
+Client licenses use schema `vishnu.product-license/v1` and are separately signed by the Product signing key. A license can contain:
+
+- product ID and name
+- client name
+- version constraint
+- license type
+- start and expiry time
+- maximum users
+- maximum devices
+- whether managed AI is included
+- server-controlled issuance metadata
+
+Client-supplied arbitrary metadata is not accepted by the owner API.
+
+A runtime validates the signature against the pinned Product public key, product identity, optional client identity, allowed version, start time and expiry time. License revocation is an authoritative registry state: revoking a license does not mutate the original signed document, so online/managed deployments must consult the authoritative revocation status according to their deployment policy.
+
+## AI configuration boundary
+
+The portable product describes the AI policy but never carries a raw provider key. Depending on the product policy, credentials are supplied at runtime by:
+
+- the client (client-owned provider/API key)
+- the managed Vishnu service
+- a local/self-hosted provider
+- an enterprise/private provider
+- a hybrid/fallback combination
+- nobody, when AI is disabled
+
+No-AI products remain valid products; deterministic workflows, integrations and business logic must not require a model merely because the product was created in Vishnu.
+
+## Native platform builds
+
+The product manifest can target Web/PWA, Android, iOS, Windows, macOS, Linux, Docker/server and API delivery. Target selection is not proof that a native artifact exists.
+
+A native build becomes downloadable only after a target-specific builder has:
+
+1. consumed an immutable product/version manifest
+2. generated the correct application/runtime shell
+3. completed target compilation
+4. applied required platform signing/provisioning
+5. produced a SHA-256 digest
+6. passed target qualification
+7. registered the exact artifact against the product build record
+
+Until those conditions are met, Our Products records the build as requested/pending and must not claim that an APK, AAB, IPA, MSI/EXE, DMG or other binary is ready.
+
+## Current implementation boundary
+
+The portable `.vishnu-product` package, product signing, product-license issuance/revocation, owner download APIs, package verification and license verification are implemented. Target-specific native product builders are a separate qualification stage and remain explicitly pending until implemented and tested.
