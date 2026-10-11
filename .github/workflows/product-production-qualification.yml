@@ -39,27 +39,9 @@ jobs:
     environment:
       name: product-${{ inputs.target }}-production
     env:
-      VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64 }}
-      VISHNU_PRODUCT_RUNNER_TOKEN: ${{ secrets.VISHNU_PRODUCT_RUNNER_TOKEN }}
-      VISHNU_PRODUCT_RUNNER_BASE_URL: ${{ vars.VISHNU_PRODUCT_RUNNER_BASE_URL }}
       VISHNU_PRODUCT_RUNNER_ID: ${{ inputs.runner_id }}
       VISHNU_PRODUCT_RUNNER_HEARTBEAT_SECONDS: "60"
       VISHNU_PRODUCT_RUNNER_POLL_SECONDS: "30"
-      VISHNU_ANDROID_KEY_ALIAS: ${{ secrets.VISHNU_ANDROID_KEY_ALIAS }}
-      VISHNU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEYSTORE_PASSWORD }}
-      VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
-      VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
-      VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
-      COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
-      VISHNU_APPLE_SIGNING_IDENTITY: ${{ secrets.VISHNU_APPLE_SIGNING_IDENTITY }}
-      VISHNU_APPLE_SIGNING_CERT_P12_B64: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_P12_B64 }}
-      VISHNU_APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_PASSWORD }}
-      VISHNU_APPLE_NOTARY_APPLE_ID: ${{ secrets.VISHNU_APPLE_NOTARY_APPLE_ID }}
-      VISHNU_APPLE_NOTARY_TEAM_ID: ${{ secrets.VISHNU_APPLE_NOTARY_TEAM_ID }}
-      VISHNU_APPLE_NOTARY_APP_PASSWORD: ${{ secrets.VISHNU_APPLE_NOTARY_APP_PASSWORD }}
-      VISHNU_ANDROID_KEYSTORE_B64: ${{ secrets.VISHNU_ANDROID_KEYSTORE_B64 }}
-      VISHNU_DOCKER_COSIGN_KEY_B64: ${{ secrets.VISHNU_DOCKER_COSIGN_KEY_B64 }}
-      VISHNU_IOS_PROVISIONING_PROFILE_B64: ${{ secrets.VISHNU_IOS_PROVISIONING_PROFILE_B64 }}
 
     steps:
       - uses: actions/checkout@v4
@@ -106,6 +88,12 @@ jobs:
 
       - name: Materialize protected target files
         shell: python
+        env:
+          QUALIFICATION_TARGET: ${{ inputs.target }}
+          VISHNU_ANDROID_KEYSTORE_B64: ${{ secrets.VISHNU_ANDROID_KEYSTORE_B64 }}
+          VISHNU_DOCKER_COSIGN_KEY_B64: ${{ secrets.VISHNU_DOCKER_COSIGN_KEY_B64 }}
+          VISHNU_IOS_PROVISIONING_PROFILE_B64: ${{ secrets.VISHNU_IOS_PROVISIONING_PROFILE_B64 }}
+          VISHNU_APPLE_SIGNING_CERT_P12_B64: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_P12_B64 }}
         run: |
           import base64,os
           from pathlib import Path
@@ -131,12 +119,13 @@ jobs:
               path.write_bytes(base64.b64decode(apple,validate=True))
               with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as stream:
                   stream.write(f'VISHNU_APPLE_SIGNING_CERT_PATH={path}\n')
-        env:
-          QUALIFICATION_TARGET: ${{ inputs.target }}
 
       - name: Configure temporary Apple signing keychain
         if: inputs.target == 'ios' || inputs.target == 'macos'
         shell: bash
+        env:
+          VISHNU_APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_PASSWORD }}
+          VISHNU_APPLE_SIGNING_IDENTITY: ${{ secrets.VISHNU_APPLE_SIGNING_IDENTITY }}
         run: |
           set -euo pipefail
           test -n "${VISHNU_APPLE_SIGNING_CERT_PATH:-}"
@@ -164,6 +153,10 @@ jobs:
       - name: Configure temporary Apple notarization profile
         if: inputs.target == 'macos'
         shell: bash
+        env:
+          VISHNU_APPLE_NOTARY_APPLE_ID: ${{ secrets.VISHNU_APPLE_NOTARY_APPLE_ID }}
+          VISHNU_APPLE_NOTARY_TEAM_ID: ${{ secrets.VISHNU_APPLE_NOTARY_TEAM_ID }}
+          VISHNU_APPLE_NOTARY_APP_PASSWORD: ${{ secrets.VISHNU_APPLE_NOTARY_APP_PASSWORD }}
         run: |
           set -euo pipefail
           test -n "${VISHNU_APPLE_NOTARY_APPLE_ID:-}"
@@ -176,6 +169,16 @@ jobs:
           echo "VISHNU_MACOS_NOTARY_KEYCHAIN_PROFILE=vishnu-product-production" >> "$GITHUB_ENV"
 
       - name: Production runner preflight
+        env:
+          VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64 }}
+          VISHNU_PRODUCT_RUNNER_TOKEN: ${{ secrets.VISHNU_PRODUCT_RUNNER_TOKEN }}
+          VISHNU_PRODUCT_RUNNER_BASE_URL: ${{ vars.VISHNU_PRODUCT_RUNNER_BASE_URL }}
+          VISHNU_ANDROID_KEY_ALIAS: ${{ secrets.VISHNU_ANDROID_KEY_ALIAS }}
+          VISHNU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEYSTORE_PASSWORD }}
+          VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
+          VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
+          VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: >-
           python packaging/product_production_preflight.py
           --scope worker
@@ -185,6 +188,16 @@ jobs:
 
       - name: Claim, compile and return one real production build
         if: inputs.execute == true
+        env:
+          VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64 }}
+          VISHNU_PRODUCT_RUNNER_TOKEN: ${{ secrets.VISHNU_PRODUCT_RUNNER_TOKEN }}
+          VISHNU_PRODUCT_RUNNER_BASE_URL: ${{ vars.VISHNU_PRODUCT_RUNNER_BASE_URL }}
+          VISHNU_ANDROID_KEY_ALIAS: ${{ secrets.VISHNU_ANDROID_KEY_ALIAS }}
+          VISHNU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEYSTORE_PASSWORD }}
+          VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
+          VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
+          VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
         run: >-
           python packaging/product_runner_worker.py
           --target ${{ inputs.target }}
