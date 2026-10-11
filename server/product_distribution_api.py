@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from pathlib import Path
 
 from fastapi import APIRouter, Cookie, HTTPException, Query
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from products.artifact_builders import ArtifactBuilderError, ProductArtifactBuilder
+from products.build_lifecycle import ProductBuildLifecycle
 from products.license_store import ProductLicenseStore
 from products.package_export import build_portable_package
 from products.signing import signing_available
@@ -41,6 +44,11 @@ class LicenseCreateBody(BaseModel):
 def product_distribution_router(runtime, product_store, license_store: ProductLicenseStore):
     router = APIRouter(prefix="/iphone/api/products", tags=["product-distribution"])
     registry = runtime["device_registry"]
+    lifecycle = ProductBuildLifecycle(product_store.path)
+    settings = runtime.get("settings")
+    data_dir = Path(getattr(settings, "data_dir", product_store.path.parent))
+    artifact_builder = ProductArtifactBuilder(product_store, lifecycle, data_dir / "product-artifacts")
+    runtime["product_artifact_builder"] = artifact_builder
 
     def authenticate(device_id: str | None, token: str | None, *, write=False):
         if not device_id or not token or not registry.authenticate(device_id, token):
@@ -71,6 +79,7 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
             "current_version_frozen": current_frozen,
             "frozen_versions": frozen_numbers,
             "production_distribution_ready": signing_available() and current_frozen,
+            "verified_local_build_targets": list(artifact_builder.available_targets()),
             "native_builds": "target-builder qualification required",
         }
 
@@ -118,6 +127,57 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
                 "X-Vishnu-Product-Signed": "true" if metadata["signed"] else "false",
                 "X-Vishnu-Product-Version": str(manifest.get("version", selected_version)),
                 "Cache-Control": "no-store",
+            },
+        )
+
+    @router.post("/{product_id}/builds/{build_id}/execute")
+    def execute_product_build(
+        product_id: str,
+        build_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token, write=True)
+        product_or_404(product_id)
+        try:
+            build = artifact_builder.execute(product_id, build_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except ArtifactBuilderError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except Exception as exc:
+            # Detailed diagnostics are retained in the owner-only build lifecycle.
+            # The HTTP boundary exposes only the exception class, never local paths.
+            raise HTTPException(500, f"Product artifact build failed ({type(exc).__name__})") from exc
+        return {
+            "build": build,
+            "builder": "verified-local-runtime",
+            "download_ready": bool(build.get("metadata", {}).get("artifact_ready")),
+        }
+
+    @router.get("/{product_id}/builds/{build_id}/artifact")
+    def download_product_build_artifact(
+        product_id: str,
+        build_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        product_or_404(product_id)
+        try:
+            path, build = artifact_builder.resolve_artifact(product_id, build_id)
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except ArtifactBuilderError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return FileResponse(
+            path,
+            media_type="application/zip",
+            filename=build.get("artifact_name") or path.name,
+            headers={
+                "Cache-Control": "no-store",
+                "X-Content-Type-Options": "nosniff",
+                "X-Vishnu-Artifact-SHA256": str(build.get("checksum") or ""),
             },
         )
 
