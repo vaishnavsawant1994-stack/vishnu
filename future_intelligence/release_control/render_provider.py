@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Any
-from urllib import error, request
+from datetime import UTC, datetime, timedelta
+from typing import Any, Mapping
+from urllib import error, parse, request
 
 from .contracts import ReleaseEnvironment, ReleasePlan
 from .providers import ReleaseDeployment
+from .telemetry import ProductionTelemetryError, ProductionTelemetryObservation
 
 
 class RenderProviderError(RuntimeError):
@@ -93,6 +95,31 @@ class RenderReleaseProvider:
             raise RenderProviderError("Render API returned an unexpected payload")
         return value
 
+    def _metric_series(self, path: str, query: Mapping[str, str]) -> list[dict[str, Any]]:
+        req = request.Request(
+            f"{self._BASE}{path}?{parse.urlencode(dict(query))}",
+            method="GET",
+            headers={
+                "Accept": "application/json",
+                "Authorization": f"Bearer {self.config.api_token}",
+                "User-Agent": "Vishnu-Production-Telemetry/1",
+            },
+        )
+        try:
+            with self._opener.open(req, timeout=20) as response:
+                raw = response.read(1_000_001)
+                if len(raw) > 1_000_000:
+                    raise ProductionTelemetryError("Render telemetry response exceeded the safety bound")
+                value = json.loads(raw.decode("utf-8")) if raw else []
+        except (error.HTTPError, error.URLError, TimeoutError, json.JSONDecodeError) as exc:
+            code = getattr(exc, "code", None)
+            raise ProductionTelemetryError(
+                f"Render telemetry request failed{f' ({code})' if code else ''}"
+            ) from exc
+        if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
+            raise ProductionTelemetryError("Render telemetry returned an unexpected payload")
+        return value
+
     @staticmethod
     def _commit_id(payload: dict[str, Any]) -> str:
         commit = payload.get("commit") or {}
@@ -116,6 +143,58 @@ class RenderReleaseProvider:
             details.get("autoDeploy") if isinstance(details, dict) else None,
         )
         return next((value for value in candidates if value is not None), None)
+
+    @staticmethod
+    def _labels(series: Mapping[str, Any]) -> dict[str, str]:
+        rows = series.get("labels")
+        if not isinstance(rows, list):
+            return {}
+        output: dict[str, str] = {}
+        for row in rows:
+            if isinstance(row, Mapping):
+                field = str(row.get("field") or "").strip().lower()
+                value = str(row.get("value") or "").strip()
+                if field and value:
+                    output[field] = value
+        return output
+
+    @staticmethod
+    def _numeric_values(series: Mapping[str, Any]) -> tuple[float, ...]:
+        rows = series.get("values")
+        if not isinstance(rows, list):
+            raise ProductionTelemetryError("Render telemetry series values are malformed")
+        output: list[float] = []
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ProductionTelemetryError("Render telemetry datapoint is malformed")
+            try:
+                value = float(row.get("value"))
+            except (TypeError, ValueError) as exc:
+                raise ProductionTelemetryError("Render telemetry datapoint is not numeric") from exc
+            if value < 0:
+                raise ProductionTelemetryError("Render telemetry datapoint cannot be negative")
+            output.append(value)
+        return tuple(output)
+
+    def _validate_metric_scope(self, series: Mapping[str, Any]) -> dict[str, str]:
+        labels = self._labels(series)
+        for key in ("resource", "service"):
+            if key in labels and labels[key] != self.config.production_service_id:
+                raise ProductionTelemetryError("Render telemetry escaped the configured production service")
+        return labels
+
+    @staticmethod
+    def _latency_ms(value: float, unit: str) -> float | None:
+        normalized = str(unit or "").strip().lower()
+        if normalized in {"ms", "millisecond", "milliseconds"}:
+            return value
+        if normalized in {"s", "sec", "second", "seconds"}:
+            return value * 1000.0
+        if normalized in {"us", "µs", "microsecond", "microseconds"}:
+            return value / 1000.0
+        if normalized in {"ns", "nanosecond", "nanoseconds"}:
+            return value / 1_000_000.0
+        return None
 
     def _require_manual_only(self, service_id: str) -> None:
         service = self._call("GET", f"/services/{service_id}")
@@ -222,6 +301,84 @@ class RenderReleaseProvider:
             url=deployment.url,
             state="ready" if status == "live" else status,
             metadata={**dict(deployment.metadata), "render_status": status},
+        )
+
+    def collect_production_telemetry(
+        self,
+        deployment: ReleaseDeployment,
+        *,
+        window_seconds: int = 300,
+    ) -> ProductionTelemetryObservation:
+        if deployment.provider != self.name or deployment.environment is not ReleaseEnvironment.PRODUCTION:
+            raise ProductionTelemetryError("Render telemetry requires the bound production deployment")
+        window = max(30, min(int(window_seconds), 3_600))
+        end = datetime.now(UTC)
+        start = end - timedelta(seconds=window)
+        common = {
+            "resource": self.config.production_service_id,
+            "startTime": start.isoformat().replace("+00:00", "Z"),
+            "endTime": end.isoformat().replace("+00:00", "Z"),
+            "resolutionSeconds": "60",
+        }
+        request_series = self._metric_series(
+            "/metrics/http-requests",
+            {**common, "aggregateBy": "statusCode"},
+        )
+        request_count = 0.0
+        server_error_count = 0.0
+        for series in request_series:
+            labels = self._validate_metric_scope(series)
+            status = labels.get("statuscode") or labels.get("status")
+            if not status:
+                raise ProductionTelemetryError("Render request telemetry omitted the status-code aggregation label")
+            values = self._numeric_values(series)
+            count = sum(values)
+            request_count += count
+            try:
+                code = int(status)
+            except ValueError as exc:
+                raise ProductionTelemetryError("Render request telemetry returned an invalid status code") from exc
+            if 500 <= code <= 599:
+                server_error_count += count
+
+        latency_series = self._metric_series(
+            "/metrics/http-latency",
+            {**common, "quantile": "0.95"},
+        )
+        latency_values: list[float] = []
+        unsupported_latency_unit = False
+        for series in latency_series:
+            self._validate_metric_scope(series)
+            unit = str(series.get("unit") or "")
+            for value in self._numeric_values(series):
+                converted = self._latency_ms(value, unit)
+                if converted is None:
+                    unsupported_latency_unit = True
+                    continue
+                latency_values.append(converted)
+
+        rounded_requests = int(round(request_count))
+        rounded_errors = int(round(server_error_count))
+        if abs(request_count - rounded_requests) > 1e-6 or abs(server_error_count - rounded_errors) > 1e-6:
+            raise ProductionTelemetryError("Render request telemetry returned fractional request counts")
+        return ProductionTelemetryObservation(
+            provider=self.name,
+            deployment_id=deployment.id,
+            request_count=rounded_requests,
+            server_error_count=rounded_errors,
+            window_seconds=window,
+            p95_latency_ms=max(latency_values) if latency_values else None,
+            references=(
+                f"render:http-requests:{self.config.production_service_id}",
+                f"render:http-latency:{self.config.production_service_id}",
+            ),
+            metadata={
+                "service_id": self.config.production_service_id,
+                "aggregate_by": "statusCode",
+                "latency_quantile": 0.95,
+                "latency_unit_supported": not unsupported_latency_unit,
+                "raw_logs_persisted": False,
+            },
         )
 
     def rollback(self, plan: ReleasePlan, deployment: ReleaseDeployment) -> ReleaseDeployment:
