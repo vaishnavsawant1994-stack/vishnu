@@ -24,7 +24,6 @@ class LicenseCreateBody(BaseModel):
     max_users: int | None = Field(default=None, ge=1, le=1_000_000)
     max_devices: int | None = Field(default=None, ge=1, le=1_000_000)
     managed_ai: bool = False
-    metadata: dict = Field(default_factory=dict)
 
     @field_validator("starts_at", "expires_at")
     @classmethod
@@ -36,7 +35,6 @@ class LicenseCreateBody(BaseModel):
         except ValueError as exc:
             raise ValueError("License timestamps must use ISO 8601") from exc
         return value
-
 
 
 def product_distribution_router(runtime, product_store, license_store: ProductLicenseStore):
@@ -77,7 +75,7 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
         pa_token: str | None = Cookie(default=None),
     ):
         authenticate(pa_device, pa_token)
-        product = product_or_404(product_id)
+        product_or_404(product_id)
         manifest = product_store.manifest(product_id)
         if not manifest:
             raise HTTPException(404, "Product manifest not found")
@@ -114,7 +112,11 @@ def product_distribution_router(runtime, product_store, license_store: ProductLi
         if not signing_available():
             raise HTTPException(503, "Production product signing is not configured")
         try:
-            license_record = license_store.issue(product=product, **body.model_dump())
+            license_record = license_store.issue(
+                product=product,
+                metadata={"issued_from": "our-products"},
+                **body.model_dump(),
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         return {"license": license_record}
