@@ -39,11 +39,9 @@ def product_runner_queue_router(runtime, product_store):
 
     def active_lease(build_id: str, token: str | None) -> dict:
         try:
-            lease = leases._active(build_id, str(token or ""))
+            return leases.validate(build_id, str(token or ""))
         except RunnerLeaseError as exc:
             raise HTTPException(409, str(exc)) from exc
-        lease.pop("lease_token_hash", None)
-        return lease
 
     def parse_evidence(raw: str | None) -> dict:
         if not raw:
@@ -57,6 +55,16 @@ def product_runner_queue_router(runtime, product_store):
         if not isinstance(value, dict):
             raise HTTPException(422, "Runner evidence must be a JSON object")
         return value
+
+    async def bounded_body(request: Request, limit: int) -> bytes:
+        body = bytearray()
+        async for chunk in request.stream():
+            if not chunk:
+                continue
+            if len(body) + len(chunk) > limit:
+                raise HTTPException(413, "Platform artifact exceeds the configured size limit")
+            body.extend(chunk)
+        return bytes(body)
 
     @router.post("/claim")
     def claim_next_build(
@@ -127,9 +135,10 @@ def product_runner_queue_router(runtime, product_store):
     ):
         authenticate(authorization)
         lease = active_lease(build_id, x_vishnu_runner_lease)
-        if content_length is not None and content_length > max_artifact_bytes():
+        limit = max_artifact_bytes()
+        if content_length is not None and content_length > limit:
             raise HTTPException(413, "Platform artifact exceeds the configured size limit")
-        payload = await request.body()
+        payload = await bounded_body(request, limit)
         evidence = parse_evidence(x_vishnu_runner_evidence)
         try:
             build = platform_jobs.accept_artifact(
