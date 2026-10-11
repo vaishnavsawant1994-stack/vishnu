@@ -106,11 +106,13 @@ try{
   await desktop.locator('.requirement-list').getByText('property valuation',{exact:true}).waitFor();
   assert.ok(await desktop.locator('.requirement-list').getByText(/No sufficiently close reusable capability/).isVisible());
   await noOverflow(desktop,'blueprint desktop');await shot(desktop,'our-products-blueprint-desktop.png');
-  await desktop.getByRole('button',{name:/Create Product Project/}).click();
-  await desktop.getByText('Product Project created',{exact:false}).first().waitFor();
-  await desktop.getByText('Vishnu work started').waitFor();
-  await desktop.getByText('Created From').waitFor();
-  await desktop.getByRole('button',{name:'Close'}).click();
+  const requestDialog=desktop.locator('#requestDetailDialog');
+  await requestDialog.getByRole('button',{name:/Create Product Project/}).click();
+  const created=requestDialog.locator('.product-project-result');
+  await created.getByText(/Product Project created/).waitFor();
+  await created.locator('#requestWorkStatus').getByText('Vishnu work started').waitFor();
+  await created.locator('#requestLineage').getByText('Created From').waitFor();
+  await requestDialog.getByRole('button',{name:'Close'}).click();
 
   await desktop.getByRole('button',{name:'Reusable Components'}).click();
   await desktop.getByRole('heading',{name:'Reusable Components'}).waitFor();
@@ -165,7 +167,7 @@ try{
   await mobile.locator('#requestDetailDialog[open]').waitFor();
   await mobile.getByText('67% existing coverage').waitFor();
   await noOverflow(mobile,'blueprint mobile');await shot(mobile,'our-products-blueprint-mobile.png');
-  await mobile.getByRole('button',{name:'Close'}).click();
+  await mobile.locator('#requestDetailDialog').getByRole('button',{name:'Close'}).click();
 
   await mobile.getByRole('button',{name:'Reusable Components'}).click();
   await mobile.getByRole('heading',{name:'Reusable Components'}).waitFor();
