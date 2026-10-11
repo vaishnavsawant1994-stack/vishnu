@@ -33,6 +33,9 @@ from evolution import (
     OwnerBodyAdoptionService,
 )
 from evolution.runtime_config import CodeBodyRuntimeConfig
+from future_intelligence.engineering.final_qualification import EngineeringCandidateFinalizer
+from future_intelligence.engineering.runtime import EngineeringRuntime
+from future_intelligence.engineering.work_executor import EngineeringWorkExecutor
 from future_intelligence.program import FutureIntelligenceProgram
 from future_intelligence.work_orchestration import LocalGitRepositoryProvider, WorkDispatcher
 from future_intelligence.workers import WorkerIntelligenceExecutor
@@ -55,6 +58,8 @@ from recovery.backup import BackupService
 from security.vault import SecretVault
 from security.owner_access import OwnerAccessStore
 from tools import benchmark as benchmark_tools
+from tools import engineering_repository as engineering_repository_tools
+from tools import engineering_work as engineering_work_tools
 from tools.builtins import register_builtin_tools
 from tools.registry import ToolRegistry
 from voice.realtime import RealtimeVoiceSession
@@ -82,7 +87,7 @@ def build_runtime():
     automations=AutomationEngine(settings.data_dir/'automations.sqlite3',executor=executor,events=events,context_provider=context_provider,default_timeout_seconds=settings.workflow_default_timeout_seconds,default_retries=settings.workflow_default_retries)
     capability_objects=register_builtin_tools(tools,memory,settings,models=models,automation_engine=automations,apns=apns,second_brain=second_brain,events=events,proactive_engine=proactive,continuity_service=continuity,integration_adapters=adapters,memory_enabled=lambda: bool(preferences.get('memory_enabled',True)))
     voice=RealtimeVoiceSession(models,executor,events); voice_qualification=VoiceQualificationRecorder(settings.data_dir/'voice-qualification.sqlite3',events=events); p3_qualification=P3QualificationProgram(settings.data_dir/'p3-qualification.sqlite3'); wake_phrase=WakePhraseGate(events,phrases=(str(preferences.get('wake_phrase','Hey Personal')),)); events.subscribe('voice.transcript',lambda event:wake_phrase.accept(event.get('text',''))); events.subscribe('state',lambda event:telemetry.increment(f"state.{event.get('state','unknown')}")); events.subscribe('voice.reply',lambda event:telemetry.increment('voice.replies'))
-    runtime={'settings':settings,'events':events,'runtime_state':events.runtime_state,'memory':memory,'models':models,'second_brain':second_brain,'knowledge':knowledge,'knowledge_store':knowledge_store,'vector_store':vector,'device_registry':device_registry,'owner_access':owner_access,'device_gateway':device_gateway,'continuity':continuity,'proactive':proactive,'tools':tools,'executor':executor,'turn_runtime':executor,'agent_executor':agent_executor,'effect_ledger':agent_executor.effect_ledger,'evidence_store':evidence_store,'evidence_ingestor':evidence_ingestor,'identity_store':identity_store,'evolution_store':evolution_store,'evolution':evolution,'evolution_handoff':None,'code_body_config':code_body_config,'repository_provider':None,'code_body':None,'body_adoption':None,'code_worker_epoch':int(time.time()),'automations':automations,'integrations':integrations,'integration_adapters':adapters,'oauth':oauth,'oauth_providers':oauth_providers,'plugins':plugins,'vault':vault,'voice':voice,'voice_qualification':voice_qualification,'p3_qualification':p3_qualification,'wake_phrase':wake_phrase,'apns':apns,'notifications':notifications,'telemetry':telemetry,'preferences':preferences,'backups':backups,'computer':capability_objects.get('computer'),'primary_continuity_thread_id':primary_thread_id,'worker_intelligence':None,'work_dispatcher':None,**agent_continuity_runtime}; p3_qualification.runtime=runtime
+    runtime={'settings':settings,'events':events,'runtime_state':events.runtime_state,'memory':memory,'models':models,'second_brain':second_brain,'knowledge':knowledge,'knowledge_store':knowledge_store,'vector_store':vector,'device_registry':device_registry,'owner_access':owner_access,'device_gateway':device_gateway,'continuity':continuity,'proactive':proactive,'tools':tools,'executor':executor,'turn_runtime':executor,'agent_executor':agent_executor,'effect_ledger':agent_executor.effect_ledger,'evidence_store':evidence_store,'evidence_ingestor':evidence_ingestor,'identity_store':identity_store,'evolution_store':evolution_store,'evolution':evolution,'evolution_handoff':None,'code_body_config':code_body_config,'repository_provider':None,'engineering':None,'engineering_executor':None,'engineering_finalizer':None,'code_body':None,'body_adoption':None,'code_worker_epoch':int(time.time()),'automations':automations,'integrations':integrations,'integration_adapters':adapters,'oauth':oauth,'oauth_providers':oauth_providers,'plugins':plugins,'vault':vault,'voice':voice,'voice_qualification':voice_qualification,'p3_qualification':p3_qualification,'wake_phrase':wake_phrase,'apns':apns,'notifications':notifications,'telemetry':telemetry,'preferences':preferences,'backups':backups,'computer':capability_objects.get('computer'),'primary_continuity_thread_id':primary_thread_id,'worker_intelligence':None,'work_dispatcher':None,**agent_continuity_runtime}; p3_qualification.runtime=runtime
     future=FutureIntelligenceProgram(settings.data_dir/'future-intelligence',runtime=runtime); runtime.update({'future_intelligence':future,'everyday_intelligence':future.everyday,'life_graph':future.life_graph,'personal_operations':future.operations,'world_understanding':future.world,'personal_ai_everywhere':future.everywhere,'hybrid_intelligence':future.hybrid,'advanced_autonomy':future.autonomy})
     if hasattr(executor,'attach_autonomy'): executor.attach_autonomy(future.autonomy)
     work_bridge=getattr(future.autonomy,'_work_bridge',None)
@@ -94,14 +99,20 @@ def build_runtime():
         if code_body_config.repository_root is not None:
             try:
                 repository_provider=LocalGitRepositoryProvider(repository=code_body_config.repository,repository_root=code_body_config.repository_root,workspace_root=code_body_config.workspace_root)
+                engineering=EngineeringRuntime(repository_provider=repository_provider,work_store=work_bridge.work,evidence_root=settings.data_dir/'engineering-evidence',continuation_authority_guard=agent_continuity_runtime['continuation_authority'].assert_active)
+                engineering_repository_tools.register(tools,engineering)
                 inner_verifier=None
                 if code_body_config.local_verification_enabled:
-                    inner_verifier=LocalSubprocessVerificationProvider((('compile', (sys.executable,'-m','compileall','-q','app','agent','automation','continuity','core','evidence','evolution','future_intelligence','identity','security','server','tools')),('evolution-safety-tests',(sys.executable,'-m','pytest','-q','tests/test_evolution_e5.py','tests/test_evolution_e6_handoff.py','tests/test_evolution_e7_code_body.py'))),enabled=True,timeout_seconds=code_body_config.verification_timeout_seconds)
+                    inner_verifier=LocalSubprocessVerificationProvider((('compile', (sys.executable,'-m','compileall','-q','app','agent','automation','browser','capabilities','continuity','core','dashboard','desktop','devices','evidence','evolution','future_intelligence','identity','integrations','knowledge','memory','models','proactive','qualification','security','server','tools','training','ui','updates','vision','voice','visual_intelligence')),('evolution-safety-tests',(sys.executable,'-m','pytest','-q','tests/test_evolution_e5.py','tests/test_evolution_e6_handoff.py','tests/test_evolution_e7_code_body.py')),('integration-full-suite',(sys.executable,'-m','pytest','-q'))),enabled=True,timeout_seconds=code_body_config.verification_timeout_seconds)
                 verification_provider=GuardedVerificationProvider(repository_provider=repository_provider,inner=inner_verifier) if inner_verifier is not None else None
+                engineering_executor=EngineeringWorkExecutor(runtime=engineering,models=models,verification_provider=verification_provider)
+                engineering_finalizer=EngineeringCandidateFinalizer(runtime=engineering,models=models)
+                engineering_work_tools.register(tools,engineering_executor,runtime_epoch_provider=lambda:runtime['code_worker_epoch'])
                 review_verifier=GitHubPublicReviewVerifier(repository=code_body_config.repository)
                 code_body=CodeBodyEvolutionService(handoffs=handoff,work_store=work_bridge.work,evidence_store=evidence_store,identity_store=identity_store,repository_provider=repository_provider,verification_provider=verification_provider,review_verifier=review_verifier,continuation_authority_guard=agent_continuity_runtime['continuation_authority'].assert_active)
                 adoption=OwnerBodyAdoptionService(evolution_store=evolution_store,code_body=code_body,identity_store=identity_store,repository_provider=repository_provider)
-                runtime.update({'repository_provider':repository_provider,'code_body':code_body,'body_adoption':adoption})
+                runtime.update({'repository_provider':repository_provider,'engineering':engineering,'engineering_executor':engineering_executor,'engineering_finalizer':engineering_finalizer,'code_body':code_body,'body_adoption':adoption})
+                events.emit('engineering.runtime_ready',repository=code_body_config.repository,local_verification=bool(verification_provider),final_qualification=True,remote_mutation_authority=False)
                 events.emit('evolution.code_body_ready',repository=code_body_config.repository,local_verification=bool(verification_provider))
             except Exception as exc:
                 events.emit('evolution.code_body_unavailable',error_type=type(exc).__name__)

@@ -8,9 +8,12 @@ on:
       - 'feature/**'
     paths:
       - 'pwa/**'
+      - 'server/owner_engineering_api.py'
+      - 'server/owner_engineering_ui.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
+      - 'tests/engineering_ui/**'
       - 'tests/projects_workspace_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -27,9 +30,12 @@ on:
   pull_request:
     paths:
       - 'pwa/**'
+      - 'server/owner_engineering_api.py'
+      - 'server/owner_engineering_ui.py'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
+      - 'tests/engineering_ui/**'
       - 'tests/projects_workspace_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -44,23 +50,27 @@ on:
       - 'personal-ai/pwa/**'
       - '.github/workflows/pwa-mobile-preview.yml'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   mobile-preview:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Playwright
+      - name: Install Playwright and accessibility qualification
         run: |
-          npm install --no-save playwright
-          npx playwright install --with-deps chromium
-      - name: Serve the PWA at its deployed /iphone/ route
+          npm install --no-save playwright @axe-core/playwright
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Serve and qualify the PWA at its deployed /iphone/ route
         run: |
           mkdir -p /tmp/pwa-preview
           cp -R pwa /tmp/pwa-preview/iphone
@@ -76,6 +86,7 @@ jobs:
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
           mkdir -p artifacts/visualize
+          mkdir -p artifacts/engineering-ui
           PROJECT_SCREENSHOT_DIR=artifacts/project-workspace node tests/projects_workspace_browser.mjs
           node tests/projects_canonical_work_browser.mjs
           node tests/projects_canonical_visualizations_browser.mjs
@@ -88,6 +99,13 @@ jobs:
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
           node tests/pwa_mobile_preview_runner.mjs
           node tests/standalone_pwa_responsive.mjs
+          ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
+          node tests/engineering_ui/breakpoint_network_qualification.mjs
+          node tests/engineering_ui/accessibility_qualification.mjs
+          node tests/engineering_ui/state_content_qualification.mjs
+          node tests/engineering_ui/mobile_keyboard_safe_area_qualification.mjs
+          node tests/engineering_ui/theme_motion_qualification.mjs
+          node tests/engineering_ui/performance_3d_qualification.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:

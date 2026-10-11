@@ -27,6 +27,19 @@
         body.chat-experience:not(.home-landing) .message-stream{
           scroll-padding-bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 58px)!important;
         }
+      }
+      @media(max-width:760px) and (max-height:560px){
+        body.v-ref.home-landing .home-greeting{margin:2px 0 4px!important}
+        body.v-ref.home-landing .home-greeting h1{font-size:22px!important}
+        body.v-ref.home-landing .home-greeting p{font-size:13px!important;margin-top:3px!important}
+        body.v-ref.home-landing .home-sphere-stage{height:92px!important;margin:0 0 4px!important}
+        body.v-ref.home-landing .home-sphere-stage .core-stage{width:92px!important;height:92px!important;min-width:92px!important;max-width:92px!important}
+        body.v-ref.home-landing .v-shortcuts{grid-template-rows:repeat(2,58px)!important;grid-auto-rows:58px!important;gap:6px!important;margin:4px 0 10px!important}
+        body.v-ref.home-landing .v-card{height:58px!important;min-height:58px!important;padding:5px 7px!important;grid-template-columns:28px minmax(0,1fr) 8px!important;gap:5px!important}
+        body.v-ref.home-landing .v-card .v-icon{width:28px!important;height:28px!important}
+        body.v-ref.home-landing .v-card strong{font-size:12.5px!important}
+        body.v-ref.home-landing .v-card small{font-size:10.5px!important;line-height:1.15!important;margin-top:1px!important}
+        body.v-ref.home-landing .home-intro{scroll-padding-bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 12px)!important}
       }`;
       document.head.append(style);
     }
