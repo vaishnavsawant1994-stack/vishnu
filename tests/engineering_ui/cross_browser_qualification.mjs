@@ -8,12 +8,13 @@ const artifactRoot = process.env.ENGINEERING_UI_SCREENSHOT_DIR || "artifacts/eng
 
 for (const [name, engine] of Object.entries(engines)) {
   const browser = await engine.launch({ headless: true });
-  const context = await browser.newContext();
+  const context = await browser.newContext({ serviceWorkers: "block", reducedMotion: "reduce" });
   const page = await context.newPage();
   const pageErrors = [];
   const consoleErrors = [];
   page.on("pageerror", error => pageErrors.push(error.message));
   page.on("console", message => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  await page.route("https://accounts.google.com/**", route => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
   await page.route("**/iphone/api/**", route => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith("/status")) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Owner verification required" }) });
@@ -34,7 +35,7 @@ for (const [name, engine] of Object.entries(engines)) {
       assertNoViewportOverflow(assert, layout, width, `${name} standalone`);
       assert.ok(layout.panel.width > 0 && layout.panel.left >= -1 && layout.panel.right <= width + 1, `${name} enrollment panel escapes ${width}px viewport: ${JSON.stringify(layout)}`);
       if ([390, 1440].includes(width)) {
-        await page.screenshot({ path: `${artifactRoot}/${name}-${width}.png`, fullPage: true });
+        await page.screenshot({ path: `${artifactRoot}/${name}-${width}.png`, fullPage: true, animations: "disabled" });
       }
     }
     await page.setViewportSize({ width: 390, height: 844 });
