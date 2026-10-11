@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from .contracts import EngineeringSpec, SecurityClass
+from .model_json import governed_engineering_json
 from .repository_intelligence import RepositoryGraph
 
 
@@ -186,7 +187,12 @@ class ModelEngineeringChangePlanner:
             if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}
             else "internal"
         )
-        payload = self.models.json(prompt, system=system, sensitivity=sensitivity)
-        if not isinstance(payload, Mapping):
-            raise ValueError("engineering change planner did not return an object")
+        payload = governed_engineering_json(
+            self.models,
+            spec=spec,
+            prompt=prompt,
+            system=system,
+            role="vishnu-software-engineer",
+            sensitivity=sensitivity,
+        )
         return EngineeringEditPlan.from_dict(payload, max_operations=max_operations)
