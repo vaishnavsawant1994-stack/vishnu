@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -144,34 +145,65 @@ def test_render_telemetry_rejects_provider_scope_drift():
         provider.collect_production_telemetry(deployment("render"))
 
 
-def test_vercel_telemetry_uses_only_status_aggregates_and_deduplicates_rows():
+def test_vercel_telemetry_uses_only_current_status_aggregates_and_deduplicates_rows():
+    stamp = int(time.time() * 1000)
     provider = FakeVercelTelemetryProvider(
         [
             {
                 "rowId": "row-1",
                 "responseStatusCode": 200,
+                "timestampInMs": stamp,
                 "message": "private payload must never persist",
                 "requestPath": "/private/path",
             },
             {
                 "rowId": "row-2",
                 "responseStatusCode": 503,
+                "timestampInMs": stamp,
                 "message": "database secret text",
                 "requestPath": "/admin",
             },
-            {"rowId": "row-2", "responseStatusCode": 503, "message": "duplicate"},
-            {"rowId": "row-3", "responseStatusCode": -1, "message": "crashed"},
+            {
+                "rowId": "row-2",
+                "responseStatusCode": 503,
+                "timestampInMs": stamp,
+                "message": "duplicate",
+            },
+            {
+                "rowId": "row-3",
+                "responseStatusCode": -1,
+                "timestampInMs": stamp,
+                "message": "crashed",
+            },
+            {
+                "rowId": "stale-500",
+                "responseStatusCode": 500,
+                "timestampInMs": stamp - 600_000,
+                "message": "old failure must not become a current incident",
+            },
         ]
     )
-    observation = provider.collect_production_telemetry(deployment("vercel"))
+    observation = provider.collect_production_telemetry(
+        deployment("vercel"),
+        window_seconds=300,
+    )
     safe = observation.to_safe_dict()
 
     assert observation.request_count == 3
     assert observation.server_error_count == 2
     assert observation.p95_latency_ms is None
     assert safe["metadata"]["runtime_log_rows_sampled"] == 3
+    assert safe["metadata"]["rows_ignored_outside_window"] == 1
+    assert safe["metadata"]["window_filtered_by_timestamp"] is True
     serialized = json.dumps(safe, sort_keys=True)
-    for forbidden in ("private payload", "database secret", "/private/path", "/admin", "vercel-secret-token"):
+    for forbidden in (
+        "private payload",
+        "database secret",
+        "old failure",
+        "/private/path",
+        "/admin",
+        "vercel-secret-token",
+    ):
         assert forbidden not in serialized
     assert "vercel-secret-token" not in repr(provider.config)
 
@@ -214,6 +246,36 @@ def test_vercel_runtime_log_reader_rejects_oversized_stream():
 
 
 def test_vercel_telemetry_rejects_invalid_status_instead_of_manufacturing_health():
-    provider = FakeVercelTelemetryProvider([{"rowId": "row-1", "responseStatusCode": "not-a-code"}])
+    provider = FakeVercelTelemetryProvider(
+        [
+            {
+                "rowId": "row-1",
+                "responseStatusCode": "not-a-code",
+                "timestampInMs": int(time.time() * 1000),
+            }
+        ]
+    )
     with pytest.raises(ProductionTelemetryError, match="invalid status code"):
+        provider.collect_production_telemetry(deployment("vercel"))
+
+
+def test_vercel_telemetry_rejects_missing_timestamp_instead_of_counting_unbounded_history():
+    provider = FakeVercelTelemetryProvider(
+        [{"rowId": "row-1", "responseStatusCode": 500}]
+    )
+    with pytest.raises(ProductionTelemetryError, match="valid timestamp"):
+        provider.collect_production_telemetry(deployment("vercel"))
+
+
+def test_vercel_telemetry_rejects_implausible_future_timestamp():
+    provider = FakeVercelTelemetryProvider(
+        [
+            {
+                "rowId": "row-1",
+                "responseStatusCode": 200,
+                "timestampInMs": int(time.time() * 1000) + 120_000,
+            }
+        ]
+    )
+    with pytest.raises(ProductionTelemetryError, match="future timestamp"):
         provider.collect_production_telemetry(deployment("vercel"))
