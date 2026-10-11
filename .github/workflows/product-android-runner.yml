@@ -24,7 +24,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -56,7 +56,9 @@ jobs:
       - name: Compile real Android APK from product job
         run: |
           mkdir -p .runner-qualification/output
-          python packaging/product_platform_runner.py .runner-qualification/android.vishnu-build-job --output .runner-qualification/output --allow-unsigned-job | tee .runner-qualification/result.json
+          python packaging/product_platform_runner.py .runner-qualification/android.vishnu-build-job --output .runner-qualification/output --allow-unsigned-job | tee .runner-qualification/runner.log
+          tail -n 1 .runner-qualification/runner.log > .runner-qualification/result.json
+          python -m json.tool .runner-qualification/result.json
       - name: Verify generated Android artifact
         run: |
           python - <<'PY'
@@ -68,6 +70,11 @@ jobs:
           assert artifact.suffix=='.apk', artifact
           assert result['variant']=='debug'
           assert result['platform_signing_verified'] is False
+          assert result['evidence']['schema']=='vishnu.platform-runner-evidence/v1'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['mode']=='development'
+          assert result['evidence']['signing_verified'] is False
+          assert result['evidence']['sha256']==result['sha256']
           assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
           print(f"qualified={artifact} sha256={result['sha256']}")
           PY
@@ -80,4 +87,5 @@ jobs:
           path: |
             .runner-qualification/output/*.apk
             .runner-qualification/result.json
+            .runner-qualification/runner.log
           if-no-files-found: error
