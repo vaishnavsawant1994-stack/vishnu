@@ -25,7 +25,7 @@ class EngineeringReviewer(Protocol):
 
 
 class ModelEngineeringReviewer:
-    """Independent model review; has no mutation, approval-gate bypass, merge or deploy authority."""
+    """Independent model review; has no mutation, owner approval, merge or deploy authority."""
 
     def __init__(self, models, *, reviewer_name: str = "independent-engineering-reviewer") -> None:
         self.models = models
@@ -42,9 +42,6 @@ class ModelEngineeringReviewer:
             f"EngineeringSpec={spec.to_dict()}\nQualification={report.to_dict()}\nDiff={diff[:120000]}\nEvidence={dict(evidence)}",
             system=system,
             sensitivity="internal",
-            task_complexity="critical",
-            task_domain="software_engineering",
-            evidence_required=True,
         )
         if not isinstance(payload, Mapping):
             raise ValueError("review model did not return an object")
