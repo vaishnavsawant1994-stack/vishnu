@@ -10,6 +10,7 @@ from .signing import canonical_json, sha256_bytes, sign_payload
 
 
 _SAFE_NAME = re.compile(r"[^a-zA-Z0-9._-]+")
+_SECRET_REFERENCE_KEYS = {"secret_ref", "credential_ref", "credentials_ref", "vault_ref"}
 
 
 def package_filename(name: str, version: str) -> str:
@@ -18,23 +19,44 @@ def package_filename(name: str, version: str) -> str:
     return f"{stem}-{version_stem}.vishnu-product"
 
 
+def _distribution_safe(value):
+    """Remove owner-side credential bindings while preserving product behavior/config."""
+    if isinstance(value, dict):
+        clean = {}
+        stripped_reference = False
+        for key, item in value.items():
+            normalized = str(key).strip().lower()
+            if normalized in _SECRET_REFERENCE_KEYS or normalized.endswith("_secret_ref"):
+                if item not in (None, ""):
+                    stripped_reference = True
+                continue
+            clean[key] = _distribution_safe(item)
+        if stripped_reference:
+            clean.setdefault("credentials", "runtime-provisioned")
+        return clean
+    if isinstance(value, list):
+        return [_distribution_safe(item) for item in value]
+    return value
+
+
 def build_portable_package(manifest: dict, *, require_signature: bool = True) -> tuple[str, bytes, dict]:
     """Build a deterministic, secret-free Vishnu portable product package.
 
     A .vishnu-product file is a ZIP-compatible envelope containing only the
     canonical product contract and integrity/signature metadata. It intentionally
-    does not copy the full Vishnu source tree, owner data, credentials, or other
-    clients' state.
+    does not copy the full Vishnu source tree, owner data, credentials, internal
+    vault references, or other clients' state.
     """
-    manifest_bytes = canonical_json(manifest)
+    distribution_manifest = _distribution_safe(manifest)
+    manifest_bytes = canonical_json(distribution_manifest)
     manifest_sha = sha256_bytes(manifest_bytes)
     signature = sign_payload(manifest_bytes, require_key=require_signature)
     created_at = datetime.now(timezone.utc).isoformat()
     metadata = {
         "schema": "vishnu.portable-product/v1",
-        "product_id": manifest.get("product_id"),
-        "name": manifest.get("name"),
-        "version": manifest.get("version"),
+        "product_id": distribution_manifest.get("product_id"),
+        "name": distribution_manifest.get("name"),
+        "version": distribution_manifest.get("version"),
         "created_at": created_at,
         "manifest_sha256": manifest_sha,
         "signed": signature is not None,
@@ -62,7 +84,7 @@ def build_portable_package(manifest: dict, *, require_signature: bool = True) ->
     raw = output.getvalue()
     metadata["package_sha256"] = sha256_bytes(raw)
     metadata["size"] = len(raw)
-    return package_filename(str(manifest.get("name") or "vishnu-product"), str(manifest.get("version") or "0.0.0")), raw, metadata
+    return package_filename(str(distribution_manifest.get("name") or "vishnu-product"), str(distribution_manifest.get("version") or "0.0.0")), raw, metadata
 
 
 def inspect_portable_package(raw: bytes) -> dict:
