@@ -43,7 +43,7 @@
         <div class="warning">A <b>.vishnu-product</b> package contains the client product contract, integrity metadata and optional Ed25519 signature—not your full Vishnu source, owner memories, API keys or other client data.</div>
         <div class="build-row"><div><b>Production portable package</b><div class="muted">Signed and suitable for client distribution when production signing is configured.</div></div><button class="button primary" data-download-production ${signing?'':'disabled'}>Download</button></div>
         <div class="build-row"><div><b>Development portable package</b><div class="muted">Explicitly unsigned. For development/testing only, never commercial distribution.</div></div><button class="button secondary" data-download-development>Download dev package</button></div>
-        ${signing?'':`<div class="warning">Configure <code>PERSONAL_AI_RELEASE_PRIVATE_KEY_B64</code> and the matching public key before issuing commercial packages or licenses.</div>`}
+        ${signing?'':`<div class="warning">Configure <code>VISHNU_PRODUCT_SIGNING_PRIVATE_KEY_B64</code> and the matching product public key before issuing commercial packages or licenses.</div>`}
         <div class="detail-tile">
           <b>Issue client license</b>
           <div class="form-grid">
