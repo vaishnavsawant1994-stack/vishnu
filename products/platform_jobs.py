@@ -244,8 +244,6 @@ class ProductPlatformBuildJobs:
         target = str(build.get("target") or "")
         if target not in REMOTE_PLATFORM_TARGETS:
             raise PlatformBuildJobError("Build target is not owned by the external platform runner")
-        if build["status"] not in {"requested", "queued", "running"}:
-            raise PlatformBuildJobError(f"Build {build_id} cannot accept an artifact from {build['status']}")
         if len(payload) == 0:
             raise PlatformBuildJobError("Runner artifact is empty")
         if len(payload) > max_artifact_bytes():
@@ -255,6 +253,24 @@ class ProductPlatformBuildJobs:
         expected = str(expected_sha256 or "").strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", expected) or checksum != expected:
             raise PlatformBuildJobError("Runner artifact SHA-256 does not match the supplied digest")
+
+        # Artifact callbacks may be retried by a runner after a lost HTTP response.
+        # Only an exact byte/name/evidence replay is idempotent; a different payload
+        # can never replace a terminal build's authority.
+        if build["status"] == "succeeded":
+            existing = ((raw.get("metadata") or {}).get("platform_runner") or {}).get("evidence") or {}
+            if (
+                str(build.get("artifact_name") or "") == safe_name
+                and str(existing.get("sha256") or "").lower() == checksum
+                and str(existing.get("product_id") or "") == product_id
+                and str(existing.get("build_id") or "") == build_id
+                and str(existing.get("version") or "") == str(build.get("version") or "")
+                and str(existing.get("target") or "") == target
+            ):
+                return build
+            raise PlatformBuildJobError("Build already succeeded with different artifact evidence")
+        if build["status"] not in {"requested", "queued", "running"}:
+            raise PlatformBuildJobError(f"Build {build_id} cannot accept an artifact from {build['status']}")
 
         # Older authenticated runner transports reported only a signing boolean.
         # Bind that report to server-known build identity instead of accepting
@@ -321,6 +337,8 @@ class ProductPlatformBuildJobs:
             )
 
         production_ready = evidence.production_ready
+        if target == "docker":
+            production_ready = production_ready and bool(evidence.metadata.get("attestation_verified"))
         uri = f"{_ARTIFACT_SCHEME}://{product_id}/{build_id}/{safe_name}" if production_ready else ""
         registered_checksum = checksum if production_ready else ""
         signing_verified = production_ready if target in NATIVE_SIGNED_TARGETS else False
