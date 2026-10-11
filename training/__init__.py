@@ -54,6 +54,16 @@ from training.governance import (
     ShadowResult,
     TrainingGovernanceLedger,
 )
+from training.remote_gpu import (
+    RemoteGpuProvider,
+    RemoteGpuProviderCapabilities,
+    RemoteGpuTrainerBackend,
+    RemoteGpuTrainingPolicy,
+    RemoteTrainingJob,
+    RemoteTrainingRequest,
+    RemoteTrainingResult,
+    RemoteTrainingState,
+)
 from training.runtime_controls import BoundedLocalPeftTrainerBackend as LocalPeftTrainerBackend
 from training.store import TrainingCandidateStore
 
@@ -141,6 +151,14 @@ __all__ = [
     'FailClosedEvaluator',
     'LocalCheckpointEvaluator',
     'LocalPeftTrainerBackend',
+    'RemoteGpuProvider',
+    'RemoteGpuProviderCapabilities',
+    'RemoteGpuTrainerBackend',
+    'RemoteGpuTrainingPolicy',
+    'RemoteTrainingJob',
+    'RemoteTrainingRequest',
+    'RemoteTrainingResult',
+    'RemoteTrainingState',
     'TrainedModel',
     'TrainedModelStatus',
     'TrainingArtifact',
