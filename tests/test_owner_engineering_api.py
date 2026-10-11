@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from future_intelligence.engineering.owner_policy import EngineeringOwnerPolicyStore
+from future_intelligence.engineering.qualification import VerificationObservation
 from future_intelligence.work_orchestration import (
     DurableWorkStore,
     GoalSpec,
@@ -49,6 +50,26 @@ class FakeExecutor:
         return SimpleNamespace(status="verifying", candidate_revision="b" * 40)
 
 
+class FakeFinalizer:
+    def __init__(self):
+        self.physical_device_verifier = object()
+        self.calls = []
+
+    def verify_and_record_physical_device_evidence(self, work_order_id, attempt_id, *, runs):
+        self.calls.append((work_order_id, attempt_id, tuple(runs)))
+        return VerificationObservation(
+            gate="physical_device",
+            passed=True,
+            summary="trusted device evidence verified",
+            evidence=("https://github.com/owner/repo/actions/runs/1", "https://api.github.com/artifacts/1"),
+            metadata={
+                "candidate_revision": "b" * 40,
+                "verified_platforms": [item.platform for item in runs],
+                "trusted_source": "github-actions",
+            },
+        )
+
+
 def runtime(tmp_path, *, with_executor=True):
     connection = sqlite3.connect(tmp_path / "work.sqlite3", check_same_thread=False)
     connection.row_factory = sqlite3.Row
@@ -64,7 +85,7 @@ def runtime(tmp_path, *, with_executor=True):
         "events": FakeEvents(),
         "engineering": engineering,
         "engineering_executor": FakeExecutor() if with_executor else None,
-        "engineering_finalizer": object(),
+        "engineering_finalizer": FakeFinalizer(),
         "pwa_sessions": object(),
         "agent_executor": SimpleNamespace(reauth_ttl_seconds=300),
         "code_worker_epoch": 7,
@@ -124,8 +145,16 @@ def test_owner_engineering_summary_requires_trusted_admin_device(tmp_path):
     payload = response.json()
     assert payload["repository"] == "owner/repo"
     assert payload["final_qualification_available"] is True
+    assert payload["trusted_physical_device_evidence"]["verifier_available"] is True
+    assert payload["trusted_physical_device_evidence"]["accepted_input"] == "github_workflow_run_ids_only"
     assert payload["policy"]["mode"] == "analyze"
-    assert payload["authorities"] == {"remote_push": False, "merge": False, "deploy": False, "body_activation": False}
+    assert payload["authorities"] == {
+        "remote_push": False,
+        "merge": False,
+        "deploy": False,
+        "body_activation": False,
+        "client_qualification_claim": False,
+    }
 
 
 def test_owner_engineering_policy_change_requires_fresh_owner_verification(tmp_path):
@@ -161,6 +190,41 @@ def test_owner_engineering_execute_requires_autonomous_mode_and_scoped_work(tmp_
     assert payload["deploy"] is False
     assert payload["body_activation"] is False
     assert value["engineering_executor"].calls
+
+
+def test_owner_physical_evidence_accepts_only_run_ids_and_requires_fresh_owner_verification(tmp_path):
+    value = runtime(tmp_path)
+    stale = owner_client(app_for(value, fresh=False))
+    response = stale.post(
+        "/iphone/api/owner/engineering/work/work-1/attempt/attempt-1/physical-evidence",
+        json={"runs": [{"platform": "ios", "run_id": 1}]},
+    )
+    assert response.status_code == 401
+
+    fresh = owner_client(app_for(value, fresh=True))
+    response = fresh.post(
+        "/iphone/api/owner/engineering/work/work-1/attempt/attempt-1/physical-evidence",
+        json={"runs": [{"platform": "ios", "run_id": 1}, {"platform": "android", "run_id": 2}]},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["verified_server_side"] is True
+    assert payload["client_qualification_claim"] is False
+    assert payload["observation"]["gate"] == "physical_device"
+    assert payload["observation"]["passed"] is True
+    assert [item.platform for item in value["engineering_finalizer"].calls[0][2]] == ["ios", "android"]
+
+    duplicate = fresh.post(
+        "/iphone/api/owner/engineering/work/work-1/attempt/attempt-1/physical-evidence",
+        json={"runs": [{"platform": "ios", "run_id": 1}, {"platform": "ios", "run_id": 2}]},
+    )
+    assert duplicate.status_code == 422
+
+    extra_claim = fresh.post(
+        "/iphone/api/owner/engineering/work/work-1/attempt/attempt-1/physical-evidence",
+        json={"runs": [{"platform": "ios", "run_id": 1}], "passed": True},
+    )
+    assert extra_claim.status_code == 422
 
 
 def test_owner_engineering_ui_exposes_all_governed_modes_without_release_action_controls():

@@ -1,28 +1,63 @@
 from __future__ import annotations
 
+import os
 from typing import Iterable
 
-from future_intelligence.engineering.final_qualification import (
-    EngineeringCandidateFinalizer,
-    EngineeringFinalQualificationResult,
-)
+from future_intelligence.engineering.evidence_finalizer import EvidenceAwareEngineeringFinalizer
+from future_intelligence.engineering.final_qualification import EngineeringFinalQualificationResult
 from future_intelligence.engineering.traceability import RequirementTrace
 from future_intelligence.engineering.verification import VerificationObservation
+from future_intelligence.engineering.workflow_evidence import (
+    GitHubPhysicalDeviceEvidenceVerifier,
+    GitHubWorkflowEvidenceConfig,
+)
 
 from .automation import ReleaseAutomationService
 
 
-class ReleaseAwareEngineeringFinalizer(EngineeringCandidateFinalizer):
+class ReleaseAwareEngineeringFinalizer(EvidenceAwareEngineeringFinalizer):
     """Trusted engineering finalizer with a one-way release-control handoff.
 
-    Release plan creation is not exposed as an arbitrary API. The handoff is
-    called only after the existing finalizer has independently qualified the
-    exact committed candidate. A release-control outage never rewrites a valid
-    engineering result; it is recorded as a separate handoff failure instead.
+    The evidence-aware base keeps reserved qualification gates fail-closed:
+    physical-device proof must be independently verified against GitHub Actions,
+    and regression-test proof must come from the governed repair runtime. Release
+    plan creation remains a separate authority domain and is never exposed as an
+    arbitrary API.
     """
 
-    def __init__(self, *, runtime, release_automation: ReleaseAutomationService, models=None, reviewer=None) -> None:
-        super().__init__(runtime=runtime, models=models, reviewer=reviewer)
+    @staticmethod
+    def _default_physical_device_verifier(runtime) -> GitHubPhysicalDeviceEvidenceVerifier | None:
+        provider = getattr(runtime, "repository_provider", None)
+        repository = str(getattr(provider, "repository", "") or "").strip().strip("/")
+        parts = repository.split("/")
+        if len(parts) != 2 or not all(parts) or any("\\" in item or item in {".", ".."} for item in parts):
+            return None
+        return GitHubPhysicalDeviceEvidenceVerifier(
+            GitHubWorkflowEvidenceConfig(
+                repository=repository,
+                token=str(os.environ.get("VISHNU_ENGINEERING_GITHUB_TOKEN", "") or "").strip(),
+            )
+        )
+
+    def __init__(
+        self,
+        *,
+        runtime,
+        release_automation: ReleaseAutomationService,
+        models=None,
+        reviewer=None,
+        physical_device_verifier: GitHubPhysicalDeviceEvidenceVerifier | None = None,
+    ) -> None:
+        super().__init__(
+            runtime=runtime,
+            models=models,
+            reviewer=reviewer,
+            physical_device_verifier=(
+                physical_device_verifier
+                if physical_device_verifier is not None
+                else self._default_physical_device_verifier(runtime)
+            ),
+        )
         self.release_automation = release_automation
 
     def finalize(

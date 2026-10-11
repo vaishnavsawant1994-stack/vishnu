@@ -67,6 +67,7 @@ def test_owner_engineering_summary_policy_and_authority_boundaries(tmp_path):
         "merge": False,
         "deploy": False,
         "body_activation": False,
+        "client_qualification_claim": False,
     }
 
     changed = update(

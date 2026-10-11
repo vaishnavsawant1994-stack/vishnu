@@ -9,6 +9,12 @@ from future_intelligence.work_orchestration.recovery import RecoveryReason
 from security.projection_redaction import sanitize_sensitive_text
 
 from .change_planner import EngineeringEditPlan, ModelEngineeringChangePlanner
+from .regression_evidence import (
+    build_regression_proof,
+    diff_introduces_test_suppression,
+    failure_fingerprint,
+    is_test_path,
+)
 from .reviewer_adapter import EngineeringReviewDecision, ModelEngineeringReviewer
 from .verification import observation_to_dict, observations_from_verification_report
 
@@ -96,6 +102,22 @@ class EngineeringWorkExecutor:
             excerpt = sanitize_sensitive_text(str(check.output_excerpt or ""))[:4000]
             defects.append(f"{check.name}: returncode={check.returncode}; output={excerpt}")
         return tuple(defects)
+
+    @staticmethod
+    def _qualified_regression_test_paths(coordinator, paths) -> tuple[str, ...]:
+        """Count only final-candidate test files that add no skip/xfail suppression."""
+        qualified = []
+        for path in dict.fromkeys(str(item) for item in paths if is_test_path(str(item))):
+            try:
+                content, _digest = coordinator.editor.read_text(path)
+            except (FileNotFoundError, PermissionError, UnicodeError, ValueError):
+                continue
+            if not content.strip():
+                continue
+            if diff_introduces_test_suppression(coordinator.editor.diff(path)):
+                continue
+            qualified.append(path)
+        return tuple(qualified)
 
     def _apply_plan(self, coordinator, plan: EngineeringEditPlan) -> tuple[str, ...]:
         if not plan.operations:
@@ -241,10 +263,30 @@ class EngineeringWorkExecutor:
                 coordinator, message=f"Vishnu engineering candidate: {spec.objective[:120]}"
             )
             repairs = 0
-            while verification is not None and not verification.passed and repairs < spec.budget.max_repair_cycles:
+            regression_test_paths: list[str] = []
+            failure_fingerprints: list[str] = []
+            previous_defects: tuple[str, ...] = ()
+            while (
+                verification is not None
+                and repairs < spec.budget.max_repair_cycles
+                and (not verification.passed or (repairs > 0 and not regression_test_paths))
+            ):
                 repairs += 1
                 current_context = coordinator.inspect()
-                defects = self._verification_defects(verification)
+                if not verification.passed:
+                    defects = self._verification_defects(verification)
+                    previous_defects = defects or previous_defects
+                    failure_fingerprints.append(failure_fingerprint(defects))
+                else:
+                    # The source defect is fixed but a permanent regression test
+                    # has not been added. Spend one bounded repair cycle asking
+                    # the existing governed planner for test evidence only.
+                    details = "; ".join(previous_defects[:20])[:6000]
+                    defects = (
+                        "Permanent regression-test evidence is still missing after the source repair. "
+                        "Add or update the smallest in-scope test that reproduces the prior defect and passes with the fix. "
+                        f"Prior defect evidence: {details or 'see previous repair evidence'}",
+                    )
                 repair_plan = self.planner.plan(
                     spec=spec,
                     graph=current_context.graph,
@@ -255,10 +297,25 @@ class EngineeringWorkExecutor:
                 coordinator.evidence.append(
                     "engineering.repair_plan", {"cycle": repairs, **repair_plan.to_dict()}
                 )
-                self._apply_plan(coordinator, repair_plan)
+                mutated_paths = self._apply_plan(coordinator, repair_plan)
+                regression_test_paths.extend(path for path in mutated_paths if is_test_path(path))
                 revision, verification, observations = self._commit_and_verify(
                     coordinator, message=f"Vishnu engineering repair {repairs}: {spec.objective[:100]}"
                 )
+
+            regression_proof = None
+            if repairs > 0:
+                qualified_test_paths = self._qualified_regression_test_paths(coordinator, regression_test_paths)
+                regression_proof = build_regression_proof(
+                    candidate_revision=revision,
+                    repair_cycles=repairs,
+                    failure_fingerprints=failure_fingerprints,
+                    changed_test_paths=qualified_test_paths,
+                    verification_report=verification,
+                )
+                regression_observation = regression_proof.observation()
+                observations = (*observations, regression_observation)
+                coordinator.evidence.append("engineering.regression_proof", regression_proof.to_dict())
 
             serialized_observations = [observation_to_dict(item) for item in observations]
             if verification is not None and not verification.passed:
@@ -279,6 +336,7 @@ class EngineeringWorkExecutor:
                     metadata={
                         "candidate_revision": revision,
                         "repair_cycles": repairs,
+                        "regression_proof": None if regression_proof is None else regression_proof.to_dict(),
                         "engineering_local_observations": serialized_observations,
                     },
                 )
@@ -300,6 +358,8 @@ class EngineeringWorkExecutor:
             limitations = []
             if verification is None:
                 limitations.append("local verification provider unavailable; external qualification required")
+            if regression_proof is not None and not regression_proof.passed:
+                limitations.append("repair lacks permanent regression-test proof")
             preliminary = coordinator.qualification.report(
                 spec=spec,
                 candidate_revision=revision,
@@ -320,6 +380,7 @@ class EngineeringWorkExecutor:
                         evidence={
                             "changed_paths": list(current.changed_paths),
                             "repair_cycles": repairs,
+                            "regression_proof": None if regression_proof is None else regression_proof.to_dict(),
                             "local_verification_passed": None if verification is None else verification.passed,
                         },
                     )
@@ -372,6 +433,7 @@ class EngineeringWorkExecutor:
                     "qualification_status": "qualified" if final_report.qualified else "pending_external_qualification",
                     "review_decision": review_decision,
                     "repair_cycles": repairs,
+                    "regression_proof": None if regression_proof is None else regression_proof.to_dict(),
                     "engineering_local_observations": serialized_observations,
                 },
             )

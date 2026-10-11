@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from future_intelligence.engineering.verification import observation_to_dict
+from future_intelligence.engineering.workflow_evidence import (
+    GitHubPhysicalDeviceEvidenceVerifier,
+    GitHubWorkflowEvidenceConfig,
+    PhysicalDeviceWorkflowRun,
+    WorkflowEvidenceError,
+)
 from security.request_context import current_trusted_request
 
 
@@ -29,12 +37,25 @@ class EngineeringPolicyBody(BaseModel):
     three_d_required: bool | None = None
 
 
+class PhysicalDeviceRunBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    platform: Literal["ios", "android"]
+    run_id: int = Field(gt=0)
+
+
+class PhysicalDeviceEvidenceBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    runs: list[PhysicalDeviceRunBody] = Field(min_length=1, max_length=2)
+
+
 def owner_engineering_router(runtime) -> APIRouter:
     """Trusted-owner Engineering Autonomy controls and read-only work visibility.
 
-    This surface may configure local engineering limits and request execution of
-    an already-created Canonical WorkOrder. It cannot create repository scope,
-    approve security authority, push, merge, deploy, or activate a Body revision.
+    This surface may configure local engineering limits, request execution of an
+    already-created Canonical WorkOrder, and submit GitHub workflow run IDs for
+    independent physical-device evidence verification. It cannot create repository
+    scope, claim a qualification gate passed, approve security authority, push,
+    merge, deploy, or activate a Body revision.
     """
 
     router = APIRouter(prefix="/iphone/api/owner/engineering", tags=["owner-engineering"])
@@ -64,7 +85,7 @@ def owner_engineering_router(runtime) -> APIRouter:
         if context is None or context.device_id != device_id or age < 0 or age > ttl:
             raise HTTPException(401, {
                 "code": "reauthentication_required",
-                "message": "Fresh owner verification is required to change Engineering Autonomy or start engineering work.",
+                "message": "Fresh owner verification is required to change Engineering Autonomy or submit qualification evidence.",
             })
 
     def engineering():
@@ -77,6 +98,27 @@ def owner_engineering_router(runtime) -> APIRouter:
         value = runtime.get("engineering_executor")
         if value is None:
             raise HTTPException(503, "governed engineering executor is unavailable on this host")
+        return value
+
+    def finalizer():
+        value = runtime.get("engineering_finalizer")
+        if value is None:
+            raise HTTPException(503, "engineering final qualification is unavailable on this host")
+        if not hasattr(value, "verify_and_record_physical_device_evidence"):
+            raise HTTPException(503, "trusted physical-device evidence verification is unavailable on this host")
+        if getattr(value, "physical_device_verifier", None) is None:
+            repository = str(engineering().repository_provider.repository or "").strip().strip("/")
+            token = str(
+                os.environ.get("VISHNU_ENGINEERING_GITHUB_EVIDENCE_TOKEN")
+                or os.environ.get("VISHNU_ENGINEERING_GITHUB_TOKEN")
+                or ""
+            ).strip()
+            try:
+                value.physical_device_verifier = GitHubPhysicalDeviceEvidenceVerifier(
+                    GitHubWorkflowEvidenceConfig(repository=repository, token=token)
+                )
+            except ValueError as exc:
+                raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured") from exc
         return value
 
     def emit(name: str, **payload: Any) -> None:
@@ -153,6 +195,7 @@ def owner_engineering_router(runtime) -> APIRouter:
                 "qualification_status": qualification_status,
                 "review_decision": review_decision,
                 "repair_cycles": attempt_metadata.get("repair_cycles"),
+                "regression_proof": attempt_metadata.get("regression_proof"),
             })
         return output
 
@@ -164,10 +207,26 @@ def owner_engineering_router(runtime) -> APIRouter:
         authenticate(pa_device, pa_token)
         eng = engineering()
         policy = eng.owner_policy.snapshot()
+        finalizer_value = runtime.get("engineering_finalizer")
+        repository = str(eng.repository_provider.repository or "").strip().strip("/")
+        verifier_available = bool(
+            finalizer_value is not None
+            and hasattr(finalizer_value, "verify_and_record_physical_device_evidence")
+            and (
+                getattr(finalizer_value, "physical_device_verifier", None) is not None
+                or len(repository.split("/")) == 2
+            )
+        )
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
-            "final_qualification_available": runtime.get("engineering_finalizer") is not None,
+            "final_qualification_available": finalizer_value is not None,
+            "trusted_physical_device_evidence": {
+                "accepted_input": "github_workflow_run_ids_only",
+                "verified_server_side": True,
+                "candidate_revision_bound": True,
+                "verifier_available": verifier_available,
+            },
             "policy": policy.public(),
             "recent_work": recent_work(),
             "authorities": {
@@ -175,6 +234,7 @@ def owner_engineering_router(runtime) -> APIRouter:
                 "merge": False,
                 "deploy": False,
                 "body_activation": False,
+                "client_qualification_claim": False,
             },
         }
 
@@ -255,6 +315,49 @@ def owner_engineering_router(runtime) -> APIRouter:
             "body_activation": False,
         }
 
+    @router.post("/work/{work_order_id}/attempt/{attempt_id}/physical-evidence")
+    def submit_physical_device_evidence(
+        work_order_id: str,
+        attempt_id: str,
+        body: PhysicalDeviceEvidenceBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        if len({item.platform for item in body.runs}) != len(body.runs):
+            raise HTTPException(422, "Only one workflow run may be supplied for each physical-device platform")
+        try:
+            observation = finalizer().verify_and_record_physical_device_evidence(
+                str(work_order_id),
+                str(attempt_id),
+                runs=tuple(
+                    PhysicalDeviceWorkflowRun(platform=item.platform, run_id=item.run_id)
+                    for item in body.runs
+                ),
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Engineering Work/Attempt not found") from exc
+        except WorkflowEvidenceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit(
+            "owner.engineering.physical_evidence_verified",
+            device_id=device_id,
+            work_order_id=str(work_order_id),
+            attempt_id=str(attempt_id),
+            platforms=list(dict(observation.metadata or {}).get("verified_platforms") or ()),
+        )
+        return {
+            "ok": True,
+            "work_order_id": str(work_order_id),
+            "attempt_id": str(attempt_id),
+            "observation": observation_to_dict(observation),
+            "client_qualification_claim": False,
+            "verified_server_side": True,
+        }
+
     @router.get("/work/{work_order_id}")
     def work_detail(
         work_order_id: str,
@@ -283,7 +386,13 @@ def owner_engineering_router(runtime) -> APIRouter:
             "attempts": attempts,
             "events": events_out,
             "workspaces": workspaces,
-            "authorities": {"remote_push": False, "merge": False, "deploy": False, "body_activation": False},
+            "authorities": {
+                "remote_push": False,
+                "merge": False,
+                "deploy": False,
+                "body_activation": False,
+                "client_qualification_claim": False,
+            },
         }
 
     return router
