@@ -119,8 +119,21 @@ class ReadOnlyHttpQualificationProvider:
             summary="; ".join(summaries),
         )
 
-    def qualify_preview(self, *, target: str, spec_id: str) -> EnvironmentQualificationResult:
-        return self._run(environment="preview", target=target, binding=f"spec:{spec_id}")
+    def qualify_preview(
+        self, *, target: str, spec_id: str, candidate_revision: str
+    ) -> EnvironmentQualificationResult:
+        spec_key = str(spec_id or "").strip()
+        revision = str(candidate_revision or "").strip()
+        if not spec_key or not revision:
+            raise ValueError("preview qualification requires spec_id and candidate_revision")
+        return self._run(
+            environment="preview",
+            target=target,
+            binding=f"spec:{spec_key};revision:{revision}",
+        )
 
     def smoke_production(self, *, target: str, release_revision: str) -> EnvironmentQualificationResult:
-        return self._run(environment="production", target=target, binding=f"revision:{release_revision}")
+        revision = str(release_revision or "").strip()
+        if not revision:
+            raise ValueError("production smoke qualification requires release_revision")
+        return self._run(environment="production", target=target, binding=f"revision:{revision}")
