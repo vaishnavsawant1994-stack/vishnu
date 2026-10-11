@@ -72,9 +72,10 @@ class SqliteMigrationSandbox:
     ) -> DatabaseQualificationResult:
         if not callable(migrate):
             raise TypeError("migration sandbox requires a trusted callable")
-        source_path = Path(source).expanduser().resolve()
-        if not source_path.is_file() or source_path.is_symlink():
-            raise ValueError("source SQLite database must be a regular file")
+        raw_source = Path(source).expanduser()
+        if raw_source.is_symlink() or not raw_source.is_file():
+            raise ValueError("source SQLite database must be a non-symlink regular file")
+        source_path = raw_source.resolve(strict=True)
         source_before = self._sha(source_path)
         details: list[str] = []
         with tempfile.TemporaryDirectory(prefix="vishnu-db-qualification-") as tmp:
