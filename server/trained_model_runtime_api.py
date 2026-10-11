@@ -50,16 +50,21 @@ def trained_model_runtime_router(runtime: dict) -> APIRouter:
             raise HTTPException(503, 'trained-model runtime is not enabled')
         return value
 
+    def production_pipeline():
+        return runtime.get('production_model_pipeline')
+
     @router.get('/health')
     def health():
         value = runner().status()
         deployment = runtime.get('model_deployment')
         shadow = runtime.get('shadow_qualification')
+        production = production_pipeline()
         return {
             'ok': bool(value.get('available')),
             'runtime': value,
             'deployment': deployment.status() if deployment is not None else {'backends': {}},
             'shadow': shadow.status() if shadow is not None else {'backends': {}},
+            'production_pipeline': production.status() if production is not None else None,
             'automatic_activation': False,
             'model_output_authority': False,
         }
@@ -70,12 +75,26 @@ def trained_model_runtime_router(runtime: dict) -> APIRouter:
         data_dir = Path(getattr(settings, 'data_dir', '.'))
         path = data_dir / 'model-runtime-qualification' / 'qualification.json'
         if not path.exists():
-            return {'qualified': False, 'reason': 'qualification_not_run'}
-        try:
-            value = json.loads(path.read_text(encoding='utf-8'))
-        except Exception:
-            raise HTTPException(500, 'qualification evidence is unreadable')
-        return value if isinstance(value, dict) else {'qualified': False, 'reason': 'qualification_invalid'}
+            value: dict = {'qualified': False, 'reason': 'qualification_not_run'}
+        else:
+            try:
+                loaded = json.loads(path.read_text(encoding='utf-8'))
+            except Exception:
+                raise HTTPException(500, 'qualification evidence is unreadable')
+            value = loaded if isinstance(loaded, dict) else {'qualified': False, 'reason': 'qualification_invalid'}
+        production = production_pipeline()
+        return {
+            **value,
+            'production_pipeline': production.status() if production is not None else None,
+            'canary_qualification_is_not_production_activation': True,
+        }
+
+    @router.get('/production')
+    def production_status():
+        production = production_pipeline()
+        if production is None:
+            raise HTTPException(503, 'production model pipeline is not enabled')
+        return production.status()
 
     @router.get('/v1/models')
     def models(authorization: str | None = Header(default=None)):
@@ -140,7 +159,10 @@ def trained_model_runtime_router(runtime: dict) -> APIRouter:
         controller = runtime.get('model_deployment')
         if controller is None:
             raise HTTPException(503, 'model deployment controller unavailable')
+        production = production_pipeline()
         try:
+            if production is not None:
+                production.assert_release_ready(model_id)
             model, result = controller.deploy(
                 model_id,
                 backend_id='local_transformers',
@@ -156,6 +178,7 @@ def trained_model_runtime_router(runtime: dict) -> APIRouter:
             'status': model.status.value,
             'deployment_ref': result.deployment_ref,
             'checkpoint_verified': True,
+            'durable_artifact_verified': production is not None,
             'automatic': False,
         }
 
@@ -184,6 +207,7 @@ def trained_model_runtime_router(runtime: dict) -> APIRouter:
             'rolled_back_to_model_id': model.model_id,
             'deployment_ref': result.deployment_ref,
             'checkpoint_verified': True,
+            'durable_artifact_verified': production_pipeline() is not None,
             'automatic': False,
         }
 

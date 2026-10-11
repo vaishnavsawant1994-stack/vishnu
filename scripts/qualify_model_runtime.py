@@ -13,6 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from training.artifact_store import ArtifactVerifiedDeploymentBackend, FilesystemModelArtifactStore
 from training.governance import GovernedAutoTrainingSettings
 from training.local_runtime import LocalCheckpointRunner, LocalTransformersDeploymentBackend
 from training.runtime_controls import BoundedLocalPeftTrainerBackend
@@ -123,9 +124,26 @@ def main() -> int:
     output_dir = root / 'trained-canary'
     started = time.time()
     artifact = backend.train(snapshot, settings, output_dir)
+
+    # Phase 6 qualification publishes the real trained checkpoint through the
+    # same immutable artifact gate used by release environments. ``persistent``
+    # is true only for this isolated test harness so the artifact-verified
+    # adapter can be exercised; this does not claim the host is production
+    # durable and is reported explicitly in the evidence below.
+    artifact_store = FilesystemModelArtifactStore(root / 'qualification-artifacts', persistent=True)
+    candidate_manifest = artifact_store.stage(
+        artifact.checkpoint_ref,
+        metadata={
+            'purpose': 'runtime_qualification_only',
+            'synthetic_non_user_data': True,
+            'base_model': artifact.base_model,
+            'method': artifact.method,
+        },
+    )
+    artifact_store.verify(candidate_manifest.checkpoint_ref)
     candidate = SimpleNamespace(
         model_id=f'runtime-canary-{snapshot.sha256[:12]}',
-        checkpoint_ref=artifact.checkpoint_ref,
+        checkpoint_ref=candidate_manifest.checkpoint_ref,
         base_model=artifact.base_model,
         method=artifact.method,
     )
@@ -138,41 +156,65 @@ def main() -> int:
         temperature=0.0,
     )
 
-    # Exercise the real deployment adapter in a completely isolated canary
-    # state directory. This is not the Vishnu production registry and therefore
-    # cannot create an owner-approved/active production model. We prove exact
-    # checkpoint switching and switch-back behavior only.
-    known_good_path = root / 'known-good-checkpoint'
-    if known_good_path.exists():
-        shutil.rmtree(known_good_path)
-    shutil.copytree(Path(artifact.checkpoint_ref), known_good_path)
+    # Make a distinct loadable known-good artifact by adding qualification-only
+    # metadata to a checkpoint copy. Transformers ignores the extra JSON file,
+    # while content addressing proves that switch-back targets a different exact
+    # immutable directory rather than merely a second model id.
+    known_good_source = root / 'known-good-checkpoint-source'
+    if known_good_source.exists():
+        shutil.rmtree(known_good_source)
+    shutil.copytree(Path(artifact.checkpoint_ref), known_good_source)
+    (known_good_source / 'qualification-known-good.json').write_text(
+        json.dumps({'known_good': True, 'synthetic_non_user_data': True}, sort_keys=True),
+        encoding='utf-8',
+    )
+    known_good_manifest = artifact_store.stage(
+        known_good_source,
+        metadata={'purpose': 'runtime_qualification_known_good_only'},
+    )
     known_good = SimpleNamespace(
         model_id=f'runtime-known-good-{snapshot.sha256[:12]}',
-        checkpoint_ref=str(known_good_path),
+        checkpoint_ref=known_good_manifest.checkpoint_ref,
         base_model=artifact.base_model,
         method=artifact.method,
     )
-    deployment = LocalTransformersDeploymentBackend(runner, allow_ephemeral_activation=True)
+
+    raw_deployment = LocalTransformersDeploymentBackend(runner, allow_ephemeral_activation=True)
+    deployment = ArtifactVerifiedDeploymentBackend(raw_deployment, artifact_store)
     first = deployment.deploy(known_good)
     first_verified = deployment.running_checkpoint(first.deployment_ref) == known_good.checkpoint_ref
     second = deployment.deploy(candidate)
     second_verified = deployment.running_checkpoint(second.deployment_ref) == candidate.checkpoint_ref
     switched_back = deployment.deploy(known_good)
     switchback_verified = deployment.running_checkpoint(switched_back.deployment_ref) == known_good.checkpoint_ref
+    distinct_artifacts = candidate.checkpoint_ref != known_good.checkpoint_ref
 
     elapsed = max(0.0, time.time() - started)
-    checkpoint_present = Path(artifact.checkpoint_ref).exists()
+    checkpoint_present = Path(candidate.checkpoint_ref).exists()
+    immutable_artifact_verified = bool(
+        artifact_store.verify(candidate.checkpoint_ref).artifact_sha256 == candidate_manifest.artifact_sha256
+        and artifact_store.verify(known_good.checkpoint_ref).artifact_sha256 == known_good_manifest.artifact_sha256
+        and distinct_artifacts
+    )
     evidence = {
         'qualified': bool(
             checkpoint_present
             and isinstance(inference.get('content'), str)
+            and immutable_artifact_verified
             and first_verified
             and second_verified
             and switchback_verified
         ),
-        'qualification_type': 'real_weight_training_loadable_inference_and_checkpoint_switchback',
+        'qualification_type': 'real_weight_training_immutable_artifact_loadable_inference_and_checkpoint_switchback',
         'real_weight_training': True,
         'loadable_inference': True,
+        'immutable_artifact_verified': immutable_artifact_verified,
+        'content_addressed_artifact': True,
+        'distinct_switchback_artifacts': distinct_artifacts,
+        'candidate_artifact_sha256': candidate_manifest.artifact_sha256,
+        'known_good_artifact_sha256': known_good_manifest.artifact_sha256,
+        'artifact_persistence_qualification_harness_only': True,
+        'production_artifact_store_proof': False,
         'real_backend_exact_checkpoint_proof': bool(first_verified and second_verified),
         'real_backend_switchback_proof': bool(switchback_verified),
         'production_controller_rollback_proof': False,
@@ -192,7 +234,7 @@ def main() -> int:
         'owner_approval_bypassed': False,
         'automatic_activation': False,
         'production_model_claimed': False,
-        'note': 'This canary proves real training, checkpoint inference and isolated exact-checkpoint switchback. It is not production-quality, promotion evidence, or production activation.',
+        'note': 'This synthetic canary proves real training, immutable artifact verification, checkpoint inference and isolated exact-checkpoint switchback. It is not production-quality, promotion evidence, durable-host proof, owner approval, or production activation.',
     }
     temp = evidence_path.with_suffix('.tmp')
     temp.write_text(json.dumps(evidence, sort_keys=True, indent=2), encoding='utf-8')
