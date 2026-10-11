@@ -51,7 +51,8 @@ def _matches_prefix(path: str, rule: str) -> bool:
     if any(char in normalized for char in "*?["):
         return fnmatch.fnmatch(path, normalized)
     if normalized.endswith("/"):
-        return path.startswith(normalized)
+        root = normalized.rstrip("/")
+        return path == root or path.startswith(root + "/")
     return path == normalized or path.startswith(normalized.rstrip("/") + "/")
 
 
