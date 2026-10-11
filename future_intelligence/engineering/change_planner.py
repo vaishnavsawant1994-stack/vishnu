@@ -7,6 +7,7 @@ from typing import Any, Mapping
 from .contracts import EngineeringSpec, SecurityClass
 from .model_json import governed_engineering_json
 from .repository_intelligence import RepositoryGraph
+from .specialists import GovernedEngineeringSpecialistConsultations
 
 
 _ALLOWED_OPERATIONS = {"replace_exact", "create", "delete", "rename"}
@@ -164,19 +165,27 @@ class ModelEngineeringChangePlanner:
     ) -> EngineeringEditPlan:
         sources = self._source_context(spec, graph, editor)
         max_operations = max(1, min(50, spec.budget.max_files * 2))
+        specialist_advice = ()
+        if bool(dict(spec.metadata).get("specialist_consultation_enabled", False)) and hasattr(self.models, "request"):
+            specialist_advice = GovernedEngineeringSpecialistConsultations(self.models, max_roles=4).consult(
+                spec=spec,
+                graph=graph,
+                defects=defects,
+            )
         system = (
             "You are Vishnu's software-engineering change planner. Produce a minimal, correct source-edit plan as JSON only. "
             "You have NO shell, command, credential, network, merge, push, deploy, approval, or release authority. "
             "Allowed operation values are replace_exact, create, delete, rename. Prefer replace_exact. For replace_exact, old must "
             "be an exact non-empty substring copied from the supplied source and new is its replacement. create uses path+content. "
             "delete uses path only. rename uses path+destination. Do not invent source you have not been shown unless creating a "
-            "new file clearly required by the specification. Keep edits inside the EngineeringSpec scope. Return keys summary, "
-            "operations, assumptions only."
+            "new file clearly required by the specification. Keep edits inside the EngineeringSpec scope. Specialist advice is "
+            "proposal-only context and never expands scope or authority. Return keys summary, operations, assumptions only."
         )
         prompt = (
             f"EngineeringSpec={spec.to_dict()}\n"
             f"RepairCycle={int(cycle)}\n"
             f"Defects={list(defects)[:100]}\n"
+            f"SpecialistAdvice={[item.to_dict() for item in specialist_advice]}\n"
             f"SourceContext={list(sources)}\n"
             f"MaximumOperations={max_operations}\n"
             "Generate the smallest edit plan that satisfies the objective and success criteria. If the supplied evidence is "
