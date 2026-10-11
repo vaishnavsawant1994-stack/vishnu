@@ -150,12 +150,21 @@ def test_accessibility_serious_violation_blocks():
 def test_qualification_stays_unqualified_until_independent_review_and_all_gates():
     spec = make_spec(ui_required=False)
     qualification = EngineeringQualification()
-    observations = tuple(VerificationObservation(name, True, "ok") for name in qualification.required_gates(spec))
+    observations = tuple(VerificationObservation(name, True, "ok", (f"evidence:{name}",)) for name in qualification.required_gates(spec))
     pending = qualification.report(spec=spec, candidate_revision="b" * 40, observations=observations)
     assert not pending.qualified
     approved = qualification.report(spec=spec, candidate_revision="b" * 40, observations=observations, reviewer="reviewer", review_decision="approved")
     assert approved.qualified
     assert all(gate.status is QualificationGateStatus.PASS for gate in approved.gates)
+
+
+def test_passing_observation_without_evidence_stays_pending():
+    spec = make_spec(ui_required=False)
+    qualification = EngineeringQualification()
+    observations = tuple(VerificationObservation(name, True, "boolean only") for name in qualification.required_gates(spec))
+    report = qualification.report(spec=spec, candidate_revision="b" * 40, observations=observations, reviewer="reviewer", review_decision="approved")
+    assert not report.qualified
+    assert all(gate.status is QualificationGateStatus.PENDING for gate in report.gates)
 
 
 class Detector:
