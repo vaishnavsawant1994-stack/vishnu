@@ -15,6 +15,7 @@ from training.candidates import (
 )
 from training.collector import TrainingCollector
 from training.comprehensive_evaluation import ComprehensiveCheckpointEvaluator as LocalCheckpointEvaluator
+from training.contribution_settings import ContributionSettingsService, ContributionSettingsSnapshot
 from training.contributions import (
     ContributionDecision,
     ContributionKind,
@@ -141,6 +142,8 @@ __all__ = [
     'ContributionKind',
     'ContributionMode',
     'ContributionPreferences',
+    'ContributionSettingsService',
+    'ContributionSettingsSnapshot',
     'ContributorPseudonymizer',
     'StrategySignalAggregator',
     'evaluate_contribution',
