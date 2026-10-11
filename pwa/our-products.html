@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#f5f8ff">
+  <title>Our Products · Vishnu</title>
+  <link rel="stylesheet" href="/iphone/our-products.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Vishnu navigation">
+      <a class="brand" href="/iphone/"><span class="brand-mark">V</span><strong>VISHNU</strong></a>
+      <nav class="side-nav">
+        <a href="/iphone/">⌂ <span>Home</span></a>
+        <a href="/iphone/">◫ <span>Today</span></a>
+        <a href="/iphone/">◌ <span>Conversations</span></a>
+        <a href="/iphone/">□ <span>Projects</span></a>
+        <a href="/iphone/">◎ <span>Memory</span></a>
+        <a href="/iphone/">◇ <span>Knowledge</span></a>
+        <a href="/iphone/">◷ <span>Activities</span></a>
+        <a href="/iphone/">⌘ <span>Tools</span></a>
+        <a href="/iphone/">⌁ <span>Workflows</span></a>
+        <a class="active" href="/iphone/our-products.html">⬡ <span>Our Products</span></a>
+      </nav>
+      <a class="back-vishnu" href="/iphone/">← Back to Vishnu</a>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <label class="global-search"><span>⌕</span><input id="search" autocomplete="off" placeholder="Search products, clients, agents, workflows…"></label>
+        <a class="owner-chip" href="/iphone/">Owner workspace</a>
+      </header>
+
+      <div class="content">
+        <section class="hero">
+          <div class="hero-title">
+            <span class="hero-icon">⬡</span>
+            <div><h1>Our Products</h1><p>Build, package, deploy and manage AI employees, agents, automations and client systems.</p></div>
+          </div>
+          <div class="hero-actions">
+            <button class="button secondary" id="convertButton">▣ Import / Convert from Project</button>
+            <button class="button primary" id="createButton">＋ Create Product</button>
+          </div>
+        </section>
+
+        <section class="metrics" aria-label="Product summary">
+          <article><span class="metric-icon blue">⬡</span><div><strong id="metricTotal">0</strong><small>Total Products</small></div></article>
+          <article><span class="metric-icon amber">⌘</span><div><strong id="metricDevelopment">0</strong><small>In Development</small></div></article>
+          <article><span class="metric-icon green">✓</span><div><strong id="metricReady">0</strong><small>Ready to Deploy</small></div></article>
+          <article><span class="metric-icon violet">↗</span><div><strong id="metricLive">0</strong><small>Live / Deployed</small></div></article>
+          <article><span class="metric-icon pink">♙</span><div><strong id="metricClients">0</strong><small>Clients</small></div></article>
+          <article><span class="metric-icon red">!</span><div><strong id="metricAttention">0</strong><small>Needs Attention</small></div></article>
+        </section>
+
+        <section class="toolbar">
+          <div class="filters" id="filters">
+            <button class="filter active" data-type="all">All</button>
+            <button class="filter" data-type="ai_employee">AI Employees</button>
+            <button class="filter" data-type="agent">Agents</button>
+            <button class="filter" data-type="agent_team">Agent Teams</button>
+            <button class="filter" data-type="automation">Automations</button>
+            <button class="filter" data-type="workflow">Workflows</button>
+            <button class="filter" data-type="tool">Tools</button>
+            <button class="filter" data-type="business_system">Business Systems</button>
+            <button class="filter" data-type="integration">Integrations</button>
+          </div>
+          <select id="sort" aria-label="Sort products"><option value="recent">Sort: Recent</option><option value="name">Sort: Name</option><option value="created">Sort: Created</option></select>
+        </section>
+
+        <div id="message" class="message hidden" role="status"></div>
+        <section id="productGrid" class="product-grid" aria-live="polite"></section>
+        <section id="emptyState" class="empty hidden">
+          <span>⬡</span><h2>No products yet</h2><p>Create a product from scratch or promote an existing Vishnu project.</p><button class="button primary" id="emptyCreate">Create Product</button>
+        </section>
+
+        <section class="lower-grid">
+          <article class="panel">
+            <h2>Create New Product</h2><p>Start from a product type and connect the agents, workflows, tools and delivery targets it needs.</p>
+            <div class="quick-types">
+              <button data-quick-type="ai_employee">♙ AI Employee</button><button data-quick-type="agent">◇ Agent</button>
+              <button data-quick-type="automation">⚙ Automation</button><button data-quick-type="workflow">⌁ Workflow</button>
+              <button data-quick-type="tool">⌘ Tool</button><button data-quick-type="business_system">▦ Business System</button>
+              <button data-quick-type="integration">↔ Integration</button><button data-quick-type="custom">＋ Custom Product</button>
+            </div>
+          </article>
+          <article class="panel compact-panel">
+            <h2>From Project to Product</h2><p>Promote existing Vishnu work into a reusable commercial product without copying the full Vishnu system.</p>
+            <button class="button secondary full" id="convertBottom">Select a project →</button>
+          </article>
+          <article class="panel activity-panel">
+            <div class="panel-heading"><h2>Recent Activity</h2><button id="refreshActivity" class="text-button">Refresh</button></div>
+            <div id="activityList" class="activity-list"><p class="muted">No product activity yet.</p></div>
+          </article>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <dialog id="productDialog" class="dialog">
+    <form id="productForm" method="dialog">
+      <div class="dialog-head"><div><small>OUR PRODUCTS</small><h2 id="dialogTitle">Create Product</h2></div><button type="button" class="icon-button" data-close>×</button></div>
+      <div class="form-grid">
+        <label class="span-2">Product name<input name="name" required maxlength="160" placeholder="e.g. ACME Sales Employee"></label>
+        <label>Product type<select name="product_type" id="productType"><option value="ai_employee">AI Employee</option><option value="agent">Agent</option><option value="agent_team">Agent Team</option><option value="automation">Automation</option><option value="workflow">Workflow</option><option value="tool">Tool</option><option value="knowledge_assistant">Knowledge Assistant</option><option value="integration">Integration</option><option value="business_system">Business System</option><option value="custom">Custom Product</option></select></label>
+        <label>Client / internal owner<input name="client_name" maxlength="200" placeholder="Optional client name"></label>
+        <label class="span-2">Description<textarea name="description" maxlength="5000" rows="3" placeholder="What should this product do?"></textarea></label>
+        <label>AI mode<select name="ai_mode"><option value="disabled">No AI</option><option value="client_api">Client provides API</option><option value="managed">Our managed AI</option><option value="local">Local / self-hosted AI</option><option value="hybrid">Hybrid</option></select></label>
+        <fieldset><legend>Initial delivery targets</legend><div class="target-checks"><label><input type="checkbox" name="targets" value="web"> Web</label><label><input type="checkbox" name="targets" value="pwa"> PWA</label><label><input type="checkbox" name="targets" value="android"> Android</label><label><input type="checkbox" name="targets" value="ios"> iOS</label><label><input type="checkbox" name="targets" value="windows"> Windows</label><label><input type="checkbox" name="targets" value="docker"> Server</label><label><input type="checkbox" name="targets" value="api"> API</label></div></fieldset>
+      </div>
+      <div class="security-note">🔒 API keys and raw credentials are never stored in a product definition or downloadable manifest.</div>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close>Cancel</button><button type="submit" class="button primary">Create Product</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="detailDialog" class="dialog detail-dialog">
+    <div class="dialog-head"><div><small id="detailKind">PRODUCT</small><h2 id="detailName">Product</h2><p id="detailSubtitle"></p></div><button type="button" class="icon-button" data-close-detail>×</button></div>
+    <div class="detail-tabs" id="detailTabs"><button class="active" data-tab="overview">Overview</button><button data-tab="ai">AI & Models</button><button data-tab="platforms">Platforms</button><button data-tab="components">Components</button><button data-tab="build">Build & Export</button><button data-tab="manifest">Manifest</button></div>
+    <div id="detailBody" class="detail-body"></div>
+  </dialog>
+
+  <dialog id="convertDialog" class="dialog small-dialog">
+    <form id="convertForm" method="dialog">
+      <div class="dialog-head"><div><small>PROJECT → PRODUCT</small><h2>Promote a Project</h2></div><button type="button" class="icon-button" data-close-convert>×</button></div>
+      <p class="muted">Enter an existing Project ID. Vishnu will create a linked product record; the source project remains unchanged.</p>
+      <label>Project ID<input name="project_id" required placeholder="Project UUID"></label>
+      <label>Product type<select name="product_type"><option value="custom">Custom Product</option><option value="ai_employee">AI Employee</option><option value="agent">Agent</option><option value="automation">Automation</option><option value="business_system">Business System</option></select></label>
+      <label>Client<input name="client_name" placeholder="Optional client name"></label>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close-convert>Cancel</button><button type="submit" class="button primary">Promote Project</button></div>
+    </form>
+  </dialog>
+
+  <script src="/iphone/our-products.js" defer></script>
+</body>
+</html>
