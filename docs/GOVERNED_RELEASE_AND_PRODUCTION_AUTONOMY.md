@@ -4,11 +4,11 @@
 
 Vishnu's engineering subsystem may understand work, modify code in an isolated workspace, verify it, obtain independent review, and produce an exact qualified candidate. It does **not** own production release authority.
 
-Governed Release & Production Autonomy is the separate authority domain that may move an exact qualified candidate through preview and production under explicit owner policy.
+Governed Release & Production Autonomy is the separate authority domain that may move an exact qualified candidate through pre-production qualification and production under explicit owner policy.
 
 The intended pipeline is:
 
-`Canonical Work -> EngineeringSpec -> isolated engineering candidate -> exact qualification -> release handoff -> preview -> preview qualification -> production promotion -> production smoke -> canary/monitoring -> regression -> Canonical Work`
+`Canonical Work -> EngineeringSpec -> isolated engineering candidate -> exact qualification -> release handoff -> provider staging/preview -> read-only qualification -> production promotion -> production smoke -> canary/monitoring -> regression -> Canonical Work`
 
 A rollback recommendation is not rollback authority. A Body/evolution activation is not release authority. Those boundaries remain separate.
 
@@ -33,8 +33,8 @@ The model layer cannot read provider tokens, choose arbitrary deployment roots, 
 
 Owner Controls exposes four release modes:
 
-- **Off** — no preview or production release authority.
-- **Preview only** — qualified candidates may be previewed/qualified but not promoted.
+- **Off** — no preview/staging or production release authority.
+- **Preview only** — qualified candidates may enter the provider's pre-production qualification gate but not be promoted.
 - **Approval required** — production promotion requires owner approval.
 - **Auto low-risk** — only releases classified **Low** may auto-promote, and only when they do not touch sensitive surfaces.
 
@@ -50,6 +50,8 @@ Core states are:
 
 `planned -> previewing -> preview_qualifying -> preview_qualified -> promoting -> production_qualifying -> monitoring -> succeeded`
 
+The generic `preview*` states mean the pre-production qualification gate. A provider may implement that gate with a true Preview environment or, when required for exact-artifact safety, a staged Production-target deployment that has not received production traffic.
+
 Failure/safety states include:
 
 - `awaiting_approval`
@@ -62,11 +64,11 @@ Failure/safety states include:
 
 `recovery_required` is deliberately fail-closed. If Vishnu restarts after an authority-bearing provider action and cannot prove whether that action completed, it does not replay the action.
 
-If a persisted provider deployment ID is available, restart recovery may only observe that deployment and rerun read-only qualification. Unknown preview/promotion/rollback outcomes require owner/provider reconciliation.
+If a persisted provider deployment ID is available, restart recovery may only observe that deployment and rerun read-only qualification. Unknown preview/staging/promotion/rollback outcomes require owner/provider reconciliation.
 
-## Preview qualification
+## Pre-production qualification
 
-Preview qualification is credential-free and GET-only. It:
+Pre-production qualification is credential-free and GET-only. It:
 
 - requires HTTPS
 - rejects credentials, query strings, fragments, non-standard ports, and redirects
@@ -74,7 +76,7 @@ Preview qualification is credential-free and GET-only. It:
 - applies bounded response sizes and timeouts
 - records trusted evidence against the exact candidate revision
 
-A missing required preview qualification blocks production promotion.
+A missing required qualification blocks production promotion.
 
 ## Production smoke and feedback
 
@@ -140,9 +142,16 @@ VISHNU_RELEASE_VERCEL_GIT_REF=main
 VISHNU_RELEASE_VERCEL_PREVIEW_HOST_SUFFIX=.vercel.app
 ```
 
-Vishnu builds an immutable preview from the exact qualified Git SHA. Production promotion reuses that exact deployment rather than performing a second production rebuild. Vishnu re-inspects the deployment and verifies the bound candidate SHA before/after promotion.
+Vercel is deliberately different from Render. Vishnu does **not** qualify a Preview-environment artifact and then assume it can be promoted unchanged. Instead it:
 
-Rollback searches deployment history for an immutable deployment that proves the bound base revision, inspects it again, and only then requests traffic rollback after separate rollback authorization.
+1. reads `GET /v9/projects/{idOrName}` and requires `autoAssignCustomDomains=false`, failing closed if the setting is true, missing, or the project identity drifts;
+2. creates the exact qualified Git SHA with `target=production`, producing a staged Production build that uses Production-scoped build/runtime configuration but does not receive the project's production domains;
+3. waits for READY and proves both the exact candidate SHA and `target=production` from the deployment itself;
+4. runs the generic pre-production qualification against that immutable deployment URL;
+5. at promotion time, re-inspects the persisted deployment and again requires the exact SHA and `target=production`, preventing an older Preview-environment artifact from being promoted after a restart/upgrade;
+6. promotes that same deployment so production traffic changes without a second build.
+
+Rollback searches Production-target deployment history for an immutable deployment that proves the bound base revision, re-inspects it, proves `target=production` again, and only then requests traffic rollback after separate rollback authorization.
 
 ## Provider configuration rules
 
@@ -159,7 +168,7 @@ The trusted Owner Controls surface provides:
 - release policy/status summary
 - release ledger/detail
 - approve
-- preview + qualification
+- preview/staging + qualification
 - production promote
 - canary observation
 - production regression signal
@@ -186,4 +195,4 @@ The normal repository CI, Security/Reliability, P3 iPhone PWA, package validatio
 
 The release definition is therefore:
 
-**exact engineering candidate qualified -> governed release evidence complete -> owner policy satisfied -> exact preview qualified -> exact production promotion proven -> smoke/canary/monitoring healthy -> no unresolved recovery/rollback state**.
+**exact engineering candidate qualified -> governed release evidence complete -> owner policy satisfied -> exact provider staging/preview qualified -> exact production promotion proven -> smoke/canary/monitoring healthy -> no unresolved recovery/rollback state**.
