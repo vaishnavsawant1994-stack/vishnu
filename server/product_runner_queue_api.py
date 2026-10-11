@@ -1,19 +1,24 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from products.build_lifecycle import ProductBuildLifecycle
 from products.platform_jobs import (
     PlatformBuildJobError,
     ProductPlatformBuildJobs,
+    max_artifact_bytes,
     runner_configured,
     runner_token_matches,
 )
 from products.runner_leases import ProductRunnerLeases, RunnerLeaseError
 from products.signing import signing_available
+
+
+_RUNNER_EVIDENCE_HEADER_LIMIT = 16 * 1024
 
 
 def product_runner_queue_router(runtime, product_store):
@@ -31,6 +36,27 @@ def product_runner_queue_router(runtime, product_store):
         prefix = "Bearer "
         if not authorization or not authorization.startswith(prefix) or not runner_token_matches(authorization[len(prefix):]):
             raise HTTPException(401, "Product platform runner authentication failed")
+
+    def active_lease(build_id: str, token: str | None) -> dict:
+        try:
+            lease = leases._active(build_id, str(token or ""))
+        except RunnerLeaseError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        lease.pop("lease_token_hash", None)
+        return lease
+
+    def parse_evidence(raw: str | None) -> dict:
+        if not raw:
+            raise HTTPException(422, "X-Vishnu-Runner-Evidence is required for autonomous artifact callbacks")
+        if len(raw) > _RUNNER_EVIDENCE_HEADER_LIMIT:
+            raise HTTPException(422, "Runner evidence header is too large")
+        try:
+            value = json.loads(raw)
+        except ValueError as exc:
+            raise HTTPException(422, "Runner evidence must be valid JSON") from exc
+        if not isinstance(value, dict):
+            raise HTTPException(422, "Runner evidence must be a JSON object")
+        return value
 
     @router.post("/claim")
     def claim_next_build(
@@ -87,6 +113,65 @@ def product_runner_queue_router(runtime, product_store):
         except RunnerLeaseError as exc:
             raise HTTPException(409, str(exc)) from exc
         return {"lease": lease}
+
+    @router.put("/{build_id}/artifact")
+    async def upload_artifact(
+        build_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        x_vishnu_runner_lease: str | None = Header(default=None),
+        x_vishnu_artifact_name: str | None = Header(default=None),
+        x_vishnu_artifact_sha256: str | None = Header(default=None),
+        x_vishnu_runner_evidence: str | None = Header(default=None),
+        content_length: int | None = Header(default=None),
+    ):
+        authenticate(authorization)
+        lease = active_lease(build_id, x_vishnu_runner_lease)
+        if content_length is not None and content_length > max_artifact_bytes():
+            raise HTTPException(413, "Platform artifact exceeds the configured size limit")
+        payload = await request.body()
+        evidence = parse_evidence(x_vishnu_runner_evidence)
+        try:
+            build = platform_jobs.accept_artifact(
+                lease["product_id"],
+                build_id,
+                filename=str(x_vishnu_artifact_name or ""),
+                expected_sha256=str(x_vishnu_artifact_sha256 or ""),
+                payload=payload,
+                runner_evidence=evidence,
+            )
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except PlatformBuildJobError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {
+            "build": build,
+            "accepted": True,
+            "lease_completion_required": True,
+        }
+
+    @router.post("/{build_id}/failed")
+    async def report_failure(
+        build_id: str,
+        request: Request,
+        authorization: str | None = Header(default=None),
+        x_vishnu_runner_lease: str | None = Header(default=None),
+    ):
+        authenticate(authorization)
+        lease = active_lease(build_id, x_vishnu_runner_lease)
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        reason = str(body.get("reason") or "Platform runner failed")[:2000] if isinstance(body, dict) else "Platform runner failed"
+        try:
+            build = platform_jobs.mark_failed(lease["product_id"], build_id, reason)
+            completed = leases.complete(build_id, str(x_vishnu_runner_lease or ""))
+        except KeyError as exc:
+            raise HTTPException(404, "Build not found") from exc
+        except (PlatformBuildJobError, RunnerLeaseError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {"build": build, "lease": completed, "accepted": True}
 
     @router.post("/{build_id}/complete")
     def complete(
