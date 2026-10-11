@@ -9,15 +9,36 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+# This file is an executable runner entry point. Add the repository root before
+# importing Vishnu's product-signing module so `python packaging/...py` works
+# from a clean CI checkout as well as from an installed environment.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 from products.signing import canonical_json, verify_payload
 
 
 _EXPECTED_JOB_FILES = {"job.json", "manifest.json", "checksums.json"}
 _PRODUCT_PUBLIC_KEY_ENV = "VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64"
+_FORBIDDEN_CREDENTIAL_KEYS = {
+    "api_key",
+    "apikey",
+    "access_token",
+    "refresh_token",
+    "password",
+    "private_key",
+    "secret",
+    "secret_ref",
+    "credential_ref",
+    "credentials_ref",
+    "vault_ref",
+}
 
 
 class RunnerError(RuntimeError):
@@ -30,6 +51,24 @@ def _sha256(raw: bytes) -> str:
 
 def _run(*cmd: str, cwd: Path | None = None) -> None:
     subprocess.check_call(list(cmd), cwd=str(cwd) if cwd else None)
+
+
+def _assert_no_credentials(value, path: tuple[str, ...] = ()) -> None:
+    """Reject credential-bearing fields without false-positive scanning values.
+
+    Product descriptions/instructions may legitimately mention words such as
+    "password". The distribution boundary is concerned with credential fields,
+    not ordinary prose values.
+    """
+    if isinstance(value, dict):
+        for key, item in value.items():
+            normalized = str(key).strip().lower()
+            if normalized in _FORBIDDEN_CREDENTIAL_KEYS or normalized.endswith("_secret_ref"):
+                raise RunnerError(f"Platform build manifest contains forbidden credential field: {'.'.join((*path, str(key)))}")
+            _assert_no_credentials(item, (*path, str(key)))
+    elif isinstance(value, list):
+        for index, item in enumerate(value):
+            _assert_no_credentials(item, (*path, str(index)))
 
 
 def _load_job(path: Path, *, allow_unsigned: bool) -> tuple[dict, dict]:
@@ -72,10 +111,7 @@ def _load_job(path: Path, *, allow_unsigned: bool) -> tuple[dict, dict]:
             raise RunnerError(f"Platform build job is missing {field}")
     if manifest.get("product_id") != payload.get("product_id") or str(manifest.get("version")) != str(payload.get("version")):
         raise RunnerError("Platform build job identity does not match its manifest")
-    serialized = json.dumps(manifest, sort_keys=True)
-    forbidden = ("secret_ref", "api_key", "access_token", "refresh_token", "password")
-    if any(token in serialized.lower() for token in forbidden):
-        raise RunnerError("Platform build manifest contains forbidden credential material")
+    _assert_no_credentials(manifest)
     return payload, manifest
 
 
@@ -129,7 +165,6 @@ android {{
     manifest_xml = root / "app" / "src" / "main" / "AndroidManifest.xml"
     manifest_xml.write_text(
         f'''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  <uses-permission android:name="android.permission.INTERNET" />
   <application android:theme="@style/AppTheme" android:label="{escaped_name}" android:usesCleartextTraffic="false">
     <activity android:name=".MainActivity" android:exported="true">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
@@ -163,7 +198,7 @@ public final class MainActivity extends Activity {{
         for item in manifest.get("components") or []
     ) or "<li>No components declared.</li>"
     (assets / "index.html").write_text(
-        f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{{font-family:system-ui;background:#f7f9fc;color:#172033;margin:0;padding:28px}}main{{max-width:720px;margin:auto}}.card{{background:white;border:1px solid #dce3eb;border-radius:18px;padding:20px;margin:18px 0}}small{{letter-spacing:.14em;color:#718096}}li{{padding:7px 0}}</style></head><body><main><small>VISHNU PRODUCT</small><h1>{html.escape(app_name)}</h1><p>{description}</p><div class="card"><b>Version</b> {html.escape(str(payload['version']))}<br><b>AI mode</b> {html.escape(str((manifest.get('ai_policy') or {{}}).get('mode','disabled')))}</div><div class="card"><h2>Components</h2><ul>{components}</ul></div><p>This application contains only its product contract. Runtime credentials are provisioned separately.</p></main></body></html>''',
+        f'''<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{{font-family:system-ui;background:#f7f9fc;color:#172033;margin:0;padding:28px}}main{{max-width:720px;margin:auto}}.card{{background:white;border:1px solid #dce3eb;border-radius:18px;padding:20px;margin:18px 0}}small{{letter-spacing:.14em;color:#718096}}li{{padding:7px 0}}</style></head><body><main><small>VISHNU PRODUCT</small><h1>{html.escape(app_name)}</h1><p>{description}</p><div class="card"><b>Version</b> {html.escape(str(payload['version']))}<br><b>AI mode</b> {html.escape(str((manifest.get('ai_policy') or {}).get('mode','disabled')))}</div><div class="card"><h2>Components</h2><ul>{components}</ul></div><p>This application contains only its product contract. Runtime credentials are provisioned separately.</p></main></body></html>''',
         encoding="utf-8",
     )
     (assets / "manifest.json").write_bytes(canonical_json(manifest))
