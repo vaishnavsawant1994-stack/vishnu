@@ -3,11 +3,12 @@ import { chromium } from "playwright";
 import { breakpointNeighbours, assertNoViewportOverflow } from "./device_matrix.mjs";
 
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block", reducedMotion: "reduce" });
 const page = await context.newPage();
 const pageErrors = [];
 page.on("pageerror", error => pageErrors.push(error.message));
 
+await page.route("https://accounts.google.com/**", route => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
 await page.route("**/iphone/api/**", async route => {
   const path = new URL(route.request().url()).pathname;
   if (path.endsWith("/status")) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Owner verification required" }) });
