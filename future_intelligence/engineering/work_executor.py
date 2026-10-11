@@ -210,6 +210,9 @@ class EngineeringWorkExecutor:
         lease_seconds: int = 3600,
         overrides: Mapping[str, object] | None = None,
     ) -> EngineeringExecutionResult:
+        policy_store = getattr(self.runtime, "owner_policy", None)
+        if policy_store is not None and not policy_store.snapshot().allows_autonomous_execution():
+            raise PermissionError("Engineering Autonomy must be Auto-Fix or Review Candidate for autonomous engineering execution")
         coordinator = self.runtime.prepare(
             work_order_id,
             worker_id=worker_id,
