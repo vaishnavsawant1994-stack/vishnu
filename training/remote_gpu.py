@@ -279,8 +279,13 @@ class RemoteGpuTrainerBackend:
         cleanup_required = True
         succeeded = False
         try:
-            self._check_cost(job.estimated_cost, cost_limit)
-            self._check_cost(job.accrued_cost, cost_limit)
+            try:
+                self._check_cost(job.estimated_cost, cost_limit)
+                self._check_cost(job.accrued_cost, cost_limit)
+            except RuntimeError:
+                self.provider.cancel(job_id)
+                cancelled = True
+                raise
             current = job
             while current.state in {RemoteTrainingState.QUEUED, RemoteTrainingState.RUNNING}:
                 elapsed = self._clock() - started
@@ -290,8 +295,8 @@ class RemoteGpuTrainerBackend:
                     raise TimeoutError("remote training exceeded owner maximum runtime")
                 self._sleep(float(self.policy.poll_interval_seconds))
                 current = self.provider.status(job_id)
-                self._check_cost(current.estimated_cost, cost_limit)
                 try:
+                    self._check_cost(current.estimated_cost, cost_limit)
                     self._check_cost(current.accrued_cost, cost_limit)
                 except RuntimeError:
                     self.provider.cancel(job_id)
