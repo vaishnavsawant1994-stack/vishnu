@@ -60,7 +60,9 @@ def test_signed_portable_package_contains_only_canonical_distribution_files(monk
 
         inspected = inspect_portable_package(raw)
         assert inspected["manifest"]["product_id"] == product["id"]
-        assert inspected["manifest"]["ai_policy"]["secret_ref"].startswith("vault://")
+        assert "secret_ref" not in inspected["manifest"]["ai_policy"]
+        assert inspected["manifest"]["ai_policy"]["credentials"] == "runtime-provisioned"
+        assert "vault://clients/acme/openai" not in raw.decode("latin1")
         assert verify_payload(canonical_json(inspected["manifest"]), inspected["package"]["signature"])
         assert "api_key" not in raw.decode("latin1").lower()
     finally:
