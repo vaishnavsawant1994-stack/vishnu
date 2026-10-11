@@ -35,6 +35,27 @@ jobs:
             CODE_SIGN_STYLE=Automatic \
             -allowProvisioningUpdates \
             test
+      - name: Write revision-bound qualification manifest
+        run: |
+          mkdir -p ios-evidence
+          python3 - <<'PY'
+          import json, os
+          payload = {
+              "schema_version": 1,
+              "repository": os.environ["GITHUB_REPOSITORY"],
+              "candidate_revision": os.environ["GITHUB_SHA"],
+              "workflow_run_id": int(os.environ["GITHUB_RUN_ID"]),
+              "workflow_name": os.environ["GITHUB_WORKFLOW"],
+              "workflow_path": ".github/workflows/ios-physical-device.yml",
+              "event": os.environ["GITHUB_EVENT_NAME"],
+              "platform": "ios",
+              "physical_device": True,
+              "test_result": "success",
+              "artifact_name": "iphone-physical-evidence",
+          }
+          with open("ios-evidence/qualification-manifest.json", "w", encoding="utf-8") as handle:
+              json.dump(payload, handle, sort_keys=True, indent=2)
+          PY
       - name: Capture device evidence
         if: always()
         run: |
@@ -46,3 +67,4 @@ jobs:
         with:
           name: iphone-physical-evidence
           path: ios-evidence
+          if-no-files-found: error
