@@ -25,7 +25,9 @@ class JsonReleaseStore:
 
     The store is deliberately independent of request-thread-bound SQLite
     connections. Every operation is guarded by an in-process re-entrant lock,
-    and writes are fsynced before atomic replacement.
+    and writes are fsynced before atomic replacement. Directory fsync is used on
+    platforms that support opening directories and safely skipped where the OS
+    does not expose that primitive (notably some Windows configurations).
     """
 
     def __init__(self, root: str | Path) -> None:
@@ -47,6 +49,22 @@ class JsonReleaseStore:
             raise ValueError("release store path escaped root")
         return path
 
+    def _fsync_directory(self) -> None:
+        directory_fd = None
+        try:
+            directory_fd = os.open(self.root, os.O_RDONLY)
+            os.fsync(directory_fd)
+        except (OSError, AttributeError):
+            # Atomic os.replace remains the portability baseline; directory
+            # fsync is an additional durability hardening where supported.
+            return
+        finally:
+            if directory_fd is not None:
+                try:
+                    os.close(directory_fd)
+                except OSError:
+                    pass
+
     def save(self, plan: ReleasePlan) -> ReleasePlan:
         destination = self._path(plan.id)
         payload = json.dumps(plan.to_dict(), sort_keys=True, separators=(",", ":"), ensure_ascii=False)
@@ -58,11 +76,7 @@ class JsonReleaseStore:
                     handle.flush()
                     os.fsync(handle.fileno())
                 os.replace(temporary_name, destination)
-                directory_fd = os.open(self.root, os.O_RDONLY)
-                try:
-                    os.fsync(directory_fd)
-                finally:
-                    os.close(directory_fd)
+                self._fsync_directory()
             finally:
                 if os.path.exists(temporary_name):
                     os.unlink(temporary_name)
