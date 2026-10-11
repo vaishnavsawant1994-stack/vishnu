@@ -6,8 +6,12 @@ from pathlib import Path
 import pytest
 
 from evolution.verification import VerificationCheck, VerificationReport
+from future_intelligence.engineering.contracts import EngineeringSpec
+from future_intelligence.engineering.final_qualification import EngineeringCandidateFinalizer
+from future_intelligence.engineering.qualification import VerificationObservation
 from future_intelligence.engineering.reviewer_adapter import EngineeringReviewDecision
 from future_intelligence.engineering.runtime import EngineeringRuntime
+from future_intelligence.engineering.traceability import RequirementTrace
 from future_intelligence.engineering.work_executor import EngineeringWorkExecutor
 from future_intelligence.work_orchestration import (
     DurableWorkStore,
@@ -147,10 +151,14 @@ class PassingVerifier:
 
 
 class ApprovingReviewer:
+    def __init__(self):
+        self.calls = 0
+
     def review(self, **_kwargs):
+        self.calls += 1
         return EngineeringReviewDecision(
             decision="approved", reviewer="independent-test-reviewer",
-            summary="local evidence is internally consistent", findings=(),
+            summary="local and external evidence is internally consistent", findings=(),
         )
 
 
@@ -206,6 +214,26 @@ def latest_attempt_status(store: DurableWorkStore, work_order_id: str) -> str | 
         (work_order_id,),
     ).fetchone()
     return None if row is None else str(row["status"])
+
+
+def candidate_spec(runtime: EngineeringRuntime, attempt_id: str) -> EngineeringSpec:
+    workspace = runtime._workspace_for("work-eng", attempt_id)
+    return EngineeringSpec.from_dict(dict(workspace.metadata)["engineering_spec"])
+
+
+def requirement_traces(spec: EngineeringSpec) -> tuple[RequirementTrace, ...]:
+    expected = tuple(dict.fromkeys((*spec.requirements, *spec.success_criteria)))
+    return tuple(RequirementTrace(item, (f"evidence:{index}",), True) for index, item in enumerate(expected, 1))
+
+
+def performance_observation() -> VerificationObservation:
+    return VerificationObservation(
+        "performance",
+        True,
+        "candidate performance budget passed",
+        ("performance:evidence",),
+        metadata={"candidate_revision": COMMITTED},
+    )
 
 
 def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_path: Path):
@@ -278,26 +306,86 @@ def test_runtime_rejects_paths_outside_engineering_spec(tmp_path: Path):
         runtime.execute("work-eng", coordinator.spec.attempt_id, "read", {"path": "tools/registry.py"})
 
 
-def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(tmp_path: Path):
+def test_work_executor_creates_candidate_and_defers_review_until_all_gates_have_evidence(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
     runtime.owner_policy.update(mode="auto_fix")
+    reviewer = ApprovingReviewer()
     executor = EngineeringWorkExecutor(
         runtime=runtime,
         models=EditModels(),
         verification_provider=PassingVerifier(),
-        reviewer=ApprovingReviewer(),
+        reviewer=reviewer,
     )
     result = executor.execute("work-eng", runtime_epoch=7, base_revision=BASE)
     assert result.candidate_revision == COMMITTED
     assert result.verification_passed is True
     assert result.status == "verifying"
     assert result.qualification["qualified"] is False
+    assert result.review["decision"] == "pending"
+    assert reviewer.calls == 0
     assert "src/app.py" in result.changed_paths
     assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
     attempt = store.get_attempt(result.attempt_id)
     assert attempt is not None and attempt.status.value == "succeeded"
+    assert attempt.metadata["engineering_local_observations"]
     order = store.get_order("work-eng")
     assert order is not None and order.status is WorkOrderStatus.VERIFYING
+
+
+def test_finalizer_combines_external_evidence_and_requirements_then_runs_independent_review(tmp_path: Path):
+    runtime, store, _provider, _ = build_runtime(tmp_path, prepare=False)
+    runtime.owner_policy.update(mode="auto_fix")
+    local_reviewer = ApprovingReviewer()
+    executor = EngineeringWorkExecutor(runtime=runtime, models=EditModels(), verification_provider=PassingVerifier(), reviewer=local_reviewer)
+    local = executor.execute("work-eng", runtime_epoch=10, base_revision=BASE)
+    assert local_reviewer.calls == 0
+
+    final_reviewer = ApprovingReviewer()
+    finalizer = EngineeringCandidateFinalizer(runtime=runtime, reviewer=final_reviewer)
+    spec = candidate_spec(runtime, local.attempt_id)
+    final = finalizer.finalize(
+        "work-eng",
+        local.attempt_id,
+        external_observations=(performance_observation(),),
+        requirement_traces=requirement_traces(spec),
+    )
+    assert final.status == "qualified"
+    assert final.qualification.qualified is True
+    assert final.review["decision"] == "approved"
+    assert final_reviewer.calls == 1
+    payload = final.to_dict()
+    assert payload["push_authority"] is False
+    assert payload["merge_authority"] is False
+    assert payload["deploy_authority"] is False
+    assert payload["activation_authority"] is False
+    order = store.get_order("work-eng")
+    assert order is not None and order.status is WorkOrderStatus.VERIFYING
+    events = store.list_work_events("work-eng")
+    assert any(item.event_type == "engineering.candidate.qualified" for item in events)
+
+
+def test_finalizer_rejects_unbound_or_evidence_free_external_pass_claims(tmp_path: Path):
+    runtime, _store, _provider, _ = build_runtime(tmp_path, prepare=False)
+    runtime.owner_policy.update(mode="auto_fix")
+    local = EngineeringWorkExecutor(runtime=runtime, models=EditModels(), verification_provider=PassingVerifier(), reviewer=ApprovingReviewer()).execute(
+        "work-eng", runtime_epoch=11, base_revision=BASE
+    )
+    spec = candidate_spec(runtime, local.attempt_id)
+    finalizer = EngineeringCandidateFinalizer(runtime=runtime, reviewer=ApprovingReviewer())
+    with pytest.raises(ValueError, match="requires evidence"):
+        finalizer.finalize(
+            "work-eng",
+            local.attempt_id,
+            external_observations=(VerificationObservation("performance", True, metadata={"candidate_revision": COMMITTED}),),
+            requirement_traces=requirement_traces(spec),
+        )
+    with pytest.raises(PermissionError, match="not bound"):
+        finalizer.finalize(
+            "work-eng",
+            local.attempt_id,
+            external_observations=(VerificationObservation("performance", True, evidence=("perf",), metadata={"candidate_revision": "c" * 40}),),
+            requirement_traces=requirement_traces(spec),
+        )
 
 
 def test_interrupted_verification_marks_recovery_required_without_losing_candidate(tmp_path: Path):
@@ -325,26 +413,29 @@ def test_interrupted_verification_marks_recovery_required_without_losing_candida
     assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
 
 
-def test_reviewer_outage_preserves_candidate_in_verifying_state(tmp_path: Path):
+def test_final_reviewer_outage_preserves_candidate_in_verifying_state(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
     runtime.owner_policy.update(mode="auto_fix")
+    local = EngineeringWorkExecutor(runtime=runtime, models=EditModels(), verification_provider=PassingVerifier(), reviewer=ApprovingReviewer()).execute(
+        "work-eng", runtime_epoch=9, base_revision=BASE
+    )
 
     class OfflineReviewer:
         def review(self, **_kwargs):
             raise RuntimeError("review provider unavailable")
 
-    executor = EngineeringWorkExecutor(
-        runtime=runtime,
-        models=EditModels(),
-        verification_provider=PassingVerifier(),
-        reviewer=OfflineReviewer(),
+    spec = candidate_spec(runtime, local.attempt_id)
+    final = EngineeringCandidateFinalizer(runtime=runtime, reviewer=OfflineReviewer()).finalize(
+        "work-eng",
+        local.attempt_id,
+        external_observations=(performance_observation(),),
+        requirement_traces=requirement_traces(spec),
     )
-    result = executor.execute("work-eng", runtime_epoch=9, base_revision=BASE)
-    assert result.candidate_revision == COMMITTED
-    assert result.status == "verifying"
-    assert result.review["decision"] == "rejected"
-    assert result.qualification["qualified"] is False
-    assert any("review unavailable" in item for item in result.qualification["limitations"])
+    assert final.candidate_revision == COMMITTED
+    assert final.status == "verifying"
+    assert final.review["decision"] == "pending"
+    assert final.qualification.qualified is False
+    assert any("review unavailable" in item for item in final.qualification.limitations)
     order = store.get_order("work-eng")
     assert order is not None and order.status is WorkOrderStatus.VERIFYING
     assert latest_attempt_status(store, "work-eng") == "succeeded"
