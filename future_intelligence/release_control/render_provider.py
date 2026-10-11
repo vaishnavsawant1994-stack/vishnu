@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from urllib import error, request
 
@@ -21,11 +21,11 @@ class _NoRedirect(request.HTTPRedirectHandler):
 
 @dataclass(frozen=True)
 class RenderReleaseConfig:
-    api_token: str
-    preview_service_id: str
-    production_service_id: str
-    preview_url: str
-    production_url: str
+    api_token: str = field(repr=False)
+    preview_service_id: str = ""
+    production_service_id: str = ""
+    preview_url: str = ""
+    production_url: str = ""
     poll_interval_seconds: float = 2.0
     deployment_timeout_seconds: float = 900.0
 
