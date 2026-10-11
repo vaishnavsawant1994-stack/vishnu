@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from core.runtime_presentation import presentation_for
 from ui.main_window import MainWindow
+from ui.products_panel import ProductsPanel
 
 
 class CanonicalMainWindow(MainWindow):
@@ -11,6 +12,18 @@ class CanonicalMainWindow(MainWindow):
     older tests/surfaces. This V1 entrypoint deliberately ignores those calls;
     only RuntimeStateAuthority snapshots/events may change semantic Core state.
     """
+
+    NAV = (
+        "Home",
+        "Conversation",
+        "Memory",
+        "Knowledge",
+        "Activities",
+        "Dashboard",
+        "Apps & Tools",
+        "Our Products",
+        "Settings",
+    )
 
     HINTS = {
         'IDLE': 'I am here.',
@@ -36,6 +49,11 @@ class CanonicalMainWindow(MainWindow):
         self._runtime_unsubscribe = events.subscribe('runtime.state', self._on_runtime_state)
         snapshot = events.runtime_state.snapshot()
         self._apply_canonical(snapshot.state.value, snapshot.sequence)
+
+    def _build_page(self, name):
+        if name == "Our Products":
+            return ProductsPanel(runtime=self.runtime)
+        return super()._build_page(name)
 
     def _set_state(self, state):
         # Compatibility/local UI code cannot invent semantic AI truth.
