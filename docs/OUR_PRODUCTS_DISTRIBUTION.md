@@ -2,145 +2,228 @@
 
 ## Purpose
 
-`Our Products` turns selected Vishnu capabilities into client-specific products without exporting the complete Vishnu owner system. A product can represent an AI employee, agent, agent team, automation, workflow, tool, knowledge assistant, integration, business system, or custom product.
+`Our Products` turns selected Vishnu capabilities into separate Product Projects without exporting the complete Vishnu owner system. A product can represent an AI employee, agent, agent team, automation, workflow, tool, knowledge assistant, integration, SaaS application, business system, or custom product.
 
-The owner-side product record remains inside Vishnu. Client delivery uses a sanitized distribution manifest and separate client/runtime configuration.
+Vishnu remains the private factory. Client delivery is always a bounded product artifact/deployment derived from an immutable Product Project version.
+
+Upstream product composition is documented in `OUR_PRODUCTS_PRODUCT_COMPOSER.md`.
+
+## Product boundary
+
+A customer Product Project does **not** receive:
+
+- the complete Vishnu source tree
+- owner conversations, memory, or private knowledge
+- unrelated agents, projects, workflows, automations, or products
+- another customer's data or private rules
+- raw owner API keys, passwords, tokens, or signing keys
+- owner-vault references such as `secret_ref`
+- Owner Controls or Vishnu product-building authority
+
+Only the bounded product contract/components/configuration and target-specific client files cross the owner/client boundary.
 
 ## Portable product package
 
-The canonical portable artifact uses the `.vishnu-product` extension. It is a ZIP-compatible envelope containing exactly:
+The canonical portable contract uses the `.vishnu-product` extension. It is ZIP-compatible and contains exactly:
 
-- `manifest.json` — sanitized `vishnu.product/v1` product contract
-- `package.json` — package schema, manifest digest and signing envelope
+- `manifest.json` — sanitized `vishnu.product/v1` contract
+- `package.json` — package schema, manifest digest, and signing envelope
 - `checksums.json` — SHA-256 integrity metadata
 
-It does **not** contain:
-
-- the complete Vishnu source tree
-- owner conversations, memory or knowledge
-- unrelated agents, projects or client products
-- raw API keys, passwords, tokens or signing keys
-- Vishnu owner-vault references such as `secret_ref`
-
-Owner-side secret references are converted to a runtime requirement (`credentials: runtime-provisioned`). The client runtime must provision credentials independently through its approved secret store or onboarding flow.
+Owner-side credential references are removed during distribution sanitization. When a product needs a credential, the client/runtime receives a `runtime-provisioned` requirement rather than an owner vault location.
 
 ## Production signing
 
-Commercial product packages and product licenses use a dedicated Ed25519 signing trust domain:
+Commercial product packages and product licenses use a dedicated Ed25519 trust domain:
 
 - `VISHNU_PRODUCT_SIGNING_PRIVATE_KEY_B64`
 - `VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64`
 
-Both values represent raw 32-byte Ed25519 keys encoded as base64. The private key belongs only in the protected deployment secret store. Never put it in Git, a product manifest, an application bundle, or a downloadable package.
+This is intentionally separate from Vishnu application-release signing. The private key belongs only in a protected deployment secret store.
 
-These keys are intentionally separate from `PERSONAL_AI_RELEASE_PRIVATE_KEY_B64` / `RELEASE_PUBLIC_KEY_B64`, which protect Vishnu application releases. Compromise or rotation of one trust domain must not automatically compromise the other.
+Production package generation fails closed when product signing is unavailable. Unsigned packages are permitted only through the explicit development path and remain development artifacts.
 
-Production package generation fails closed when product signing is unavailable. An unsigned package can be generated only through the explicit development path and is marked `UNSIGNED-DEVELOPMENT`.
+## Client verification
 
-## Client runtime verification
+A production client/runtime pins the trusted Product public key and verifies:
 
-A production runtime must pin the trusted Vishnu Product public key. It must not trust a public key merely because that key is embedded in the package or license.
+1. allowed package structure
+2. SHA-256 checksums
+3. production signature presence
+4. embedded signer identity against the pinned key
+5. Ed25519 signature validity
+6. supported manifest schema
+7. relevant license/product/version binding
 
-Before loading a product, the runtime verifies:
-
-1. package structure contains only the allowed files
-2. SHA-256 checksums match
-3. a production signature is present
-4. the embedded signing key matches the trusted/pinned product public key
-5. the Ed25519 signature over the sanitized manifest is valid
-6. the manifest schema is supported
-
-Unsigned packages are accepted only when the runtime explicitly enables development mode.
+A downloaded public key is not trusted merely because it arrived inside the same package it is supposed to authenticate.
 
 ## Product licenses
 
-Client licenses use schema `vishnu.product-license/v1` and are separately signed by the Product signing key. A license can contain:
+Licenses use `vishnu.product-license/v1` and are signed in the Product trust domain. They can bind:
 
-- product ID and name
-- client name
+- product identity
+- client identity
 - version constraint
 - license type
-- start and expiry time
-- maximum users
-- maximum devices
-- whether managed AI is included
+- start/expiry time
+- maximum users/devices
+- managed-AI entitlement
 - server-controlled issuance metadata
 
-Client-supplied arbitrary metadata is not accepted by the owner API.
-
-A runtime validates the signature against the pinned Product public key, product identity, optional client identity, allowed version, start time and expiry time. License revocation is an authoritative registry state: revoking a license does not mutate the original signed document, so online/managed deployments must consult the authoritative revocation status according to their deployment policy.
+Client-supplied arbitrary metadata is not accepted by the owner API. Revocation remains authoritative registry state; online/managed deployments consult revocation according to deployment policy.
 
 ## AI configuration boundary
 
-The portable product describes the AI policy but never carries a raw provider key. Depending on the product policy, credentials are supplied at runtime by:
+A product can operate in one of the supported AI modes:
 
-- the client (client-owned provider/API key)
-- the managed Vishnu service
-- a local/self-hosted provider
-- an enterprise/private provider
-- a hybrid/fallback combination
-- nobody, when AI is disabled
+- disabled / no AI
+- client-owned API/BYOK
+- managed AI
+- local/self-hosted AI
+- hybrid/fallback
 
-No-AI products remain valid products; deterministic workflows, integrations and business logic must not require a model merely because the product was created in Vishnu.
+The manifest describes policy and requirements but never embeds a raw provider credential. No-AI products remain first-class products.
 
-## Verified runtime artifacts
+## Immutable build authority
 
-Web, PWA, API and Worker targets have an owner-side verified runtime-bundle builder. These artifacts are separate from the portable `.vishnu-product` contract package.
+Commercial artifacts are generated from a frozen Product Project version. A target builder must:
 
-A verified runtime artifact can be generated only from a **frozen product version**. The builder:
+1. load the immutable version manifest
+2. verify the requested target is enabled
+3. sanitize distribution data
+4. compile/generate the bounded target files
+5. apply required target signing/provisioning/notarization/attestation
+6. calculate and verify SHA-256 evidence
+7. register the exact artifact against the product build record
+8. expose download only while registered evidence still matches the artifact
 
-1. loads the immutable frozen manifest
-2. validates that the requested target is enabled in that frozen version
-3. runs the same distribution sanitizer used by portable-package export
-4. generates only the bounded client runtime files for the requested target
-5. writes the artifact atomically below the configured `product-artifacts` root
-6. calculates SHA-256 and re-reads the finished file to verify the digest
-7. registers artifact filename, controlled `product-artifact://` URI and checksum through `ProductBuildLifecycle` using verified-builder authority
-8. exposes download only while the file exists and its checksum still matches the registered evidence
+Target selection alone is never treated as proof that a downloadable artifact exists.
 
-Download resolution rejects artifact URI/product mismatches, malformed paths, path traversal, files outside the artifact root, missing files and checksum changes.
+## Local runtime targets
 
-### Web runtime bundle
+Web, PWA, API, and Worker have owner-side verified local artifact builders.
 
-The Web bundle contains a static `index.html`, `runtime.js`, `runtime.css`, sanitized `manifest.json`, a runtime-capability declaration and a README. It is a bounded product presentation/runtime shell and never embeds the owner's Vishnu application tree.
+### Web
 
-### PWA runtime bundle
+Generates a bounded static product shell plus sanitized manifest/runtime capability declaration.
 
-The PWA bundle contains the Web runtime plus an application web manifest and service worker so it can be installed as a standalone browser application. It remains a client product shell; native APK/IPA claims require native platform builders.
+### PWA
 
-### API and Worker runtime bundles
+Generates the Web product shell plus web manifest/service worker for installable browser delivery.
 
-API and Worker bundles contain a standard-library Python runtime host, sanitized product manifest, runtime-capability declaration and README. The generated runtime can boot independently of the owner's Vishnu installation and exposes product/health contract endpoints.
+### API / Worker
 
-Actual agent/tool/work execution is intentionally declared as `runtime-connector-required`. The bundle does **not** silently copy Vishnu's owner agent/tool runtime. An approved client runtime connector or separately qualified execution runtime must be provisioned before `/invoke` can execute product work.
+Generates a bounded standard-library Python host and sanitized product contract. These bundles can boot independently of the owner Vishnu installation.
 
-## Artifact API boundary
+Actual agent/tool execution is intentionally not implemented by copying Vishnu's owner runtime wholesale. When a Product Project requires executable intelligence, it must use a separately approved product execution/runtime connector or product-specific execution code. That boundary is what keeps the customer deliverable separate from Vishnu.
 
-The trusted owner workspace can:
+## Native and container platform runners
 
-- execute a requested Web/PWA/API/Worker build with `POST /iphone/api/products/{product_id}/builds/{build_id}/execute`
-- download a qualified artifact with `GET /iphone/api/products/{product_id}/builds/{build_id}/artifact`
+The native/container runner infrastructure is implemented for:
 
-Build execution requires a current trusted owner request context. Downloads require a trusted Vishnu device/browser session. The server does not accept owner-supplied artifact filenames, paths, checksums or readiness flags through these endpoints.
+- Android
+- iOS
+- Windows
+- macOS
+- Linux
+- Docker/OCI
 
-## Native platform builds
+This supersedes the older documentation that described those builders as future work.
 
-The product manifest can target Web/PWA, Android, iOS, Windows, macOS, Linux, Docker/server, API and Worker delivery. Target selection is not proof that a native artifact exists.
+The autonomous platform system includes:
 
-A native build becomes downloadable only after a target-specific builder has:
+- durable queued build jobs
+- exclusive claim/lease authority
+- heartbeat renewal
+- bounded lease expiry
+- stale-run recovery
+- retry handling
+- signed production job verification
+- replay-safe artifact callbacks
+- streamed artifact ingestion with bounded limits
+- SHA-256 artifact evidence
+- exact target/artifact contracts
+- owner-side runner readiness projection
 
-1. consumed an immutable product/version manifest
-2. generated the correct application/runtime shell
-3. completed target compilation
-4. applied required platform signing/provisioning
-5. produced a SHA-256 digest
-6. passed target qualification
-7. registered the exact artifact against the product build record
+### Android
 
-Until those conditions are met, Our Products records the build as requested/pending and must not claim that an APK, AAB, IPA, MSI/EXE, DMG, PKG, OCI image or other platform artifact is ready.
+The runner generates/compiles a product-specific Android application. A production Android artifact is not distribution-ready without verified release signing using the configured client/product keystore.
+
+### iOS
+
+The Apple runner supports simulator qualification and a production IPA path. Production authority requires a valid Apple signing identity and matching provisioning profile.
+
+### Windows
+
+The runner builds the bounded client executable and supports dedicated Authenticode signing/verification. Unsigned development executables are not production-ready.
+
+### macOS
+
+The runner builds a native application bundle/DMG and supports code signing plus notarization verification. Production distribution requires both where configured by policy.
+
+### Linux
+
+The runner builds the bounded client runtime and DEB artifact. Linux does not inherit a fake signing result; production readiness is based on the target's actual evidence policy.
+
+### Docker / OCI
+
+The runner builds a product-specific image/archive and supports cosign/attestation evidence. A development image without required production attestation is not promoted as production-ready.
+
+## Autonomous platform worker boundary
+
+Platform workers authenticate with dedicated runner credentials and consume signed product build jobs. They receive only the immutable product build input required for that target.
+
+A platform worker is not granted the Vishnu Product private signing key used for package/license authority. Target platform signing credentials are separately scoped to the relevant runner/environment.
+
+## Production preflight and protected qualification
+
+`packaging/product_production_preflight.py` checks environment-owned readiness without exposing secret values.
+
+The protected `Our Products Production Qualification` workflow validates real environment authority for a chosen target and can optionally claim, compile, and return one real queued production Product Project build.
+
+A target is not declared production-qualified merely because development CI compiled a sample. Final production qualification requires the real environment-owned credentials and a real end-to-end Product Project build.
+
+Examples of external authority that must be real rather than invented include:
+
+- Android production keystore/alias/passwords
+- Apple distribution signing identity/certificate
+- iOS provisioning profile
+- macOS notarization credentials
+- Windows Authenticode certificate/password
+- Docker cosign signing/attestation authority
+- production Product signing key pair
+- production runner HTTPS endpoint/token
+
+See `OUR_PRODUCTS_PRODUCTION_QUALIFICATION.md` for the operator contract.
+
+## Artifact integrity and download
+
+Build downloads are checksum-bound. Resolution rejects:
+
+- product/build mismatches
+- malformed artifact URIs
+- path traversal
+- paths outside the configured artifact root
+- missing artifact files
+- SHA-256 mismatch/tampering
+
+Owner APIs do not accept arbitrary client-supplied filenames/checksums/readiness flags as production evidence.
 
 ## Current implementation boundary
 
-Implemented and qualified foundations include the portable `.vishnu-product` package, product signing, product-license issuance/revocation, package/license verification, immutable product versions, build lifecycle authority, and owner distribution APIs.
+Implemented software includes:
 
-This tranche adds real verified **Web, PWA, API and Worker ZIP runtime artifacts** with checksum-bound downloads. It deliberately does not convert those artifacts into native mobile/desktop installers or OCI images. Android, iOS, Windows, macOS, Linux packaging and container-image production remain separate platform-runner qualification stages and stay fail-closed until implemented, signed where required, tested and registered with verified evidence.
+- Product Projects and sanitized manifests
+- immutable versions
+- Product Composer / capability reuse flow
+- product signing and verification
+- product license issue/revoke/verification
+- Web/PWA/API/Worker artifact builders
+- Android/iOS/Windows/macOS/Linux/Docker platform compiler infrastructure
+- autonomous runner queue/leases/heartbeat/recovery
+- build evidence/checksum/tamper validation
+- owner-side build/readiness UI
+- protected production preflight/qualification workflow
+- CI/security/package/browser/platform qualification around the implementation
+
+Operational production qualification still depends on real external credentials and a real production runner environment. Missing credentials keep a target fail-closed; they are not treated as missing application code and are never generated or committed to the repository.

@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#f5f8ff">
   <title>Our Products · Vishnu</title>
   <link rel="stylesheet" href="/iphone/our-products.css">
+  <link rel="stylesheet" href="/iphone/our-products-composer.css">
 </head>
 <body>
   <div class="app-shell">
@@ -36,62 +37,119 @@
         <section class="hero">
           <div class="hero-title">
             <span class="hero-icon">⬡</span>
-            <div><h1>Our Products</h1><p>Build, package, deploy and manage AI employees, agents, automations and client systems.</p></div>
+            <div><h1>Our Products</h1><p>Build for ourselves, reuse what Vishnu already has, create what is missing, and turn selected work into standalone products we can deploy or sell.</p></div>
           </div>
           <div class="hero-actions">
+            <button class="button secondary" id="newRequestButton">✦ New Request</button>
             <button class="button secondary" id="convertButton">▣ Import / Convert from Project</button>
             <button class="button primary" id="createButton">＋ Create Product</button>
           </div>
         </section>
 
-        <section class="metrics" aria-label="Product summary">
-          <article><span class="metric-icon blue">⬡</span><div><strong id="metricTotal">0</strong><small>Total Products</small></div></article>
-          <article><span class="metric-icon amber">⌘</span><div><strong id="metricDevelopment">0</strong><small>In Development</small></div></article>
-          <article><span class="metric-icon green">✓</span><div><strong id="metricReady">0</strong><small>Ready to Deploy</small></div></article>
-          <article><span class="metric-icon violet">↗</span><div><strong id="metricLive">0</strong><small>Live / Deployed</small></div></article>
-          <article><span class="metric-icon pink">♙</span><div><strong id="metricClients">0</strong><small>Clients</small></div></article>
-          <article><span class="metric-icon red">!</span><div><strong id="metricAttention">0</strong><small>Needs Attention</small></div></article>
-        </section>
-
-        <section class="toolbar">
-          <div class="filters" id="filters">
-            <button class="filter active" data-type="all">All</button>
-            <button class="filter" data-type="ai_employee">AI Employees</button>
-            <button class="filter" data-type="agent">Agents</button>
-            <button class="filter" data-type="agent_team">Agent Teams</button>
-            <button class="filter" data-type="automation">Automations</button>
-            <button class="filter" data-type="workflow">Workflows</button>
-            <button class="filter" data-type="tool">Tools</button>
-            <button class="filter" data-type="business_system">Business Systems</button>
-            <button class="filter" data-type="integration">Integrations</button>
-          </div>
-          <select id="sort" aria-label="Sort products"><option value="recent">Sort: Recent</option><option value="name">Sort: Name</option><option value="created">Sort: Created</option></select>
-        </section>
-
+        <nav class="factory-nav" aria-label="Our Products workspace">
+          <button class="active" data-factory-view="products">Products</button>
+          <button data-factory-view="requests">Requests</button>
+          <button data-factory-view="capabilities">Reusable Components</button>
+          <button data-factory-view="templates">Templates</button>
+        </nav>
         <div id="message" class="message hidden" role="status"></div>
-        <section id="productGrid" class="product-grid" aria-live="polite"></section>
-        <section id="emptyState" class="empty hidden">
-          <span>⬡</span><h2>No products yet</h2><p>Create a product from scratch or promote an existing Vishnu project.</p><button class="button primary" id="emptyCreate">Create Product</button>
+
+        <section id="factory-products" class="factory-view">
+          <section class="metrics" aria-label="Product summary">
+            <article><span class="metric-icon blue">⬡</span><div><strong id="metricTotal">0</strong><small>Total Products</small></div></article>
+            <article><span class="metric-icon amber">⌘</span><div><strong id="metricDevelopment">0</strong><small>In Development</small></div></article>
+            <article><span class="metric-icon green">✓</span><div><strong id="metricReady">0</strong><small>Ready to Deploy</small></div></article>
+            <article><span class="metric-icon violet">↗</span><div><strong id="metricLive">0</strong><small>Live / Deployed</small></div></article>
+            <article><span class="metric-icon pink">♙</span><div><strong id="metricClients">0</strong><small>Clients</small></div></article>
+            <article><span class="metric-icon red">!</span><div><strong id="metricAttention">0</strong><small>Needs Attention</small></div></article>
+          </section>
+
+          <section class="toolbar">
+            <div class="filters" id="filters">
+              <button class="filter active" data-type="all">All</button>
+              <button class="filter" data-type="ai_employee">AI Employees</button>
+              <button class="filter" data-type="agent">Agents</button>
+              <button class="filter" data-type="agent_team">Agent Teams</button>
+              <button class="filter" data-type="automation">Automations</button>
+              <button class="filter" data-type="workflow">Workflows</button>
+              <button class="filter" data-type="tool">Tools</button>
+              <button class="filter" data-type="business_system">Business Systems</button>
+              <button class="filter" data-type="integration">Integrations</button>
+            </div>
+            <select id="sort" aria-label="Sort products"><option value="recent">Sort: Recent</option><option value="name">Sort: Name</option><option value="created">Sort: Created</option></select>
+          </section>
+
+          <section id="productGrid" class="product-grid" aria-live="polite"></section>
+          <section id="emptyState" class="empty hidden">
+            <span>⬡</span><h2>No products yet</h2><p>Create a product from scratch, start from a client request, or promote an existing Vishnu project.</p><button class="button primary" id="emptyCreate">Create Product</button>
+          </section>
+
+          <section class="lower-grid">
+            <article class="panel">
+              <h2>Create New Product</h2><p>Start directly from a product type, or use New Request when Vishnu should first inspect what already exists and build only the gaps.</p>
+              <div class="quick-types">
+                <button data-quick-type="ai_employee">♙ AI Employee</button><button data-quick-type="agent">◇ Agent</button>
+                <button data-quick-type="automation">⚙ Automation</button><button data-quick-type="workflow">⌁ Workflow</button>
+                <button data-quick-type="tool">⌘ Tool</button><button data-quick-type="business_system">▦ Business System</button>
+                <button data-quick-type="integration">↔ Integration</button><button data-quick-type="custom">＋ Custom Product</button>
+              </div>
+            </article>
+            <article class="panel compact-panel">
+              <h2>From Project to Product</h2><p>Promote existing Vishnu work into a reusable commercial product without copying the full Vishnu system.</p>
+              <button class="button secondary full" id="convertBottom">Select a project →</button>
+            </article>
+            <article class="panel activity-panel">
+              <div class="panel-heading"><h2>Recent Activity</h2><button id="refreshActivity" class="text-button">Refresh</button></div>
+              <div id="activityList" class="activity-list"><p class="muted">No product activity yet.</p></div>
+            </article>
+          </section>
         </section>
 
-        <section class="lower-grid">
-          <article class="panel">
-            <h2>Create New Product</h2><p>Start from a product type and connect the agents, workflows, tools and delivery targets it needs.</p>
-            <div class="quick-types">
-              <button data-quick-type="ai_employee">♙ AI Employee</button><button data-quick-type="agent">◇ Agent</button>
-              <button data-quick-type="automation">⚙ Automation</button><button data-quick-type="workflow">⌁ Workflow</button>
-              <button data-quick-type="tool">⌘ Tool</button><button data-quick-type="business_system">▦ Business System</button>
-              <button data-quick-type="integration">↔ Integration</button><button data-quick-type="custom">＋ Custom Product</button>
-            </div>
-          </article>
-          <article class="panel compact-panel">
-            <h2>From Project to Product</h2><p>Promote existing Vishnu work into a reusable commercial product without copying the full Vishnu system.</p>
-            <button class="button secondary full" id="convertBottom">Select a project →</button>
-          </article>
-          <article class="panel activity-panel">
-            <div class="panel-heading"><h2>Recent Activity</h2><button id="refreshActivity" class="text-button">Refresh</button></div>
-            <div id="activityList" class="activity-list"><p class="muted">No product activity yet.</p></div>
-          </article>
+        <section id="factory-requests" class="factory-view hidden">
+          <div class="factory-section-head">
+            <div><h2>Product Requests</h2><p>Tell Vishnu what we or a client want. Vishnu checks existing products, agents, workflows, automations, tools and integrations before deciding what to reuse, extend or create.</p></div>
+            <div class="factory-actions"><button class="button primary" id="requestSectionNew">＋ New Request</button></div>
+          </div>
+          <div class="factory-summary">
+            <article><strong id="composerRequestCount">0</strong><small>Total Requests</small></article>
+            <article><strong id="composerOpenCount">0</strong><small>Open / Analyzing</small></article>
+            <article><strong id="composerProjectCount">0</strong><small>Product Projects Created</small></article>
+            <article><strong id="composerCapabilityCount">0</strong><small>Known Capabilities</small></article>
+          </div>
+          <div class="factory-note"><span>✦</span><div><b>Reuse → Extend → Create</b><br>Vishnu reuses qualified internal capabilities first, extends partial matches, and creates only what is missing. Customer-private assets remain scoped to that customer.</div></div>
+          <div id="requestList" class="request-list"></div>
+          <div id="requestsEmpty" class="composer-empty hidden"><strong>No product requests yet</strong>Start with a requirement from us or a client. Vishnu will produce a capability map and Product Blueprint.</div>
+        </section>
+
+        <section id="factory-capabilities" class="factory-view hidden">
+          <div class="factory-section-head">
+            <div><h2>Reusable Components</h2><p>The internal capability catalog Vishnu checks before creating something new. It includes safe reusable tools, automations, workflows, integrations, products and promoted product components.</p></div>
+            <div class="factory-actions"><button class="button secondary" id="syncCapabilities">↻ Sync from Vishnu</button><button class="button primary" id="newCapabilityButton">＋ Add Capability</button></div>
+          </div>
+          <div class="factory-summary">
+            <article><strong id="catalogTotal">0</strong><small>Total Capabilities</small></article>
+            <article><strong id="catalogReusable">0</strong><small>Reusable</small></article>
+            <article><strong id="catalogSellable">0</strong><small>Sellable / Templates</small></article>
+            <article><strong id="catalogQualified">0</strong><small>Qualified</small></article>
+          </div>
+          <div class="factory-toolbar">
+            <label class="composer-search"><span>⌕</span><input id="capabilitySearch" placeholder="Search reusable agents, workflows, tools…"></label>
+            <select id="capabilityTypeFilter" aria-label="Capability type"><option value="all">All types</option><option value="agent">Agents</option><option value="agent_team">Agent teams</option><option value="workflow">Workflows</option><option value="automation">Automations</option><option value="tool">Tools</option><option value="integration">Integrations</option><option value="product_template">Product templates</option><option value="saas_module">SaaS modules</option><option value="custom">Custom</option></select>
+            <select id="capabilityCommercialFilter" aria-label="Commercial state"><option value="all">All uses</option><option value="internal_only">Internal only</option><option value="internal_reusable">Internal reusable</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="client_specific">Client-specific</option><option value="template">Template</option><option value="experimental">Experimental</option></select>
+          </div>
+          <div class="factory-note"><span>🔒</span><div><b>Client isolation</b><br>A capability created for a client stays client-scoped unless we explicitly generalize and promote the reusable part. Secrets, private knowledge and client-specific logic are never automatically shared.</div></div>
+          <div id="capabilityList" class="capability-list"></div>
+          <div id="capabilitiesEmpty" class="composer-empty hidden"><strong>No matching reusable components</strong>Sync Vishnu or add a bounded reusable capability.</div>
+        </section>
+
+        <section id="factory-templates" class="factory-view hidden">
+          <div class="factory-section-head">
+            <div><h2>Product Templates</h2><p>Reusable product foundations created from our own successful internal or commercial work. A template starts a new Product Request; it never copies owner data or another client’s private state.</p></div>
+            <div class="factory-actions"><button class="button secondary" id="syncTemplates">↻ Refresh Templates</button></div>
+          </div>
+          <div class="factory-note"><span>◇</span><div><b>One base, many products</b><br>Improvements can flow into reusable templates while every client Product Project keeps its own branding, integrations, knowledge, permissions, versions and deployment boundary.</div></div>
+          <div id="templateList" class="template-list"></div>
+          <div id="templatesEmpty" class="composer-empty hidden"><strong>No reusable product templates yet</strong>Mark an internal product as sellable/template or promote a generalized component to build the catalog over time.</div>
         </section>
       </div>
     </main>
@@ -130,8 +188,60 @@
     </form>
   </dialog>
 
+  <dialog id="requestDialog" class="dialog composer-dialog">
+    <form id="requestForm" method="dialog">
+      <div class="dialog-head"><div><small>PRODUCT COMPOSER</small><h2>New Product Request</h2><p>Describe the outcome. Vishnu will inspect existing capabilities before creating anything new.</p></div><button type="button" class="icon-button" data-close-request>×</button></div>
+      <div class="form-grid">
+        <label class="span-2">Request / product name<input name="title" required maxlength="200" placeholder="e.g. ACME Real Estate Sales Employee"></label>
+        <label>Client / internal owner<input name="client_name" maxlength="200" placeholder="Leave blank for our own use"></label>
+        <label>Product type<select name="product_type"><option value="">Auto-detect</option><option value="ai_employee">AI Employee</option><option value="agent">Agent</option><option value="agent_team">Agent Team</option><option value="automation">Automation</option><option value="workflow">Workflow</option><option value="tool">Tool</option><option value="knowledge_assistant">Knowledge Assistant</option><option value="integration">Integration</option><option value="business_system">Business System / SaaS</option><option value="custom">Custom</option></select></label>
+        <label class="span-2">What should it do?<textarea name="requirement" required maxlength="12000" placeholder="Example: Find real-estate companies, identify decision makers, qualify leads, send personalized outreach, update CRM, schedule meetings and prepare weekly reports."></textarea></label>
+        <label>AI mode<select name="ai_mode"><option value="disabled">No AI / decide later</option><option value="client_api">Client API / BYOK</option><option value="managed">Our managed AI</option><option value="local">Local / self-hosted</option><option value="hybrid">Hybrid</option></select></label>
+        <label>Purpose<select name="commercial_state"><option value="">Auto · client requests stay client-specific</option><option value="internal_reusable">Internal reusable</option><option value="internal_only">Internal only</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="client_specific">Client-specific</option><option value="template">Template</option><option value="experimental">Experimental</option></select></label>
+        <fieldset class="span-2"><legend>Preferred platforms</legend><div class="target-checks"><label><input type="checkbox" name="targets" value="web" checked> Web</label><label><input type="checkbox" name="targets" value="pwa"> PWA</label><label><input type="checkbox" name="targets" value="android"> Android</label><label><input type="checkbox" name="targets" value="ios"> iOS</label><label><input type="checkbox" name="targets" value="windows"> Windows</label><label><input type="checkbox" name="targets" value="macos"> macOS</label><label><input type="checkbox" name="targets" value="linux"> Linux</label><label><input type="checkbox" name="targets" value="docker"> Server / Docker</label><label><input type="checkbox" name="targets" value="api"> API</label><label><input type="checkbox" name="targets" value="worker"> Worker</label></div></fieldset>
+      </div>
+      <div class="factory-note"><span>🔒</span><div><b>Only the product leaves Vishnu.</b><br>The resulting Product Project contains only the selected/generalized capabilities and its own client configuration. Vishnu itself, owner memory and unrelated systems are not part of the client deliverable.</div></div>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close-request>Cancel</button><button type="submit" class="button primary">Analyze Request</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="requestDetailDialog" class="dialog detail-dialog">
+    <div class="dialog-head"><div><small>REQUEST → PRODUCT PROJECT</small><h2>Product Blueprint</h2><p>What Vishnu can reuse, what it must extend, and what it must create.</p></div><button type="button" class="icon-button" data-close-request-detail>×</button></div>
+    <div id="requestDetailBody" class="detail-body"></div>
+  </dialog>
+
+  <dialog id="capabilityDialog" class="dialog composer-dialog">
+    <form id="capabilityForm" method="dialog">
+      <div class="dialog-head"><div><small>CAPABILITY CATALOG</small><h2>Add Reusable Capability</h2></div><button type="button" class="icon-button" data-close-capability>×</button></div>
+      <div class="form-grid">
+        <label class="span-2">Name<input name="name" required maxlength="200" placeholder="Lead Scoring Engine"></label>
+        <label>Type<select name="capability_type"><option value="agent">Agent</option><option value="agent_team">Agent Team</option><option value="workflow">Workflow</option><option value="automation">Automation</option><option value="tool">Tool</option><option value="integration">Integration</option><option value="knowledge">Knowledge</option><option value="ocr">OCR</option><option value="browser">Browser</option><option value="api">API</option><option value="ui">UI</option><option value="backend">Backend</option><option value="database">Database</option><option value="document">Document</option><option value="product_template">Product Template</option><option value="saas_module">SaaS Module</option><option value="business_logic">Business Logic</option><option value="custom">Custom</option></select></label>
+        <label>Use<select name="commercial_state"><option value="internal_reusable">Internal reusable</option><option value="internal_only">Internal only</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="client_specific">Client-specific</option><option value="template">Template</option><option value="experimental">Experimental</option></select></label>
+        <label>Scope<input name="client_scope" value="shared" placeholder="shared or client name"></label>
+        <label>Qualification<select name="qualification_state"><option value="available">Available</option><option value="tested">Tested</option><option value="qualified">Qualified</option><option value="unknown">Unknown</option><option value="deprecated">Deprecated</option></select></label>
+        <label class="span-2">Description<textarea name="description" maxlength="5000" rows="3"></textarea></label>
+        <label class="span-2">Tags<input name="tags" placeholder="sales, lead, scoring, crm"></label>
+        <label><input type="checkbox" name="reusable" checked> Reusable</label><label><input type="checkbox" name="exportable" checked> Exportable into Product Projects</label>
+      </div>
+      <div class="dialog-actions"><button type="button" class="button secondary" data-close-capability>Cancel</button><button type="submit" class="button primary">Add Capability</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="promoteCapabilityDialog" class="dialog small-dialog">
+    <form id="promoteCapabilityForm" method="dialog">
+      <div class="dialog-head"><div><small>PRODUCT → REUSABLE LIBRARY</small><h2>Promote Component</h2></div><button type="button" class="icon-button" onclick="this.closest('dialog').close()">×</button></div>
+      <input type="hidden" name="product_id"><input type="hidden" name="component_id">
+      <p class="muted">Promote only the reusable/generalized part. Client data, secrets, private knowledge and proprietary client rules must remain scoped to the client Product Project.</p>
+      <label>Use<select name="commercial_state"><option value="internal_reusable">Internal reusable</option><option value="internal_sellable">Internal + sellable</option><option value="commercial">Commercial</option><option value="template">Template</option><option value="client_specific">Client-specific</option></select></label>
+      <label><input type="checkbox" name="generalized"> Generalized and safe to share across Product Projects</label>
+      <label>Notes<textarea name="notes" rows="3" maxlength="3000" placeholder="What was generalized / what remains client-private?"></textarea></label>
+      <div class="dialog-actions"><button type="button" class="button secondary" onclick="this.closest('dialog').close()">Cancel</button><button type="submit" class="button primary">Promote Capability</button></div>
+    </form>
+  </dialog>
+
   <script src="/iphone/our-products.js" defer></script>
   <script src="/iphone/our-products-build-lifecycle.js" defer></script>
   <script src="/iphone/our-products-distribution.js" defer></script>
+  <script src="/iphone/our-products-composer.js" defer></script>
 </body>
 </html>

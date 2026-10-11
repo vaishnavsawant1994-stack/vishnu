@@ -4,11 +4,14 @@ from fastapi import APIRouter, Cookie, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from products.build_lifecycle import BUILD_STATUSES, ProductBuildLifecycle
+from products.capability_catalog import CapabilityCatalog
+from products.composer import ProductComposer
 from products.models import AI_MODES, PLATFORM_TARGETS, PRODUCT_STATUSES, PRODUCT_TYPES
 from products.platform_jobs import REMOTE_PLATFORM_TARGETS, runner_configured
 from products.signing import signing_available
 from products.store import ProductStore
 from security.request_context import current_trusted_request
+from server.product_composer_api import product_composer_router
 
 
 class ProductCreateBody(BaseModel):
@@ -169,6 +172,21 @@ def products_router(runtime, store: ProductStore, project_store=None):
     router = APIRouter(prefix="/iphone/api/products", tags=["our-products"])
     registry = runtime["device_registry"]
     builds = ProductBuildLifecycle(store.path)
+
+    catalog = runtime.get("product_capability_catalog")
+    if catalog is None:
+        catalog = CapabilityCatalog(store.path)
+        runtime["product_capability_catalog"] = catalog
+    composer = runtime.get("product_composer")
+    if composer is None:
+        composer = ProductComposer(store.path, catalog, store, project_store)
+        runtime["product_composer"] = composer
+    # Catalog synchronization is idempotent. Failure here must not make the
+    # existing Our Products workspace unavailable; the owner can retry via Sync.
+    try:
+        catalog.sync_from_runtime(runtime, store)
+    except Exception:
+        pass
 
     def authenticate(device_id: str | None, token: str | None, *, write=False):
         if not device_id or not token or not registry.authenticate(device_id, token):
@@ -412,4 +430,5 @@ def products_router(runtime, store: ProductStore, project_store=None):
             raise HTTPException(404, "Build not found")
         return {"build": value}
 
+    router.include_router(product_composer_router(runtime, catalog, composer))
     return router
