@@ -6,6 +6,7 @@ from future_intelligence.engineering.contracts import EngineeringBudget, Enginee
 from future_intelligence.engineering.qualification import VerificationObservation
 from future_intelligence.engineering.release_qualification import EnvironmentQualificationResult, ProductionRegression
 from future_intelligence.engineering.repository_intelligence import RepositoryIntelligenceBuilder
+from future_intelligence.engineering.reviewer_adapter import ModelEngineeringReviewer
 from future_intelligence.engineering.service import EngineeringCandidateCoordinator
 from future_intelligence.engineering.source_correlation import VisualSourceCorrelator
 from future_intelligence.work_orchestration.repository import RepositoryStatus, RepositoryWorkspaceSession
@@ -108,3 +109,29 @@ def test_production_regression_only_proposes_canonical_work():
     assert proposal["created_from"] == "production_regression_observation"
     assert proposal["metadata"]["automatic_mutation_authority"] is False
     assert proposal["metadata"]["automatic_deploy_authority"] is False
+
+
+def test_model_engineering_reviewer_uses_supported_model_json_contract():
+    class FakeModels:
+        def __init__(self): self.calls = []
+        def json(self, prompt, *, system="Return valid JSON only.", sensitivity="internal"):
+            self.calls.append({"prompt": prompt, "system": system, "sensitivity": sensitivity})
+            return {"decision": "approved", "summary": "evidence is complete", "findings": []}
+
+    coordinator_spec = spec()
+    coordinator_spec = EngineeringSpec.from_dict({**coordinator_spec.to_dict(), "review_required": True})
+    from future_intelligence.engineering.qualification import EngineeringQualification
+    required = EngineeringQualification().required_gates(coordinator_spec)
+    report = EngineeringQualification().report(
+        spec=coordinator_spec,
+        candidate_revision="b" * 40,
+        observations=tuple(VerificationObservation(gate, True, "ok") for gate in required),
+        review_decision="pending",
+    )
+    models = FakeModels()
+    decision = ModelEngineeringReviewer(models).review(
+        spec=coordinator_spec, report=report, diff="diff --git a/app.py b/app.py", evidence={"checks": "passed"},
+    )
+    assert decision.decision == "approved"
+    assert decision.reviewer == "independent-engineering-reviewer"
+    assert models.calls and models.calls[0]["sensitivity"] == "internal"
