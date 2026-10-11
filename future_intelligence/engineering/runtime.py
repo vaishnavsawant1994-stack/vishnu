@@ -11,6 +11,7 @@ from future_intelligence.work_orchestration.failure_policy import FailureClass, 
 from future_intelligence.work_orchestration.workspace import WorkWorkspace, WorkspaceState
 
 from .contracts import EngineeringSpec
+from .owner_policy import EngineeringOwnerPolicyStore
 from .service import EngineeringCandidateCoordinator
 
 
@@ -41,10 +42,14 @@ class EngineeringRuntime:
         work_store,
         evidence_root: str | Path,
         continuation_authority_guard: Callable[[], object] | None = None,
+        owner_policy_store: EngineeringOwnerPolicyStore | None = None,
     ) -> None:
         self.repository_provider = repository_provider
         self.work_store = work_store
         self.evidence_root = Path(evidence_root)
+        self.owner_policy = owner_policy_store or EngineeringOwnerPolicyStore(
+            self.evidence_root.parent / "engineering-owner-policy.json"
+        )
         self._continuation_authority_guard = continuation_authority_guard
 
     def _assert_continuation_authority(self) -> None:
@@ -115,13 +120,14 @@ class EngineeringRuntime:
         if claim is None:
             raise RuntimeError("engineering WorkOrder is not claimable")
         try:
-            spec = engineering_spec_from_work_order(
+            projected = engineering_spec_from_work_order(
                 order,
                 attempt_id=claim.attempt.id,
                 repository=repository,
                 base_revision=resolved_base,
                 overrides=overrides,
             )
+            spec = self.owner_policy.snapshot().constrain_spec(projected)
             branch_ref = f"vishnu/work/{_digest(order.id, claim.attempt.id)[:24]}-a{claim.attempt.attempt_number}"
             session = self.repository_provider.prepare(
                 repository=repository,
@@ -143,6 +149,7 @@ class EngineeringRuntime:
                     "engineering_spec": spec.to_dict(),
                     "authority": "canonical_work",
                     "portable": True,
+                    "owner_engineering_mode": self.owner_policy.snapshot().mode.value,
                     "push_authority": False,
                     "merge_authority": False,
                     "deploy_authority": False,
@@ -159,6 +166,7 @@ class EngineeringRuntime:
                     "branch_ref": session.branch_ref,
                     "base_revision": session.base_revision,
                     "spec_id": spec.id,
+                    "owner_engineering_mode": self.owner_policy.snapshot().mode.value,
                 },
                 attempt_id=claim.attempt.id,
             )
