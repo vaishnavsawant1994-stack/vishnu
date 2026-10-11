@@ -30,6 +30,14 @@ class PublicValue:
         return dict(self.payload)
 
 
+class FakeOfflinePackResult:
+    def __init__(self):
+        self.manifest = SimpleNamespace(pack_id="vop-test")
+
+    def public(self):
+        return {"pack_id": "vop-test", "ready": True}
+
+
 class FakePortable:
     def __init__(self):
         self.published = 0
@@ -52,7 +60,7 @@ class FakePortable:
 
     def prepare_offline_pack(self):
         self.offline += 1
-        return PublicValue({"pack_id": "vop-test", "ready": True})
+        return FakeOfflinePackResult()
 
     def activation_preflight(self, *, online=False):
         return PublicValue({"ready": True, "online": bool(online), "runtime_id": "self_hosted"})
