@@ -19,7 +19,14 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: pip check
-      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive qualification security server tools training ui updates vision voice visual_intelligence
+      - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products qualification security server tools training ui updates vision voice visual_intelligence
+      - name: Our Products productization qualification gate
+        run: |
+          node --check pwa/our-products.js
+          node --check pwa/our-products-distribution.js
+          node --check pwa/our-products-entry.js
+          node --check tests/our_products_browser.mjs
+          pytest -q tests/test_our_products.py tests/test_product_distribution.py
       - name: Advanced Intelligence governance gate
         run: >-
           pytest -q
