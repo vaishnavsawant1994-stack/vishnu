@@ -126,7 +126,11 @@ def validate_manifest(value: dict) -> dict:
 
 
 def manifest_for_product(store, product_id: str) -> dict:
+    product = store.get(product_id)
     manifest = store.manifest(product_id)
-    if manifest is None:
+    if product is None or manifest is None:
         raise KeyError(product_id)
+    policy = dict(manifest.get("ai_policy") or {})
+    policy.setdefault("mode", product.get("ai_mode") or "disabled")
+    manifest["ai_policy"] = policy
     return validate_manifest(manifest)
