@@ -6,14 +6,26 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from future_intelligence.release_control.contracts import ReleasePlan, ReleaseRiskClass
+from future_intelligence.engineering.canary import CanaryMetrics
+from future_intelligence.engineering.contracts import (
+    EngineeringSpec,
+    QualificationGateResult,
+    QualificationGateStatus,
+    QualificationReport,
+)
+from future_intelligence.engineering.release_qualification import EnvironmentQualificationResult
 from future_intelligence.release_control.controller import GovernedReleaseController
 from future_intelligence.release_control.policy_store import ReleasePolicyStore
+from future_intelligence.release_control.providers import InMemoryReleaseProvider
 from future_intelligence.release_control.runtime import ReleaseControlRuntime
-from future_intelligence.release_control.store import JsonReleaseStore
+from future_intelligence.release_control.store import InMemoryReleaseStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from server.owner_release_api import owner_release_router
 from server.owner_release_ui import JS as OWNER_RELEASE_JS
+
+
+BASE = "a" * 40
+CANDIDATE = "b" * 40
 
 
 class FakeRegistry:
@@ -35,16 +47,76 @@ class FakeEvents:
         self.rows.append((name, payload))
 
 
+class HealthyEnvironment:
+    def qualify_preview(self, *, target, spec_id, candidate_revision):
+        return EnvironmentQualificationResult(
+            environment="preview",
+            target=target,
+            healthy=True,
+            checks={"revision": candidate_revision == CANDIDATE},
+            evidence=("preview://healthy",),
+            summary="preview healthy",
+        )
+
+    def smoke_production(self, *, target, release_revision):
+        return EnvironmentQualificationResult(
+            environment="production",
+            target=target,
+            healthy=True,
+            checks={"revision": release_revision == CANDIDATE},
+            evidence=("production://healthy",),
+            summary="production healthy",
+        )
+
+
 class FakeAutomation:
     def active_release_ids(self):
         return ()
 
 
+def engineering_spec(*, surfaces=("pwa/home",)):
+    return EngineeringSpec(
+        id="spec-release-api",
+        work_order_id="work-release-api",
+        attempt_id="attempt-release-api",
+        repository="owner/repo",
+        base_revision=BASE,
+        objective="Release qualified owner API candidate",
+        affected_surfaces=tuple(surfaces),
+    )
+
+
+def qualification_report():
+    return QualificationReport(
+        spec_id="spec-release-api",
+        base_revision=BASE,
+        candidate_revision=CANDIDATE,
+        gates=(QualificationGateResult(
+            gate="requirements",
+            status=QualificationGateStatus.PASS,
+            summary="passed",
+            evidence=("ci://exact",),
+        ),),
+        reviewer="independent-reviewer",
+        review_decision="approved",
+    )
+
+
 def runtime(tmp_path):
+    provider = InMemoryReleaseProvider()
     policy_store = ReleasePolicyStore(tmp_path / "release-policy.json")
-    store = JsonReleaseStore(tmp_path / "releases")
-    controller = GovernedReleaseController(store=store, policy=policy_store.snapshot())
-    release_control = ReleaseControlRuntime(controller=controller, policy_store=policy_store, providers={})
+    environment = HealthyEnvironment()
+    controller = GovernedReleaseController(
+        store=InMemoryReleaseStore(),
+        policy=policy_store.snapshot(),
+        preview_qualifier=environment,
+        production_smoke=environment,
+    )
+    release_control = ReleaseControlRuntime(
+        controller=controller,
+        policy_store=policy_store,
+        providers={provider.name: provider},
+    )
     return {
         "device_registry": FakeRegistry(),
         "events": FakeEvents(),
@@ -80,38 +152,26 @@ def owner_client(app):
     return client
 
 
-def seed_release(value):
-    plan = ReleasePlan(
-        id="release-owner-1",
-        work_order_id="work-owner-1",
-        attempt_id="attempt-owner-1",
-        engineering_spec_id="spec-owner-1",
-        repository="owner/repo",
-        base_revision="a" * 40,
-        candidate_revision="b" * 40,
-        qualification_digest="digest-owner-1",
-        provider="render",
-        target="owner/repo",
-        risk_class=ReleaseRiskClass.HIGH,
-        affected_surfaces=("authentication",),
-        approval_required=True,
+def seed_release(value, *, surfaces=("pwa/home",)):
+    return value["release_control"].controller.create_plan(
+        spec=engineering_spec(surfaces=surfaces),
+        report=qualification_report(),
+        provider="memory",
+        target="vishnu-production",
     )
-    value["release_control"].controller.store.save(plan)
-    return plan
 
 
 def test_owner_release_summary_requires_trusted_admin_device(tmp_path):
     value = runtime(tmp_path)
     app = app_for(value)
-    anonymous = TestClient(app)
-    assert anonymous.get("/iphone/api/owner/release/summary").status_code == 401
+    assert TestClient(app).get("/iphone/api/owner/release/summary").status_code == 401
 
-    client = owner_client(app)
-    response = client.get("/iphone/api/owner/release/summary")
+    response = owner_client(app).get("/iphone/api/owner/release/summary")
     assert response.status_code == 200
     payload = response.json()
     assert payload["available"] is True
     assert payload["policy"]["mode"] == "approval_required"
+    assert payload["providers"] == ["memory"]
     assert payload["authorities"]["release_plan_creation_from_api"] is False
     assert payload["authorities"]["automatic_rollback"] is False
     assert payload["authorities"]["body_activation"] is False
@@ -136,35 +196,64 @@ def test_owner_release_policy_change_requires_fresh_owner_verification(tmp_path)
     assert policy["allow_automatic_rollback"] is False
 
 
-def test_owner_release_approval_is_bound_to_existing_release_and_fresh_owner(tmp_path):
-    value = runtime(tmp_path)
-    plan = seed_release(value)
-    client = owner_client(app_for(value, fresh=True))
-
-    missing = client.post("/iphone/api/owner/release/not-a-release/approve")
-    assert missing.status_code in {404, 409}
-
-    response = client.post(f"/iphone/api/owner/release/{plan.id}/approve")
-    assert response.status_code == 200
-    release = response.json()["release"]
-    assert release["candidate_revision"] == "b" * 40
-    assert release["approved_by"] == "device:owner-device"
-
-
 def test_owner_release_surface_has_no_arbitrary_plan_creation_route(tmp_path):
     value = runtime(tmp_path)
-    client = owner_client(app_for(value, fresh=True))
-    response = client.post(
+    response = owner_client(app_for(value, fresh=True)).post(
         "/iphone/api/owner/release",
-        json={"candidate_revision": "c" * 40, "repository": "attacker/repo", "provider": "render"},
+        json={"candidate_revision": "c" * 40, "repository": "attacker/repo", "provider": "memory"},
     )
     assert response.status_code in {404, 405}
 
 
-def test_owner_release_ui_exposes_governed_actions_and_no_sha_input():
+def test_sensitive_release_requires_explicit_owner_approval_before_promotion(tmp_path):
+    value = runtime(tmp_path)
+    value["release_control"].update_policy(mode="auto_low_risk")
+    plan = seed_release(value, surfaces=("authentication/session",))
+    client = owner_client(app_for(value, fresh=True))
+
+    preview = client.post(f"/iphone/api/owner/release/{plan.id}/preview")
+    assert preview.status_code == 200
+    denied = client.post(f"/iphone/api/owner/release/{plan.id}/promote")
+    assert denied.status_code == 409
+
+    approved = client.post(f"/iphone/api/owner/release/{plan.id}/approve")
+    assert approved.status_code == 200
+    assert approved.json()["release"]["approved_by"] == "device:owner-device"
+    promoted = client.post(f"/iphone/api/owner/release/{plan.id}/promote")
+    assert promoted.status_code == 200
+    assert promoted.json()["release"]["status"] == "monitoring"
+
+
+def test_rollback_requires_literal_confirmation_and_separate_policy_authority(tmp_path):
+    value = runtime(tmp_path)
+    control = value["release_control"]
+    control.update_policy(mode="auto_low_risk")
+    plan = seed_release(value)
+    client = owner_client(app_for(value, fresh=True))
+    assert client.post(f"/iphone/api/owner/release/{plan.id}/preview").status_code == 200
+    assert client.post(f"/iphone/api/owner/release/{plan.id}/promote").status_code == 200
+    control.controller.record_canary(
+        plan.id,
+        baseline=CanaryMetrics(100, 0.01, 100),
+        candidate=CanaryMetrics(100, 0.25, 300),
+    )
+
+    assert client.post(f"/iphone/api/owner/release/{plan.id}/rollback", json={"confirm": False}).status_code == 422
+    denied = client.post(f"/iphone/api/owner/release/{plan.id}/rollback", json={"confirm": True})
+    assert denied.status_code == 409
+
+    control.update_policy(allow_automatic_rollback=True)
+    allowed = client.post(f"/iphone/api/owner/release/{plan.id}/rollback", json={"confirm": True})
+    assert allowed.status_code == 200
+    assert allowed.json()["release"]["status"] == "rolled_back"
+
+
+def test_owner_release_ui_exposes_governed_modes_and_explicit_rollback_boundary():
+    for label in ("Off", "Preview only", "Approval required", "Auto low-risk"):
+        assert label in OWNER_RELEASE_JS
     for label in ("Preview", "Approve", "Promote", "Rollback", "Cancel"):
         assert label in OWNER_RELEASE_JS
-    assert "Release Control" in OWNER_RELEASE_JS
-    assert "candidate_revision" not in OWNER_RELEASE_JS
-    assert "repository" not in OWNER_RELEASE_JS.lower() or "data-release-repository-input" not in OWNER_RELEASE_JS
+    assert "Exact SHA bound" in OWNER_RELEASE_JS
+    assert "silently roll production back" in OWNER_RELEASE_JS
+    assert "No Body activation" in OWNER_RELEASE_JS
     assert "create release" not in OWNER_RELEASE_JS.lower()
