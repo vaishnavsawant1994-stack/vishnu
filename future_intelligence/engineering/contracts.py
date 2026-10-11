@@ -251,7 +251,7 @@ class QualificationGateResult:
 
     @property
     def blocking(self) -> bool:
-        return self.status is QualificationGateStatus.FAIL
+        return self.status in {QualificationGateStatus.FAIL, QualificationGateStatus.PENDING}
 
     def to_dict(self) -> dict[str, Any]:
         return {
