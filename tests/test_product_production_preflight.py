@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import importlib.util
+import sys
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
@@ -18,6 +19,7 @@ def module():
     )
     assert spec and spec.loader
     value = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = value
     spec.loader.exec_module(value)
     return value
 
