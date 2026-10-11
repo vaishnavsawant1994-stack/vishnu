@@ -214,7 +214,12 @@ def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_p
     attempt_id = coordinator.spec.attempt_id
     read = runtime.execute("work-eng", attempt_id, "read", {"path": "src/app.py"})
     assert read["content"] == "VALUE = 1\n"
-
+    with pytest.raises(PermissionError, match="Engineering Autonomy"):
+        runtime.execute(
+            "work-eng", attempt_id, "replace_exact",
+            {"path": "src/app.py", "old": "VALUE = 1", "new": "VALUE = 2", "expected_sha256": read["sha256"]},
+        )
+    runtime.owner_policy.update(mode="workspace")
     changed = runtime.execute(
         "work-eng", attempt_id, "replace_exact",
         {"path": "src/app.py", "old": "VALUE = 1", "new": "VALUE = 2", "expected_sha256": read["sha256"]},
@@ -275,6 +280,7 @@ def test_runtime_rejects_paths_outside_engineering_spec(tmp_path: Path):
 
 def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+    runtime.owner_policy.update(mode="auto_fix")
     executor = EngineeringWorkExecutor(
         runtime=runtime,
         models=EditModels(),
@@ -296,6 +302,7 @@ def test_work_executor_creates_candidate_then_moves_canonical_work_to_verifying(
 
 def test_interrupted_verification_marks_recovery_required_without_losing_candidate(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+    runtime.owner_policy.update(mode="auto_fix")
 
     class InterruptedVerifier:
         def verify(self, session, *, revision):
@@ -320,6 +327,7 @@ def test_interrupted_verification_marks_recovery_required_without_losing_candida
 
 def test_reviewer_outage_preserves_candidate_in_verifying_state(tmp_path: Path):
     runtime, store, provider, _ = build_runtime(tmp_path, prepare=False)
+    runtime.owner_policy.update(mode="auto_fix")
 
     class OfflineReviewer:
         def review(self, **_kwargs):
