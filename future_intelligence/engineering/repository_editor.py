@@ -26,7 +26,7 @@ class MutationEvidence:
 
 
 class GovernedRepositoryEditor:
-    """Workspace-bound source editor with no shell, Git remote, or approval authority."""
+    """Workspace-bound UTF-8 source editor with no shell, Git remote, or approval authority."""
 
     def __init__(self, *, provider: RepositoryWorkspaceProvider, session: RepositoryWorkspaceSession, spec: EngineeringSpec) -> None:
         if session.repository != spec.repository:
@@ -68,23 +68,40 @@ class GovernedRepositoryEditor:
             raise FileExistsError(normalized)
         return normalized, target
 
+    def _validate_existing_text(self, raw: bytes, *, path: str) -> str:
+        if len(raw) > self.spec.budget.max_file_bytes:
+            raise ValueError(f"file exceeds EngineeringSpec byte budget: {path}")
+        if b"\x00" in raw:
+            raise ValueError(f"binary files are outside the governed text editor: {path}")
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise ValueError(f"file is not valid UTF-8 governed source text: {path}") from exc
+
+    def _assert_file_budget(self, *paths: str) -> None:
+        new_paths = {path for path in paths if path not in self._mutated_paths}
+        if len(self._mutated_paths) + len(new_paths) > self.spec.budget.max_files:
+            raise ValueError("engineering mutation exceeds changed-file budget")
+
+    def _reserve_written_bytes(self, count: int) -> None:
+        projected = self._total_written + max(0, int(count))
+        if projected > self.spec.budget.max_total_bytes:
+            raise ValueError("engineering mutation exceeds total byte budget")
+
     def _bounded(self, content: str, *, path: str) -> bytes:
         if not isinstance(content, str):
             raise TypeError("repository editor accepts UTF-8 text only")
         raw = content.encode("utf-8")
         if len(raw) > self.spec.budget.max_file_bytes:
             raise ValueError(f"file exceeds EngineeringSpec byte budget: {path}")
-        projected = self._total_written + len(raw)
-        if projected > self.spec.budget.max_total_bytes:
-            raise ValueError("engineering mutation exceeds total byte budget")
-        if path not in self._mutated_paths and len(self._mutated_paths) >= self.spec.budget.max_files:
-            raise ValueError("engineering mutation exceeds changed-file budget")
+        self._reserve_written_bytes(len(raw))
+        self._assert_file_budget(path)
         return raw
 
     def _atomic_write(self, path: str, target: Path, content: str, *, expected_sha256: str | None) -> MutationEvidence:
         before = target.read_bytes() if target.exists() else b""
-        if b"\x00" in before:
-            raise ValueError("binary files are outside the governed text editor")
+        if target.exists():
+            self._validate_existing_text(before, path=path)
         before_sha = self._sha(before)
         if expected_sha256 is not None and expected_sha256 != before_sha:
             raise RuntimeError(f"stale write precondition for {path}")
@@ -112,9 +129,7 @@ class GovernedRepositoryEditor:
     def read_text(self, path: str) -> tuple[str, str]:
         normalized, target = self._path(path, must_exist=True)
         raw = target.read_bytes()
-        if b"\x00" in raw or len(raw) > self.spec.budget.max_file_bytes:
-            raise ValueError(f"file cannot be safely read as governed source text: {normalized}")
-        return raw.decode("utf-8"), self._sha(raw)
+        return self._validate_existing_text(raw, path=normalized), self._sha(raw)
 
     def search_text(self, needle: str, *, paths: Iterable[str] | None = None, case_sensitive: bool = False) -> tuple[dict[str, object], ...]:
         query = str(needle)
@@ -138,10 +153,8 @@ class GovernedRepositoryEditor:
             try:
                 require_engineering_path(relative, allowed_paths=self.spec.allowed_paths, prohibited_paths=self.spec.prohibited_paths, allow_authority_paths=self.spec.allow_authority_paths)
                 raw = item.read_bytes()
-                if b"\x00" in raw or len(raw) > self.spec.budget.max_file_bytes:
-                    continue
-                text = raw.decode("utf-8")
-            except (OSError, UnicodeDecodeError, PermissionError):
+                text = self._validate_existing_text(raw, path=relative)
+            except (OSError, ValueError, PermissionError):
                 continue
             for number, line in enumerate(text.splitlines(), 1):
                 haystack = line if case_sensitive else line.lower()
@@ -172,9 +185,11 @@ class GovernedRepositoryEditor:
     def delete(self, path: str, *, expected_sha256: str) -> MutationEvidence:
         normalized, target = self._path(path, must_exist=True)
         raw = target.read_bytes()
+        self._validate_existing_text(raw, path=normalized)
         before_sha = self._sha(raw)
         if expected_sha256 != before_sha:
             raise RuntimeError(f"stale delete precondition for {normalized}")
+        self._assert_file_budget(normalized)
         target.unlink()
         evidence = MutationEvidence("delete", normalized, before_sha, self._sha(b""), 0)
         self._mutations.append(evidence)
@@ -185,26 +200,31 @@ class GovernedRepositoryEditor:
         source_name, source_path = self._path(source, must_exist=True)
         destination_name, destination_path = self._path(destination, must_exist=False)
         raw = source_path.read_bytes()
+        self._validate_existing_text(raw, path=source_name)
         if self._sha(raw) != expected_sha256:
             raise RuntimeError(f"stale rename precondition for {source_name}")
-        if destination_name not in self._mutated_paths and len(self._mutated_paths) + (0 if source_name in self._mutated_paths else 1) >= self.spec.budget.max_files:
-            raise ValueError("engineering mutation exceeds changed-file budget")
+        self._assert_file_budget(source_name, destination_name)
+        self._reserve_written_bytes(len(raw))
         destination_path.parent.mkdir(parents=True, exist_ok=True)
         source_path.replace(destination_path)
         deleted = MutationEvidence("rename_from", source_name, expected_sha256, self._sha(b""), 0)
         created = MutationEvidence("rename_to", destination_name, self._sha(b""), expected_sha256, len(raw))
         self._mutations.extend((deleted, created))
         self._mutated_paths.update((source_name, destination_name))
+        self._total_written += len(raw)
         return deleted, created
 
     def restore_from_base(self, path: str) -> MutationEvidence:
         normalized, target = self._path(path)
         before = target.read_bytes() if target.exists() else b""
+        if target.exists():
+            self._validate_existing_text(before, path=normalized)
         try:
             base = self.provider.read_text_at(self.session.base_revision, normalized)
         except RuntimeError:
             if not target.exists():
                 raise FileNotFoundError(f"{normalized} does not exist in workspace or base revision")
+            self._assert_file_budget(normalized)
             target.unlink()
             evidence = MutationEvidence("restore_delete", normalized, self._sha(before), self._sha(b""), 0)
             self._mutations.append(evidence)
