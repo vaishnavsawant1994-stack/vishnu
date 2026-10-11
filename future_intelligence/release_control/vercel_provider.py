@@ -143,6 +143,13 @@ class VercelReleaseProvider:
             raise VercelProviderError("Vercel deployment did not expose a deployment URL")
         return value if value.startswith("https://") else f"https://{value}"
 
+    @staticmethod
+    def _assert_production_target(payload: dict[str, Any]) -> None:
+        if str(payload.get("target") or "").strip().lower() != "production":
+            raise VercelProviderError(
+                "Vercel release deployment is not a staged Production-target artifact"
+            )
+
     def _project(self) -> dict[str, Any]:
         return self._call(
             "GET",
@@ -154,9 +161,6 @@ class VercelReleaseProvider:
         project_id = str(project.get("id") or "").strip()
         if project_id and project_id != self.config.project_id:
             raise VercelProviderError("Vercel project identity does not match release configuration")
-        # Fail closed on missing/unknown values. The exact Production build may
-        # only be created when production domains will *not* be automatically
-        # assigned by the project. Otherwise merely staging would serve traffic.
         if project.get("autoAssignCustomDomains") is not False:
             raise VercelProviderError(
                 "Vercel staged production requires autoAssignCustomDomains=false before release control can deploy"
@@ -194,9 +198,6 @@ class VercelReleaseProvider:
             {
                 "name": self.config.project_name,
                 "project": self.config.project_id,
-                # Build with Production-scoped variables but do not serve the
-                # production domains. Promotion can then switch traffic to the
-                # exact artifact already qualified by Vishnu.
                 "target": "production",
                 "gitSource": {
                     "type": "github",
@@ -219,14 +220,12 @@ class VercelReleaseProvider:
         if revision and not self._same_revision(revision, plan.candidate_revision):
             raise VercelProviderError("Vercel accepted a different revision than requested")
         ready = self._wait(deployment_id, plan.candidate_revision)
+        self._assert_production_target(ready)
         return ReleaseDeployment(
             id=deployment_id,
             provider=self.name,
             target=plan.target,
             revision=plan.candidate_revision,
-            # PREVIEW is the generic release-control qualification class. The
-            # provider metadata records that Vercel built a staged Production
-            # artifact, not a Preview-environment artifact.
             environment=ReleaseEnvironment.PREVIEW,
             url=self._deployment_url(ready),
             state="ready",
@@ -242,16 +241,16 @@ class VercelReleaseProvider:
         if not plan.preview_deployment_id or not plan.preview_url:
             raise VercelProviderError("Vercel production promotion requires the qualified staged deployment")
         inspected = self._wait(plan.preview_deployment_id, plan.candidate_revision)
+        # Protect restarts/upgrades: a release created by older code might point
+        # at a Preview-environment artifact with the same SHA. Never promote it.
+        self._assert_production_target(inspected)
         self._call(
             "POST",
             f"/v10/projects/{parse.quote(self.config.project_id, safe='')}/promote/{parse.quote(plan.preview_deployment_id, safe='')}",
             {},
         )
-        # Promotion changes traffic assignment only because create_preview built
-        # this exact deployment with target=production after proving automatic
-        # custom-domain assignment was disabled. Re-read the same deployment and
-        # prove it still carries the candidate SHA.
         promoted = self._inspect(plan.preview_deployment_id)
+        self._assert_production_target(promoted)
         revision = self._revision(promoted) or self._revision(inspected)
         if not revision or not self._same_revision(revision, plan.candidate_revision):
             raise VercelProviderError("Vercel promotion did not prove the bound candidate revision")
@@ -309,6 +308,7 @@ class VercelReleaseProvider:
                 inspected = self._inspect(str(item["id"]))
                 inspected_revision = self._revision(inspected)
                 if inspected_revision and self._same_revision(inspected_revision, revision):
+                    self._assert_production_target(inspected)
                     return inspected
         raise VercelProviderError("no immutable Vercel deployment was found for the rollback revision")
 
@@ -323,6 +323,7 @@ class VercelReleaseProvider:
             {"description": f"Vishnu governed rollback for {plan.id}"},
         )
         checked = self._inspect(baseline_id)
+        self._assert_production_target(checked)
         checked_revision = self._revision(checked)
         if not checked_revision or not self._same_revision(checked_revision, plan.base_revision):
             raise VercelProviderError("Vercel rollback target no longer matches the bound base revision")
