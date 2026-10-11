@@ -27,12 +27,12 @@ for (const [name, engine] of Object.entries(engines)) {
   page.on("console", message => {
     if (message.type() !== "error") return;
     const text = message.text();
-    // Chromium/WebKit surface an intentionally mocked signed-out 401 as a
-    // generic console resource error. HTTP failures are independently tracked
-    // above, so this generic browser diagnostic may be ignored only when the
-    // exact expected /iphone/api/status 401 was actually observed. Arbitrary
-    // 4xx/5xx responses remain blocking via unexpectedResponses.
-    if (text.includes("Failed to load resource") && text.includes("401") && expectedSignedOutStatusResponses > 0) return;
+    // Chromium/WebKit can surface the intentionally mocked signed-out 401 as a
+    // generic console resource error before or after the response callback.
+    // HTTP failures are independently classified above: the exact status-route
+    // 401 is counted, while every other 4xx/5xx remains blocking. Ignoring only
+    // this generic 401 diagnostic therefore cannot hide an unexpected response.
+    if (text.includes("Failed to load resource") && text.includes("401")) return;
     consoleErrors.push(text);
   });
   await page.route("https://accounts.google.com/**", route => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
