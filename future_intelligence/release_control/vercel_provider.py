@@ -53,10 +53,16 @@ class VercelReleaseConfig:
 class VercelReleaseProvider:
     """Exact-artifact Vercel release authority.
 
-    A preview is built from the exact qualified Git SHA. Production promotion
-    reuses that already-qualified deployment and therefore does not rebuild it.
-    This matches Vercel's staged/manual-promotion model: build first, qualify the
-    immutable deployment URL, then point production traffic at that deployment.
+    Vercel's safe manual-promotion model requires a Production-target build that
+    is *staged* without assigning production domains. Vishnu therefore first
+    proves that the project has automatic custom-domain assignment disabled,
+    builds the exact qualified Git SHA with ``target=production``, qualifies its
+    immutable deployment URL, and only then promotes that same deployment.
+
+    ``create_preview`` is retained for the generic ReleaseProvider protocol. For
+    Vercel it means the pre-production qualification gate, backed by a staged
+    Production deployment so promotion cannot switch environment variables or
+    rebuild a different artifact.
 
     The Vercel token remains only in this provider object and is excluded from
     repr, plans, evidence, model context and API responses.
@@ -137,6 +143,25 @@ class VercelReleaseProvider:
             raise VercelProviderError("Vercel deployment did not expose a deployment URL")
         return value if value.startswith("https://") else f"https://{value}"
 
+    def _project(self) -> dict[str, Any]:
+        return self._call(
+            "GET",
+            f"/v9/projects/{parse.quote(self.config.project_id, safe='')}",
+        )
+
+    def _assert_staged_production_is_safe(self) -> None:
+        project = self._project()
+        project_id = str(project.get("id") or "").strip()
+        if project_id and project_id != self.config.project_id:
+            raise VercelProviderError("Vercel project identity does not match release configuration")
+        # Fail closed on missing/unknown values. The exact Production build may
+        # only be created when production domains will *not* be automatically
+        # assigned by the project. Otherwise merely staging would serve traffic.
+        if project.get("autoAssignCustomDomains") is not False:
+            raise VercelProviderError(
+                "Vercel staged production requires autoAssignCustomDomains=false before release control can deploy"
+            )
+
     def _inspect(self, deployment_id: str) -> dict[str, Any]:
         return self._call(
             "GET",
@@ -162,12 +187,17 @@ class VercelReleaseProvider:
         raise VercelProviderError("Vercel deployment timed out before reaching READY")
 
     def create_preview(self, plan: ReleasePlan) -> ReleaseDeployment:
+        self._assert_staged_production_is_safe()
         payload = self._call(
             "POST",
             "/v13/deployments",
             {
                 "name": self.config.project_name,
                 "project": self.config.project_id,
+                # Build with Production-scoped variables but do not serve the
+                # production domains. Promotion can then switch traffic to the
+                # exact artifact already qualified by Vishnu.
+                "target": "production",
                 "gitSource": {
                     "type": "github",
                     "org": self.config.github_org,
@@ -178,6 +208,7 @@ class VercelReleaseProvider:
                 "meta": {
                     "vishnuReleaseId": plan.id,
                     "vishnuCandidateRevision": plan.candidate_revision,
+                    "vishnuStagedProduction": "true",
                 },
             },
         )
@@ -193,23 +224,33 @@ class VercelReleaseProvider:
             provider=self.name,
             target=plan.target,
             revision=plan.candidate_revision,
+            # PREVIEW is the generic release-control qualification class. The
+            # provider metadata records that Vercel built a staged Production
+            # artifact, not a Preview-environment artifact.
             environment=ReleaseEnvironment.PREVIEW,
             url=self._deployment_url(ready),
             state="ready",
-            metadata={"project_id": self.config.project_id, "promotion_rebuilds": False},
+            metadata={
+                "project_id": self.config.project_id,
+                "staged_production": True,
+                "production_domains_assigned": False,
+                "promotion_rebuilds": False,
+            },
         )
 
     def promote(self, plan: ReleasePlan) -> ReleaseDeployment:
         if not plan.preview_deployment_id or not plan.preview_url:
-            raise VercelProviderError("Vercel production promotion requires the qualified preview deployment")
+            raise VercelProviderError("Vercel production promotion requires the qualified staged deployment")
         inspected = self._wait(plan.preview_deployment_id, plan.candidate_revision)
         self._call(
             "POST",
             f"/v10/projects/{parse.quote(self.config.project_id, safe='')}/promote/{parse.quote(plan.preview_deployment_id, safe='')}",
             {},
         )
-        # Promotion changes traffic assignment only; it does not rebuild. Re-read
-        # the same immutable deployment and prove it still carries the bound SHA.
+        # Promotion changes traffic assignment only because create_preview built
+        # this exact deployment with target=production after proving automatic
+        # custom-domain assignment was disabled. Re-read the same deployment and
+        # prove it still carries the candidate SHA.
         promoted = self._inspect(plan.preview_deployment_id)
         revision = self._revision(promoted) or self._revision(inspected)
         if not revision or not self._same_revision(revision, plan.candidate_revision):
@@ -224,7 +265,7 @@ class VercelReleaseProvider:
             state="ready",
             metadata={
                 "project_id": self.config.project_id,
-                "promoted_from_preview": True,
+                "promoted_from_staged_production": True,
                 "promotion_rebuilds": False,
             },
         )
