@@ -3,10 +3,17 @@ from __future__ import annotations
 from fastapi import APIRouter, Cookie, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
-from products.capability_catalog import CAPABILITY_TYPES, COMMERCIAL_STATES, QUALIFICATION_STATES, CapabilityCatalog
+from products.capability_catalog import (
+    CAPABILITY_TYPES,
+    COMMERCIAL_STATES,
+    QUALIFICATION_STATES,
+    CapabilityCatalog,
+)
 from products.composer import ProductComposer
 from products.models import AI_MODES, PLATFORM_TARGETS, PRODUCT_TYPES
 from security.request_context import current_trusted_request
+from server.project_autonomy_api import ProjectAutonomyService
+from server.project_work_api import ProjectWorkService
 
 
 class ProductRequestBody(BaseModel):
@@ -154,8 +161,8 @@ class PromoteComponentBody(BaseModel):
 
 
 def product_composer_router(runtime, catalog: CapabilityCatalog, composer: ProductComposer):
-    # This router is nested below /iphone/api/products so Product Composer remains
-    # an owner-only part of Our Products rather than a separate product surface.
+    # Nested below /iphone/api/products: Product Composer is an owner-side factory
+    # function, never part of a customer Product Project.
     router = APIRouter(prefix="/composer", tags=["product-composer"])
     registry = runtime["device_registry"]
 
@@ -166,15 +173,56 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
             raise HTTPException(403, "This device is not permitted to use Product Composer")
         context = current_trusted_request()
         if write and (context is None or context.device_id != device_id):
-            raise HTTPException(401, "A current trusted owner session is required to change Product Composer data")
+            raise HTTPException(
+                401, "A current trusted owner session is required to change Product Composer data"
+            )
+        return context
+
+    def start_project_work(project_id: str, context, max_steps: int) -> dict:
+        if composer.project_store is None:
+            raise RuntimeError("Project workspace is unavailable")
+        work = ProjectWorkService(runtime, composer.project_store)
+        autonomy = ProjectAutonomyService(runtime, composer.project_store)
+        snapshot = work.snapshot(project_id)
+        plan_created = False
+        if snapshot.get("state") != "planned":
+            plan = work.create_plan(
+                project_id,
+                session_id=context.session_id,
+            )
+            plan_created = bool(plan.get("created"))
+        result = autonomy.set(
+            project_id,
+            "active",
+            device_id=context.device_id,
+            session_id=context.session_id,
+            reauthenticated_at=context.reauthenticated_at,
+            advance_now=True,
+            max_steps=max_steps,
+        )
+        advance = result.get("advance") or {}
+        return {
+            "status": "started",
+            "mode": result.get("mode"),
+            "plan_created": plan_created,
+            "stop_reason": advance.get("stop_reason"),
+            "executed_task_ids": list(advance.get("executed_task_ids") or []),
+            "execution_authority": result.get("execution_authority"),
+        }
 
     @router.get("/summary")
-    def summary(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def summary(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token)
         return {"summary": composer.summary()}
 
     @router.post("/sync")
-    def sync_catalog(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def sync_catalog(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         counts = catalog.sync_from_runtime(runtime, composer.product_store)
         return {"synced": counts, "summary": catalog.summary()}
@@ -192,26 +240,42 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         authenticate(pa_device, pa_token)
         return {
             "capabilities": catalog.list(
-                q, capability_type=capability_type, commercial_state=commercial_state,
-                client_scope=client_scope, limit=limit,
+                q,
+                capability_type=capability_type,
+                commercial_state=commercial_state,
+                client_scope=client_scope,
+                limit=limit,
             ),
             "summary": catalog.summary(),
         }
 
     @router.post("/capabilities", status_code=201)
-    def create_capability(body: CapabilityBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def create_capability(
+        body: CapabilityBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         try:
-            capability = catalog.upsert(**body.model_dump(), preserve_owner_classification=False)
+            capability = catalog.upsert(
+                **body.model_dump(), preserve_owner_classification=False
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         return {"capability": capability}
 
     @router.patch("/capabilities/{capability_id}")
-    def classify_capability(capability_id: str, body: CapabilityClassificationBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def classify_capability(
+        capability_id: str,
+        body: CapabilityClassificationBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         try:
-            capability = catalog.update_classification(capability_id, **body.model_dump(exclude_unset=True))
+            capability = catalog.update_classification(
+                capability_id, **body.model_dump(exclude_unset=True)
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if not capability:
@@ -219,7 +283,11 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         return {"capability": capability}
 
     @router.post("/capabilities/promote", status_code=201)
-    def promote_component(body: PromoteComponentBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def promote_component(
+        body: PromoteComponentBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         try:
             capability = composer.promote_component(**body.model_dump())
@@ -240,7 +308,12 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         return {"requests": composer.list_requests(status=status, limit=limit)}
 
     @router.post("/requests", status_code=201)
-    def create_request(body: ProductRequestBody, analyze: bool = Query(default=True), pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def create_request(
+        body: ProductRequestBody,
+        analyze: bool = Query(default=True),
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         try:
             request = composer.create_request(**body.model_dump())
@@ -251,7 +324,11 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         return {"request": request}
 
     @router.get("/requests/{request_id}")
-    def get_request(request_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def get_request(
+        request_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token)
         request = composer.get_request(request_id)
         if not request:
@@ -259,7 +336,11 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         return {"request": request, "matches": composer.request_matches(request_id)}
 
     @router.post("/requests/{request_id}/analyze")
-    def analyze_request(request_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def analyze_request(
+        request_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         request = composer.analyze(request_id)
         if not request:
@@ -267,18 +348,76 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         return {"request": request, "matches": composer.request_matches(request_id)}
 
     @router.post("/requests/{request_id}/product-project", status_code=201)
-    def create_product_project(request_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        authenticate(pa_device, pa_token, write=True)
+    def create_product_project(
+        request_id: str,
+        start_work: bool = Query(default=True),
+        max_steps: int = Query(default=10, ge=1, le=20),
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        context = authenticate(pa_device, pa_token, write=True)
         try:
             result = composer.create_product_project(request_id)
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
         if not result:
             raise HTTPException(404, "Product request not found")
-        return result
+
+        work_start = {"status": "not_requested"}
+        # Automatic work begins only on the first successful creation. A network
+        # retry therefore cannot silently advance more work. Explicit retries use
+        # /start-work below and remain governed by P10/P6 approvals and policies.
+        if start_work and not result.get("existing"):
+            try:
+                work_start = start_project_work(result["project"]["id"], context, max_steps)
+            except Exception as exc:
+                work_start = {
+                    "status": "blocked",
+                    "detail": str(exc)[:500],
+                    "message": (
+                        "The Product Project was created safely, but governed automatic work could not start. "
+                        "The owner can retry Start Vishnu Work without recreating the product."
+                    ),
+                }
+        elif start_work:
+            work_start = {
+                "status": "skipped_existing",
+                "message": "Existing Product Project was reused; no automatic execution was repeated.",
+            }
+        return {**result, "work_start": work_start}
+
+    @router.post("/requests/{request_id}/start-work")
+    def retry_product_project_work(
+        request_id: str,
+        max_steps: int = Query(default=10, ge=1, le=20),
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        context = authenticate(pa_device, pa_token, write=True)
+        request = composer.get_request(request_id)
+        if not request:
+            raise HTTPException(404, "Product request not found")
+        if not request.get("project_id"):
+            raise HTTPException(409, "Create the Product Project before starting Vishnu work")
+        try:
+            return {
+                "request_id": request_id,
+                "project_id": request["project_id"],
+                "work_start": start_project_work(request["project_id"], context, max_steps),
+            }
+        except (ValueError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(503, str(exc)) from exc
 
     @router.get("/products/{product_id}/lineage")
-    def lineage(product_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def lineage(
+        product_id: str,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token)
         if not composer.product_store.get(product_id):
             raise HTTPException(404, "Product not found")
@@ -289,10 +428,17 @@ def product_composer_router(runtime, catalog: CapabilityCatalog, composer: Produ
         }
 
     @router.put("/products/{product_id}/classification")
-    def classify_product(product_id: str, body: ProductClassificationBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+    def classify_product(
+        product_id: str,
+        body: ProductClassificationBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
         authenticate(pa_device, pa_token, write=True)
         try:
-            classification = composer.set_product_classification(product_id, body.commercial_state, body.notes)
+            classification = composer.set_product_classification(
+                product_id, body.commercial_state, body.notes
+            )
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
         if not classification:
