@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Cookie, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
+from products.build_lifecycle import BUILD_STATUSES, ProductBuildLifecycle
 from products.models import AI_MODES, PLATFORM_TARGETS, PRODUCT_STATUSES, PRODUCT_TYPES
 from products.store import ProductStore
 from security.request_context import current_trusted_request
@@ -135,6 +136,21 @@ class BuildBody(BaseModel):
         return value
 
 
+class BuildUpdateBody(BaseModel):
+    # Owner HTTP is intentionally lifecycle-only. Artifact name/URI/checksum and
+    # signing evidence are internal builder-adapter data and are never accepted
+    # from this API surface.
+    status: str | None = None
+    failure_reason: str | None = Field(default=None, max_length=2000)
+
+    @field_validator("status")
+    @classmethod
+    def valid_status(cls, value):
+        if value is not None and value not in BUILD_STATUSES:
+            raise ValueError("Unsupported build status")
+        return value
+
+
 class PromoteProjectBody(BaseModel):
     product_type: str = Field(default="custom")
     client_name: str = Field(default="", max_length=200)
@@ -150,6 +166,7 @@ class PromoteProjectBody(BaseModel):
 def products_router(runtime, store: ProductStore, project_store=None):
     router = APIRouter(prefix="/iphone/api/products", tags=["our-products"])
     registry = runtime["device_registry"]
+    builds = ProductBuildLifecycle(store.path)
 
     def authenticate(device_id: str | None, token: str | None, *, write=False):
         if not device_id or not token or not registry.authenticate(device_id, token):
@@ -222,7 +239,7 @@ def products_router(runtime, store: ProductStore, project_store=None):
         return {
             "product": product,
             "components": store.components(product_id),
-            "builds": store.builds(product_id),
+            "builds": builds.list(product_id, store.builds(product_id)),
         }
 
     @router.patch("/{product_id}")
@@ -300,6 +317,12 @@ def products_router(runtime, store: ProductStore, project_store=None):
             raise HTTPException(404, "Product not found")
         return {"version": value}
 
+    @router.get("/{product_id}/builds")
+    def list_builds(product_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token)
+        product_or_404(product_id)
+        return {"builds": builds.list(product_id, store.builds(product_id))}
+
     @router.post("/{product_id}/builds", status_code=202)
     def request_build(product_id: str, body: BuildBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         authenticate(pa_device, pa_token, write=True)
@@ -309,6 +332,18 @@ def products_router(runtime, store: ProductStore, project_store=None):
             raise HTTPException(422, str(exc)) from exc
         if not value:
             raise HTTPException(404, "Product not found")
+        return {"build": builds.ensure(value)}
+
+    @router.patch("/{product_id}/builds/{build_id}")
+    def update_build(product_id: str, build_id: str, body: BuildUpdateBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token, write=True)
+        product_or_404(product_id)
+        try:
+            value = builds.update(product_id, build_id, **body.model_dump(exclude_unset=True))
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if not value:
+            raise HTTPException(404, "Build not found")
         return {"build": value}
 
     return router
