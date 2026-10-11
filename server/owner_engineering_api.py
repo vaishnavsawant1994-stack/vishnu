@@ -1,18 +1,14 @@
 from __future__ import annotations
 
 import json
-import os
 import time
 from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from future_intelligence.engineering.final_qualification import EngineeringCandidateFinalizer
 from future_intelligence.engineering.verification import observation_to_dict
 from future_intelligence.engineering.workflow_evidence import (
-    GitHubPhysicalDeviceEvidenceVerifier,
-    GitHubWorkflowEvidenceConfig,
     PhysicalDeviceWorkflowRun,
     WorkflowEvidenceError,
 )
@@ -101,6 +97,16 @@ def owner_engineering_router(runtime) -> APIRouter:
             raise HTTPException(503, "governed engineering executor is unavailable on this host")
         return value
 
+    def finalizer():
+        value = runtime.get("engineering_finalizer")
+        if value is None:
+            raise HTTPException(503, "engineering final qualification is unavailable on this host")
+        if not hasattr(value, "verify_and_record_physical_device_evidence"):
+            raise HTTPException(503, "trusted physical-device evidence verification is unavailable on this host")
+        if getattr(value, "physical_device_verifier", None) is None:
+            raise HTTPException(503, "trusted GitHub physical-device evidence verifier is not configured")
+        return value
+
     def emit(name: str, **payload: Any) -> None:
         if events is not None:
             events.emit(name, **payload)
@@ -187,14 +193,19 @@ def owner_engineering_router(runtime) -> APIRouter:
         authenticate(pa_device, pa_token)
         eng = engineering()
         policy = eng.owner_policy.snapshot()
+        finalizer_value = runtime.get("engineering_finalizer")
         return {
             "available": True,
             "repository": eng.repository_provider.repository,
-            "final_qualification_available": runtime.get("engineering_finalizer") is not None,
+            "final_qualification_available": finalizer_value is not None,
             "trusted_physical_device_evidence": {
                 "accepted_input": "github_workflow_run_ids_only",
                 "verified_server_side": True,
                 "candidate_revision_bound": True,
+                "verifier_available": bool(
+                    finalizer_value is not None
+                    and getattr(finalizer_value, "physical_device_verifier", None) is not None
+                ),
             },
             "policy": policy.public(),
             "recent_work": recent_work(),
@@ -294,19 +305,10 @@ def owner_engineering_router(runtime) -> APIRouter:
     ):
         device_id = authenticate(pa_device, pa_token)
         require_fresh_owner_verification(device_id)
-        eng = engineering()
+        if len({item.platform for item in body.runs}) != len(body.runs):
+            raise HTTPException(422, "Only one workflow run may be supplied for each physical-device platform")
         try:
-            verifier = GitHubPhysicalDeviceEvidenceVerifier(
-                GitHubWorkflowEvidenceConfig(
-                    repository=str(eng.repository_provider.repository),
-                    token=str(os.environ.get("VISHNU_ENGINEERING_GITHUB_EVIDENCE_TOKEN", "")),
-                )
-            )
-            finalizer = EngineeringCandidateFinalizer(
-                runtime=eng,
-                physical_device_verifier=verifier,
-            )
-            observation = finalizer.verify_and_record_physical_device_evidence(
+            observation = finalizer().verify_and_record_physical_device_evidence(
                 str(work_order_id),
                 str(attempt_id),
                 runs=tuple(
@@ -316,7 +318,9 @@ def owner_engineering_router(runtime) -> APIRouter:
             )
         except KeyError as exc:
             raise HTTPException(404, "Engineering Work/Attempt not found") from exc
-        except (ValueError, PermissionError, RuntimeError, WorkflowEvidenceError) as exc:
+        except WorkflowEvidenceError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, PermissionError, RuntimeError) as exc:
             raise HTTPException(422, str(exc)) from exc
         emit(
             "owner.engineering.physical_evidence_verified",
