@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
 from urllib import error, request
 from urllib.parse import urljoin, urlsplit
 
@@ -19,14 +18,15 @@ class _NoRedirect(request.HTTPRedirectHandler):
 
 @dataclass(frozen=True)
 class HttpQualificationConfig:
-    allowed_hosts: tuple[str, ...]
+    allowed_hosts: tuple[str, ...] = ()
+    allowed_host_suffixes: tuple[str, ...] = ()
     paths: tuple[str, ...] = ("/", "/health")
     timeout_seconds: float = 15.0
     max_response_bytes: int = 512_000
 
     def __post_init__(self) -> None:
-        if not self.allowed_hosts:
-            raise ValueError("at least one allowed qualification host is required")
+        if not self.allowed_hosts and not self.allowed_host_suffixes:
+            raise ValueError("at least one allowed qualification host or suffix is required")
         if not self.paths:
             raise ValueError("at least one qualification path is required")
         if self.timeout_seconds <= 0:
@@ -36,6 +36,10 @@ class HttpQualificationConfig:
         for path in self.paths:
             if not path.startswith("/") or "?" in path or "#" in path:
                 raise ValueError("qualification paths must be absolute path-only values")
+        for suffix in self.allowed_host_suffixes:
+            value = suffix.strip().lower()
+            if not value.startswith(".") or value.count(".") < 2 or any(ch in value for ch in "/?#@:"):
+                raise ValueError("qualification host suffixes must be explicit DNS suffixes such as .example.com")
 
 
 class ReadOnlyHttpEnvironmentQualifier:
@@ -44,15 +48,26 @@ class ReadOnlyHttpEnvironmentQualifier:
     def __init__(self, config: HttpQualificationConfig) -> None:
         self.config = config
         self._allowed = {host.strip().lower() for host in config.allowed_hosts if host.strip()}
+        self._suffixes = tuple(
+            suffix.strip().lower() for suffix in config.allowed_host_suffixes if suffix.strip()
+        )
         self._opener = request.build_opener(_NoRedirect())
+
+    def _host_allowed(self, hostname: str) -> bool:
+        value = hostname.lower()
+        if value in self._allowed:
+            return True
+        return any(value.endswith(suffix) and value != suffix.lstrip(".") for suffix in self._suffixes)
 
     def _validate_target(self, target: str) -> str:
         parsed = urlsplit(target)
         if parsed.scheme != "https" or not parsed.hostname:
             raise HttpQualificationError("qualification target must use HTTPS")
+        if parsed.port not in {None, 443}:
+            raise HttpQualificationError("qualification target must use the standard HTTPS port")
         if parsed.username or parsed.password or parsed.query or parsed.fragment:
             raise HttpQualificationError("qualification target must not contain credentials, query, or fragment")
-        if parsed.hostname.lower() not in self._allowed:
+        if not self._host_allowed(parsed.hostname):
             raise HttpQualificationError("qualification target host is not allowlisted")
         return target.rstrip("/") + "/"
 
@@ -62,7 +77,14 @@ class ReadOnlyHttpEnvironmentQualifier:
         evidence: list[str] = []
         for path in self.config.paths:
             url = urljoin(root, path.lstrip("/"))
-            req = request.Request(url, method="GET", headers={"Accept": "text/html,application/json;q=0.9,*/*;q=0.1", "User-Agent": "Vishnu-Release-Qualification/1"})
+            req = request.Request(
+                url,
+                method="GET",
+                headers={
+                    "Accept": "text/html,application/json;q=0.9,*/*;q=0.1",
+                    "User-Agent": "Vishnu-Release-Qualification/1",
+                },
+            )
             key = f"GET {path}"
             try:
                 with self._opener.open(req, timeout=self.config.timeout_seconds) as response:
@@ -70,7 +92,9 @@ class ReadOnlyHttpEnvironmentQualifier:
                     body = response.read(self.config.max_response_bytes + 1)
                     bounded = len(body) <= self.config.max_response_bytes
                     checks[key] = 200 <= status < 400 and bounded
-                    evidence.append(f"{url} status={status} bytes={min(len(body), self.config.max_response_bytes + 1)}")
+                    evidence.append(
+                        f"{url} status={status} bytes={min(len(body), self.config.max_response_bytes + 1)}"
+                    )
             except (error.HTTPError, error.URLError, TimeoutError, HttpQualificationError) as exc:
                 checks[key] = False
                 code = getattr(exc, "code", None)
