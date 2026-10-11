@@ -69,15 +69,17 @@ def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[Ve
     responsive = bool(payload.get("responsive_passed", False))
     runtime = bool(payload.get("runtime_passed", False))
     visual = bool(payload.get("visual_passed", False))
+    candidate_revision = str(payload.get("candidate_revision") or "").strip()
     evidence_raw = payload.get("evidence", ())
     if isinstance(evidence_raw, str):
         evidence_raw = (evidence_raw,)
     evidence = tuple(str(item) for item in evidence_raw)  # type: ignore[arg-type]
+    metadata = {"candidate_revision": candidate_revision} if candidate_revision else {}
     observations = [
-        VerificationObservation("responsive", responsive, f"{browser} responsive qualification", evidence),
-        VerificationObservation(browser, responsive and runtime, f"{browser} compatibility qualification", evidence),
-        VerificationObservation("runtime", runtime, f"{browser} console/network/runtime qualification", evidence),
-        VerificationObservation("visual", visual, f"{browser} visual qualification", evidence),
+        VerificationObservation("responsive", responsive, f"{browser} responsive qualification", evidence, metadata=metadata),
+        VerificationObservation(browser, responsive and runtime, f"{browser} compatibility qualification", evidence, metadata=metadata),
+        VerificationObservation("runtime", runtime, f"{browser} console/network/runtime qualification", evidence, metadata=metadata),
+        VerificationObservation("visual", visual, f"{browser} visual qualification", evidence, metadata=metadata),
     ]
     optional = {
         "accessibility_passed": ("accessibility", "accessibility qualification"),
@@ -89,7 +91,7 @@ def observations_from_browser_payload(payload: Mapping[str, object]) -> tuple[Ve
     }
     for key, (gate, label) in optional.items():
         if key in payload:
-            observations.append(VerificationObservation(gate, bool(payload.get(key)), label, evidence))
+            observations.append(VerificationObservation(gate, bool(payload.get(key)), label, evidence, metadata=metadata))
     return tuple(observations)
 
 
