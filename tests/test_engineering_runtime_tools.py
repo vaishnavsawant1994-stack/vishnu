@@ -248,6 +248,12 @@ def test_repository_tools_are_model_visible_but_work_attempt_bound(tmp_path: Pat
     read_tool = registry.tools["repository_read"]
     read = read_tool.handler({"work_order_id": "work-eng", "attempt_id": attempt_id, "path": "src/app.py"})
     patch_tool = registry.tools["repository_apply_patch"]
+    with pytest.raises(PermissionError, match="Engineering Autonomy"):
+        patch_tool.handler({
+            "work_order_id": "work-eng", "attempt_id": attempt_id, "path": "src/app.py",
+            "old": "VALUE = 1", "new": "VALUE = 2", "expected_sha256": read["sha256"],
+        })
+    runtime.owner_policy.update(mode="workspace")
     result = patch_tool.handler({
         "work_order_id": "work-eng", "attempt_id": attempt_id, "path": "src/app.py",
         "old": "VALUE = 1", "new": "VALUE = 2", "expected_sha256": read["sha256"],
