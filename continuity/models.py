@@ -16,6 +16,24 @@ def _json(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
 
 
+def _validated_intelligence_binding(manifest_id: str, fingerprint: str) -> dict[str, str]:
+    manifest_id = str(manifest_id or "").strip()
+    fingerprint = str(fingerprint or "").strip().lower()
+    if bool(manifest_id) != bool(fingerprint):
+        raise ValueError("intelligence manifest id and fingerprint must be supplied together")
+    if not manifest_id:
+        return {}
+    if len(fingerprint) != 64 or any(char not in "0123456789abcdef" for char in fingerprint):
+        raise ValueError("intelligence manifest fingerprint must be a 64-character hexadecimal digest")
+    expected_id = f"vim-{fingerprint[:24]}"
+    if manifest_id != expected_id:
+        raise ValueError("intelligence manifest id does not match its fingerprint")
+    return {
+        "intelligence_manifest_id": manifest_id,
+        "intelligence_manifest_fingerprint": fingerprint,
+    }
+
+
 class AuthorityStatus(StrEnum):
     ACTIVE = "active"
     FENCED = "fenced"
@@ -87,9 +105,17 @@ class ContinuityCheckpoint:
     data_manifest_hash: str
     active_body_revision_id: str | None
     active_body_git_revision: str | None
+    intelligence_manifest_id: str = ""
+    intelligence_manifest_fingerprint: str = ""
     schema_versions: Mapping[str, tuple[int, ...]] = field(default_factory=dict)
     state_summary: Mapping[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now_iso)
+
+    def intelligence_binding(self) -> dict[str, str]:
+        return _validated_intelligence_binding(
+            self.intelligence_manifest_id,
+            self.intelligence_manifest_fingerprint,
+        )
 
     @property
     def checkpoint_hash(self) -> str:
@@ -108,10 +134,11 @@ class ContinuityCheckpoint:
             "state_summary": dict(self.state_summary),
             "created_at": self.created_at,
         }
+        payload.update(self.intelligence_binding())
         return hashlib.sha256(_json(payload).encode("utf-8")).hexdigest()
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        data = {
             "id": self.id,
             "source_host_id": self.source_host_id,
             "authority_epoch": self.authority_epoch,
@@ -125,8 +152,10 @@ class ContinuityCheckpoint:
             "schema_versions": {key: list(value) for key, value in self.schema_versions.items()},
             "state_summary": dict(self.state_summary),
             "created_at": self.created_at,
-            "checkpoint_hash": self.checkpoint_hash,
         }
+        data.update(self.intelligence_binding())
+        data["checkpoint_hash"] = self.checkpoint_hash
+        return data
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> "ContinuityCheckpoint":
@@ -141,6 +170,8 @@ class ContinuityCheckpoint:
             data_manifest_hash=str(data["data_manifest_hash"]),
             active_body_revision_id=data.get("active_body_revision_id"),
             active_body_git_revision=data.get("active_body_git_revision"),
+            intelligence_manifest_id=str(data.get("intelligence_manifest_id") or ""),
+            intelligence_manifest_fingerprint=str(data.get("intelligence_manifest_fingerprint") or ""),
             schema_versions={
                 str(key): tuple(int(version) for version in value)
                 for key, value in dict(data.get("schema_versions") or {}).items()
