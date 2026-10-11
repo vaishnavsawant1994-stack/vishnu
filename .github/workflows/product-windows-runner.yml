@@ -38,7 +38,7 @@ jobs:
           python packaging/product_desktop_container_runner.py .runner-windows/windows.vishnu-build-job --output .runner-windows/output --allow-unsigned-job | Tee-Object -FilePath .runner-windows/runner.log
           Get-Content .runner-windows/runner.log | Select-Object -Last 1 | Set-Content .runner-windows/result.json
           python -m json.tool .runner-windows/result.json
-      - name: Verify Windows executable and runner evidence
+      - name: Verify Windows executable, runtime and runner evidence
         shell: pwsh
         run: |
           @'
@@ -57,10 +57,24 @@ jobs:
           assert artifact.stat().st_size > 100000
           print(artifact)
           '@ | python -
+          $Artifact = python -c 'import json;print(json.load(open(".runner-windows/result.json"))["artifact"])'
+          & $Artifact --check-file .runner-windows/runtime-check.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import json
+          from pathlib import Path
+          status=json.loads(Path('.runner-windows/runtime-check.json').read_text())
+          assert status['ok'] is True
+          assert status['schema']=='vishnu.desktop-product-runtime/v1'
+          assert status['owner_source_bundled'] is False
+          assert status['credentials_bundled'] is False
+          assert status['component_count']==1
+          '@ | python -
       - uses: actions/upload-artifact@v4
         with:
           name: our-products-windows-exe-qualification
           path: |
             .runner-windows/output/*.exe
             .runner-windows/result.json
+            .runner-windows/runtime-check.json
           if-no-files-found: error
