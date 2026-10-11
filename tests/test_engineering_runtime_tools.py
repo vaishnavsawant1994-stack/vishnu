@@ -195,6 +195,19 @@ def build_runtime(tmp_path: Path, *, prepare: bool = True):
     return runtime, store, provider, coordinator
 
 
+def latest_attempt_status(store: DurableWorkStore, work_order_id: str) -> str | None:
+    row = store.connection.execute(
+        """
+        SELECT status FROM work_attempts
+        WHERE work_order_id = ?
+        ORDER BY attempt_number DESC
+        LIMIT 1
+        """,
+        (work_order_id,),
+    ).fetchone()
+    return None if row is None else str(row["status"])
+
+
 def test_runtime_prepares_canonical_isolated_workspace_and_commits_locally(tmp_path: Path):
     runtime, store, provider, coordinator = build_runtime(tmp_path)
     assert coordinator is not None
@@ -293,8 +306,7 @@ def test_interrupted_verification_marks_recovery_required_without_losing_candida
         executor.execute("work-eng", runtime_epoch=8, base_revision=BASE)
     order = store.get_order("work-eng")
     assert order is not None and order.status is WorkOrderStatus.RECOVERY_REQUIRED
-    attempts = store.list_attempts("work-eng")
-    assert attempts and attempts[-1].status.value == "recovery_required"
+    assert latest_attempt_status(store, "work-eng") == "recovery_required"
     assert store.get_lease("work-eng") is None
     assert provider.revision == COMMITTED
     assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
@@ -321,6 +333,5 @@ def test_reviewer_outage_preserves_candidate_in_verifying_state(tmp_path: Path):
     assert any("review unavailable" in item for item in result.qualification["limitations"])
     order = store.get_order("work-eng")
     assert order is not None and order.status is WorkOrderStatus.VERIFYING
-    attempts = store.list_attempts("work-eng")
-    assert attempts and attempts[-1].status.value == "succeeded"
+    assert latest_attempt_status(store, "work-eng") == "succeeded"
     assert (provider.session.local_path / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 2\n"
