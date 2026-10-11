@@ -18,11 +18,11 @@ _BUILDERS = {
     "web": TargetBuilder("web", ("web_bundle",), False, "web"),
     "pwa": TargetBuilder("pwa", ("pwa_bundle",), False, "web"),
     "android": TargetBuilder("android", ("apk", "aab"), True, "android"),
-    "ios": TargetBuilder("ios", ("xcarchive",), True, "ios"),
+    "ios": TargetBuilder("ios", ("ipa", "xcarchive", "ios-simulator-app"), True, "ios"),
     "windows": TargetBuilder("windows", ("exe", "msi"), True, "windows"),
     "macos": TargetBuilder("macos", ("app", "dmg", "pkg"), True, "macos"),
     "linux": TargetBuilder("linux", ("appimage", "deb", "rpm"), False, "linux"),
-    "docker": TargetBuilder("docker", ("oci_image",), True, "docker"),
+    "docker": TargetBuilder("docker", ("oci_image", "oci_archive"), True, "docker"),
     "api": TargetBuilder("api", ("api_bundle", "oci_image"), True, "server"),
     "worker": TargetBuilder("worker", ("worker_bundle", "oci_image"), True, "server"),
 }
