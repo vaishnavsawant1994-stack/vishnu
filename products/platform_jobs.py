@@ -9,11 +9,11 @@ import secrets
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 
 from .build_lifecycle import NATIVE_SIGNED_TARGETS, ProductBuildLifecycle
 from .builders import build_plan
 from .package_export import distribution_safe_manifest
+from .platform_runners import PlatformRunnerError, validate_runner_evidence
 from .runtime import ProductRuntimeSpec
 from .signing import canonical_json, sha256_bytes, sign_payload
 from .versioning import frozen_version
@@ -76,12 +76,13 @@ def _filename(value: str) -> str:
 
 
 class ProductPlatformBuildJobs:
-    """Create signed build jobs and accept artifacts from a dedicated platform runner.
+    """Create signed build jobs and accept evidence-bound external artifacts.
 
     Owner HTTP routes are not allowed to manufacture artifact evidence. Platform
     compilers run outside the Vishnu web process and authenticate with a dedicated
-    runner credential before this adapter is allowed to register their output as
-    verified-builder evidence.
+    runner credential. Their result must also provide target-specific runner
+    evidence bound to product/build/version/target/filename/SHA before artifact
+    authority can be registered.
     """
 
     def __init__(self, store, lifecycle: ProductBuildLifecycle, artifact_root: Path):
@@ -195,6 +196,42 @@ class ProductPlatformBuildJobs:
             raise PlatformBuildJobError(f"Build {build_id} cannot enter runner execution from {build['status']}")
         return build
 
+    def _validated_evidence(
+        self,
+        *,
+        build: dict,
+        product_id: str,
+        build_id: str,
+        filename: str,
+        checksum: str,
+        runner_evidence: dict,
+    ):
+        try:
+            evidence = validate_runner_evidence(runner_evidence)
+        except PlatformRunnerError as exc:
+            raise PlatformBuildJobError(str(exc)) from exc
+        expected = {
+            "product_id": product_id,
+            "build_id": build_id,
+            "version": str(build["version"]),
+            "target": str(build["target"]),
+            "artifact_name": filename,
+            "sha256": checksum,
+        }
+        actual = {
+            "product_id": evidence.product_id,
+            "build_id": evidence.build_id,
+            "version": evidence.version,
+            "target": evidence.target,
+            "artifact_name": evidence.artifact_name,
+            "sha256": evidence.sha256,
+        }
+        if actual != expected:
+            raise PlatformBuildJobError("Runner evidence identity does not match the requested build artifact")
+        if not evidence.compiler_verified:
+            raise PlatformBuildJobError("Runner evidence does not verify target compilation")
+        return evidence
+
     def accept_artifact(
         self,
         product_id: str,
@@ -203,8 +240,7 @@ class ProductPlatformBuildJobs:
         filename: str,
         expected_sha256: str,
         payload: bytes,
-        platform_signing_verified: bool,
-        runner_metadata: dict | None = None,
+        runner_evidence: dict,
     ) -> dict:
         raw = self._raw_build(product_id, build_id)
         if raw is None:
@@ -224,7 +260,14 @@ class ProductPlatformBuildJobs:
         expected = str(expected_sha256 or "").strip().lower()
         if not re.fullmatch(r"[0-9a-f]{64}", expected) or checksum != expected:
             raise PlatformBuildJobError("Runner artifact SHA-256 does not match the supplied digest")
-        signing_verified = bool(platform_signing_verified) if target in NATIVE_SIGNED_TARGETS else False
+        evidence = self._validated_evidence(
+            build=build,
+            product_id=product_id,
+            build_id=build_id,
+            filename=safe_name,
+            checksum=checksum,
+            runner_evidence=runner_evidence,
+        )
 
         if build["status"] in {"requested", "queued"}:
             build = self.mark_running(product_id, build_id)
@@ -251,22 +294,29 @@ class ProductPlatformBuildJobs:
         metadata = dict(raw.get("metadata") or {})
         metadata["platform_runner"] = {
             "received_at": _now(),
-            "platform_signing_verified": signing_verified,
-            "reported": dict(runner_metadata or {}),
+            "evidence": evidence.as_dict(),
         }
         with self.store.con() as con:
             con.execute(
                 "UPDATE product_builds SET metadata_json=? WHERE id=? AND product_id=?",
                 (json.dumps(metadata, sort_keys=True, separators=(",", ":")), build_id, product_id),
             )
-        uri = f"{_ARTIFACT_SCHEME}://{product_id}/{build_id}/{safe_name}"
+
+        # Only production-ready platform evidence is allowed to create the URI
+        # and digest pair that ProductBuildLifecycle interprets as distributable.
+        # Development/debug artifacts are retained for diagnostics but remain
+        # non-downloadable from the production artifact endpoint.
+        production_ready = evidence.production_ready
+        uri = f"{_ARTIFACT_SCHEME}://{product_id}/{build_id}/{safe_name}" if production_ready else ""
+        registered_checksum = checksum if production_ready else ""
+        signing_verified = production_ready if target in NATIVE_SIGNED_TARGETS else False
         return self.lifecycle.update(
             product_id,
             build_id,
             status="succeeded",
             artifact_name=safe_name,
             artifact_uri=uri,
-            checksum=checksum,
+            checksum=registered_checksum,
             signing_verified=signing_verified,
             failure_reason="",
             verified_builder=True,
