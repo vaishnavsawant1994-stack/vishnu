@@ -3,7 +3,9 @@ import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+const context = await browser.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: "block", reducedMotion: "reduce" });
+const page = await context.newPage();
+await page.route("https://accounts.google.com/**", route => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
 await page.route("**/iphone/api/**", route => {
   const path = new URL(route.request().url()).pathname;
   if (path.endsWith("/status")) return route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ detail: "Owner verification required" }) });
@@ -29,5 +31,6 @@ try {
   assert.ok(focus && focus.width > 0 && focus.height > 0, `keyboard focus must remain visible: ${JSON.stringify(focus)}`);
   console.log(`Accessibility qualification passed with ${results.passes.length} axe passes and no critical/serious violations.`);
 } finally {
+  await context.close();
   await browser.close();
 }
