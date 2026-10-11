@@ -33,6 +33,7 @@ class EngineeringOwnerPolicy:
     evidence_retention_days: int = 30
     max_model_cost_per_work: float | None = None
     physical_device_required: bool = False
+    physical_device_auto_dispatch: bool = False
     performance_required: bool = True
     localization_required: bool = True
     three_d_required: bool = True
@@ -67,6 +68,7 @@ class EngineeringOwnerPolicy:
             "evidence_retention_days": self.evidence_retention_days,
             "max_model_cost_per_work": self.max_model_cost_per_work,
             "physical_device_required": self.physical_device_required,
+            "physical_device_auto_dispatch": self.physical_device_auto_dispatch,
             "performance_required": self.performance_required,
             "localization_required": self.localization_required,
             "three_d_required": self.three_d_required,
@@ -92,6 +94,7 @@ class EngineeringOwnerPolicy:
             evidence_retention_days=int(raw.get("evidence_retention_days", 30)),
             max_model_cost_per_work=(None if raw.get("max_model_cost_per_work") in {None, ""} else float(raw["max_model_cost_per_work"])),
             physical_device_required=bool(raw.get("physical_device_required", False)),
+            physical_device_auto_dispatch=bool(raw.get("physical_device_auto_dispatch", False)),
             performance_required=bool(raw.get("performance_required", True)),
             localization_required=bool(raw.get("localization_required", True)),
             three_d_required=bool(raw.get("three_d_required", True)),
@@ -129,6 +132,7 @@ class EngineeringOwnerPolicy:
             "preview_enabled": self.preview_enabled,
             "performance_required": self.performance_required,
             "physical_device_required": bool(self.physical_device_required and ui_change),
+            "physical_device_auto_dispatch": bool(self.physical_device_auto_dispatch and self.physical_device_required and ui_change),
             "localization_required": bool(self.localization_required and ui_change),
             "three_d_required": bool(self.three_d_required and ui_change),
             "max_model_cost_per_work": self.max_model_cost_per_work,
