@@ -41,7 +41,9 @@ class ProductBuildLifecycle:
 
     The foundation store intentionally records only a truthful build request. This
     companion store adds monotonic build numbers and adapter lifecycle state while
-    keeping artifact readiness derived from evidence rather than client claims.
+    keeping artifact readiness derived from verified build evidence rather than UI
+    claims. Raw artifact evidence is accepted only from an internal caller that sets
+    ``verified_builder=True``.
     """
 
     def __init__(self, path: Path):
@@ -84,41 +86,66 @@ class ProductBuildLifecycle:
             "SELECT * FROM product_builds WHERE id=? AND product_id=?", (build_id, product_id)
         ).fetchone()
 
+    def _backfill_product(self, con, product_id: str):
+        """Assign chronological build numbers, including pre-upgrade build requests."""
+        builds = con.execute(
+            "SELECT * FROM product_builds WHERE product_id=? ORDER BY created_at ASC,id ASC",
+            (product_id,),
+        ).fetchall()
+        lifecycle_rows = con.execute(
+            "SELECT * FROM product_build_lifecycle WHERE product_id=?", (product_id,)
+        ).fetchall()
+        existing = {row["build_id"]: dict(row) for row in lifecycle_rows}
+        expected = {row["id"]: index for index, row in enumerate(builds, start=1)}
+        if len(existing) == len(builds) and all(
+            int(existing[build_id]["build_number"]) == number
+            for build_id, number in expected.items()
+        ):
+            return
+
+        # Move current numbers out of the positive namespace first so UNIQUE does
+        # not obstruct deterministic renumbering during a migration/backfill.
+        con.execute(
+            "UPDATE product_build_lifecycle SET build_number=-(build_number+1000000) WHERE product_id=?",
+            (product_id,),
+        )
+        stamp = _now()
+        for number, build in enumerate(builds, start=1):
+            current = existing.get(build["id"])
+            if current:
+                con.execute(
+                    "UPDATE product_build_lifecycle SET build_number=?,updated_at=? WHERE build_id=?",
+                    (number, stamp, build["id"]),
+                )
+            else:
+                con.execute(
+                    """INSERT INTO product_build_lifecycle(
+                           build_id,product_id,build_number,status,artifact_uri,signing_verified,
+                           failure_reason,created_at,updated_at
+                       ) VALUES(?,?,?,?,?,?,?,?,?)""",
+                    (
+                        build["id"],
+                        product_id,
+                        number,
+                        str(build["status"] or "requested"),
+                        None,
+                        0,
+                        "",
+                        stamp,
+                        stamp,
+                    ),
+                )
+
     def ensure(self, build: dict):
         if not build or not build.get("id") or not build.get("product_id"):
             raise ValueError("A valid build request is required")
         with self.lock, self.con() as con:
-            existing = con.execute(
-                "SELECT * FROM product_build_lifecycle WHERE build_id=?", (build["id"],)
-            ).fetchone()
-            if existing:
-                return self.decorate(build, lifecycle=dict(existing))
-            row = con.execute(
-                "SELECT COALESCE(MAX(build_number),0)+1 next_number FROM product_build_lifecycle WHERE product_id=?",
-                (build["product_id"],),
-            ).fetchone()
-            build_number = int(row["next_number"] if row else 1)
-            stamp = _now()
-            con.execute(
-                """INSERT INTO product_build_lifecycle(
-                       build_id,product_id,build_number,status,artifact_uri,signing_verified,
-                       failure_reason,created_at,updated_at
-                   ) VALUES(?,?,?,?,?,?,?,?,?)""",
-                (
-                    build["id"],
-                    build["product_id"],
-                    build_number,
-                    str(build.get("status") or "requested"),
-                    None,
-                    0,
-                    "",
-                    stamp,
-                    stamp,
-                ),
-            )
+            self._backfill_product(con, build["product_id"])
             lifecycle = con.execute(
                 "SELECT * FROM product_build_lifecycle WHERE build_id=?", (build["id"],)
             ).fetchone()
+        if not lifecycle:
+            raise ValueError("Build lifecycle could not be initialized")
         return self.decorate(build, lifecycle=dict(lifecycle))
 
     def decorate(self, build: dict, *, lifecycle: dict | None = None):
@@ -178,23 +205,25 @@ class ProductBuildLifecycle:
         checksum: str | None = None,
         signing_verified: bool | None = None,
         failure_reason: str | None = None,
+        verified_builder: bool = False,
     ):
+        evidence_supplied = any(
+            item is not None
+            for item in (artifact_name, artifact_uri, checksum, signing_verified)
+        )
+        if evidence_supplied and not verified_builder:
+            raise ValueError("Artifact evidence may only be recorded by a verified builder adapter")
+
         with self.lock, self.con() as con:
             build = self._build_exists(con, build_id, product_id)
             if not build:
                 return None
             base = dict(build)
             base["metadata"] = _loads(base.pop("metadata_json", "{}"), {})
-            row = con.execute(
-                "SELECT * FROM product_build_lifecycle WHERE build_id=?", (build_id,)
-            ).fetchone()
-            if not row:
-                # Leave the transaction before ensure() opens its own connection.
-                con.commit()
-        if row is None:
-            self.ensure(base)
+        self.ensure(base)
 
         with self.lock, self.con() as con:
+            build = self._build_exists(con, build_id, product_id)
             row = con.execute(
                 "SELECT * FROM product_build_lifecycle WHERE build_id=?", (build_id,)
             ).fetchone()
@@ -219,10 +248,6 @@ class ProductBuildLifecycle:
                 if failure_reason is not None
                 else current["failure_reason"]
             )
-            if next_status == "succeeded" and not (next_artifact_name and next_artifact_uri and next_checksum):
-                # A builder may finish successfully without producing an installable artifact
-                # (for example, a validation-only run). Keep readiness false; do not invent evidence.
-                pass
             stamp = _now()
             con.execute(
                 """UPDATE product_build_lifecycle
