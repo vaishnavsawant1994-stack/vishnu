@@ -81,6 +81,22 @@ def _checkpoint(tmp_path):
     return root
 
 
+def _runtime(tmp_path, *, training_registry=None):
+    runtime = PortableIntelligenceRuntime(
+        tmp_path / "runtime",
+        model_router=FakeRouter(),
+        settings=SimpleNamespace(
+            local_ai_model_tier="small",
+            local_ai_min_ram_gb=1.0,
+            local_ai_min_vram_gb=0.0,
+        ),
+        training_registry=training_registry,
+        vault_persistent=True,
+    )
+    runtime.hardware = FixedHardware()
+    return runtime
+
+
 def test_portable_model_bundle_is_deterministic_and_inventory_bound(tmp_path):
     checkpoint = _checkpoint(tmp_path)
     inventory_sha = checkpoint_inventory_sha256(checkpoint)
@@ -136,18 +152,7 @@ def test_active_trained_directory_enters_restore_package_vault_and_offline_pack(
         metrics={"artifact_sha256": inventory_sha},
     )
     registry = FakeTrainingRegistry(model)
-    runtime = PortableIntelligenceRuntime(
-        tmp_path / "runtime",
-        model_router=FakeRouter(),
-        settings=SimpleNamespace(
-            local_ai_model_tier="small",
-            local_ai_min_ram_gb=1.0,
-            local_ai_min_vram_gb=0.0,
-        ),
-        training_registry=registry,
-        vault_persistent=True,
-    )
-    runtime.hardware = FixedHardware()
+    runtime = _runtime(tmp_path, training_registry=registry)
 
     package = runtime.publish_current_restore_package(core_version="test-revision")
     assert len(package.artifacts) == 1
@@ -165,3 +170,31 @@ def test_active_trained_directory_enters_restore_package_vault_and_offline_pack(
     assert offline.local_artifacts["model-active"] == artifact.sha256
     assert offline.manifest.artifacts[0].artifact_id == "model-active"
     assert runtime.status()["active_trained_model_artifact_included"] is True
+
+
+def test_failed_checkpoint_packaging_does_not_change_active_identity(tmp_path):
+    runtime = _runtime(tmp_path)
+    original_package = runtime.publish_current_restore_package(core_version="stable-revision")
+    original_manifest = runtime.manifests.active()
+    assert original_manifest is not None
+
+    broken_model = SimpleNamespace(
+        model_id="model-active",
+        checkpoint_ref=str(tmp_path / "missing-checkpoint"),
+        method="lora",
+        created_at="2026-10-11T00:00:00+00:00",
+        metrics={},
+    )
+    runtime.training_registry = FakeTrainingRegistry(broken_model)
+
+    with pytest.raises(RuntimeError, match="checkpoint is missing or unsafe"):
+        runtime.publish_current_restore_package(core_version="should-not-activate")
+
+    active_manifest = runtime.manifests.active()
+    active_package = runtime.active_restore_package()
+    assert active_manifest is not None
+    assert active_manifest.manifest_id == original_manifest.manifest_id
+    assert active_manifest.fingerprint == original_manifest.fingerprint
+    assert active_package is not None
+    assert active_package.package_id == original_package.package_id
+    assert active_package.manifest.manifest_id == original_manifest.manifest_id
