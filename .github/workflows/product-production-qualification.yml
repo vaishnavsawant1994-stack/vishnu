@@ -1,0 +1,238 @@
+name: Our Products Production Qualification
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Product platform to qualify
+        required: true
+        type: choice
+        options:
+          - android
+          - ios
+          - windows
+          - macos
+          - linux
+          - docker
+      execute:
+        description: Claim and build one real queued production product after preflight
+        required: true
+        type: boolean
+        default: false
+      runner_id:
+        description: Stable runner installation ID used for lease/evidence tracking
+        required: true
+        type: string
+        default: github-production-qualification
+
+permissions:
+  contents: read
+
+concurrency:
+  group: our-products-production-${{ inputs.target }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: production-${{ inputs.target }}
+    runs-on: ${{ fromJSON('{"android":"ubuntu-latest","ios":"macos-latest","windows":"windows-latest","macos":"macos-latest","linux":"ubuntu-latest","docker":"ubuntu-latest"}')[inputs.target] }}
+    environment:
+      name: product-${{ inputs.target }}-production
+    env:
+      VISHNU_PRODUCT_RUNNER_ID: ${{ inputs.runner_id }}
+      VISHNU_PRODUCT_RUNNER_HEARTBEAT_SECONDS: "60"
+      VISHNU_PRODUCT_RUNNER_POLL_SECONDS: "30"
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+
+      - if: inputs.target == 'android'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - if: inputs.target == 'android'
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Add Windows SDK signing tools to PATH
+        if: inputs.target == 'windows'
+        shell: pwsh
+        run: |
+          $root = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          if (-not $root) { throw 'ProgramFiles(x86) is unavailable' }
+          $kits = Join-Path $root 'Windows Kits\10\bin'
+          $signTool = Get-ChildItem -Path $kits -Filter signtool.exe -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $signTool) { throw 'Windows signtool.exe is unavailable' }
+          $signTool.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - if: inputs.target == 'docker'
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+      - name: Install pinned cosign CLI
+        if: inputs.target == 'docker'
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/sigstore/cosign/v2/cmd/cosign@v2.4.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Materialize protected target files
+        shell: python
+        env:
+          QUALIFICATION_TARGET: ${{ inputs.target }}
+          VISHNU_ANDROID_KEYSTORE_B64: ${{ secrets.VISHNU_ANDROID_KEYSTORE_B64 }}
+          VISHNU_DOCKER_COSIGN_KEY_B64: ${{ secrets.VISHNU_DOCKER_COSIGN_KEY_B64 }}
+          VISHNU_IOS_PROVISIONING_PROFILE_B64: ${{ secrets.VISHNU_IOS_PROVISIONING_PROFILE_B64 }}
+          VISHNU_APPLE_SIGNING_CERT_P12_B64: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_P12_B64 }}
+        run: |
+          import base64,os
+          from pathlib import Path
+          target=os.environ['QUALIFICATION_TARGET']
+          root=Path(os.environ['RUNNER_TEMP'])/'vishnu-product-production'
+          root.mkdir(parents=True,exist_ok=True)
+          mappings={
+              'android':('VISHNU_ANDROID_KEYSTORE_B64','VISHNU_ANDROID_KEYSTORE_PATH','client-product.jks'),
+              'docker':('VISHNU_DOCKER_COSIGN_KEY_B64','VISHNU_DOCKER_COSIGN_KEY','cosign.key'),
+              'ios':('VISHNU_IOS_PROVISIONING_PROFILE_B64','VISHNU_IOS_PROVISIONING_PROFILE','client.mobileprovision'),
+          }
+          if target in mappings:
+              source,destination,name=mappings[target]
+              raw=os.environ.get(source,'').strip()
+              if raw:
+                  path=root/name
+                  path.write_bytes(base64.b64decode(raw,validate=True))
+                  with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as stream:
+                      stream.write(f'{destination}={path}\n')
+          apple=os.environ.get('VISHNU_APPLE_SIGNING_CERT_P12_B64','').strip()
+          if target in {'ios','macos'} and apple:
+              path=root/'apple-signing.p12'
+              path.write_bytes(base64.b64decode(apple,validate=True))
+              with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as stream:
+                  stream.write(f'VISHNU_APPLE_SIGNING_CERT_PATH={path}\n')
+
+      - name: Configure temporary Apple signing keychain
+        if: inputs.target == 'ios' || inputs.target == 'macos'
+        shell: bash
+        env:
+          VISHNU_APPLE_SIGNING_CERT_PASSWORD: ${{ secrets.VISHNU_APPLE_SIGNING_CERT_PASSWORD }}
+          VISHNU_APPLE_SIGNING_IDENTITY: ${{ secrets.VISHNU_APPLE_SIGNING_IDENTITY }}
+        run: |
+          set -euo pipefail
+          test -n "${VISHNU_APPLE_SIGNING_CERT_PATH:-}"
+          test -n "${VISHNU_APPLE_SIGNING_CERT_PASSWORD:-}"
+          test -n "${VISHNU_APPLE_SIGNING_IDENTITY:-}"
+          KEYCHAIN="$RUNNER_TEMP/vishnu-product-production.keychain-db"
+          KEYCHAIN_PASSWORD="$(python -c 'import secrets;print(secrets.token_urlsafe(32))')"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$VISHNU_APPLE_SIGNING_CERT_PATH" -k "$KEYCHAIN" -P "$VISHNU_APPLE_SIGNING_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN"
+          security default-keychain -d user -s "$KEYCHAIN"
+          if ! security find-identity -v -p codesigning "$KEYCHAIN" | grep -F -- "$VISHNU_APPLE_SIGNING_IDENTITY" >/dev/null; then
+            echo "Configured Apple signing identity was not imported into the qualification keychain" >&2
+            exit 2
+          fi
+          if [ "${{ inputs.target }}" = "ios" ]; then
+            echo "VISHNU_IOS_SIGNING_IDENTITY=$VISHNU_APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          else
+            echo "VISHNU_MACOS_SIGNING_IDENTITY=$VISHNU_APPLE_SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configure temporary Apple notarization profile
+        if: inputs.target == 'macos'
+        shell: bash
+        env:
+          VISHNU_APPLE_NOTARY_APPLE_ID: ${{ secrets.VISHNU_APPLE_NOTARY_APPLE_ID }}
+          VISHNU_APPLE_NOTARY_TEAM_ID: ${{ secrets.VISHNU_APPLE_NOTARY_TEAM_ID }}
+          VISHNU_APPLE_NOTARY_APP_PASSWORD: ${{ secrets.VISHNU_APPLE_NOTARY_APP_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${VISHNU_APPLE_NOTARY_APPLE_ID:-}"
+          test -n "${VISHNU_APPLE_NOTARY_TEAM_ID:-}"
+          test -n "${VISHNU_APPLE_NOTARY_APP_PASSWORD:-}"
+          xcrun notarytool store-credentials vishnu-product-production \
+            --apple-id "$VISHNU_APPLE_NOTARY_APPLE_ID" \
+            --team-id "$VISHNU_APPLE_NOTARY_TEAM_ID" \
+            --password "$VISHNU_APPLE_NOTARY_APP_PASSWORD"
+          echo "VISHNU_MACOS_NOTARY_KEYCHAIN_PROFILE=vishnu-product-production" >> "$GITHUB_ENV"
+
+      - name: Production runner preflight
+        env:
+          VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64 }}
+          VISHNU_PRODUCT_RUNNER_TOKEN: ${{ secrets.VISHNU_PRODUCT_RUNNER_TOKEN }}
+          VISHNU_PRODUCT_RUNNER_BASE_URL: ${{ vars.VISHNU_PRODUCT_RUNNER_BASE_URL }}
+          VISHNU_ANDROID_KEY_ALIAS: ${{ secrets.VISHNU_ANDROID_KEY_ALIAS }}
+          VISHNU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEYSTORE_PASSWORD }}
+          VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
+          VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
+          VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
+        run: >-
+          python packaging/product_production_preflight.py
+          --scope worker
+          --target ${{ inputs.target }}
+          --require-ready
+          --output .production-qualification/preflight.json
+
+      - name: Claim, compile and return one real production build
+        if: inputs.execute == true
+        env:
+          VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.VISHNU_PRODUCT_SIGNING_PUBLIC_KEY_B64 }}
+          VISHNU_PRODUCT_RUNNER_TOKEN: ${{ secrets.VISHNU_PRODUCT_RUNNER_TOKEN }}
+          VISHNU_PRODUCT_RUNNER_BASE_URL: ${{ vars.VISHNU_PRODUCT_RUNNER_BASE_URL }}
+          VISHNU_ANDROID_KEY_ALIAS: ${{ secrets.VISHNU_ANDROID_KEY_ALIAS }}
+          VISHNU_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEYSTORE_PASSWORD }}
+          VISHNU_ANDROID_KEY_PASSWORD: ${{ secrets.VISHNU_ANDROID_KEY_PASSWORD }}
+          VISHNU_WINDOWS_SIGNING_CERT_B64: ${{ secrets.VISHNU_WINDOWS_SIGNING_CERT_B64 }}
+          VISHNU_WINDOWS_SIGNING_PASSWORD: ${{ secrets.VISHNU_WINDOWS_SIGNING_PASSWORD }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+        run: >-
+          python packaging/product_runner_worker.py
+          --target ${{ inputs.target }}
+          --once
+          > .production-qualification/worker.log 2>&1
+
+      - name: Verify end-to-end production authority
+        if: inputs.execute == true
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          lines=[line.strip() for line in Path('.production-qualification/worker.log').read_text(errors='replace').splitlines() if line.strip()]
+          if not lines:
+              raise SystemExit('Production worker did not emit a result')
+          try:
+              result=json.loads(lines[-1])
+          except Exception as exc:
+              raise SystemExit(f'Production worker final line is not JSON: {lines[-1][:300]}') from exc
+          Path('.production-qualification/result.json').write_text(json.dumps(result,sort_keys=True,indent=2)+'\n')
+          if result.get('status')=='idle':
+              raise SystemExit('No queued production build was available for this target; request/freeze a real product build and rerun qualification')
+          assert result.get('status')=='completed',result
+          assert result.get('target')=='${{ inputs.target }}',result
+          assert result.get('distribution_ready') is True,result
+          assert len(str(result.get('sha256') or ''))==64,result
+          assert result.get('product_id') and result.get('build_id') and result.get('artifact_name'),result
+
+      - name: Upload non-secret qualification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: our-products-production-${{ inputs.target }}-qualification
+          path: |
+            .production-qualification/preflight.json
+            .production-qualification/result.json
+            .production-qualification/worker.log
+          if-no-files-found: warn
+          retention-days: 30
