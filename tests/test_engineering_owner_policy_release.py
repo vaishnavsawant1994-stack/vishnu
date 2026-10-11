@@ -88,6 +88,11 @@ def test_owner_policy_can_only_narrow_engineering_budget_and_security(tmp_path: 
         store.snapshot().constrain_spec(make_spec(security_class=SecurityClass.SENSITIVE))
 
 
+def test_http_environment_qualification_requires_explicit_host_scope():
+    with pytest.raises(ValueError, match="allowed host"):
+        ReadOnlyHttpQualificationProvider((HttpQualificationProbe("health", "/health"),), allowed_hosts=())
+
+
 def test_http_environment_qualification_is_read_only_origin_bound_and_bounded():
     session = Session()
     provider = ReadOnlyHttpQualificationProvider(
