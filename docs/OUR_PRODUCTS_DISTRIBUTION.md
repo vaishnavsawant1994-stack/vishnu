@@ -83,9 +83,49 @@ The portable product describes the AI policy but never carries a raw provider ke
 
 No-AI products remain valid products; deterministic workflows, integrations and business logic must not require a model merely because the product was created in Vishnu.
 
+## Verified runtime artifacts
+
+Web, PWA, API and Worker targets have an owner-side verified runtime-bundle builder. These artifacts are separate from the portable `.vishnu-product` contract package.
+
+A verified runtime artifact can be generated only from a **frozen product version**. The builder:
+
+1. loads the immutable frozen manifest
+2. validates that the requested target is enabled in that frozen version
+3. runs the same distribution sanitizer used by portable-package export
+4. generates only the bounded client runtime files for the requested target
+5. writes the artifact atomically below the configured `product-artifacts` root
+6. calculates SHA-256 and re-reads the finished file to verify the digest
+7. registers artifact filename, controlled `product-artifact://` URI and checksum through `ProductBuildLifecycle` using verified-builder authority
+8. exposes download only while the file exists and its checksum still matches the registered evidence
+
+Download resolution rejects artifact URI/product mismatches, malformed paths, path traversal, files outside the artifact root, missing files and checksum changes.
+
+### Web runtime bundle
+
+The Web bundle contains a static `index.html`, `runtime.js`, `runtime.css`, sanitized `manifest.json`, a runtime-capability declaration and a README. It is a bounded product presentation/runtime shell and never embeds the owner's Vishnu application tree.
+
+### PWA runtime bundle
+
+The PWA bundle contains the Web runtime plus an application web manifest and service worker so it can be installed as a standalone browser application. It remains a client product shell; native APK/IPA claims require native platform builders.
+
+### API and Worker runtime bundles
+
+API and Worker bundles contain a standard-library Python runtime host, sanitized product manifest, runtime-capability declaration and README. The generated runtime can boot independently of the owner's Vishnu installation and exposes product/health contract endpoints.
+
+Actual agent/tool/work execution is intentionally declared as `runtime-connector-required`. The bundle does **not** silently copy Vishnu's owner agent/tool runtime. An approved client runtime connector or separately qualified execution runtime must be provisioned before `/invoke` can execute product work.
+
+## Artifact API boundary
+
+The trusted owner workspace can:
+
+- execute a requested Web/PWA/API/Worker build with `POST /iphone/api/products/{product_id}/builds/{build_id}/execute`
+- download a qualified artifact with `GET /iphone/api/products/{product_id}/builds/{build_id}/artifact`
+
+Build execution requires a current trusted owner request context. Downloads require a trusted Vishnu device/browser session. The server does not accept owner-supplied artifact filenames, paths, checksums or readiness flags through these endpoints.
+
 ## Native platform builds
 
-The product manifest can target Web/PWA, Android, iOS, Windows, macOS, Linux, Docker/server and API delivery. Target selection is not proof that a native artifact exists.
+The product manifest can target Web/PWA, Android, iOS, Windows, macOS, Linux, Docker/server, API and Worker delivery. Target selection is not proof that a native artifact exists.
 
 A native build becomes downloadable only after a target-specific builder has:
 
@@ -97,8 +137,10 @@ A native build becomes downloadable only after a target-specific builder has:
 6. passed target qualification
 7. registered the exact artifact against the product build record
 
-Until those conditions are met, Our Products records the build as requested/pending and must not claim that an APK, AAB, IPA, MSI/EXE, DMG or other binary is ready.
+Until those conditions are met, Our Products records the build as requested/pending and must not claim that an APK, AAB, IPA, MSI/EXE, DMG, PKG, OCI image or other platform artifact is ready.
 
 ## Current implementation boundary
 
-The portable `.vishnu-product` package, product signing, product-license issuance/revocation, owner download APIs, package verification and license verification are implemented. Target-specific native product builders are a separate qualification stage and remain explicitly pending until implemented and tested.
+Implemented and qualified foundations include the portable `.vishnu-product` package, product signing, product-license issuance/revocation, package/license verification, immutable product versions, build lifecycle authority, and owner distribution APIs.
+
+This tranche adds real verified **Web, PWA, API and Worker ZIP runtime artifacts** with checksum-bound downloads. It deliberately does not convert those artifacts into native mobile/desktop installers or OCI images. Android, iOS, Windows, macOS, Linux packaging and container-image production remain separate platform-runner qualification stages and stay fail-closed until implemented, signed where required, tested and registered with verified evidence.
