@@ -15,9 +15,11 @@ from models.intelligence import IntelligenceEngine
 from models.intelligence_settings import IntelligenceSettingsService
 from models.performance import ModelPerformanceTracker
 from models.performance_routing import attach_performance_routing
+from models.portable_runtime import PortableIntelligenceRuntime
 from training import (
     AutoTrainingCoordinator,
     AutoTrainingRuntime,
+    ContributionSettingsService,
     LocalCheckpointEvaluator,
     LocalPeftTrainerBackend,
     ModelDeploymentController,
@@ -29,6 +31,7 @@ from training import (
     TrainingRegistry,
     TrainingSettingsService,
 )
+from training.specialists import SpecialistAdapterRegistry
 
 
 def attach_e9_runtime(runtime: dict) -> dict:
@@ -94,9 +97,12 @@ def attach_e9_runtime(runtime: dict) -> dict:
     # Governed auto-training: approved datasets only, immutable source-grouped
     # snapshots, real optional PEFT training, current-baseline evaluation,
     # persistent lineage and a distinct live-shadow and release boundary.
-    # Missing ML/serving dependencies fail closed rather than simulating success.
     training_settings = TrainingSettingsService(
         runtime["settings"].data_dir / "training-settings.json",
+        events=events,
+    )
+    contribution_settings = ContributionSettingsService(
+        runtime["settings"].data_dir / "contribution-settings.json",
         events=events,
     )
     training_snapshots = TrainingDatasetSnapshotBuilder(
@@ -104,6 +110,10 @@ def attach_e9_runtime(runtime: dict) -> dict:
         runtime["settings"].data_dir / "training-datasets",
     )
     training_registry = TrainingRegistry(runtime["settings"].data_dir / "training-registry.sqlite3")
+    specialist_registry = SpecialistAdapterRegistry(
+        runtime["settings"].data_dir / "specialist-adapters.sqlite3",
+        training_registry,
+    )
 
     def active_training_baseline():
         governance = getattr(training_registry, 'governance', None)
@@ -115,20 +125,21 @@ def attach_e9_runtime(runtime: dict) -> dict:
         return training_registry.get_model(active['model_id'])
 
     training_evaluator = LocalCheckpointEvaluator(baseline_provider=active_training_baseline)
+    training_backends = {"local_peft": LocalPeftTrainerBackend()}
+    remote_gpu_backend = runtime.get("remote_gpu_training_backend")
+    if remote_gpu_backend is not None:
+        training_backends[str(remote_gpu_backend.backend_id)] = remote_gpu_backend
     training_coordinator = AutoTrainingCoordinator(
         settings=training_settings,
         candidates=training_store,
         snapshots=training_snapshots,
         registry=training_registry,
-        backends={"local_peft": LocalPeftTrainerBackend()},
+        backends=training_backends,
         evaluator=training_evaluator,
         output_root=runtime["settings"].data_dir / "trained-models",
         events=events,
     )
     auto_training = AutoTrainingRuntime(training_coordinator, events=events)
-    # Candidate serving is deliberately not guessed. An owner-approved local or
-    # remote shadow backend may be attached by deployment configuration. Shadow
-    # results remain non-authoritative and only create promotion eligibility.
     shadow_qualification = ShadowQualificationRuntime(
         training_registry,
         training_settings,
@@ -136,27 +147,48 @@ def attach_e9_runtime(runtime: dict) -> dict:
         events=events,
     )
     intelligence.shadow_hook = shadow_qualification.observe_request
-    # No production deployment backend is silently assumed. A serving backend
-    # must be explicitly configured by the release environment, after which the
-    # controller still requires owner approval + exact checkpoint confirmation.
-    # Automatic rollback, when enabled, is callable only by a trusted release
-    # health monitor and still requires a configured backend + known-good parent.
     model_deployment = ModelDeploymentController(
         training_registry,
         backends={},
         events=events,
         settings=training_settings,
     )
+    portable = PortableIntelligenceRuntime(
+        runtime["settings"].data_dir,
+        model_router=base_router,
+        settings=runtime["settings"],
+        training_registry=training_registry,
+        specialist_registry=specialist_registry,
+        events=events,
+        vault_persistent=str(os.environ.get("VISHNU_INTELLIGENCE_VAULT_PERSISTENT") or "").lower().strip() in {"1", "true", "yes", "on"},
+    )
     runtime.update({
         "training_settings": training_settings,
+        "contribution_settings": contribution_settings,
         "training_snapshots": training_snapshots,
         "training_registry": training_registry,
+        "specialist_registry": specialist_registry,
         "training_evaluator": training_evaluator,
         "training_coordinator": training_coordinator,
         "auto_training": auto_training,
         "shadow_qualification": shadow_qualification,
         "model_deployment": model_deployment,
+        "portable_intelligence": portable,
+        "intelligence_manifest_store": portable.manifests,
+        "intelligence_vault": portable.vault,
+        "offline_pack_manager": portable.offline_packs,
+        "fresh_machine_activation": portable.activation,
     })
+
+    # On an existing restored installation, the restored active manifest/package
+    # remains authoritative. On a new installation, publish the current governed
+    # runtime once so continuity/backups have an exact portable identity to bind.
+    try:
+        if portable.manifests.active() is None:
+            core_version = str(runtime.get("running_git_revision") or trusted_release_revision or "unversioned")
+            portable.publish_current_restore_package(core_version=core_version)
+    except Exception as exc:
+        events.emit("intelligence.portable_bootstrap_failed", error_type=type(exc).__name__)
 
     # Existing runtime objects were constructed before E9 attachment. Point
     # their model-intelligence references at the facade without changing any
@@ -193,10 +225,6 @@ def attach_e9_runtime(runtime: dict) -> dict:
     )
     runtime["continuous_evolution"] = continuous
 
-    # An owner-approved evolution handoff may now be implemented and verified
-    # automatically in the existing isolated code workspace. This service has
-    # no method for approving a candidate, approving review, adoption, merge,
-    # deployment or Body activation.
     automatic_code_evolution = None
     automatic_code_runtime = None
     if code_body is not None and runtime.get("evolution_handoff") is not None:
@@ -271,9 +299,11 @@ def attach_e9_runtime(runtime: dict) -> dict:
         performance_routing_learning=True,
         training_capture_default=settings_snapshot.training_capture,
         training_candidates_governed=True,
+        shared_learning_mode=contribution_settings.snapshot().preferences.mode.value,
         auto_training_enabled=training_settings.snapshot().enabled,
         live_shadow_qualification=True,
         automatic_code_evolution=bool(automatic_code_runtime and automatic_code_runtime.enabled),
+        portable_intelligence=True,
         training_publication_automatic=False,
         trained_model_activation_automatic=False,
         body_adoption_automatic=False,
@@ -320,6 +350,9 @@ def stop_e9_services(runtime: dict) -> None:
     workforce_store = runtime.get("agent_workforce_store")
     if workforce_store is not None:
         workforce_store.connection.close()
+    specialist_registry = runtime.get("specialist_registry")
+    if specialist_registry is not None:
+        specialist_registry.close()
     model_performance = runtime.get("model_performance")
     if model_performance is not None:
         model_performance.close()
