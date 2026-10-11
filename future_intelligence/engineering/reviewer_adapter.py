@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Mapping, Protocol
 
-from .contracts import EngineeringSpec, QualificationReport
+from .contracts import EngineeringSpec, QualificationReport, SecurityClass
 
 
 @dataclass(frozen=True)
@@ -38,10 +38,15 @@ class ModelEngineeringReviewer:
             "actions, merge, deploy or activate anything. Return JSON only with decision, summary and findings. decision must be "
             "approved or rejected; reject when required evidence is pending/failing or the diff exceeds the EngineeringSpec."
         )
+        sensitivity = (
+            "sensitive"
+            if spec.security_class in {SecurityClass.SENSITIVE, SecurityClass.AUTHORITY}
+            else "internal"
+        )
         payload = self.models.json(
             f"EngineeringSpec={spec.to_dict()}\nQualification={report.to_dict()}\nDiff={diff[:120000]}\nEvidence={dict(evidence)}",
             system=system,
-            sensitivity="internal",
+            sensitivity=sensitivity,
         )
         if not isinstance(payload, Mapping):
             raise ValueError("review model did not return an object")
