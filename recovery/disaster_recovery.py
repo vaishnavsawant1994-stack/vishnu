@@ -1,0 +1,368 @@
+from __future__ import annotations
+
+import hashlib
+import hmac
+import json
+import os
+from pathlib import Path
+import secrets
+import struct
+import tempfile
+import time
+from typing import Protocol
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+
+from recovery.backup import BackupService
+
+
+DISASTER_RECOVERY_MAGIC = b"VISHNUDR1\n"
+DISASTER_RECOVERY_VERSION = 1
+DISASTER_RECOVERY_TAG_BYTES = 16
+DISASTER_RECOVERY_HEADER_MAX = 64 * 1024
+DISASTER_RECOVERY_CHUNK = 1024 * 1024
+DISASTER_RECOVERY_INFO = b"vishnu-disaster-recovery-v1"
+RECOVERY_KEY_BYTES = 32
+
+
+class DisasterRecoveryError(RuntimeError):
+    pass
+
+
+class RecoveryKeyProvider(Protocol):
+    """Provider-neutral source for a high-entropy disaster-recovery key.
+
+    A future cloud/KMS implementation may release this key only after owner
+    authentication. The bundle format does not depend on any one provider.
+    """
+
+    def recovery_key(self, key_id: str) -> bytes: ...
+
+
+def generate_recovery_key() -> bytes:
+    """Generate portable recovery key material.
+
+    The caller must store this outside the source machine (for example in a
+    trusted recovery vault). The key is never written into recovery bundles.
+    """
+
+    return secrets.token_bytes(RECOVERY_KEY_BYTES)
+
+
+def _validate_recovery_key(value: bytes | bytearray) -> bytes:
+    if not isinstance(value, (bytes, bytearray)) or len(value) != RECOVERY_KEY_BYTES:
+        raise DisasterRecoveryError("recovery key must be exactly 32 bytes")
+    return bytes(value)
+
+
+def _owner_binding(recovery_key: bytes, owner_id: str) -> str:
+    owner = str(owner_id or "").strip()
+    if not owner:
+        raise ValueError("owner_id is required")
+    return hmac.new(recovery_key, b"owner:" + owner.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(DISASTER_RECOVERY_CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+class DisasterRecoveryBundleCodec:
+    """Authenticated portable encryption independent of a host keychain."""
+
+    @staticmethod
+    def _derive_key(recovery_key: bytes, salt: bytes) -> bytes:
+        return HKDF(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=salt,
+            info=DISASTER_RECOVERY_INFO,
+        ).derive(_validate_recovery_key(recovery_key))
+
+    @staticmethod
+    def _header_bytes(header: dict) -> bytes:
+        return json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+    def encrypt_payload(
+        self,
+        payload: str | Path,
+        target: str | Path,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        key_id: str,
+    ) -> Path:
+        source = Path(payload).expanduser().resolve()
+        destination = Path(target).expanduser().resolve()
+        if not source.is_file() or source.is_symlink():
+            raise FileNotFoundError(source)
+        key_ref = str(key_id or "").strip()
+        if not key_ref:
+            raise ValueError("key_id is required")
+        key = _validate_recovery_key(recovery_key)
+        salt = secrets.token_bytes(16)
+        nonce = secrets.token_bytes(12)
+        header = {
+            "version": DISASTER_RECOVERY_VERSION,
+            "cipher": "AES-256-GCM",
+            "kdf": "HKDF-SHA256",
+            "key_id": key_ref,
+            "owner_binding": _owner_binding(key, owner_id),
+            "salt": salt.hex(),
+            "nonce": nonce.hex(),
+            "created_at": int(time.time()),
+        }
+        encoded = self._header_bytes(header)
+        if len(encoded) > DISASTER_RECOVERY_HEADER_MAX:
+            raise DisasterRecoveryError("disaster recovery header is too large")
+        raw_len = struct.pack(">I", len(encoded))
+        aad = DISASTER_RECOVERY_MAGIC + raw_len + encoded
+        encryption_key = self._derive_key(key, salt)
+        encryptor = Cipher(algorithms.AES(encryption_key), modes.GCM(nonce)).encryptor()
+        encryptor.authenticate_additional_data(aad)
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(f".{destination.name}.{secrets.token_hex(6)}.tmp")
+        try:
+            with source.open("rb") as src, temporary.open("wb") as dst:
+                try:
+                    os.chmod(temporary, 0o600)
+                except OSError:
+                    pass
+                dst.write(aad)
+                for chunk in iter(lambda: src.read(DISASTER_RECOVERY_CHUNK), b""):
+                    dst.write(encryptor.update(chunk))
+                dst.write(encryptor.finalize())
+                dst.write(encryptor.tag)
+                dst.flush()
+                os.fsync(dst.fileno())
+            os.replace(temporary, destination)
+            try:
+                os.chmod(destination, 0o600)
+            except OSError:
+                pass
+        finally:
+            temporary.unlink(missing_ok=True)
+        return destination
+
+    def decrypt_payload(
+        self,
+        bundle: str | Path,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        expected_key_id: str | None = None,
+    ) -> tuple[Path, dict]:
+        source = Path(bundle).expanduser().resolve()
+        key = _validate_recovery_key(recovery_key)
+        if not source.is_file() or source.is_symlink():
+            raise FileNotFoundError(source)
+        handle = tempfile.NamedTemporaryFile(
+            prefix="vishnu-disaster-recovery-payload-", suffix=".zip", delete=False
+        )
+        target = Path(handle.name)
+        handle.close()
+        try:
+            try:
+                os.chmod(target, 0o600)
+            except OSError:
+                pass
+            with source.open("rb") as src:
+                if src.read(len(DISASTER_RECOVERY_MAGIC)) != DISASTER_RECOVERY_MAGIC:
+                    raise DisasterRecoveryError("unsupported disaster recovery bundle")
+                raw_len = src.read(4)
+                if len(raw_len) != 4:
+                    raise DisasterRecoveryError("disaster recovery header is truncated")
+                size = struct.unpack(">I", raw_len)[0]
+                if size <= 0 or size > DISASTER_RECOVERY_HEADER_MAX:
+                    raise DisasterRecoveryError("disaster recovery header is invalid")
+                encoded = src.read(size)
+                if len(encoded) != size:
+                    raise DisasterRecoveryError("disaster recovery header is truncated")
+                try:
+                    header = json.loads(encoded)
+                    if (
+                        int(header.get("version", 0)) != DISASTER_RECOVERY_VERSION
+                        or header.get("cipher") != "AES-256-GCM"
+                        or header.get("kdf") != "HKDF-SHA256"
+                    ):
+                        raise ValueError("unsupported recovery header")
+                    salt = bytes.fromhex(str(header["salt"]))
+                    nonce = bytes.fromhex(str(header["nonce"]))
+                    key_id = str(header["key_id"])
+                    binding = str(header["owner_binding"])
+                except Exception as exc:
+                    raise DisasterRecoveryError("disaster recovery header is invalid") from exc
+                if len(salt) != 16 or len(nonce) != 12 or not key_id:
+                    raise DisasterRecoveryError("disaster recovery header is invalid")
+                if expected_key_id is not None and key_id != str(expected_key_id):
+                    raise DisasterRecoveryError("disaster recovery key id mismatch")
+                expected_binding = _owner_binding(key, owner_id)
+                if not hmac.compare_digest(binding, expected_binding):
+                    raise PermissionError("disaster recovery bundle owner mismatch")
+
+                ciphertext_start = src.tell()
+                total = source.stat().st_size
+                ciphertext_size = total - ciphertext_start - DISASTER_RECOVERY_TAG_BYTES
+                if ciphertext_size < 0:
+                    raise DisasterRecoveryError("disaster recovery ciphertext is truncated")
+                src.seek(total - DISASTER_RECOVERY_TAG_BYTES)
+                tag = src.read(DISASTER_RECOVERY_TAG_BYTES)
+                if len(tag) != DISASTER_RECOVERY_TAG_BYTES:
+                    raise DisasterRecoveryError("disaster recovery authentication tag is missing")
+                src.seek(ciphertext_start)
+
+                aad = DISASTER_RECOVERY_MAGIC + raw_len + encoded
+                decryption_key = self._derive_key(key, salt)
+                decryptor = Cipher(algorithms.AES(decryption_key), modes.GCM(nonce, tag)).decryptor()
+                decryptor.authenticate_additional_data(aad)
+                remaining = ciphertext_size
+                with target.open("wb") as dst:
+                    while remaining:
+                        chunk = src.read(min(DISASTER_RECOVERY_CHUNK, remaining))
+                        if not chunk:
+                            raise DisasterRecoveryError("disaster recovery ciphertext is truncated")
+                        remaining -= len(chunk)
+                        dst.write(decryptor.update(chunk))
+                    try:
+                        dst.write(decryptor.finalize())
+                    except InvalidTag as exc:
+                        raise DisasterRecoveryError("disaster recovery authentication failed") from exc
+                    dst.flush()
+                    os.fsync(dst.fileno())
+            return target, header
+        except Exception:
+            target.unlink(missing_ok=True)
+            raise
+
+
+class DisasterRecoveryService:
+    """Create and restore owner recovery bundles without the source host key.
+
+    Creation uses the existing BackupService snapshot rules, so secret files,
+    runtime caches and unsafe SQLite sidecars remain excluded. Restore rewraps
+    the authenticated portable payload with the *new host's* root key and then
+    delegates mutation/rollback to BackupService.restore(). Security-authority
+    databases therefore keep the existing non-restorable policy.
+    """
+
+    def __init__(
+        self,
+        backups: BackupService,
+        *,
+        codec: DisasterRecoveryBundleCodec | None = None,
+        maintenance_mode: bool = False,
+    ) -> None:
+        self.backups = backups
+        self.codec = codec or DisasterRecoveryBundleCodec()
+        self.maintenance_mode = bool(maintenance_mode)
+
+    def create_bundle(
+        self,
+        target: str | Path,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        key_id: str,
+    ) -> dict:
+        handle = tempfile.NamedTemporaryFile(
+            prefix="vishnu-disaster-recovery-source-", suffix=".zip", delete=False
+        )
+        payload = Path(handle.name)
+        handle.close()
+        try:
+            try:
+                os.chmod(payload, 0o600)
+            except OSError:
+                pass
+            manifest = self.backups._build_payload(payload)
+            # Validate the exact portable payload before encrypting it.
+            self.backups._inspect_zip(payload, encrypted=True)
+            destination = self.codec.encrypt_payload(
+                payload,
+                target,
+                recovery_key=recovery_key,
+                owner_id=owner_id,
+                key_id=key_id,
+            )
+            return {
+                "ok": True,
+                "bundle_path": str(destination),
+                "bundle_sha256": _sha256(destination),
+                "bundle_size": destination.stat().st_size,
+                "key_id": str(key_id),
+                "file_count": len(manifest.get("files") or ()),
+                "portable": True,
+                "source_host_key_required_for_restore": False,
+            }
+        finally:
+            payload.unlink(missing_ok=True)
+
+    def validate_bundle(
+        self,
+        bundle: str | Path,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        expected_key_id: str | None = None,
+    ) -> dict:
+        payload, header = self.codec.decrypt_payload(
+            bundle,
+            recovery_key=recovery_key,
+            owner_id=owner_id,
+            expected_key_id=expected_key_id,
+        )
+        try:
+            manifest = self.backups._inspect_zip(payload, encrypted=True)
+            return {
+                "valid": True,
+                "key_id": str(header["key_id"]),
+                "file_count": len(manifest.get("files") or ()),
+                "encrypted": True,
+            }
+        finally:
+            payload.unlink(missing_ok=True)
+
+    def restore_bundle(
+        self,
+        bundle: str | Path,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        expected_key_id: str | None = None,
+    ) -> dict:
+        if not self.maintenance_mode:
+            raise DisasterRecoveryError("disaster recovery restore requires maintenance mode")
+        payload, header = self.codec.decrypt_payload(
+            bundle,
+            recovery_key=recovery_key,
+            owner_id=owner_id,
+            expected_key_id=expected_key_id,
+        )
+        rewrapped_handle = tempfile.NamedTemporaryFile(
+            prefix="vishnu-disaster-recovery-rewrapped-", suffix=".paibackup", delete=False
+        )
+        rewrapped = Path(rewrapped_handle.name)
+        rewrapped_handle.close()
+        try:
+            # Verify before crossing the restore boundary.
+            self.backups._inspect_zip(payload, encrypted=True)
+            # Rewrap using the target/new host's root key. The old host key is
+            # intentionally not required at any point in this path.
+            self.backups._encrypt_payload(payload, rewrapped)
+            result = self.backups.restore(rewrapped)
+            return {
+                **result,
+                "key_id": str(header["key_id"]),
+                "portable_disaster_recovery": True,
+                "credentials_rebind_required": True,
+            }
+        finally:
+            payload.unlink(missing_ok=True)
+            rewrapped.unlink(missing_ok=True)
