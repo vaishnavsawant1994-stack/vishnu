@@ -14,6 +14,18 @@ _TEST_SUFFIXES = (
     "_test.py", "_tests.py",
 )
 
+_TEST_SUPPRESSION_MARKERS = (
+    "pytest.mark.skip",
+    "pytest.mark.xfail",
+    "@unittest.skip",
+    "unittest.skip(",
+    "test.skip(",
+    "describe.skip(",
+    "it.skip(",
+    "xdescribe(",
+    "xit(",
+)
+
 
 def is_test_path(path: str) -> bool:
     value = str(path or "").replace("\\", "/").strip("/")
@@ -27,6 +39,23 @@ def is_test_path(path: str) -> bool:
         or name.startswith("test_")
         or name.endswith(_TEST_SUFFIXES)
     )
+
+
+def diff_introduces_test_suppression(diff: str) -> bool:
+    """Reject a repair-test proof if its patch newly suppresses test execution.
+
+    Existing skips elsewhere in a file do not invalidate a legitimate new
+    regression test. Only added diff lines are inspected, which keeps this guard
+    narrow while preventing a model from satisfying the regression gate by adding
+    skip/xfail-style suppression.
+    """
+    for line in str(diff or "").splitlines():
+        if not line.startswith("+") or line.startswith("+++"):
+            continue
+        lowered = line[1:].casefold()
+        if any(marker in lowered for marker in _TEST_SUPPRESSION_MARKERS):
+            return True
+    return False
 
 
 def failure_fingerprint(defects: Iterable[str]) -> str:
