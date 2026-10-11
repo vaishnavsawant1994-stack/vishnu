@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass
-from typing import Any
 
 from future_intelligence.engineering.contracts import EngineeringSpec, QualificationReport, SecurityClass
 
-from .contracts import ReleaseEnvironment, ReleaseEvidence, ReleasePlan, ReleaseRiskClass, ReleaseStatus
+from .contracts import ReleaseEnvironment, ReleaseEvidence, ReleaseRiskClass, ReleaseStatus
+from .recovery import ReleaseRecoveryService
 from .runtime import ReleaseControlRuntime
 
 
@@ -82,7 +82,11 @@ class ReleaseAutomationService:
     def start(self, release_id: str) -> bool:
         plan = self.runtime.controller.require(release_id)
         policy = self.runtime.policy()
+        if plan.status is ReleaseStatus.RECOVERY_REQUIRED:
+            return False
         if not policy.allows_automatic_production(plan):
+            return False
+        if plan.status not in {ReleaseStatus.PLANNED, ReleaseStatus.PREVIEW_QUALIFIED}:
             return False
         with self._lock:
             if release_id in self._active:
@@ -100,7 +104,7 @@ class ReleaseAutomationService:
     def _fail(self, release_id: str, exc: Exception) -> None:
         try:
             plan = self.runtime.controller.require(release_id)
-            if plan.status.terminal:
+            if plan.status.terminal or plan.status is ReleaseStatus.RECOVERY_REQUIRED:
                 return
             plan = plan.with_update(status=ReleaseStatus.FAILED).append_evidence(
                 ReleaseEvidence(
@@ -135,6 +139,14 @@ class ReleaseAutomationService:
         finally:
             with self._lock:
                 self._active.discard(release_id)
+
+    def reconcile(self):
+        """Recover read-only qualifications, then resume only provably safe states."""
+        results = ReleaseRecoveryService(self.runtime).reconcile()
+        for plan in self.runtime.controller.store.list():
+            if plan.status in {ReleaseStatus.PLANNED, ReleaseStatus.PREVIEW_QUALIFIED}:
+                self.start(plan.id)
+        return results
 
     def active_release_ids(self) -> tuple[str, ...]:
         with self._lock:
