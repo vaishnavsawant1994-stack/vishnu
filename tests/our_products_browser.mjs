@@ -139,7 +139,7 @@ try{
   await desktop.getByText('Product purpose').waitFor();
   await shot(desktop,'our-products-commercial-desktop.png');
   await desktop.getByRole('button',{name:'Lineage'}).click();
-  await desktop.getByText('Implemented By').waitFor();
+  await desktop.getByText('Implemented By',{exact:true}).waitFor();
   await shot(desktop,'our-products-lineage-desktop.png');
 
   await desktop.getByRole('button',{name:'Build & Export'}).click();
