@@ -173,7 +173,13 @@ def test_owner_release_summary_requires_trusted_admin_device(tmp_path):
     payload = response.json()
     assert payload["available"] is True
     assert payload["policy"]["mode"] == "approval_required"
+    assert payload["policy"]["max_monitoring_observations"] == 1000
     assert payload["providers"] == ["memory"]
+    assert payload["provider_capabilities"]["memory"] == {
+        "production_observation": True,
+        "production_telemetry": False,
+        "telemetry_evidence_sanitized": False,
+    }
     assert payload["authorities"]["release_plan_creation_from_api"] is False
     assert payload["authorities"]["automatic_rollback"] is False
     assert payload["authorities"]["body_activation"] is False
@@ -189,13 +195,19 @@ def test_owner_release_policy_change_requires_fresh_owner_verification(tmp_path)
     fresh = owner_client(app_for(value, fresh=True))
     allowed = fresh.patch(
         "/iphone/api/owner/release/policy",
-        json={"mode": "auto_low_risk", "automatic_risk_ceiling": "low", "allow_automatic_rollback": False},
+        json={
+            "mode": "auto_low_risk",
+            "automatic_risk_ceiling": "low",
+            "allow_automatic_rollback": False,
+            "max_monitoring_observations": 250,
+        },
     )
     assert allowed.status_code == 200
     policy = allowed.json()["policy"]
     assert policy["mode"] == "auto_low_risk"
     assert policy["automatic_risk_ceiling"] == "low"
     assert policy["allow_automatic_rollback"] is False
+    assert policy["max_monitoring_observations"] == 250
 
 
 def test_owner_release_surface_has_no_arbitrary_plan_creation_route(tmp_path):
@@ -250,12 +262,21 @@ def test_rollback_requires_literal_confirmation_and_separate_policy_authority(tm
     assert allowed.json()["release"]["status"] == "rolled_back"
 
 
-def test_owner_release_ui_exposes_governed_modes_and_explicit_rollback_boundary():
+def test_owner_release_ui_exposes_monitoring_history_and_governed_boundaries():
     for label in ("Off", "Preview only", "Approval required", "Auto low-risk"):
         assert label in OWNER_RELEASE_JS
-    for label in ("Preview", "Approve", "Promote", "Rollback", "Cancel"):
+    for label in ("Preview", "Approve", "Promote", "Rollback", "Cancel", "Evidence"):
         assert label in OWNER_RELEASE_JS
-    assert "Exact SHA bound" in OWNER_RELEASE_JS
+    for label in (
+        "Exact SHA bound",
+        "Monitoring observation limit",
+        "Monitoring & evidence history",
+        "Configured provider monitoring",
+        "sanitized telemetry",
+        "raw logs are never displayed or stored here",
+    ):
+        assert label in OWNER_RELEASE_JS
     assert "silently roll production back" in OWNER_RELEASE_JS
     assert "No Body activation" in OWNER_RELEASE_JS
     assert "create release" not in OWNER_RELEASE_JS.lower()
+    assert "JSON.stringify(e.metadata" not in OWNER_RELEASE_JS

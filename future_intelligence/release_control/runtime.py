@@ -39,10 +39,23 @@ class ReleaseControlRuntime:
             raise ReleaseControlError(f"release provider is not configured: {name}")
         return value
 
+    @staticmethod
+    def _provider_capabilities(provider: ReleaseProvider) -> dict[str, bool]:
+        telemetry = callable(getattr(provider, "collect_production_telemetry", None))
+        return {
+            "production_observation": callable(getattr(provider, "observe", None)),
+            "production_telemetry": telemetry,
+            "telemetry_evidence_sanitized": telemetry,
+        }
+
     def summary(self) -> dict[str, Any]:
         return {
             "policy": self.policy().to_dict(),
             "providers": sorted(self.providers),
+            "provider_capabilities": {
+                name: self._provider_capabilities(self.providers[name])
+                for name in sorted(self.providers)
+            },
             "releases": [item.to_dict() for item in self.controller.store.list()[:50]],
         }
 
