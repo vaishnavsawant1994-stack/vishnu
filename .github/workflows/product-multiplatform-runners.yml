@@ -1,0 +1,77 @@
+name: Our Products Apple Runners
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "packaging/create_product_platform_job.py"
+      - "packaging/product_apple_runner.py"
+      - "packaging/product_runner_worker.py"
+      - "products/builders.py"
+      - "products/platform_jobs.py"
+      - "products/platform_runners.py"
+      - "products/runner_leases.py"
+      - "server/product_runner_queue_api.py"
+      - "tests/test_product_runner_leases.py"
+      - "tests/test_product_runner_queue_api.py"
+      - "tests/test_product_platform_callback_authority.py"
+      - "tests/test_product_native_runner_adapters.py"
+      - ".github/workflows/product-multiplatform-runners.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apple-products:
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [macos, ios]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Compile real Apple product artifact
+        run: |
+          mkdir -p .runner-qualification/${{ matrix.target }}/output
+          python packaging/create_product_platform_job.py --target ${{ matrix.target }} --workspace .runner-qualification/${{ matrix.target }}/work --output .runner-qualification/${{ matrix.target }}/job.vishnu-build-job
+          python packaging/product_apple_runner.py .runner-qualification/${{ matrix.target }}/job.vishnu-build-job --output .runner-qualification/${{ matrix.target }}/output --allow-unsigned-job | tee .runner-qualification/${{ matrix.target }}/runner.log
+          tail -n 1 .runner-qualification/${{ matrix.target }}/runner.log > .runner-qualification/${{ matrix.target }}/result.json
+      - name: Verify Apple evidence
+        run: |
+          python - <<'PY'
+          import hashlib,json,os
+          from pathlib import Path
+          from products.platform_runners import validate_runner_evidence
+          target=os.environ['TARGET']
+          result=json.loads(Path(f'.runner-qualification/{target}/result.json').read_text())
+          artifact=Path(result['artifact'])
+          evidence=validate_runner_evidence(result['evidence'])
+          assert artifact.is_file()
+          assert evidence.target==target
+          assert evidence.compiler_verified is True
+          assert evidence.mode=='development'
+          assert evidence.production_ready is False
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']==evidence.sha256
+          if target=='macos':
+              assert artifact.suffix=='.dmg'
+              assert evidence.signing_verified is False
+              assert evidence.notarization_verified is False
+          if target=='ios':
+              assert artifact.suffix=='.zip' and result['variant']=='simulator'
+              assert evidence.signing_verified is False
+              assert evidence.provisioning_verified is False
+          PY
+        env:
+          TARGET: ${{ matrix.target }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-${{ matrix.target }}-qualification
+          path: |
+            .runner-qualification/${{ matrix.target }}/output/*
+            .runner-qualification/${{ matrix.target }}/result.json
+          if-no-files-found: error

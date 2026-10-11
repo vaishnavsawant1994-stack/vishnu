@@ -1,0 +1,143 @@
+name: Our Products Linux and Docker Runners
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "products/platform_jobs.py"
+      - "products/platform_runners.py"
+      - "products/runner_leases.py"
+      - "packaging/create_product_platform_job.py"
+      - "packaging/product_desktop_container_runner.py"
+      - "server/product_runner_queue_api.py"
+      - "tests/test_product_runner_leases.py"
+      - "tests/test_product_platform_callback_authority.py"
+      - ".github/workflows/product-linux-docker-runner.yml"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-product-deb:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Create isolated Linux development build job
+        run: |
+          mkdir -p .runner-linux/output
+          python packaging/create_product_platform_job.py --target linux --workspace .runner-linux/state --output .runner-linux/linux.vishnu-build-job | tee .runner-linux/job.json
+      - name: Compile real Linux DEB product
+        run: |
+          python packaging/product_desktop_container_runner.py .runner-linux/linux.vishnu-build-job --output .runner-linux/output --allow-unsigned-job | tee .runner-linux/runner.log
+          tail -n 1 .runner-linux/runner.log > .runner-linux/result.json
+          python -m json.tool .runner-linux/result.json
+      - name: Verify Linux package, executable runtime and evidence
+        run: |
+          python - <<'PY'
+          import hashlib,json
+          from pathlib import Path
+          result=json.loads(Path('.runner-linux/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file(), artifact
+          assert artifact.suffix=='.deb', artifact
+          assert result['evidence']['target']=='linux'
+          assert result['evidence']['mode']=='development'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['signing_verified'] is False
+          assert result['evidence']['sha256']==result['sha256']
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          print(artifact)
+          PY
+          ARTIFACT=$(python -c 'import json;print(json.load(open(".runner-linux/result.json"))["artifact"])')
+          dpkg-deb --info "$ARTIFACT"
+          rm -rf .runner-linux/extracted
+          mkdir -p .runner-linux/extracted
+          dpkg-deb -x "$ARTIFACT" .runner-linux/extracted
+          PRODUCT_EXE=$(find .runner-linux/extracted/opt/vishnu-products -type f -perm -111 -print -quit)
+          test -n "$PRODUCT_EXE"
+          "$PRODUCT_EXE" --check-file .runner-linux/runtime-check.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          status=json.loads(Path('.runner-linux/runtime-check.json').read_text())
+          assert status['ok'] is True
+          assert status['schema']=='vishnu.desktop-product-runtime/v1'
+          assert status['owner_source_bundled'] is False
+          assert status['credentials_bundled'] is False
+          assert status['component_count']==1
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-linux-deb-qualification
+          path: |
+            .runner-linux/output/*.deb
+            .runner-linux/result.json
+            .runner-linux/runtime-check.json
+          if-no-files-found: error
+
+  docker-product-oci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Create isolated Docker development build job
+        run: |
+          mkdir -p .runner-docker/output
+          python packaging/create_product_platform_job.py --target docker --workspace .runner-docker/state --output .runner-docker/docker.vishnu-build-job | tee .runner-docker/job.json
+      - name: Build real OCI image archive
+        run: |
+          docker version
+          python packaging/product_desktop_container_runner.py .runner-docker/docker.vishnu-build-job --output .runner-docker/output --allow-unsigned-job | tee .runner-docker/runner.log
+          tail -n 1 .runner-docker/runner.log > .runner-docker/result.json
+          python -m json.tool .runner-docker/result.json
+      - name: Verify OCI bundle, load image and probe runtime
+        run: |
+          python - <<'PY'
+          import hashlib,json,zipfile
+          from pathlib import Path
+          result=json.loads(Path('.runner-docker/result.json').read_text())
+          artifact=Path(result['artifact'])
+          assert artifact.is_file(), artifact
+          assert artifact.suffix=='.zip', artifact
+          assert result['evidence']['target']=='docker'
+          assert result['evidence']['mode']=='development'
+          assert result['evidence']['compiler_verified'] is True
+          assert result['evidence']['metadata']['attestation_verified'] is False
+          assert hashlib.sha256(artifact.read_bytes()).hexdigest()==result['sha256']
+          with zipfile.ZipFile(artifact) as archive:
+              assert {'image.tar','manifest.json','image.sha256'} <= set(archive.namelist())
+              archive.extract('image.tar','.runner-docker/extracted')
+          PY
+          docker load -i .runner-docker/extracted/image.tar
+          IMAGE_ID=$(python -c 'import json;print(json.load(open(".runner-docker/result.json"))["evidence"]["metadata"]["image_id"])')
+          test -n "$IMAGE_ID"
+          CONTAINER_ID=$(docker run -d --rm -p 18080:8080 "$IMAGE_ID")
+          trap 'docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
+          for attempt in 1 2 3 4 5 6 7 8 9 10; do
+            if curl --fail --silent http://127.0.0.1:18080/health > .runner-docker/health.json; then break; fi
+            sleep 1
+          done
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          health=json.loads(Path('.runner-docker/health.json').read_text())
+          assert health['ok'] is True
+          assert health['owner_source_bundled'] is False
+          assert health['credentials_bundled'] is False
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: our-products-docker-oci-qualification
+          path: |
+            .runner-docker/output/*.zip
+            .runner-docker/result.json
+            .runner-docker/health.json
+          if-no-files-found: error

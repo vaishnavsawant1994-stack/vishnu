@@ -5,6 +5,8 @@ from pydantic import BaseModel, Field, field_validator
 
 from products.build_lifecycle import BUILD_STATUSES, ProductBuildLifecycle
 from products.models import AI_MODES, PLATFORM_TARGETS, PRODUCT_STATUSES, PRODUCT_TYPES
+from products.platform_jobs import REMOTE_PLATFORM_TARGETS, runner_configured
+from products.signing import signing_available
 from products.store import ProductStore
 from security.request_context import current_trusted_request
 
@@ -184,6 +186,57 @@ def products_router(runtime, store: ProductStore, project_store=None):
             raise HTTPException(404, "Product not found")
         return value
 
+    def runner_readiness(product: dict, decorated_builds: list[dict]) -> list[dict]:
+        latest: dict[str, dict] = {}
+        for build in decorated_builds:
+            target = str(build.get("target") or "")
+            if target and target not in latest:
+                latest[target] = build
+        local_targets = {"web", "pwa", "api", "worker"}
+        requirements = {
+            "android": ["compile", "release-signature"],
+            "ios": ["compile", "code-signature", "provisioning-profile"],
+            "windows": ["compile", "authenticode-signature"],
+            "macos": ["compile", "code-signature", "notarization"],
+            "linux": ["compile"],
+            "docker": ["compile", "image-attestation"],
+        }
+        values: list[dict] = []
+        for target_row in product.get("targets") or []:
+            if not target_row.get("enabled"):
+                continue
+            target = str(target_row.get("target") or "")
+            build = latest.get(target)
+            metadata = dict((build or {}).get("metadata") or {})
+            platform = dict(metadata.get("platform_runner") or {})
+            evidence = dict(platform.get("evidence") or {})
+            is_remote = target in REMOTE_PLATFORM_TARGETS
+            values.append(
+                {
+                    "target": target,
+                    "builder": "platform-runner" if is_remote else ("local-runtime" if target in local_targets else "unavailable"),
+                    "compiler_available": target in REMOTE_PLATFORM_TARGETS or target in local_targets,
+                    "runner_configured": runner_configured() if is_remote else True,
+                    "production_requirements": requirements.get(target, ["verified-builder"]),
+                    "latest_build": None
+                    if build is None
+                    else {
+                        "id": build.get("id"),
+                        "build_number": build.get("build_number"),
+                        "version": build.get("version"),
+                        "status": build.get("status"),
+                        "artifact_ready": bool(metadata.get("artifact_ready")),
+                        "signing_verified": bool(metadata.get("signing_verified")),
+                        "failure_reason": str(metadata.get("failure_reason") or ""),
+                        "compiler_verified": bool(evidence.get("compiler_verified")),
+                        "provisioning_verified": bool(evidence.get("provisioning_verified")),
+                        "notarization_verified": bool(evidence.get("notarization_verified")),
+                        "attestation_verified": bool((evidence.get("metadata") or {}).get("attestation_verified")),
+                    },
+                }
+            )
+        return values
+
     @router.get("/summary")
     def summary(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         authenticate(pa_device, pa_token)
@@ -240,6 +293,19 @@ def products_router(runtime, store: ProductStore, project_store=None):
             "product": product,
             "components": store.components(product_id),
             "builds": builds.list(product_id, store.builds(product_id)),
+        }
+
+    @router.get("/{product_id}/runner-readiness")
+    def product_runner_readiness(product_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token)
+        product = product_or_404(product_id)
+        decorated = builds.list(product_id, store.builds(product_id))
+        return {
+            "product_id": product_id,
+            "version": product.get("version"),
+            "production_job_signing_configured": signing_available(),
+            "platform_runner_auth_configured": runner_configured(),
+            "targets": runner_readiness(product, decorated),
         }
 
     @router.patch("/{product_id}")
