@@ -400,7 +400,7 @@ class MainActivity : AppCompatActivity() {
                     AlertDialog.Builder(this).setTitle("Connection actions")
                         .setItems(arrayOf("Rotate credential", "Execution history", "Audit log", "Disconnect")) { _, action ->
                             when (action) {
-                                0 -> rotateCapabilityCredential(id)
+                                0 -> rotateCapabilityCredential(id, type, capability.optString("server_id"))
                                 1 -> showCapabilityAudit(id, "history")
                                 2 -> showCapabilityAudit(id, "audit")
                                 else -> reauthenticateThen {
@@ -508,7 +508,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun rotateCapabilityCredential(id: String) {
+    private fun rotateCapabilityCredential(id: String, type: String, serverId: String) {
         val options = arrayOf("Bearer token", "X-API-Key header")
         AlertDialog.Builder(this).setTitle("Rotate stored credential")
             .setItems(options) { _, index ->
@@ -520,7 +520,11 @@ class MainActivity : AppCompatActivity() {
                         val secret = input.text.toString(); input.setText("")
                         reauthenticateThen {
                             val body = JSONObject().put("auth_type", authType).put("api_key", secret)
-                            apiRequest("POST", "/apps-tools/capabilities/${Uri.encode(id)}/credentials/rotate", body) { ok, _, message ->
+                            val route = if (type == "mcp_server" || type == "mcp_tool") {
+                                val ownerId = if (type == "mcp_server") id else serverId
+                                "/apps-tools/mcp/servers/${Uri.encode(ownerId)}/credentials/rotate"
+                            } else "/apps-tools/capabilities/${Uri.encode(id)}/credentials/rotate"
+                            apiRequest("POST", route, body) { ok, _, message ->
                                 status.text = if (ok) "Credential replaced in Vishnu's vault." else message
                             }
                         }

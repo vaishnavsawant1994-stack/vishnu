@@ -5,7 +5,7 @@ import threading
 import urllib.parse
 import urllib.request
 
-from ui.capability_manager import _LoopbackCallback, make_pkce_pair
+from ui.native_auth import LoopbackCallback, make_pkce_pair
 
 
 def test_desktop_pkce_pair_is_s256_and_state_is_independent():
@@ -18,7 +18,7 @@ def test_desktop_pkce_pair_is_s256_and_state_is_independent():
 
 
 def test_desktop_callback_binds_one_local_code_and_state():
-    server = _LoopbackCallback(port=0)
+    server = LoopbackCallback(port=0)
     result = {}
     waiter = threading.Thread(target=lambda: result.setdefault("value", server.wait_for_code(timeout=3)), daemon=True)
     waiter.start()
@@ -32,7 +32,7 @@ def test_desktop_callback_binds_one_local_code_and_state():
 
 
 def test_desktop_callback_wait_can_be_cancelled():
-    server = _LoopbackCallback(port=0)
+    server = LoopbackCallback(port=0)
     cancelled = threading.Event()
     outcome = {}
     def wait():

@@ -99,7 +99,7 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
         def call_tool(self, name, arguments):
             assert name == "lookup_weather"
             assert arguments == {"city": "Oslo"}
-            assert self.token == "mcp-secret-token"
+            assert self.token in {"mcp-secret-token", "rotated-mcp-token"}
             return {"content": [{"type": "text", "text": "sunny"}], "isError": False}
 
     monkeypatch.setattr(apps_tools_api, "_public_https_url", lambda url: url.rstrip("/"))
@@ -147,9 +147,18 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
     assert executed.status_code == 200, executed.text
     assert executed.json()["result"]["content"][0]["text"] == "sunny"
     assert executed.json()["verified"] is True
+    rotated = client.post(f"/iphone/api/apps-tools/mcp/servers/{server_id}/credentials/rotate", json={
+        "auth_type": "bearer_token", "api_key": "rotated-mcp-token",
+    })
+    assert rotated.status_code == 200, rotated.text
+    assert "rotated-mcp-token" not in rotated.text
+    executed_after_rotation = client.post(f"/iphone/api/apps-tools/capabilities/{capability_id}/execute",
+                                          json={"parameters": {"city": "Oslo"}})
+    assert executed_after_rotation.status_code == 200, executed_after_rotation.text
+    assert "rotated-mcp-token" not in json.dumps(state.events)
     assert {event for event, _ in state.events} >= {
         "mcp.server.discovered", "mcp.server.connected", "mcp.capability.approved",
-        "mcp.execution.started", "mcp.execution.accepted",
+        "mcp.execution.started", "mcp.execution.accepted", "mcp.server.credential.rotated",
     }
     assert "mcp-secret-token" not in json.dumps(state.events)
 

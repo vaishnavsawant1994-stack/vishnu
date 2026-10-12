@@ -11,7 +11,7 @@ private struct NativeSessionResponse: Decodable {
     let session_id: String
 }
 
-private struct CapabilityEnvelope: Decodable {
+struct CapabilityEnvelope: Decodable {
     let capabilities: [Capability]
     struct Capability: Decodable, Identifiable {
         let id: String
@@ -165,7 +165,13 @@ final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthentica
     }
 
     func rotate(_ item: CapabilityEnvelope.Capability, authType: String, secret: String) async throws {
-        _ = try await request("POST", "/apps-tools/capabilities/\(path(item.id))/credentials/rotate", ["auth_type": authType, "api_key": secret])
+        if item.type == "mcp_server" {
+            _ = try await request("POST", "/apps-tools/mcp/servers/\(path(item.id))/credentials/rotate", ["auth_type": authType, "api_key": secret])
+        } else if item.type == "mcp_tool" {
+            throw CompanionError.badResponse("Rotate the credential from the parent MCP server capability.")
+        } else {
+            _ = try await request("POST", "/apps-tools/capabilities/\(path(item.id))/credentials/rotate", ["auth_type": authType, "api_key": secret])
+        }
     }
 
     func disconnect(_ item: CapabilityEnvelope.Capability) async throws {

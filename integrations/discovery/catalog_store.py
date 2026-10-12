@@ -125,3 +125,15 @@ class CapabilityCatalogStore:
                 return None
             db.execute("UPDATE capability_connections SET status='revoked',credential_ref=NULL WHERE capability_id=?", (capability_id,))
         return row[0]
+
+    def update_connection_credentials(self, capability_id: str, *, auth_type: str,
+                                      credential_ref: str | None) -> bool:
+        if auth_type not in {"none", "bearer_token", "api_key_header"}:
+            raise ValueError("unsupported credential type")
+        with sqlite3.connect(self.path) as db:
+            cur = db.execute(
+                "UPDATE capability_connections SET auth_type=?,credential_ref=? "
+                "WHERE capability_id=? AND status='connected'",
+                (auth_type, credential_ref, capability_id),
+            )
+            return cur.rowcount == 1

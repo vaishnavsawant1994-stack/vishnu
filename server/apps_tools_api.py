@@ -353,6 +353,41 @@ def apps_tools_router(runtime):
                               payload={'server_id': server_id})
         return {'connected': False, 'server_id': server_id}
 
+    @router.post('/mcp/servers/{server_id}/credentials/rotate')
+    async def rotate_mcp_server_credential(server_id: str, request: Request):
+        context = require_recent_owner()
+        if catalog is None or runtime.get('vault') is None:
+            raise HTTPException(503, 'Secure credential service unavailable')
+        server = catalog.get(server_id)
+        connection = catalog.connection(server_id, include_credential_ref=True)
+        if not server or server.get('type') != 'mcp_server' or not connection or connection.get('status') != 'connected':
+            raise HTTPException(404, 'Connected MCP server not found')
+        raw = await request.body()
+        if len(raw) > 8192:
+            raise HTTPException(413, 'Credential payload exceeds the size limit')
+        try:
+            payload = json.loads(raw)
+            auth_type = payload.get('auth_type') if isinstance(payload, dict) else None
+            secret = payload.get('api_key') if isinstance(payload, dict) else None
+            if auth_type not in {'bearer_token', 'api_key_header'} or not isinstance(secret, str) or not secret or len(secret) > 4096:
+                raise ValueError()
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(422, 'A valid bearer token or API key is required') from exc
+        credential_ref = connection.get('credential_ref') or ('mcp-credential:' + server_id.split(':', 1)[-1])
+        runtime['vault'].set(credential_ref, secret)
+        catalog.connect(server_id, server_url=connection['server_url'], auth_type=auth_type,
+                        credential_ref=credential_ref, approved_by=context.device_id,
+                        approved_at=time.time(), connector_id=connection['connector_id'])
+        for capability in catalog.mcp_tools(server_id):
+            catalog.update_connection_credentials(capability['id'], auth_type=auth_type,
+                                                  credential_ref=credential_ref)
+        state_store = getattr(runtime.get('integrations'), 'state_store', None)
+        if state_store:
+            state_store.audit('mcp.server.credential.rotated', connector_id=connection['connector_id'],
+                device_id=context.device_id, session_id=context.session_id,
+                payload={'server_id': server_id, 'auth_type': auth_type})
+        return {'rotated': True, 'server_id': server_id, 'auth_type': auth_type}
+
     @router.post('/capabilities/{capability_id}/connect')
     async def connect_capability(capability_id: str, request: Request):
         context = require_recent_owner()
