@@ -62,4 +62,17 @@ def apps_tools_router(runtime):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    @router.get('/capabilities/{capability_id:path}')
+    def capability_detail(capability_id: str):
+        require_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        try:
+            item = catalog.get(capability_id)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if item is None:
+            raise HTTPException(404, 'Capability not found')
+        return {'capability': item}
+
     return router
