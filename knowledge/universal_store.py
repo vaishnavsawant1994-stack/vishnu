@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from file_intelligence import FileIntelligenceEngine, LocalContentIndex, OcrUnavailable, TesseractOcrProvider
+from file_intelligence import FileIntelligenceEngine, LocalContentIndex, LocalSemanticGraph, OcrUnavailable, TesseractOcrProvider
 from file_intelligence.models import ExtractionMethod, SourceReference, VishnuBlock
 from file_intelligence.readers import ContentReadError, sanitize_image
 from knowledge.store import KnowledgeError, KnowledgeOcrUnavailable, KnowledgeStore as LegacyKnowledgeStore
@@ -14,8 +14,6 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     MAX_FILE_BYTES = FileIntelligenceEngine.MAX_FILE_BYTES
 
     def __init__(self, path, object_dir, *, ocr_provider=None, allow_external_private_ocr: bool = False):
-        # Default to Vishnu's local OCR adapter. Construction is safe even when the
-        # system tesseract executable is absent; an OCR attempt then fails closed.
         if ocr_provider is None:
             ocr_provider = TesseractOcrProvider()
         super().__init__(
@@ -28,6 +26,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     def _init(self):
         super()._init()
         self.content_index = LocalContentIndex(self.path)
+        self.semantic_graph = LocalSemanticGraph(self.path)
 
     def _segments_for(self, filename: str, data: bytes, access_class: str):
         provider = self.ocr_provider
@@ -78,6 +77,13 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     def _index_detail(self, detail: dict) -> None:
         chunks = detail.get("chunks") or []
         blocks = [self._block_from_chunk(chunk) for chunk in chunks if str(chunk.get("content") or "").strip()]
+        metadata = {
+            "lineage_id": detail.get("lineage_id"),
+            "version": detail.get("version"),
+            "filename": detail.get("filename"),
+            "source": detail.get("source"),
+            "access_class": detail.get("access_class"),
+        }
         self.content_index.index_blocks(
             document_id=detail["id"],
             checksum=detail["checksum"],
@@ -85,13 +91,15 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
             blocks=blocks,
             scope_type="knowledge",
             scope_id=detail["access_class"],
-            metadata={
-                "lineage_id": detail.get("lineage_id"),
-                "version": detail.get("version"),
-                "filename": detail.get("filename"),
-                "source": detail.get("source"),
-                "access_class": detail.get("access_class"),
-            },
+            metadata=metadata,
+        )
+        self.semantic_graph.index_blocks(
+            document_id=detail["id"],
+            checksum=detail["checksum"],
+            title=detail["title"],
+            blocks=blocks,
+            scope_type="knowledge",
+            scope_id=detail["access_class"],
         )
 
     def ingest(self, **kwargs):
@@ -103,12 +111,13 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     def ensure_exact_index(self, *, access_classes: set[str] | None = None) -> int:
         indexed = 0
         for item in self.list(limit=500, access_classes=access_classes):
-            state = self.content_index.state(
-                document_id=item["id"],
-                scope_type="knowledge",
-                scope_id=item["access_class"],
+            lexical = self.content_index.state(
+                document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
             )
-            if state and state["checksum"] == item["checksum"]:
+            semantic = self.semantic_graph.state(
+                document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
+            )
+            if lexical and lexical["checksum"] == item["checksum"] and semantic and semantic["checksum"] == item["checksum"]:
                 continue
             detail = self.detail(item["id"])
             if detail:
@@ -122,10 +131,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         results = []
         for access_class in sorted(classes):
             hits = self.content_index.search(
-                query,
-                scope_type="knowledge",
-                scope_id=access_class,
-                limit=max(limit, 20),
+                query, scope_type="knowledge", scope_id=access_class, limit=max(limit, 20)
             )
             for hit in hits:
                 detail = self.detail(hit["document_id"], include_history=False)
@@ -145,3 +151,35 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
                 results.append(hit)
         results.sort(key=lambda item: item["score"], reverse=True)
         return results[: max(1, min(int(limit), 100))]
+
+    def semantic_query(self, query: str, *, access_classes: set[str] | None = None, limit: int = 30) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        return [
+            self.semantic_graph.query(query, scope_type="knowledge", scope_id=access_class, limit=limit)
+            for access_class in sorted(classes)
+        ]
+
+    def semantic_links(self, *, access_classes: set[str] | None = None, limit: int = 100) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        return [
+            {"access_class": access_class, "links": self.semantic_graph.cross_document_links(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            for access_class in sorted(classes)
+        ]
+
+    def semantic_contradictions(self, *, access_classes: set[str] | None = None, limit: int = 100) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        return [
+            {"access_class": access_class, "contradictions": self.semantic_graph.contradictions(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            for access_class in sorted(classes)
+        ]
+
+    def semantic_timeline(self, *, access_classes: set[str] | None = None, limit: int = 200) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        return [
+            {"access_class": access_class, "events": self.semantic_graph.timeline(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            for access_class in sorted(classes)
+        ]

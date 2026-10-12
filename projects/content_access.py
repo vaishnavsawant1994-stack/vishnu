@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from typing import Any
 
-from file_intelligence import FileIntelligenceEngine, LocalContentIndex, TesseractOcrProvider
+from file_intelligence import FileIntelligenceEngine, LocalContentIndex, LocalSemanticGraph, TesseractOcrProvider
 from file_intelligence.models import VishnuDocument
 
 
@@ -15,8 +14,9 @@ class ProjectContentAccess:
         self.store = store
         self.ocr_provider = ocr_provider if ocr_provider is not None else TesseractOcrProvider()
         self.engine = FileIntelligenceEngine(ocr_provider=self.ocr_provider)
-        # Reuse the authoritative Project SQLite DB; no second file store is created.
+        # Reuse the authoritative Project SQLite DB; no second file or graph store is created.
         self.index = LocalContentIndex(store.path)
+        self.semantic = LocalSemanticGraph(store.path)
 
     def _project_exists(self, project_id: str) -> bool:
         with self.store.con() as con:
@@ -59,20 +59,11 @@ class ProjectContentAccess:
     def extract_file(self, project_id: str, file_id: str, *, force: bool = False) -> VishnuDocument:
         row = self._blob(project_id, file_id)
         checksum = hashlib.sha256(row["content"]).hexdigest()
-        state = self.index.state(document_id=row["id"], scope_type="project", scope_id=str(project_id))
-        if state and state["checksum"] == checksum and not force:
-            # We still return a live canonical document; callers never consume stale serialized parser output.
-            document = self.engine.extract(
-                filename=row["title"],
-                data=row["content"],
-                declared_mime=row["media_type"] or "application/octet-stream",
-            )
-        else:
-            document = self.engine.extract(
-                filename=row["title"],
-                data=row["content"],
-                declared_mime=row["media_type"] or "application/octet-stream",
-            )
+        document = self.engine.extract(
+            filename=row["title"],
+            data=row["content"],
+            declared_mime=row["media_type"] or "application/octet-stream",
+        )
         document.document_id = row["id"]
         document.metadata.update(
             {
@@ -93,6 +84,12 @@ class ProjectContentAccess:
                 "size_bytes": row["size_bytes"],
             },
         )
+        self.semantic.index_document(
+            document,
+            scope_type="project",
+            scope_id=str(project_id),
+            title=row["title"],
+        )
         return document
 
     def ensure_indexed(self, project_id: str) -> int:
@@ -104,12 +101,9 @@ class ProjectContentAccess:
             try:
                 row = self._blob(project_id, item["id"])
                 checksum = hashlib.sha256(row["content"]).hexdigest()
-                state = self.index.state(
-                    document_id=item["id"],
-                    scope_type="project",
-                    scope_id=str(project_id),
-                )
-                if state and state["checksum"] == checksum:
+                lexical = self.index.state(document_id=item["id"], scope_type="project", scope_id=str(project_id))
+                semantic = self.semantic.state(document_id=item["id"], scope_type="project", scope_id=str(project_id))
+                if lexical and lexical["checksum"] == checksum and semantic and semantic["checksum"] == checksum:
                     continue
                 self.extract_file(project_id, item["id"], force=True)
                 indexed += 1
@@ -129,6 +123,30 @@ class ProjectContentAccess:
             kinds=kinds,
             limit=limit,
         )
+
+    def semantic_query(self, project_id: str, query: str, *, limit: int = 30) -> dict:
+        if not self._project_exists(project_id):
+            raise KeyError("Project not found")
+        self.ensure_indexed(project_id)
+        return self.semantic.query(query, scope_type="project", scope_id=str(project_id), limit=limit)
+
+    def cross_document_links(self, project_id: str, *, limit: int = 100) -> list[dict]:
+        if not self._project_exists(project_id):
+            raise KeyError("Project not found")
+        self.ensure_indexed(project_id)
+        return self.semantic.cross_document_links(scope_type="project", scope_id=str(project_id), limit=limit)
+
+    def contradictions(self, project_id: str, *, limit: int = 100) -> list[dict]:
+        if not self._project_exists(project_id):
+            raise KeyError("Project not found")
+        self.ensure_indexed(project_id)
+        return self.semantic.contradictions(scope_type="project", scope_id=str(project_id), limit=limit)
+
+    def timeline(self, project_id: str, *, limit: int = 200) -> list[dict]:
+        if not self._project_exists(project_id):
+            raise KeyError("Project not found")
+        self.ensure_indexed(project_id)
+        return self.semantic.timeline(scope_type="project", scope_id=str(project_id), limit=limit)
 
     def read(self, project_id: str, file_id: str) -> dict:
         document = self.extract_file(project_id, file_id)
