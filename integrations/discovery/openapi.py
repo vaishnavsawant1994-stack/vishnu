@@ -57,8 +57,30 @@ def parse_openapi(document: dict, *, max_operations: int = 500, source_url: str 
             if not isinstance(method, str) or method.lower() not in {"get", "post", "put", "patch", "delete", "head", "options"} or not isinstance(operation, dict):
                 continue
             operation_name = str(operation.get("operationId") or "")[:200]
+            # Keep only the parameter surface needed by the first execution
+            # tranche. Arbitrary schemas, request bodies and callbacks remain
+            # inert discovery metadata and are never sent to a provider.
+            parameters = []
+            raw_parameters = [
+                *(operations.get("parameters", []) if isinstance(operations.get("parameters", []), list) else []),
+                *(operation.get("parameters", []) if isinstance(operation.get("parameters", []), list) else []),
+            ]
+            for parameter in raw_parameters[:100]:
+                if not isinstance(parameter, dict) or parameter.get("in") not in {"path", "query"}:
+                    continue
+                name = parameter.get("name")
+                schema = parameter.get("schema") if isinstance(parameter.get("schema"), dict) else {}
+                kind = schema.get("type", "string")
+                if not isinstance(name, str) or not name or len(name) > 100 or kind not in {"string", "integer", "number", "boolean"}:
+                    continue
+                item = {"name": name, "in": parameter["in"], "type": kind, "required": bool(parameter.get("required")) or parameter["in"] == "path"}
+                if isinstance(schema.get("enum"), list) and len(schema["enum"]) <= 50:
+                    item["enum"] = [v for v in schema["enum"] if isinstance(v, (str, int, float, bool))][:50]
+                if kind == "string":
+                    item["max_length"] = max(1, min(int(schema.get("maxLength", 500)) if isinstance(schema.get("maxLength", 500), int) else 500, 2000))
+                parameters.append(item)
             identity = hashlib.sha256((source_identity + "\n" + method.upper() + " " + path).encode()).hexdigest()[:24]
-            result.append({"id": "openapi:" + identity, "name": str(operation.get("summary") or operation_name or method.upper() + " " + path)[:200], "operation_id": operation_name, "method": method.upper(), "path": path, "description": str(operation.get("description") or "")[:1000], "source_url": origin, "api_title": str(info.get("title") or "")[:200], "api_version": str(info.get("version") or "")[:80], "risk": "read" if method.lower() in {"get", "head", "options"} else "write", "lifecycle": "discovered", "executable": False})
+            result.append({"id": "openapi:" + identity, "name": str(operation.get("summary") or operation_name or method.upper() + " " + path)[:200], "operation_id": operation_name, "method": method.upper(), "path": path, "parameters": parameters, "description": str(operation.get("description") or "")[:1000], "source_url": origin, "api_title": str(info.get("title") or "")[:200], "api_version": str(info.get("version") or "")[:80], "risk": "read" if method.lower() in {"get", "head", "options"} else "write", "lifecycle": "discovered", "executable": False})
             if len(result) >= max_operations:
                 return result
     return result
