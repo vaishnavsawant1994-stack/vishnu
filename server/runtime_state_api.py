@@ -30,11 +30,8 @@ def runtime_state_router(runtime):
         # prompts, tool payloads, memory/knowledge contents, and credentials stay server-side.
         return project_home_state(authority.snapshot()).as_dict()
 
-    # FastAPI 0.143 represents nested include_router() calls with a lazy
-    # _IncludedRouter wrapper. A parent APIRouter that is itself later included in
-    # the application does not flatten that wrapper into application routes.
-    # Append the already-built APIRoute objects directly so this authoritative
-    # mount exposes both runtime-state and content-ingestion endpoints exactly once.
-    ingestion = content_ingestion_router(runtime)
-    router.routes.extend(ingestion.routes)
+    # FastAPI keeps included routers live and resolves them lazily. Use the public
+    # inclusion API so routing, OpenAPI generation and route-cache invalidation stay
+    # authoritative across FastAPI releases.
+    router.include_router(content_ingestion_router(runtime))
     return router
