@@ -119,8 +119,12 @@ def test_engine_keeps_exact_image_bbox_and_stage6_spatial_layout():
         data=_image_bytes(),
         declared_mime="image/png",
     )
-    originals = [block for block in document.blocks if block.extraction_method == ExtractionMethod.OCR]
-    assert originals
+    originals = [
+        block
+        for block in document.blocks
+        if block.extraction_method == ExtractionMethod.OCR and not block.metadata.get("derived")
+    ]
+    assert len(originals) == 2
     assert originals[0].source.bbox == [10, 10, 240, 40]
     assert originals[0].metadata["column"] == 1
     assert originals[1].metadata["column"] == 2
