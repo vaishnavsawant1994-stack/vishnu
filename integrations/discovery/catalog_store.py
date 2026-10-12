@@ -19,9 +19,9 @@ class CapabilityCatalogStore:
                 db.execute("INSERT OR REPLACE INTO capability_catalog VALUES (?, ?, ?, ?)", (entry["id"], entry["category"], entry["name"], json.dumps(entry)))
         return len(entries)
 
-    def import_openapi(self, document: dict) -> int:
+    def import_openapi(self, document: dict, *, source_url: str | None = None) -> int:
         """Persist reviewed OpenAPI operations as inert metadata only."""
-        entries = parse_openapi(document)
+        entries = parse_openapi(document, source_url=source_url)
         with sqlite3.connect(self.path) as db:
             for entry in entries:
                 db.execute("INSERT OR REPLACE INTO capability_catalog VALUES (?, ?, ?, ?)",
