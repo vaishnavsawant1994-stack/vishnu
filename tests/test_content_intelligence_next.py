@@ -107,7 +107,6 @@ def test_extended_formats_are_local_and_preserve_provenance():
     assert any(block.kind == "code" and block.metadata.get("language_hint") == "py" for block in code.blocks)
 
 
-
 def test_pdf_acroform_fields_and_tar_gzip_are_local():
     engine = FileIntelligenceEngine()
     pdf = engine.extract(filename="invoice.pdf", data=_pdf_form_bytes())
@@ -123,6 +122,7 @@ def test_pdf_acroform_fields_and_tar_gzip_are_local():
     gz_doc = engine.extract(filename="note.txt.gz", data=compressed)
     assert "GZIP local content 84" in gz_doc.full_text
     assert any(block.source.member == "note.txt" for block in gz_doc.blocks)
+
 
 def test_archive_traversal_is_rejected():
     payload = io.BytesIO()
@@ -183,13 +183,13 @@ def test_universal_knowledge_ingestion_and_exact_search(tmp_path):
     assert hits[0]["citation"]["source"].get("email_part")
 
 
-
-def test_knowledge_package_activates_universal_store():
+def test_knowledge_package_exports_universal_store_without_replacing_legacy_store():
     import knowledge.store as store_module
-    from knowledge import KnowledgeStore
+    from knowledge import KnowledgeStore, UniversalKnowledgeStore as ExportedUniversalKnowledgeStore
 
-    assert KnowledgeStore is UniversalKnowledgeStore
-    assert store_module.KnowledgeStore is UniversalKnowledgeStore
+    assert KnowledgeStore is store_module.KnowledgeStore
+    assert ExportedUniversalKnowledgeStore is UniversalKnowledgeStore
+
 
 def test_agent_content_tools_are_typed_read_only_and_project_scoped(tmp_path):
     class Registry:
