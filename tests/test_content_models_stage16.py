@@ -242,6 +242,18 @@ def _submit_stage16_feedback(feedback: GovernedContentFeedbackStore, builder) ->
                 consent_basis="owner_provided",
             )
             feedback.approve(row["feedback_id"], reviewer="owner-reviewer")
+            source = _source_for(builder, "test", f"{subtask}-{label}-test")
+            row = feedback.submit(
+                task=ContentModelTask.DOCUMENT_CLASSIFICATION,
+                subtask=subtask,
+                language="multi",
+                source_fingerprint=source,
+                input_payload={"text": f"{text} test"},
+                label=label,
+                provenance={"license": "owner-generated", "stage16": True},
+                consent_basis="owner_provided",
+            )
+            feedback.approve(row["feedback_id"], reviewer="owner-reviewer")
 
 
 def test_stage16_multihead_semantic_model_is_stage12_governed_shadow_qualified_and_owner_gated(tmp_path: Path):
