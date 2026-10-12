@@ -27,8 +27,13 @@ _EVIDENCE_FIELDS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("account_number", re.compile(r"\baccount\s*(?:no\.?|number|#)\s*[:#-]?\s*([A-Z0-9*][A-Z0-9*._/-]{2,40})", re.I)),
     ("reference_number", re.compile(r"\b(?:reference|ref)\s*(?:no\.?|number|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{1,40})", re.I)),
 )
+
+# Stage 17 cross-document links use source-line organization evidence. Do not
+# allow generic whitespace here: a newline can incorrectly fuse a preceding
+# identifier (for example an invoice number) with the organization on the next
+# line, producing a different entity key in each otherwise-related document.
 _ORGANIZATION = re.compile(
-    r"\b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,5}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|GmbH|AG|PLC|LLP|Technologies|Systems|Group))\b"
+    r"\b([A-Z][\w&.'-]*(?:[ \t]+[A-Z][\w&.'-]*){0,5}[ \t]+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|GmbH|AG|PLC|LLP|Technologies|Systems|Group))\b"
 )
 
 
@@ -41,7 +46,7 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
     graph projection or on re-running a model at query time.
     """
 
-    version = "vishnu-production-content-runtime/17.3"
+    version = "vishnu-production-content-runtime/17.4"
 
     @staticmethod
     def _structured_field_answer(graph, question: str) -> dict[str, Any] | None:
