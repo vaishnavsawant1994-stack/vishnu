@@ -66,6 +66,27 @@ def test_oauth_redirect_allowlist(env):
 def test_legacy_oauth_begin_still_works():
     v=Vault();m=OAuthAccountManager(v);p=OAuthProvider('x','https://a','https://t','cid',['one']);o=m.begin(p);assert o['state'] in m._pending and 'code_challenge=' in o['url']
 
+def test_oauth_token_exchange_disables_redirects(monkeypatch):
+    calls=[]
+    class RedirectResponse:
+        status_code=302
+        def raise_for_status(self):
+            raise RuntimeError('redirect response rejected')
+    def post(url,**kwargs):
+        calls.append((url,kwargs));return RedirectResponse()
+    monkeypatch.setattr('integrations.oauth.requests.post',post)
+    vault=Vault(); manager=OAuthAccountManager(vault)
+    provider=OAuthProvider('fixture','https://identity.example/authorize','https://identity.example/token','id',['read'],'fixture-secret')
+    started=manager.begin(provider)
+    try:
+        manager.complete(started['state'],'one-time-code',provider)
+    except RuntimeError as exc:
+        assert 'redirect' in str(exc)
+    else:
+        raise AssertionError('OAuth token endpoint redirect must be rejected')
+    assert len(calls)==1 and calls[0][1]['allow_redirects'] is False
+    assert 'oauth:fixture' not in vault.d
+
 def test_google_begin_requests_incremental_scope_preservation(env):
     import urllib.parse
     v,s=env;m=OAuthAccountManager(v,state_store=s,allowed_redirects={'https://ok/cb'});p=OAuthProvider('google','https://accounts.google.com/o/oauth2/v2/auth','https://oauth2.googleapis.com/token','id',['scope'])

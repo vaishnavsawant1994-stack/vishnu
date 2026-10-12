@@ -24,6 +24,7 @@ from ui.control_panel import ControlPanel
 from ui.memory_panel import MemoryPanel
 from ui.pulse import PulseWidget
 from ui.settings_panel import SettingsPanel
+from ui.capability_manager import NativeCapabilityManager
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
 
 
@@ -760,8 +761,10 @@ class MainWindow(QMainWindow):
 
     def open_capability_manager(self):
         base = self.runtime.get("cloud_url") or self.CLOUD_URL
-        url = str(base).replace("/iphone/", "/capabilities/")
-        QDesktopServices.openUrl(QUrl(url))
+        try:
+            NativeCapabilityManager(str(base), self).exec()
+        except Exception as exc:
+            QMessageBox.warning(self, "Universal Capabilities", str(exc))
 
     def _settings_content(self, layout):
         text = QLabel(

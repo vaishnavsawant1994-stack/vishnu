@@ -66,7 +66,7 @@ class OAuthAccountManager:
         data={'grant_type':'authorization_code','code':code,'client_id':p.client_id,'redirect_uri':redirect,'code_verifier':verifier}
         if p.client_secret:data['client_secret']=p.client_secret
         try:
-            r=requests.post(p.token_url,data=data,timeout=30); r.raise_for_status(); token=r.json()
+            r=requests.post(p.token_url,data=data,timeout=30,allow_redirects=False); r.raise_for_status(); token=r.json()
         except Exception:
             if self.state_store:self.state_store.audit('oauth.failed',connector_id=connector_id or p.id,owner_id=owner_id,device_id=device_id,session_id=session_id,payload={'provider':p.id,'reason':'token_exchange_failed'})
             raise
@@ -95,7 +95,7 @@ class OAuthAccountManager:
             raise RuntimeError('refresh token unavailable; relink account')
         data={'grant_type':'refresh_token','refresh_token':refresh,'client_id':p.client_id}
         if p.client_secret:data['client_secret']=p.client_secret
-        try:r=requests.post(p.token_url,data=data,timeout=30); r.raise_for_status(); fresh=r.json()
+        try:r=requests.post(p.token_url,data=data,timeout=30,allow_redirects=False); r.raise_for_status(); fresh=r.json()
         except Exception:
             if self.state_store:
                 self.state_store.set_health(p.id,'authentication_expired',error_code='refresh_failed',error_message='Account reconnect required'); self.state_store.audit('token.refresh_failed',connector_id=p.id,payload={'provider':p.id})
@@ -115,7 +115,7 @@ class OAuthAccountManager:
         if attempt_provider_revocation and provider and provider.revoke_url and token and token.get('access_token'):
             if self.state_store:self.state_store.audit('provider.revocation_attempted',connector_id=health_id,owner_id=owner_id,device_id=device_id,session_id=session_id)
             try:
-                r=requests.post(provider.revoke_url,data={'token':token['access_token']},timeout=10); r.raise_for_status(); rev='confirmed'
+                r=requests.post(provider.revoke_url,data={'token':token['access_token']},timeout=10,allow_redirects=False); r.raise_for_status(); rev='confirmed'
                 if self.state_store:self.state_store.set_health(health_id,'revoked',scopes=[],revocation_status='confirmed'); self.state_store.audit('provider.revocation_confirmed',connector_id=health_id,owner_id=owner_id,device_id=device_id,session_id=session_id)
             except Exception:
                 rev='pending'

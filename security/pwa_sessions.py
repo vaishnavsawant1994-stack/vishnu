@@ -141,8 +141,15 @@ class PwaSessionStore:
         if client_id not in self.native_client_redirects or redirect_uri not in self.native_client_redirects[client_id]:
             raise ValueError("native client or redirect URI is not registered")
         parsed = urlparse(redirect_uri)
-        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
-            raise ValueError("native redirect URI must be an allowlisted HTTPS link")
+        https_link = parsed.scheme == "https" and bool(parsed.hostname)
+        desktop_loopback = (
+            client_id == "ai.personal.companion.desktop"
+            and parsed.scheme == "http"
+            and parsed.hostname == "127.0.0.1"
+            and parsed.port is not None
+        )
+        if (not https_link and not desktop_loopback) or parsed.username or parsed.password or parsed.fragment:
+            raise ValueError("native redirect URI must be an allowlisted HTTPS link or registered desktop loopback")
         if not isinstance(challenge, str) or not re.fullmatch(r"[A-Za-z0-9_-]{43,128}", challenge):
             raise ValueError("PKCE S256 challenge is invalid")
         granted = sorted(set(scopes)) if isinstance(scopes, list) else []

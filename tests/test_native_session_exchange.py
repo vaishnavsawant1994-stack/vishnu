@@ -120,6 +120,29 @@ def test_native_authorization_requires_recent_browser_reauth_and_known_scopes(tm
             client_id=CLIENT, redirect_uri=REDIRECT, challenge=challenge(verifier), scopes=["owner:root"])
 
 
+def test_native_redirect_allows_registered_desktop_loopback_only(tmp_path):
+    redirect = "http://127.0.0.1:49173/native/callback"
+    store = PwaSessionStore(tmp_path / "sessions.sqlite3",
+        native_client_redirects={"ai.personal.companion.desktop": [redirect]})
+    _, browser = store.issue("device-a")
+    verifier = "verifier-value-with-sufficient-entropy-0123456789abcdef"
+    code = store.create_native_authorization_code(browser_session_id=browser.id, device_id="device-a",
+        client_id="ai.personal.companion.desktop", redirect_uri=redirect,
+        challenge=challenge(verifier), scopes=["device:read"])
+    assert store.exchange_native_authorization_code(code=code, verifier=verifier,
+        client_id="ai.personal.companion.desktop", redirect_uri=redirect)[1].kind == "native"
+
+    for unsafe in (
+        "http://localhost:49173/native/callback",
+        "http://127.0.0.2:49173/native/callback",
+        "https://127.0.0.1:49173/native/callback",
+    ):
+        with pytest.raises(ValueError, match="registered"):
+            store.create_native_authorization_code(browser_session_id=browser.id, device_id="device-a",
+                client_id="ai.personal.companion.desktop", redirect_uri=unsafe,
+                challenge=challenge(verifier), scopes=["device:read"])
+
+
 def test_native_code_has_atomic_single_redemption(tmp_path):
     store = PwaSessionStore(tmp_path / "sessions.sqlite3", native_client_redirects={CLIENT: [REDIRECT]})
     _, browser = store.issue("device-a")

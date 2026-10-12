@@ -41,6 +41,11 @@ struct PersonalAICompanionApp: App {
             NavigationStack {
                 Form {
                     Section("Vishnu cloud") {
+                        NavigationLink {
+                            NativeCapabilitiesView()
+                        } label: {
+                            Label("Manage Universal Capabilities", systemImage: "point.3.connected.trianglepath.dotted")
+                        }
                         Link(destination:URL(string:"https://personal-ai-runtime-production.up.railway.app/iphone/")!) {
                             Label("Open Vishnu",systemImage:"sparkles")
                         }

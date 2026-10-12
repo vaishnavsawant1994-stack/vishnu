@@ -109,6 +109,39 @@ class AutomationEngine:
             con.execute("UPDATE workflow_runs SET status='recovery_required',error='runtime restarted; owner review required before resuming current checkpoint',updated_at=?,completed_at=NULL WHERE status IN ('running','rolling_back','queued')",(now(),))
         for row in rows: self.budgets.release(row['id'], reason='Recovery review required')
 
+    def _expire_waiting_approvals(self):
+        """Close workflow runs whose governed tool ticket expired or was invalidated."""
+        approvals = getattr(self.executor, 'approvals', None)
+        if approvals is None:
+            return 0
+        try:
+            approvals.purge_expired()
+        except Exception:
+            return 0
+        with self._con() as con:
+            rows = con.execute(
+                "SELECT id,pending_approval_id,workflow_id FROM workflow_runs "
+                "WHERE status='waiting_approval' AND pending_approval_id IS NOT NULL"
+            ).fetchall()
+        expired = 0
+        for row in rows:
+            record = approvals.record(row['pending_approval_id'])
+            if not record or record.get('status') not in {'expired', 'invalidated', 'rejected', 'cancelled'}:
+                continue
+            reason = 'approval ' + str(record['status'])
+            with self._con() as con:
+                changed = con.execute(
+                    "UPDATE workflow_runs SET status='cancelled',pending_approval_id=NULL,error=?,completed_at=?,updated_at=? "
+                    "WHERE id=? AND status='waiting_approval' AND pending_approval_id=?",
+                    (reason, now(), now(), row['id'], row['pending_approval_id']),
+                ).rowcount
+            if changed:
+                try: self.budgets.mark_cancelled(row['id'], reason)
+                except KeyError: pass
+                expired += 1
+                self._emit('workflow.cancelled', run_id=row['id'], workflow_id=row['workflow_id'], reason=reason)
+        return expired
+
     def create(self,title,prompt,next_run_at,interval_seconds=None,condition=None):
         aid=str(uuid.uuid4())
         with self._con() as con: con.execute('INSERT INTO automations(id,title,prompt,next_run_at,interval_seconds,enabled,last_run_at,created_at,condition_json) VALUES(?,?,?,?,?,1,NULL,?,?)',(aid,title,prompt,next_run_at,interval_seconds,now(),json.dumps(condition or {})))
@@ -469,6 +502,7 @@ class AutomationEngine:
         if not row: raise KeyError('workflow run not found')
         return dict(row)
     def runs(self,workflow_id=None,limit=100):
+        self._expire_waiting_approvals()
         limit=max(1,min(int(limit),1000))
         with self._con() as con: rows=con.execute('SELECT * FROM workflow_runs WHERE workflow_id=? ORDER BY started_at DESC LIMIT ?',(workflow_id,limit)).fetchall() if workflow_id else con.execute('SELECT * FROM workflow_runs ORDER BY started_at DESC LIMIT ?',(limit,)).fetchall()
         out=[]
@@ -508,6 +542,7 @@ class AutomationEngine:
         self._workflow_pool.shutdown(wait=False,cancel_futures=True); self._step_pool.shutdown(wait=False,cancel_futures=True)
     def _loop(self):
         while not self._stop.wait(self.poll_seconds):
+            self._expire_waiting_approvals()
             if self.executor:
                 with self._con() as con: due=con.execute('SELECT * FROM automations WHERE enabled=1 AND next_run_at<=? ORDER BY next_run_at',(now(),)).fetchall()
                 for row in due: self._run_one(row)
