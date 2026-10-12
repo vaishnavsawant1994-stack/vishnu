@@ -16,6 +16,7 @@ from security.request_context import (
 PUBLIC_PATHS = {
     '/iphone',
     '/iphone/',
+    '/iphone/native/authorize',
     '/iphone/manifest.webmanifest',
     '/iphone/sw.js',
     '/iphone/api/access/options',
@@ -25,6 +26,7 @@ PUBLIC_PATHS = {
     '/iphone/api/access/passkey/login/options',
     '/iphone/api/access/passkey/login/complete',
     '/iphone/api/enroll',
+    '/iphone/api/native/sessions/exchange',
 }
 
 LOGIN_PATHS = {
@@ -88,9 +90,16 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
         session = None
         session_token = request.cookies.get('pa_session')
         device_id = request.cookies.get('pa_device')
+        authorization = request.headers.get('authorization', '')
+        bearer = authorization[7:].strip() if authorization.lower().startswith('bearer ') else ''
+        native_route = path.startswith('/iphone/api/apps-tools') or path.startswith('/iphone/api/native/sessions/')
 
         if not _is_public(path):
-            session = self.sessions.authenticate(session_token, device_id)
+            session = None
+            if bearer and native_route:
+                session = self.sessions.authenticate_native(bearer)
+            if session is None:
+                session = self.sessions.authenticate(session_token, device_id)
             if session is None:
                 response = JSONResponse(
                     status_code=401,
@@ -121,6 +130,8 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                     device_id=session.device_id,
                     session_id=session.id,
                     reauthenticated_at=session.reauthenticated_at,
+                    scopes=frozenset(session.scopes) if session.kind == 'native' else None,
+                    auth_type=session.kind,
                 )
             )
 

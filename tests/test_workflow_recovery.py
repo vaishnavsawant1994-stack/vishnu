@@ -1,6 +1,7 @@
 import sqlite3
 import threading
 import time
+from security.approvals import ApprovalManager
 
 from agent.executor import ExecutionCancelled
 from automation.engine import AutomationEngine
@@ -73,6 +74,27 @@ def test_cancelled_run_cannot_be_overwritten_as_completed(tmp_path):
     run_id=engine.run_workflow(workflow_id,background=True);assert executor.started.wait(2)
     engine.cancel_run(run_id);executor.release.set();time.sleep(.05)
     assert engine._run(run_id)['status']=='cancelled'
+
+
+def test_expired_tool_approval_closes_waiting_workflow(tmp_path):
+    class ApprovalAwareExecutor(ImmediateExecutor):
+        pass
+
+    executor = ApprovalAwareExecutor()
+    executor.approvals = ApprovalManager(path=tmp_path / 'approvals.sqlite3', ttl_seconds=1)
+    engine = AutomationEngine(tmp_path / 'approval-expiry.sqlite3', executor=executor)
+    workflow_id = engine.create_workflow('Expires', {'type': 'manual'}, [
+        {'kind': 'set', 'key': 'done', 'value': True},
+    ])
+    run_id = engine.run_workflow(workflow_id)
+    ticket = executor.approvals.create('execution-1', 'write_tool', {'value': 'x'})
+    with engine._con() as con:
+        con.execute("UPDATE workflow_runs SET status='waiting_approval',pending_approval_id=?,completed_at=NULL WHERE id=?",
+                    (ticket.id, run_id))
+    time.sleep(1.05)
+    assert engine.runs()[0]['status'] == 'cancelled'
+    assert engine._run(run_id)['pending_approval_id'] is None
+    assert engine._run(run_id)['error'] == 'approval expired'
 
 
 def test_workflow_update_persists_valid_configuration_and_rejects_invalid_input(tmp_path):

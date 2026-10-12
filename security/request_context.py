@@ -9,6 +9,8 @@ class TrustedRequestContext:
     device_id: str
     session_id: str
     reauthenticated_at: float | None = None
+    scopes: frozenset[str] | None = None
+    auth_type: str = 'browser'
 
 
 _current: ContextVar[TrustedRequestContext | None] = ContextVar(

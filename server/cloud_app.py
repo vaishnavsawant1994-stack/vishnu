@@ -49,6 +49,7 @@ from server.multimodal_world_api import multimodal_world_router
 from server.continuity_sync_api import continuity_sync_router
 from server.pwa_security import pwa_security_router
 from server.pwa_session_middleware import PwaSessionMiddleware
+from server.native_capability_auth import native_capability_auth_router
 from server.logical_request_middleware import LogicalRequestMiddleware
 from server.request_aware_pwa_state import RequestAwareIphonePwaState
 from server.runtime_state_api import runtime_state_router
@@ -94,7 +95,29 @@ def _release_monitor_interval_seconds():
     return max(30.0,min(value,3600.0))
 
 storage_status=validate_runtime_storage(settings)
-runtime=build_runtime();runtime['storage_status']=storage_status;runtime['pwa_sessions']=PwaSessionStore(settings.data_dir/'pwa-sessions.sqlite3')
+def _native_client_redirects():
+    raw=os.getenv('VISHNU_NATIVE_CLIENT_REDIRECTS','{}')
+    try:
+        value=json.loads(raw)
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError('VISHNU_NATIVE_CLIENT_REDIRECTS must be a JSON object') from exc
+    if not isinstance(value,dict) or any(not isinstance(key,str) or not isinstance(uris,list) or
+        any(not isinstance(uri,str) for uri in uris) for key,uris in value.items()):
+        raise RuntimeError('VISHNU_NATIVE_CLIENT_REDIRECTS must map client IDs to redirect URI arrays')
+    return value
+
+runtime=build_runtime();runtime['storage_status']=storage_status;runtime['pwa_sessions']=PwaSessionStore(settings.data_dir/'pwa-sessions.sqlite3',native_client_redirects=_native_client_redirects())
+def _json_env(name, default):
+    raw=os.getenv(name, '')
+    if not raw:
+        return default
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f'{name} must contain valid JSON') from exc
+
+runtime['android_asset_links']=_json_env('VISHNU_ANDROID_ASSET_LINKS_JSON',[])
+runtime['apple_app_site_association']=_json_env('VISHNU_APPLE_APP_SITE_ASSOCIATION_JSON',{})
 runtime['visual_intelligence']=VisualIntelligenceService(settings.data_dir/'visual-intelligence.sqlite3',events=runtime.get('events'))
 base_project_store=ProjectStore(settings.data_dir/'projects.sqlite3')
 project_store=ProjectWorkforceStoreAdapter(base_project_store,runtime['agent_workforce'],events=runtime.get('events'));runtime['project_store']=project_store;runtime['base_project_store']=base_project_store
@@ -209,4 +232,4 @@ _original_pwa_state=iphone_pwa_module.IphonePwaState
 iphone_pwa_module.IphonePwaState=lambda:RequestAwareIphonePwaState(cancel_turn=pwa_runtime['executor'].cancel_turn)
 try:app.include_router(iphone_pwa_module.iphone_pwa_router(pwa_runtime,settings,include_legacy_runtime_routes=False))
 finally:iphone_pwa_module.IphonePwaState=_original_pwa_state
-app.include_router(visualizations_router(runtime));app.include_router(pwa_security_router(runtime));app.include_router(cloud_security_router(runtime));app.include_router(agent_continuity_router(runtime));app.include_router(identity_router(runtime));app.include_router(evidence_router(runtime));app.include_router(evolution_router(runtime));app.include_router(activities_router(runtime));app.include_router(apps_tools_router(runtime));app.include_router(devices_presence_router(runtime));app.include_router(automation_visibility_router(runtime));app.include_router(recovery_visibility_router(runtime));app.include_router(runtime_state_router(runtime));app.include_router(memory_knowledge_inspection_router(runtime));app.include_router(memory_governance_router(runtime));app.include_router(memory_ambient_router(runtime));app.include_router(everyday_intelligence_router(runtime));app.include_router(personal_operations_router(runtime));app.include_router(content_ingestion_router(runtime));app.include_router(projects_router(runtime,project_store));app.include_router(products_router(runtime,product_store,project_store));app.include_router(product_distribution_router(runtime,product_store,product_license_store));app.include_router(product_runner_queue_router(runtime,product_store));app.include_router(project_work_router(runtime,project_store));app.include_router(project_autonomy_router(runtime,project_store));app.include_router(work_order_detail_router(runtime,project_store));app.include_router(global_work_router(runtime,project_store));app.include_router(work_attention_router(runtime,project_store));app.include_router(agent_workforce_pwa_router(runtime));app.include_router(agent_work_requests_router(runtime));app.include_router(multimodal_world_router(runtime));app.include_router(continuity_sync_router(runtime));app.include_router(owner_product_router(runtime));app.include_router(owner_intelligence_router(runtime));app.include_router(owner_engineering_router(runtime));app.include_router(owner_release_router(runtime));app.include_router(portable_intelligence_router(runtime));app.include_router(owner_intelligence_ui_router());app.include_router(owner_engineering_ui_router());app.include_router(owner_release_ui_router());app.include_router(portable_intelligence_ui_router());app.include_router(self_improvement_ui_router());app.include_router(workflow_budget_router(runtime));app.include_router(workflow_budget_ui_router());app.include_router(connector_router(runtime));app.include_router(connector_oauth_callback_router());app.include_router(connector_ui_router());app.include_router(capability_console_router(runtime));app.router.lifespan_context=lifespan
+app.include_router(native_capability_auth_router(runtime));app.include_router(visualizations_router(runtime));app.include_router(pwa_security_router(runtime));app.include_router(cloud_security_router(runtime));app.include_router(agent_continuity_router(runtime));app.include_router(identity_router(runtime));app.include_router(evidence_router(runtime));app.include_router(evolution_router(runtime));app.include_router(activities_router(runtime));app.include_router(apps_tools_router(runtime));app.include_router(devices_presence_router(runtime));app.include_router(automation_visibility_router(runtime));app.include_router(recovery_visibility_router(runtime));app.include_router(runtime_state_router(runtime));app.include_router(memory_knowledge_inspection_router(runtime));app.include_router(memory_governance_router(runtime));app.include_router(memory_ambient_router(runtime));app.include_router(everyday_intelligence_router(runtime));app.include_router(personal_operations_router(runtime));app.include_router(content_ingestion_router(runtime));app.include_router(projects_router(runtime,project_store));app.include_router(products_router(runtime,product_store,project_store));app.include_router(product_distribution_router(runtime,product_store,product_license_store));app.include_router(product_runner_queue_router(runtime,product_store));app.include_router(project_work_router(runtime,project_store));app.include_router(project_autonomy_router(runtime,project_store));app.include_router(work_order_detail_router(runtime,project_store));app.include_router(global_work_router(runtime,project_store));app.include_router(work_attention_router(runtime,project_store));app.include_router(agent_workforce_pwa_router(runtime));app.include_router(agent_work_requests_router(runtime));app.include_router(multimodal_world_router(runtime));app.include_router(continuity_sync_router(runtime));app.include_router(owner_product_router(runtime));app.include_router(owner_intelligence_router(runtime));app.include_router(owner_engineering_router(runtime));app.include_router(owner_release_router(runtime));app.include_router(portable_intelligence_router(runtime));app.include_router(owner_intelligence_ui_router());app.include_router(owner_engineering_ui_router());app.include_router(owner_release_ui_router());app.include_router(portable_intelligence_ui_router());app.include_router(self_improvement_ui_router());app.include_router(workflow_budget_router(runtime));app.include_router(workflow_budget_ui_router());app.include_router(connector_router(runtime));app.include_router(connector_oauth_callback_router());app.include_router(connector_ui_router());app.include_router(capability_console_router(runtime));app.router.lifespan_context=lifespan
