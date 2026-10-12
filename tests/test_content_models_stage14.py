@@ -125,7 +125,12 @@ def test_stage14_neural_ctc_ocr_is_sequence_native_open_vocabulary_and_owner_gat
     validation_source = _source_for(models.datasets, "validation", "stage14-ocr-validation")
     test_source = _source_for(models.datasets, "test", "stage14-ocr-test")
 
-    for text in ("AB", "BA", "AΩ", "ΩB", "B A"):
+    # Space is a learned grapheme whose visual evidence is a sustained blank run,
+    # while CTC also has its own blank state. One whitespace-bearing synthetic
+    # line leaves that distinction numerically underdetermined across BLAS/CPU
+    # implementations. Give the qualification corpus several independent space
+    # contexts while keeping the held-out sequence below genuinely unseen.
+    for text in ("AB", "BA", "AΩ", "ΩB", "B A", "A B", "A Ω", "Ω B"):
         _approve_line(
             feedback,
             task=ContentModelTask.OCR,
