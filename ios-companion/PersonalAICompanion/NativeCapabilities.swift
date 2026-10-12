@@ -77,7 +77,7 @@ final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthentica
             ]
             guard let url = components.url else { throw CompanionError.invalidBase }
             status = "Waiting for explicit owner authorization in the secure browser…"
-            let session = ASWebAuthenticationSession(url: url, callback: .https(host: host, path: redirectPath)) { [weak self] callback, error in
+            let completion: (URL?, Error?) -> Void = { [weak self] callback, error in
                 Task { @MainActor in
                     guard let self else { return }
                     if let error { self.status = "Sign-in cancelled or unavailable: \(error.localizedDescription)"; return }
@@ -96,6 +96,15 @@ final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthentica
                     }
                     await self.exchange(code: code, verifier: verifier)
                 }
+            }
+            let session: ASWebAuthenticationSession
+            if #available(iOS 17.4, *) {
+                session = ASWebAuthenticationSession(url: url, callback: .https(host: host, path: redirectPath), completionHandler: completion)
+            } else {
+                // Older supported iOS versions only expose scheme callbacks. The callback
+                // is still constrained to the exact HTTPS host and path above, then bound
+                // to the one-time PKCE state before code exchange.
+                session = ASWebAuthenticationSession(url: url, callbackURLScheme: "https", completionHandler: completion)
             }
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
