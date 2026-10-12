@@ -31,23 +31,22 @@ def _graphemes(text: str) -> list[str]:
 
 
 def _draw_token(draw: ImageDraw.ImageDraw, token: str, x: int, top: int = 4) -> None:
-    # Deterministic visual alphabet independent of host fonts. It lets the test
-    # prove sequence composition and Unicode labels without requiring a font.
+    # Deterministic visual alphabet independent of host fonts. A common frame
+    # keeps every synthetic grapheme geometrically stable, while eight digest
+    # features make the labels visually distinct. This avoids accidental pixel
+    # collisions (for example B and Ω had identical four-bit fixtures before).
     digest = hashlib.sha256(token.encode("utf-8")).digest()
     left = x + 2
     right = x + 14
     bottom = top + 20
-    draw.rectangle((left, top, left + 2, bottom), fill=0)
-    if digest[0] & 1:
-        draw.rectangle((left, top, right, top + 2), fill=0)
-    else:
-        draw.rectangle((left, bottom - 2, right, bottom), fill=0)
-    if digest[1] & 1:
-        draw.rectangle((right - 2, top + 3, right, bottom), fill=0)
-    if digest[2] & 1:
-        draw.rectangle((left + 2, top + 9, right - 2, top + 11), fill=0)
-    if digest[3] & 1:
-        draw.rectangle((left + 6, top + 3, left + 8, bottom - 3), fill=0)
+    draw.rectangle((left, top, right, bottom), outline=0, width=1)
+    for index in range(8):
+        if digest[index] & 1:
+            y = top + 2 + index * 2
+            if digest[index] & 2:
+                draw.rectangle((left + 2, y, right - 2, y + 1), fill=0)
+            else:
+                draw.rectangle((left + 2, y, left + 7, y + 1), fill=0)
 
 
 def _line_image(text: str) -> bytes:
