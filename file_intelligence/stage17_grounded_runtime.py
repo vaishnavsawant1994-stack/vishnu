@@ -12,6 +12,10 @@ def _tokens(value: str) -> set[str]:
     return {token.casefold() for token in re.findall(r"[\w@.+#/%-]{2,}", str(value or ""), flags=re.UNICODE)}
 
 
+def _normalized(value: str) -> str:
+    return re.sub(r"\s+", " ", str(value or "").strip()).casefold()
+
+
 def _link_id(kind: str, value: str, documents: list[str]) -> str:
     payload = "\0".join([kind, value, *documents])
     return "link_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
@@ -31,14 +35,13 @@ _ORGANIZATION = re.compile(
 class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
     """Production-hardened Stage 17 runtime.
 
-    The base runtime remains the durable storage authority. This layer tightens
-    two production retrieval contracts: structured fields always outrank broad
-    evidence blocks for direct field questions, and cross-document links are
-    reconstructed from immutable evidence when a stored graph lacks an entity
-    projection. Neither behavior invents unsupported facts.
+    The durable Stage 17 store remains the processing authority. Grounded
+    retrieval composes Stage 16 graphs with the already-populated scope-isolated
+    LocalSemanticGraph so cross-document links never depend on a lossy public
+    graph projection or on re-running a model at query time.
     """
 
-    version = "vishnu-production-content-runtime/17.2"
+    version = "vishnu-production-content-runtime/17.3"
 
     @staticmethod
     def _structured_field_answer(graph, question: str) -> dict[str, Any] | None:
@@ -59,8 +62,8 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
             candidates.append((confidence, str(field.get("value") or ""), citations, name))
 
         # Legacy Knowledge chunks can predate Stage 16 field projection. Recover
-        # only exact, deterministic identifiers from the persisted evidence text;
-        # the evidence anchor itself remains the citation authority.
+        # only exact deterministic identifiers from persisted evidence text; the
+        # evidence anchor itself remains the citation authority.
         for field_name, pattern in _EVIDENCE_FIELDS:
             name_tokens = _tokens(field_name.replace("_", " "))
             if not name_tokens.issubset(question_tokens):
@@ -109,26 +112,74 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
         best = answers[0]
         return {"stage": 17, "scope_type": st, "scope_id": si, **best, "candidate_documents": len(answers)}
 
+    def _semantic_graph_links(self, *, scope_type: str, scope_id: str, limit: int) -> list[dict[str, Any]]:
+        """Project the canonical LocalSemanticGraph links into Stage 17 shape."""
+        out: list[dict[str, Any]] = []
+        for item in self.semantic_graph.cross_document_links(scope_type=scope_type, scope_id=scope_id, limit=limit):
+            by_document: dict[str, list[dict[str, Any]]] = {}
+            for mention in item.get("mentions", []):
+                document_id = str(mention.get("document_id") or "").strip()
+                if not document_id:
+                    continue
+                by_document.setdefault(document_id, []).append(
+                    {
+                        "position": mention.get("position"),
+                        "excerpt": mention.get("excerpt"),
+                        "confidence": mention.get("confidence"),
+                        "citation": mention.get("citation"),
+                    }
+                )
+            documents = sorted(by_document)
+            if len(documents) <= 1:
+                continue
+            kind = str(item.get("kind") or "entity")
+            canonical = str(item.get("canonical") or "").strip()
+            value = _normalized(canonical)
+            out.append(
+                {
+                    "link_id": _link_id(kind, value, documents),
+                    "kind": kind,
+                    "canonical": canonical,
+                    "normalized_value": value,
+                    "document_ids": documents,
+                    "members": [
+                        {"document_id": document_id, "mentions": by_document[document_id]}
+                        for document_id in documents
+                    ],
+                    "derived_from": "semantic_graph",
+                    "grounded": True,
+                }
+            )
+        return out
+
     def links(self, *, scope_type: str, scope_id: str, limit: int = 100) -> list[dict[str, Any]]:
         st, si = self._scope(scope_type, scope_id)
         graphs = self._candidate_graphs(scope_type=st, scope_id=si, limit=limit)
         links = list(self.understanding.link_documents(graphs))
         existing = {(str(item.get("kind")), str(item.get("normalized_value"))) for item in links}
 
+        # The LocalSemanticGraph is indexed from the canonical raw VishnuDocument
+        # during Stage 17 processing and therefore retains exact entity mentions
+        # even when a Stage 16 public graph projection omits text needed for a
+        # query-time reconstruction. Reuse that authority before any fallback.
+        for link in self._semantic_graph_links(scope_type=st, scope_id=si, limit=limit):
+            key = (str(link.get("kind")), str(link.get("normalized_value")))
+            if key not in existing:
+                links.append(link)
+                existing.add(key)
+
+        # Defensive compatibility fallback for old Stage 17 graph records that
+        # may contain evidence text but predate the semantic-graph projection.
         evidence_entities: dict[tuple[str, str], dict[str, list[str]]] = {}
         for graph in graphs:
             for anchor in graph.evidence:
                 anchor_id = str(anchor.get("anchor_id") or "")
                 text = str(anchor.get("text") or "")
                 entities = list(extract_entities(text))
-                # Keep a conservative organization fallback for older persisted
-                # evidence whose semantic projection was produced before the
-                # current entity extractor. No fuzzy or model-generated value is
-                # introduced: the exact organization string must appear in text.
                 seen = {(str(item["kind"]), str(item["normalized"])) for item in entities}
                 for match in _ORGANIZATION.finditer(text):
                     canonical = str(match.group(1)).strip()
-                    normalized = re.sub(r"\s+", " ", canonical).casefold()
+                    normalized = _normalized(canonical)
                     if ("organization", normalized) not in seen:
                         entities.append({"kind": "organization", "normalized": normalized, "canonical": canonical})
                         seen.add(("organization", normalized))
@@ -150,15 +201,14 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
                     "normalized_value": value,
                     "document_ids": documents,
                     "members": [
-                        {
-                            "document_id": document_id,
-                            "evidence_anchor_ids": by_document[document_id],
-                        }
+                        {"document_id": document_id, "evidence_anchor_ids": by_document[document_id]}
                         for document_id in documents
                     ],
                     "derived_from": "persisted_evidence",
                     "grounded": True,
                 }
             )
+            existing.add((kind, value))
+
         links.sort(key=lambda item: (str(item.get("kind")), str(item.get("normalized_value")), tuple(item.get("document_ids") or [])))
         return links[: max(1, min(int(limit), 500))]
