@@ -71,6 +71,30 @@ def _macro_f1(expected: list[str], predicted: list[str]) -> float:
     return float(sum(values) / len(values))
 
 
+def _heldout_rows(snapshot: ContentDatasetSnapshot) -> list[dict[str, Any]]:
+    """Return every validation/test source group once for multi-head qualification.
+
+    A multi-head semantic model must not silently choose only one held-out split:
+    a small grouped dataset can legitimately distribute different semantic heads
+    across validation and test.  Qualification therefore covers both partitions
+    while preserving the source-fingerprint isolation established by the dataset
+    builder.
+    """
+
+    output: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for path in (snapshot.validation_path, snapshot.test_path):
+        for row in _read_jsonl(path):
+            identity = str(row.get("id") or "").strip()
+            if not identity:
+                identity = hashlib.sha256(_canonical(row).encode("utf-8")).hexdigest()
+            if identity in seen:
+                continue
+            seen.add(identity)
+            output.append(row)
+    return output
+
+
 class VishnuStage16SemanticTrainer:
     """Locally trained multi-head multinomial model for Stage 16 semantic subtasks."""
 
@@ -176,7 +200,7 @@ class VishnuStage16SemanticTrainer:
         }
         output_dir.mkdir(parents=True, exist_ok=True)
         (output_dir / "model.json").write_text(json.dumps(model, sort_keys=True, ensure_ascii=False), encoding="utf-8")
-        evaluation_rows = _read_jsonl(snapshot.validation_path) or _read_jsonl(snapshot.test_path)
+        evaluation_rows = _heldout_rows(snapshot)
         if not evaluation_rows:
             raise Stage16PolicyError("Stage 16 semantic model requires a held-out split")
         expected: list[str] = []
@@ -330,7 +354,7 @@ class Stage16DocumentUnderstandingCoordinator:
         if model["status"] != "candidate":
             raise ValueError("Stage 16 shadow qualification requires candidate status")
         snapshot = self._snapshot_for(model)
-        rows = _read_jsonl(snapshot.test_path) or _read_jsonl(snapshot.validation_path)
+        rows = _heldout_rows(snapshot)
         if not rows:
             raise Stage16PolicyError("Stage 16 shadow qualification requires held-out records")
         candidate = VishnuStage16SemanticModel(model["checkpoint_ref"])
