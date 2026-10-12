@@ -1,0 +1,1 @@
+Hosted exact-head GitHub workflows are authoritative for Stage 18 qualification. Do not merge a head that has not passed CI, Reliability & Security, Package Validation, Governed Release Authority, Qualification Evidence Closure, and post-merge main verification.
