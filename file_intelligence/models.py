@@ -4,7 +4,8 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
-SCHEMA_VERSION = "1.0"
+SCHEMA_VERSION = "1.1"
+
 
 class ContentKind(str, Enum):
     PDF = "pdf"
@@ -14,13 +15,18 @@ class ContentKind(str, Enum):
     IMAGE = "image"
     TEXT = "text"
     STRUCTURED = "structured"
+    EMAIL = "email"
+    EBOOK = "ebook"
+    CODE = "code"
     ARCHIVE = "archive"
     UNKNOWN = "unknown"
+
 
 class ExtractionMethod(str, Enum):
     NATIVE = "native"
     OCR = "ocr"
     HYBRID = "hybrid"
+
 
 @dataclass(slots=True)
 class SourceReference:
@@ -35,9 +41,16 @@ class SourceReference:
     line_end: int | None = None
     bbox: list[float] | None = None
     image: str | None = None
+    member: str | None = None
+    email_part: str | None = None
+    field: str | None = None
+    path: str | None = None
+    timestamp_start: float | None = None
+    timestamp_end: float | None = None
 
     def compact(self) -> dict[str, Any]:
         return {key: value for key, value in asdict(self).items() if value is not None}
+
 
 @dataclass(slots=True)
 class VishnuBlock:
@@ -61,6 +74,7 @@ class VishnuBlock:
             value.pop("metadata")
         return value
 
+
 @dataclass(slots=True)
 class VishnuDocument:
     document_id: str
@@ -74,9 +88,9 @@ class VishnuDocument:
     blocks: list[VishnuBlock] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
-    parser_version: str = "vishnu-file-intelligence/1"
+    parser_version: str = "vishnu-file-intelligence/2"
     ocr_version: str | None = None
-    layout_version: str = "vishnu-layout/1"
+    layout_version: str = "vishnu-layout/2"
     schema_version: str = SCHEMA_VERSION
 
     @property

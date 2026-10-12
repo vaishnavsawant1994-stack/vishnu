@@ -3,6 +3,7 @@ from tools import (
     automation,
     browser,
     computer,
+    content_intelligence,
     continuity,
     desktop_file,
     documents,
@@ -54,6 +55,7 @@ def register_builtin_tools(
     system.register(registry)
     memory_tools.register(registry, memory, second_brain=second_brain, is_enabled=memory_enabled)
     documents.register(registry, settings)
+    content_intelligence.register(registry, settings)
     if not bool(getattr(settings, 'hosted_runtime', False)):
         screen.register(registry, settings.data_dir)
     reminders.register(registry, memory)
