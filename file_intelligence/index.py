@@ -122,6 +122,7 @@ class LocalContentIndex:
                 "content_kind": document.content_kind.value,
                 "parser_version": document.parser_version,
                 "ocr_version": document.ocr_version,
+                "media_version": document.media_version,
                 "layout_version": document.layout_version,
                 **dict(metadata or {}),
             },
