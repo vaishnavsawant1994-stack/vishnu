@@ -25,9 +25,9 @@ This work extends Vishnu's existing integration registry, permission checks, too
 
 | Requirement | Status | Evidence or blocker |
 |---|---|---|
-| CI, Reliability and Security, qualification, release authority, Android companion/instrumentation, responsive checks, and macOS/Ubuntu/Windows packages | Passed on baseline `7ec36a7831f443cd0104ef900caad648f7087677` | GitHub Actions runs associated with that exact commit all report success. The new hardening commit still requires fresh CI. |
+| CI, Reliability and Security, qualification, release authority, Android companion/instrumentation, responsive checks, and macOS/Ubuntu/Windows packages | Passed on `ab548340d16e1cc80268ebe354d2b55114145132` | GitHub Actions ran the full pytest suite and all listed qualification workflows on this exact head. |
 | Local HTTPS OpenAPI and MCP bridge regression | Implemented; baseline fixture checks reported passing | Uses a local self-signed fixture with test-only credentials; this is not public-provider evidence. |
-| DNS validation and DNS-rebinding resistance | Socket pinning implemented here; fresh CI/adversarial qualification pending | This workspace cannot independently demonstrate an externally controlled public DNS rebinding environment. |
+| DNS validation and DNS-rebinding resistance | Socket pinning implemented; automated tests passed | Public DNS rebinding against an externally controlled hostname was not run; hosted network qualification remains open. |
 | Public CA-trusted OpenAPI and MCP qualification | Blocked | Requires a controlled public HTTPS service, public DNS, reachable egress, and disposable credentials. |
 | OpenAPI write persistence verification | Incomplete | Requires provider-specific read-after-write contracts. Writes are one-shot and reported unverified until then. |
 | OAuth authorization-code/PKCE and token lifecycle | Incomplete | No generic provider registration/redirect configuration is available in this task environment. |
