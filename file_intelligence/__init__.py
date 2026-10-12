@@ -36,7 +36,8 @@ from .production import (
 from .readers import ContentReadError
 from .semantic import LocalSemanticGraph, extract_entities
 from .stage15_vision import Stage15DocumentVisionOcrProvider
-from .stage17_runtime import Stage17PolicyError, Stage17ProductionContentRuntime
+from .stage17_runtime import Stage17PolicyError
+from .stage17_grounded_runtime import Stage17ProductionContentRuntime
 from .stage17_worker import Stage17ContentWorker
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
 
