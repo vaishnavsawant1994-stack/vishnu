@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
 from file_intelligence import FileIntelligenceEngine
 from file_intelligence.production import (
@@ -154,8 +155,16 @@ def test_runtime_state_router_preserves_old_route_and_mounts_one_cross_platform_
     }
     app = FastAPI()
     app.include_router(runtime_state_router(runtime))
-    paths = {getattr(route, "path", None) for route in app.routes}
+
+    # FastAPI 0.137+ keeps included routers as live lazy route trees rather than
+    # copying each APIRoute into app.routes. Validate public routing/OpenAPI instead
+    # of relying on that internal representation.
+    paths = app.openapi()["paths"]
     assert "/iphone/api/runtime-state" in paths
     assert "/iphone/api/content-ingestion/uploads" in paths
     assert "/iphone/api/content-ingestion/jobs/{job_id}/result" in paths
-    assert len([path for path in paths if path and path.endswith("/uploads")]) == 1
+    assert list(paths).count("/iphone/api/content-ingestion/uploads") == 1
+
+    with TestClient(app) as client:
+        assert client.get("/iphone/api/runtime-state").status_code == 401
+        assert client.get("/iphone/api/content-ingestion/health").status_code == 401
