@@ -88,9 +88,10 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
     }]
 
     class FakeMCPClient:
-        def __init__(self, endpoint, token=None):
+        def __init__(self, endpoint, token=None, *, auth_type="bearer_token"):
             assert endpoint == "https://mcp.example/weather"
             self.token = token
+            self.auth_type = auth_type
 
         def list_tools(self):
             return server_tools
