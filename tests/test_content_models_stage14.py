@@ -251,7 +251,12 @@ def test_stage14_handwriting_uses_separate_neural_ctc_task_artifact_and_robust_s
     validation_source = _source_for(models.datasets, "validation", "stage14-hw-validation")
     test_source = _source_for(models.datasets, "test", "stage14-hw-test")
 
-    for text in ("XY", "YX", "XΩ", "ΩY"):
+    # The production HTR model and evaluator remain unchanged. The original
+    # four two-grapheme synthetic rows made the held-out three-grapheme sequence
+    # numerically marginal on some BLAS/CPU implementations. Supply several
+    # independent owner-generated contexts for every learned grapheme while
+    # keeping validation YΩX and test ΩXY genuinely held out.
+    for text in ("XY", "YX", "XΩ", "ΩY", "XYX", "YXY", "XΩY", "ΩYX"):
         _approve_line(
             feedback,
             task=ContentModelTask.HANDWRITING,
