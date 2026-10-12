@@ -25,7 +25,8 @@ def challenge(verifier: str) -> str:
 
 
 class Devices:
-    active = {"device-a", "device-b"}
+    def __init__(self):
+        self.active = {"device-a", "device-b"}
 
     def is_active(self, device_id):
         return device_id in self.active
