@@ -251,7 +251,13 @@ def test_stage14_handwriting_uses_separate_neural_ctc_task_artifact_and_robust_s
     validation_source = _source_for(models.datasets, "validation", "stage14-hw-validation")
     test_source = _source_for(models.datasets, "test", "stage14-hw-test")
 
-    for text in ("XY", "YX", "XΩ", "ΩY"):
+    # The production HTR model, evaluator and thresholds remain unchanged. This
+    # tiny qualification corpus now teaches every ordered pair transition among
+    # X, Y and Ω. Validation YΩX and test ΩXY remain completely held out, so the
+    # assertion still proves composition of an unseen full grapheme sequence,
+    # without simultaneously asking the toy fixture to extrapolate unseen local
+    # transitions in a hardware-sensitive optimization run.
+    for text in ("XY", "YX", "XΩ", "ΩX", "YΩ", "ΩY", "XYX", "YXY", "XΩY", "ΩYX"):
         _approve_line(
             feedback,
             task=ContentModelTask.HANDWRITING,

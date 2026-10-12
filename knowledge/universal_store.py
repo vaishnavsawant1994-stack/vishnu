@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from file_intelligence import FileIntelligenceEngine, LocalContentIndex, LocalSemanticGraph, OcrUnavailable, TesseractOcrProvider
+from file_intelligence import (
+    ContentKind,
+    FileIntelligenceEngine,
+    OcrUnavailable,
+    Stage17ProductionContentRuntime,
+    TesseractOcrProvider,
+    VishnuDocument,
+)
 from file_intelligence.models import ExtractionMethod, SourceReference, VishnuBlock
 from file_intelligence.readers import ContentReadError, sanitize_image
 from knowledge.store import KnowledgeError, KnowledgeOcrUnavailable, KnowledgeStore as LegacyKnowledgeStore
@@ -25,8 +32,9 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
 
     def _init(self):
         super()._init()
-        self.content_index = LocalContentIndex(self.path)
-        self.semantic_graph = LocalSemanticGraph(self.path)
+        self.stage17_runtime = Stage17ProductionContentRuntime(self.path)
+        self.content_index = self.stage17_runtime.content_index
+        self.semantic_graph = self.stage17_runtime.semantic_graph
 
     def _segments_for(self, filename: str, data: bytes, access_class: str):
         provider = self.ocr_provider
@@ -74,33 +82,48 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
             method = ExtractionMethod.NATIVE
         return VishnuBlock(kind, str(chunk.get("content") or ""), source, method, confidence)
 
-    def _index_detail(self, detail: dict) -> None:
+    def _document_from_detail(self, detail: dict) -> VishnuDocument:
         chunks = detail.get("chunks") or []
         blocks = [self._block_from_chunk(chunk) for chunk in chunks if str(chunk.get("content") or "").strip()]
-        metadata = {
-            "lineage_id": detail.get("lineage_id"),
-            "version": detail.get("version"),
-            "filename": detail.get("filename"),
-            "source": detail.get("source"),
-            "access_class": detail.get("access_class"),
-        }
-        self.content_index.index_blocks(
-            document_id=detail["id"],
-            checksum=detail["checksum"],
-            title=detail["title"],
+        filename = str(detail.get("filename") or detail.get("title") or detail["id"])
+        extension = Path(filename).suffix.lower()
+        return VishnuDocument(
+            document_id=str(detail["id"]),
+            filename=filename,
+            content_kind=ContentKind.DOCUMENT,
+            detected_mime=str((detail.get("metadata") or {}).get("detected_mime") or "application/octet-stream"),
+            declared_mime=str((detail.get("metadata") or {}).get("declared_mime") or "application/octet-stream"),
+            extension=extension,
+            sha256=str(detail["checksum"]),
+            size_bytes=int((detail.get("metadata") or {}).get("size_bytes") or 0),
             blocks=blocks,
-            scope_type="knowledge",
-            scope_id=detail["access_class"],
-            metadata=metadata,
+            metadata={
+                "knowledge": True,
+                "lineage_id": detail.get("lineage_id"),
+                "version": detail.get("version"),
+                "source": detail.get("source"),
+                "access_class": detail.get("access_class"),
+            },
         )
-        self.semantic_graph.index_blocks(
-            document_id=detail["id"],
-            checksum=detail["checksum"],
-            title=detail["title"],
-            blocks=blocks,
+
+    def _index_detail(self, detail: dict) -> None:
+        document = self._document_from_detail(detail)
+        status = self.stage17_runtime.process(
+            document,
             scope_type="knowledge",
-            scope_id=detail["access_class"],
+            scope_id=str(detail["access_class"]),
+            object_sha256=document.sha256,
+            extraction_version=max(1, int(detail.get("version") or 1)),
+            metadata={
+                "lineage_id": detail.get("lineage_id"),
+                "knowledge_version": detail.get("version"),
+                "title": detail.get("title"),
+                "source": detail.get("source"),
+                "available_to_vishnu": bool((detail.get("metadata") or {}).get("available_to_vishnu", True)),
+            },
         )
+        if status.get("state") != "completed":
+            raise KnowledgeError("Stage 17 knowledge intelligence did not complete")
 
     def ingest(self, **kwargs):
         detail = super().ingest(**kwargs)
@@ -111,13 +134,10 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     def ensure_exact_index(self, *, access_classes: set[str] | None = None) -> int:
         indexed = 0
         for item in self.list(limit=500, access_classes=access_classes):
-            lexical = self.content_index.state(
+            status = self.stage17_runtime.status(
                 document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
             )
-            semantic = self.semantic_graph.state(
-                document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
-            )
-            if lexical and lexical["checksum"] == item["checksum"] and semantic and semantic["checksum"] == item["checksum"]:
+            if status and status["state"] == "completed" and status["object_sha256"] == item["checksum"]:
                 continue
             detail = self.detail(item["id"])
             if detail:
@@ -156,15 +176,39 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            self.semantic_graph.query(query, scope_type="knowledge", scope_id=access_class, limit=limit)
+            self.stage17_runtime.search(query, scope_type="knowledge", scope_id=access_class, limit=limit)
             for access_class in sorted(classes)
         ]
+
+    def grounded_answer(self, question: str, *, access_classes: set[str] | None = None, document_id: str | None = None) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        answers = []
+        for access_class in sorted(classes):
+            result = self.stage17_runtime.answer(
+                question,
+                scope_type="knowledge",
+                scope_id=access_class,
+                document_id=document_id,
+            )
+            result["access_class"] = access_class
+            answers.append(result)
+        return answers
+
+    def compare_documents(self, first_document_id: str, second_document_id: str, *, access_class: str) -> dict:
+        self.ensure_exact_index(access_classes={access_class})
+        return self.stage17_runtime.compare(
+            first_document_id=first_document_id,
+            second_document_id=second_document_id,
+            scope_type="knowledge",
+            scope_id=access_class,
+        )
 
     def semantic_links(self, *, access_classes: set[str] | None = None, limit: int = 100) -> list[dict]:
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "links": self.semantic_graph.cross_document_links(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "links": self.stage17_runtime.links(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]
 
@@ -172,7 +216,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "contradictions": self.semantic_graph.contradictions(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "contradictions": self.stage17_runtime.contradictions(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]
 
@@ -180,6 +224,6 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "events": self.semantic_graph.timeline(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "events": self.stage17_runtime.timeline(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]

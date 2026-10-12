@@ -26,7 +26,7 @@ from .production import (
     ContentAddressedObjectStore,
     ContentBenchmark,
     ContentResourceRouter,
-    ContentWorker,
+    ContentWorker as LegacyContentWorker,
     JobStatus,
     ProductionContentStore,
     ResourceClass,
@@ -36,7 +36,14 @@ from .production import (
 from .readers import ContentReadError
 from .semantic import LocalSemanticGraph, extract_entities
 from .stage15_vision import Stage15DocumentVisionOcrProvider
+from .stage17_runtime import Stage17PolicyError
+from .stage17_grounded_runtime import Stage17ProductionContentRuntime
+from .stage17_worker import Stage17ContentWorker
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
+
+# Stage 17 is the canonical package-level production worker. The legacy worker
+# remains importable explicitly for compatibility and migration tests.
+ContentWorker = Stage17ContentWorker
 
 __all__ = [
     "AdaptiveOcrProvider",
@@ -54,6 +61,7 @@ __all__ = [
     "FileIntelligenceEngine",
     "ImageQuality",
     "JobStatus",
+    "LegacyContentWorker",
     "LocalContentIndex",
     "LocalMediaDecoder",
     "LocalSemanticGraph",
@@ -68,6 +76,9 @@ __all__ = [
     "Stage16DeepDocumentUnderstandingProvider",
     "Stage16DocumentTypeClassifier",
     "Stage16PolicyError",
+    "Stage17ContentWorker",
+    "Stage17PolicyError",
+    "Stage17ProductionContentRuntime",
     "StoredObject",
     "TesseractOcrProvider",
     "TranscriptSegment",
