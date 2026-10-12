@@ -40,9 +40,14 @@ def normalize_mcp_tool(server_id: str, raw: dict) -> dict:
     desc = raw.get("description", "")
     description = desc[:1000] if isinstance(desc, str) else ""
     identity = hashlib.sha256((server_id + "\n" + name).encode()).hexdigest()[:24]
+    annotations = raw.get("annotations") if isinstance(raw.get("annotations"), dict) else {}
+    read_only = annotations.get("readOnlyHint") is True
+    destructive = annotations.get("destructiveHint") is True
     return {"id": "mcp:" + identity, "type": "mcp_tool", "server_id": server_id,
             "name": name, "description": description, "input_schema": schema,
-            "transport": "streamable-http", "risk": "owner_attested_read",
+            "annotations": {"read_only": read_only, "destructive": destructive,
+                            "idempotent": annotations.get("idempotentHint") is True},
+            "transport": "streamable-http", "risk": "read" if read_only else ("destructive" if destructive else "write"),
             "lifecycle": "discovered", "executable": False}
 
 

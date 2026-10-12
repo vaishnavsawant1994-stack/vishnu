@@ -752,6 +752,17 @@ class MainWindow(QMainWindow):
         )
         layout.addLayout(grid)
 
+        capability_manager = QPushButton("Open Universal Capabilities Manager")
+        capability_manager.setObjectName("navAction")
+        capability_manager.setToolTip("Open the owner-authenticated, responsive capability console")
+        capability_manager.clicked.connect(self.open_capability_manager)
+        layout.addWidget(capability_manager)
+
+    def open_capability_manager(self):
+        base = self.runtime.get("cloud_url") or self.CLOUD_URL
+        url = str(base).replace("/iphone/", "/capabilities/")
+        QDesktopServices.openUrl(QUrl(url))
+
     def _settings_content(self, layout):
         text = QLabel(
             "Vishnu · Identity · Voice · Appearance · Memory · Privacy · Permissions · Connected Apps · Notifications · Automation · Data · Security · Devices · Models · Advanced"

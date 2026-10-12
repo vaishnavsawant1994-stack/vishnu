@@ -96,7 +96,7 @@ class ConnectorManifest:
         if self.schema_version != SCHEMA_VERSION: raise ValueError(f'unsupported connector schema version: {self.schema_version}')
         if not self.connector_id or not self.connector_id.replace('_','').replace('-','').isalnum(): raise ValueError('invalid connector id')
         if not self.display_name.strip() or not self.provider.strip(): raise ValueError('connector display name/provider required')
-        if self.authentication_type not in {'oauth2_pkce','bearer_token','none'}: raise ValueError('unsupported authentication type')
+        if self.authentication_type not in {'oauth2_pkce','bearer_token','api_key_header','none'}: raise ValueError('unsupported authentication type')
         if not self.operations: raise ValueError('connector must declare operations')
         names=set()
         for op in self.operations:

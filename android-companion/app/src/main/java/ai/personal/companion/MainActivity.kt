@@ -31,6 +31,7 @@ import java.io.IOException
 class MainActivity : AppCompatActivity() {
     companion object {
         const val PERSONAL_AI_CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/iphone/"
+        const val CAPABILITIES_URL = "https://personal-ai-runtime-production.up.railway.app/capabilities/"
     }
 
     private val client = OkHttpClient()
@@ -75,6 +76,10 @@ class MainActivity : AppCompatActivity() {
             text = "Open Vishnu"
             contentDescription = "Open the secure Vishnu cloud experience"
         }
+        val openCapabilities = Button(this).apply {
+            text = "Manage Universal Capabilities"
+            contentDescription = "Open Vishnu's owner authenticated capability manager"
+        }
         val continuity = TextView(this).apply {
             text = "Voice, Google sign-in, memory and conversations continue securely in your trusted browser."
             textSize = PersonalAITheme.Type.supporting
@@ -109,18 +114,19 @@ class MainActivity : AppCompatActivity() {
         val pair = Button(this).apply { text = "Pair" }
         val connect = Button(this).apply { text = "Start background connection" }
         listOf(base, pairToken, code).forEach(::styleField)
-        listOf(openCloud, pair, connect).forEach { styleButton(it, true) }
+        listOf(openCloud, openCapabilities, pair, connect).forEach { styleButton(it, true) }
         styleButton(advanced, false)
         status.textSize = 13f
         status.setLineSpacing(dp(3).toFloat(), 1f)
         listOf(base, pairToken, code, pair, connect, status).forEach(pairingBox::addView)
-        listOf(brand, description, openCloud, continuity, advanced, pairingBox).forEach(box::addView)
+        listOf(brand, description, openCloud, openCapabilities, continuity, advanced, pairingBox).forEach(box::addView)
         setContentView(ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
             addView(box)
         })
         openCloud.setOnClickListener { openPersonalAI() }
+        openCapabilities.setOnClickListener { openUrl(CAPABILITIES_URL) }
         advanced.setOnClickListener {
             val show = pairingBox.visibility != View.VISIBLE
             pairingBox.visibility = if (show) View.VISIBLE else View.GONE
@@ -165,6 +171,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPersonalAI() {
+        openUrl(PERSONAL_AI_CLOUD_URL)
+    }
+
+    private fun openUrl(url: String) {
         val colors = CustomTabColorSchemeParams.Builder()
             .setToolbarColor(Color.rgb(3, 6, 13))
             .setNavigationBarColor(Color.rgb(3, 6, 13))
@@ -174,9 +184,9 @@ class MainActivity : AppCompatActivity() {
             .setShowTitle(false)
             .build()
         try {
-            customTab.launchUrl(this, Uri.parse(PERSONAL_AI_CLOUD_URL))
+            customTab.launchUrl(this, Uri.parse(url))
         } catch (_: Exception) {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(PERSONAL_AI_CLOUD_URL)))
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }
     }
 

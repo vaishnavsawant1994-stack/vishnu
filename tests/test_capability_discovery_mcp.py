@@ -36,7 +36,9 @@ def test_mcp_descriptors_are_inert_and_server_scoped():
     tool_b = normalize_mcp_tool(second["id"], {"name": "list", "inputSchema": {"type": "object"}})
     assert tool_a["id"] != tool_b["id"]
     assert tool_a["executable"] is False
-    assert tool_a["risk"] == "owner_attested_read"
+    assert tool_a["risk"] == "write"
+    assert normalize_mcp_tool(first["id"], {"name": "safe", "annotations": {"readOnlyHint": True}})["risk"] == "read"
+    assert normalize_mcp_tool(first["id"], {"name": "delete", "annotations": {"destructiveHint": True}})["risk"] == "destructive"
     with pytest.raises(ValueError):
         normalize_mcp_server({"name": "Bad", "url": "https://mcp.example", "command": "sh"})
     with pytest.raises(ValueError):

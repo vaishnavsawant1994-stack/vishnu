@@ -90,6 +90,12 @@ class CapabilityCatalogStore:
             rows = db.execute("SELECT payload FROM capability_catalog WHERE lower(name) LIKE ? ORDER BY category, name LIMIT ?", ("%" + query.lower().replace("%", "") + "%", limit)).fetchall()
         return [json.loads(row[0]) for row in rows]
 
+    def all(self) -> list[dict]:
+        """Return bounded catalog metadata for startup tool rehydration."""
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT payload FROM capability_catalog ORDER BY category,name LIMIT 5000").fetchall()
+        return [json.loads(row[0]) for row in rows]
+
     def connect(self, capability_id: str, *, server_url: str, auth_type: str,
                 credential_ref: str | None, approved_by: str, approved_at: float,
                 connector_id: str) -> None:

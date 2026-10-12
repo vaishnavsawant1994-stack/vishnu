@@ -23,9 +23,10 @@ class MCPHTTPClient:
     PROTOCOL_VERSION = "2025-11-25"
     ACCEPT = "application/json, text/event-stream"
 
-    def __init__(self, endpoint: str, bearer_token: str | None = None, *, timeout: float = 8):
+    def __init__(self, endpoint: str, bearer_token: str | None = None, *, timeout: float = 8, auth_type: str = "bearer_token"):
         self.endpoint = endpoint
         self.bearer_token = bearer_token
+        self.auth_type = auth_type
         self.timeout = min(max(float(timeout), 0.1), 8.0)
         self.session = _BoundedHTTPSession(endpoint)
         self.session_id: str | None = None
@@ -36,7 +37,10 @@ class MCPHTTPClient:
     def _headers(self):
         headers = {"Accept": self.ACCEPT, "Content-Type": "application/json"}
         if self.bearer_token:
-            headers["Authorization"] = "Bearer " + self.bearer_token
+            if self.auth_type == "api_key_header":
+                headers["X-API-Key"] = self.bearer_token
+            else:
+                headers["Authorization"] = "Bearer " + self.bearer_token
         if self._initialized:
             headers["MCP-Protocol-Version"] = self.protocol_version
             if self.session_id:
@@ -163,8 +167,10 @@ def _json_safe(value, *, depth=0):
 
 
 def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integrations, vault, catalog_store):
-    if capability.get("type") != "mcp_tool" or not capability.get("read_only_attested"):
-        raise ValueError("MCP tool must be explicitly owner-attested as read-only")
+    risk = capability.get("approved_risk")
+    if capability.get("type") != "mcp_tool" or risk not in {"read", "write", "destructive"}:
+        raise ValueError("MCP tool must be explicitly owner-approved with a risk classification")
+    read_only = risk == "read"
     if not connection or connection.get("status") != "connected":
         raise ValueError("MCP tool connection is not active")
     connector_id = connection["connector_id"]
@@ -175,8 +181,8 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
         provider="mcp",
         schema_version=1,
         authentication_type=connection["auth_type"],
-        operations=(ConnectorOperation(operation_name, "read", "read_only", approval="none", retry=RetryPolicy(max_attempts=1)),),
-        read_only=True,
+        operations=(ConnectorOperation(operation_name, "read" if read_only else ("destructive" if risk == "destructive" else "write"), "read_only" if read_only else ("destructive" if risk == "destructive" else "external_side_effect"), approval="none" if read_only else "required", requires_reauth=risk == "destructive", retry=RetryPolicy(max_attempts=1), idempotency_supported=False),),
+        read_only=read_only,
         content_limits=(("response_bytes", MAX_RESPONSE_BYTES),),
     ).validate()
     try:
@@ -208,14 +214,14 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
         if not live or live.get("status") != "connected":
             raise ConnectorError("capability_revoked", "This MCP tool is no longer connected.", "permission_denied", 403, False)
         token = vault.get(live.get("credential_ref")) if live.get("credential_ref") else None
-        if live.get("auth_type") == "bearer_token" and not token:
+        if live.get("auth_type") in {"bearer_token", "api_key_header"} and not token:
             raise ConnectorError("authentication_required", "The MCP server needs to be reconnected.", "authentication_expired", 401, False)
         from security.request_context import current_trusted_request
         context = current_trusted_request()
         actor = {"device_id": context.device_id, "session_id": context.session_id} if context else {}
         audit_data = {"capability_id": capability["id"], "tool_name": capability["name"], "operation": operation_name}
         current.audit("mcp.execution.started", connector_id=connector_id, **actor, payload=audit_data)
-        client = MCPHTTPClient(live["server_url"], token)
+        client = MCPHTTPClient(live["server_url"], token, auth_type=live.get("auth_type", "bearer_token"))
         try:
             result = client.call_tool(capability["name"], parameters)
             if result.get("isError") is True:
@@ -230,8 +236,9 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
                           payload={**audit_data, "error_type": type(exc).__name__})
             raise
 
-    tool = Tool(name=tool_name, description=f"Owner-attested read-only MCP tool: {capability.get('description') or capability['name']}",
-                handler=handler, risk=Risk.READ_ONLY, connector_id=connector_id,
-                capability=operation_name, input_schema=schema, input_validator=validate)
+    tool = Tool(name=tool_name, description=f"Owner-approved MCP tool: {capability.get('description') or capability['name']}",
+                handler=handler, risk=Risk.READ_ONLY if read_only else (Risk.DESTRUCTIVE if risk == "destructive" else Risk.EXTERNAL_SIDE_EFFECT), connector_id=connector_id,
+                capability=operation_name, input_schema=schema, input_validator=validate,
+                requires_reauth=risk == "destructive", idempotency_supported=False)
     tools.register(tool)
     return tool_name

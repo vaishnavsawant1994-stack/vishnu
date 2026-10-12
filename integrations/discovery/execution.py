@@ -1,4 +1,4 @@
-"""Governed, read-only execution for owner-approved OpenAPI GET operations."""
+"""Governed, schema-bounded execution for owner-approved OpenAPI operations."""
 from __future__ import annotations
 
 import ipaddress
@@ -89,12 +89,12 @@ class _BoundedHTTPSession:
             raise
 
 
-def _validate_parameters(capability: dict, values: dict) -> tuple[str, dict]:
+def _validate_parameters(capability: dict, values: dict) -> tuple[str, dict, dict | None]:
     if not isinstance(values, dict):
         raise ValueError("operation parameters must be an object")
     declared = capability.get("parameters") or []
     by_name = {p["name"]: p for p in declared if isinstance(p, dict) and p.get("in") in {"path", "query"}}
-    if set(values) - set(by_name):
+    if set(values) - set(by_name) - {"body"}:
         raise ValueError("operation contains an undeclared parameter")
     path = capability["path"]
     query = {}
@@ -136,23 +136,47 @@ def _validate_parameters(capability: dict, values: dict) -> tuple[str, dict]:
             or any(ord(char) < 32 for char in decoded_path)
             or any(segment in {".", ".."} for segment in decoded_path.split("/"))):
         raise ValueError("operation path has unsupported template parameters")
-    return path, query
+    body = values.get("body")
+    schema = capability.get("request_body")
+    if body is not None:
+        if not isinstance(schema, dict) or not isinstance(body, dict):
+            raise ValueError("operation body is unsupported")
+        props = schema.get("properties") or {}
+        if set(body) - set(props) or set(schema.get("required") or []) - set(body):
+            raise ValueError("operation body does not match its approved schema")
+        for key, value in body.items():
+            spec = props[key]
+            kind = spec.get("type")
+            valid = ((kind == "string" and isinstance(value, str) and len(value) <= int(spec.get("max_length", 500)))
+                     or (kind == "integer" and isinstance(value, int) and not isinstance(value, bool))
+                     or (kind == "number" and isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value))
+                     or (kind == "boolean" and isinstance(value, bool)))
+            if not valid or ("enum" in spec and value not in spec["enum"]):
+                raise ValueError(f"invalid request body field: {key}")
+        import json
+        if len(json.dumps(body, separators=(",", ":")).encode()) > int(schema.get("max_bytes", 65536)):
+            raise ValueError("operation body exceeds the size limit")
+    elif schema and schema.get("required"):
+        raise ValueError("operation body is required")
+    return path, query, body
 
 
 def attach_approved_capability(capability: dict, connection: dict, *, tools, integrations, vault, state_store, catalog_store=None):
-    """Rehydrate an approved catalog entry as one governed read-only tool."""
-    if capability.get("method") != "GET" or capability.get("risk") != "read" or not connection or connection.get("status") != "connected":
-        raise ValueError("only connected read-only GET operations can be registered")
+    """Rehydrate one approved catalog entry as a governed operation tool."""
+    method = str(capability.get("method", "")).upper()
+    if method not in {"GET", "POST", "PUT", "PATCH", "DELETE"} or not connection or connection.get("status") != "connected":
+        raise ValueError("unsupported or disconnected API operation")
+    read_only = method == "GET" and capability.get("risk") == "read"
     connector_id = connection["connector_id"]
-    operation_name = connector_id + ".read"
+    operation_name = connector_id + (".read" if read_only else "." + method.lower())
     manifest = ConnectorManifest(
         connector_id=connector_id,
         display_name=(capability.get("api_title") or "OpenAPI")[:200],
         provider="openapi",
         schema_version=1,
         authentication_type=connection["auth_type"],
-        operations=(ConnectorOperation(operation_name, "read", "read_only", approval="none", retry=RetryPolicy(max_attempts=1)),),
-        read_only=True,
+        operations=(ConnectorOperation(operation_name, "read" if read_only else ("destructive" if method == "DELETE" else "write"), "read_only" if read_only else ("destructive" if method == "DELETE" else "external_side_effect"), approval="none" if read_only else "required", requires_reauth=method == "DELETE", retry=RetryPolicy(max_attempts=1), idempotency_supported=False),),
+        read_only=read_only,
         content_limits=(("response_bytes", MAX_RESPONSE_BYTES),),
     ).validate()
     try:
@@ -165,7 +189,7 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
     except KeyError:
         integrations.register(Integration(connector_id, manifest.display_name, {operation_name}, manifest=manifest, configured=True))
 
-    tool_name = "openapi_" + connector_id.removeprefix("openapi_") + "_get"
+    tool_name = "openapi_" + connector_id.removeprefix("openapi_") + "_" + method.lower()
     existing_tool = next((tool for tool in tools.all() if tool.name == tool_name), None)
     if existing_tool is not None:
         existing_tool.prohibited = False
@@ -178,7 +202,7 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
         live_connection = catalog_store.connection(capability["id"], include_credential_ref=True) if catalog_store is not None else connection
         if not live_connection or live_connection.get("status") != "connected":
             raise ConnectorError("capability_revoked", "This API capability is no longer connected.", "permission_denied", 403, False)
-        route, query = _validate_parameters(capability, parameters)
+        route, query, body = _validate_parameters(capability, parameters)
         destination = live_connection["server_url"]
         headers = {"Accept": "application/json"}
         credential_ref = live_connection.get("credential_ref")
@@ -186,7 +210,10 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
             token = vault.get(credential_ref)
             if not token:
                 raise ConnectorError("authentication_required", "The connector needs to be reconnected.", "authentication_expired", 401, False)
-            headers["Authorization"] = "Bearer " + token
+            if live_connection.get("auth_type") == "api_key_header":
+                headers["X-API-Key"] = token
+            else:
+                headers["Authorization"] = "Bearer " + token
         from security.request_context import current_trusted_request
         context = current_trusted_request()
         actor = {"device_id": context.device_id, "session_id": context.session_id} if context else {}
@@ -194,9 +221,9 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
         adapter = type("OpenAPIAdapter", (), {"base_url": destination, "granted_scopes": None})()
         gateway = ConnectorGateway(current, session=_BoundedHTTPSession(destination))
         try:
-            result = gateway.request(adapter, manifest.operation(operation_name), "GET", destination.rstrip("/") + route,
-                                     parameters={"capability_id": capability["id"], "query_names": sorted(query)},
-                                     headers=headers, params=query, timeout=8, max_response_bytes=MAX_RESPONSE_BYTES,
+            result = gateway.request(adapter, manifest.operation(operation_name), method, destination.rstrip("/") + route,
+                                     parameters={"capability_id": capability["id"], "query_names": sorted(query), "body": body or {}},
+                                     headers=headers, params=query, json_body=body, timeout=8, max_response_bytes=MAX_RESPONSE_BYTES,
                                      destination=destination)
             current.audit("capability.execution.succeeded", connector_id=connector_id, **actor, payload={"capability_id": capability["id"], "operation": operation_name})
             return result
@@ -208,10 +235,13 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
         name=tool_name,
         description=f"Read {capability.get('name', 'approved API operation')} from an owner-approved API.",
         handler=handler,
-        risk=Risk.READ_ONLY,
+        risk=Risk.READ_ONLY if read_only else (Risk.DESTRUCTIVE if method == "DELETE" else Risk.EXTERNAL_SIDE_EFFECT),
         connector_id=connector_id,
         capability=operation_name,
         input_validator=lambda values: _validate_parameters(capability, values) is not None,
+        requires_reauth=method == "DELETE",
+        verification_required=False,
+        idempotency_supported=False,
     )
     tools.register(tool)
     return tool_name
