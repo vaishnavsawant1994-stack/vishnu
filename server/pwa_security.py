@@ -28,7 +28,11 @@ def pwa_security_router(runtime):
     router = APIRouter(prefix='/iphone/api', tags=['iphone-pwa-security'])
     sessions = runtime['pwa_sessions']
     owner_access = runtime['owner_access']
-    devices = runtime['device_registry']
+    # Older isolated router consumers (for example, browser session tests) may
+    # construct this router without a device registry. Native authorization is
+    # fail-closed in that case while the existing browser session endpoints
+    # remain usable.
+    devices = runtime.get('device_registry')
 
     def context():
         current = current_trusted_request()
@@ -70,6 +74,8 @@ def pwa_security_router(runtime):
         current = context()
         if current.auth_type != 'browser':
             raise HTTPException(403, 'Only a signed-in owner browser can authorize a native session')
+        if devices is None:
+            raise HTTPException(503, 'Native authorization is unavailable')
         if not devices.is_active(current.device_id):
             raise HTTPException(401, 'Trusted device is revoked')
         if set(body.scopes) - sessions.NATIVE_SCOPES:

@@ -25,8 +25,10 @@ def challenge(verifier: str) -> str:
 
 
 class Devices:
+    active = {"device-a", "device-b"}
+
     def is_active(self, device_id):
-        return device_id in {"device-a", "device-b"}
+        return device_id in self.active
 
     def authorize(self, device_id, scope):
         return self.is_active(device_id) and scope in {"device:read", "device:admin"}

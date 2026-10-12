@@ -47,12 +47,19 @@ class State:
     def __init__(self, path):
         self.path = path
         self.events = []
+        self.lifecycle = self
 
     def audit(self, event_type, **kwargs):
         self.events.append((event_type, kwargs))
 
     def set_health(self, *args, **kwargs):
         pass
+
+    def entries(self, limit=200):
+        return [{"id": str(index), "action": event, "created_at": index,
+                 "payload": {**kwargs.get("payload", {}), "device_id": kwargs.get("device_id")},
+                 "entry_hash": "test-redacted-hash"}
+                for index, (event, kwargs) in enumerate(reversed(self.events[-limit:]), start=1)]
 
 
 class OwnerContextMiddleware(BaseHTTPMiddleware):
@@ -145,6 +152,10 @@ def test_owner_discovers_approves_connects_executes_and_revokes_get(tmp_path, mo
     assert {event for event, _ in state.events} >= {
         "capability.discovered", "capability.approved", "capability.execution.started", "capability.execution.accepted",
     }
+    history = client.get(f"/iphone/api/apps-tools/capabilities/{capability_id}/history")
+    assert history.status_code == 200
+    assert any(item["action"] == "capability.execution.accepted" for item in history.json()["entries"])
+    assert "secret-test-token" not in history.text
 
     detail = client.get(f"/iphone/api/apps-tools/capabilities/{capability_id}").json()["capability"]
     assert detail["connection"]["status"] == "connected"

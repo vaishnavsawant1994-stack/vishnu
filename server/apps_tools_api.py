@@ -109,6 +109,45 @@ def apps_tools_router(runtime):
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
+    def capability_audit(capability_id: str, limit: int):
+        context = require_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        capability = catalog.get(capability_id)
+        if capability is None:
+            raise HTTPException(404, 'Capability not found')
+        state_store = getattr(runtime.get('integrations'), 'state_store', None)
+        audit = getattr(state_store, 'lifecycle', None)
+        if audit is None:
+            return {'entries': []}
+        server_id = capability.get('server_id') if capability.get('type') == 'mcp_tool' else None
+        rows = audit.entries(min(1000, max(100, limit * 10)))
+        selected = []
+        for row in rows:
+            payload = row.get('payload') or {}
+            if payload.get('capability_id') != capability_id and payload.get('server_id') != (server_id or capability_id):
+                continue
+            # Keep the projection to redacted audit data and avoid exposing a
+            # different device's activity from a shared connector.
+            if payload.get('device_id') not in (None, context.device_id):
+                continue
+            selected.append({key: row.get(key) for key in ('id', 'action', 'created_at', 'payload', 'entry_hash')})
+            if len(selected) >= limit:
+                break
+        return {'entries': selected}
+
+    @router.get('/capabilities/{capability_id}/history')
+    def capability_history(capability_id: str, limit: int = 50):
+        if not 1 <= limit <= 100:
+            raise HTTPException(422, 'History limit must be between 1 and 100')
+        return capability_audit(capability_id, limit)
+
+    @router.get('/capabilities/{capability_id}/audit')
+    def capability_audit_log(capability_id: str, limit: int = 50):
+        if not 1 <= limit <= 100:
+            raise HTTPException(422, 'Audit limit must be between 1 and 100')
+        return capability_audit(capability_id, limit)
+
     @router.get('/capabilities/{capability_id:path}')
     def capability_detail(capability_id: str):
         require_owner()
