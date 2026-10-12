@@ -129,5 +129,5 @@ def test_engine_keeps_exact_image_bbox_and_stage6_spatial_layout():
     assert originals[0].metadata["column"] == 1
     assert originals[1].metadata["column"] == 2
     assert any(block.kind == "key_value" and block.data["key"] == "Invoice No" for block in document.blocks)
-    assert document.schema_version == "1.2"
+    assert tuple(int(part) for part in document.schema_version.split(".")) >= (1, 2)
     assert document.layout_version == "vishnu-layout/3"

@@ -24,6 +24,10 @@ _SIGNATURES = (
     (b"GIF89a", Detection(ContentKind.IMAGE, "image/gif", ".gif")),
     (b"II*\x00", Detection(ContentKind.IMAGE, "image/tiff", ".tiff")),
     (b"MM\x00*", Detection(ContentKind.IMAGE, "image/tiff", ".tiff")),
+    (b"fLaC", Detection(ContentKind.AUDIO, "audio/flac", ".flac")),
+    (b"OggS", Detection(ContentKind.AUDIO, "audio/ogg", ".ogg")),
+    (b"ID3", Detection(ContentKind.AUDIO, "audio/mpeg", ".mp3")),
+    (b"\x1aE\xdf\xa3", Detection(ContentKind.VIDEO, "video/x-matroska", ".mkv")),
 )
 
 _CODE_EXTENSIONS = {
@@ -49,6 +53,8 @@ _EXTENSIONS = {
     ".htm": Detection(ContentKind.STRUCTURED, "text/html", ".htm"),
     ".ics": Detection(ContentKind.STRUCTURED, "text/calendar", ".ics"),
     ".vcf": Detection(ContentKind.STRUCTURED, "text/vcard", ".vcf"),
+    ".srt": Detection(ContentKind.STRUCTURED, "application/x-subrip", ".srt"),
+    ".vtt": Detection(ContentKind.STRUCTURED, "text/vtt", ".vtt"),
     ".eml": Detection(ContentKind.EMAIL, "message/rfc822", ".eml"),
     ".rtf": Detection(ContentKind.DOCUMENT, "application/rtf", ".rtf"),
     ".epub": Detection(ContentKind.EBOOK, "application/epub+zip", ".epub"),
@@ -66,6 +72,18 @@ _EXTENSIONS = {
     ".webp": Detection(ContentKind.IMAGE, "image/webp", ".webp"),
     ".tif": Detection(ContentKind.IMAGE, "image/tiff", ".tif"),
     ".tiff": Detection(ContentKind.IMAGE, "image/tiff", ".tiff"),
+    ".wav": Detection(ContentKind.AUDIO, "audio/wav", ".wav"),
+    ".flac": Detection(ContentKind.AUDIO, "audio/flac", ".flac"),
+    ".mp3": Detection(ContentKind.AUDIO, "audio/mpeg", ".mp3"),
+    ".m4a": Detection(ContentKind.AUDIO, "audio/mp4", ".m4a"),
+    ".aac": Detection(ContentKind.AUDIO, "audio/aac", ".aac"),
+    ".ogg": Detection(ContentKind.AUDIO, "audio/ogg", ".ogg"),
+    ".opus": Detection(ContentKind.AUDIO, "audio/ogg", ".opus"),
+    ".mp4": Detection(ContentKind.VIDEO, "video/mp4", ".mp4"),
+    ".mov": Detection(ContentKind.VIDEO, "video/quicktime", ".mov"),
+    ".mkv": Detection(ContentKind.VIDEO, "video/x-matroska", ".mkv"),
+    ".webm": Detection(ContentKind.VIDEO, "video/webm", ".webm"),
+    ".avi": Detection(ContentKind.VIDEO, "video/x-msvideo", ".avi"),
 }
 for _suffix in _CODE_EXTENSIONS:
     _EXTENSIONS[_suffix] = Detection(ContentKind.CODE, "text/plain", _suffix)
@@ -96,22 +114,47 @@ def _detect_zip(data: bytes) -> Detection | None:
     return _EXTENSIONS[".zip"]
 
 
+def _detect_iso_media(filename: str, data: bytes) -> Detection | None:
+    if len(data) < 12 or data[4:8] != b"ftyp":
+        return None
+    suffix = Path(filename).suffix.lower()
+    if suffix in {".m4a", ".aac"}:
+        return _EXTENSIONS.get(suffix, _EXTENSIONS[".m4a"])
+    if suffix == ".mov":
+        return _EXTENSIONS[".mov"]
+    return _EXTENSIONS[".mp4"]
+
+
 def detect_content(filename: str, data: bytes, declared_mime: str = "application/octet-stream") -> Detection:
     lower_name = str(filename or "").lower()
+    suffix = ".tar.gz" if lower_name.endswith(".tar.gz") else Path(filename).suffix.lower()
     if data.startswith(b"\x1f\x8b"):
         extension = ".tar.gz" if lower_name.endswith(".tar.gz") else ".tgz" if lower_name.endswith(".tgz") else ".gz"
         return Detection(ContentKind.ARCHIVE, "application/gzip", extension)
     if len(data) >= 265 and data[257:262] == b"ustar":
         return Detection(ContentKind.ARCHIVE, "application/x-tar", ".tar")
+    if data.startswith(b"RIFF") and len(data) >= 12:
+        if data[8:12] == b"WEBP":
+            return Detection(ContentKind.IMAGE, "image/webp", ".webp")
+        if data[8:12] == b"WAVE":
+            return _EXTENSIONS[".wav"]
+        if data[8:12] == b"AVI ":
+            return _EXTENSIONS[".avi"]
+    iso_media = _detect_iso_media(filename, data)
+    if iso_media:
+        return iso_media
     for signature, detected in _SIGNATURES:
         if data.startswith(signature):
+            if signature == b"OggS" and suffix == ".opus":
+                return _EXTENSIONS[".opus"]
+            if signature == b"\x1aE\xdf\xa3" and suffix == ".webm":
+                return _EXTENSIONS[".webm"]
             return detected
-    if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
-        return Detection(ContentKind.IMAGE, "image/webp", ".webp")
+    if suffix == ".mp3" and len(data) >= 2 and data[0] == 0xFF and (data[1] & 0xE0) == 0xE0:
+        return _EXTENSIONS[".mp3"]
     zipped = _detect_zip(data)
     if zipped:
         return zipped
-    suffix = ".tar.gz" if lower_name.endswith(".tar.gz") else Path(filename).suffix.lower()
     sample = data[:65536]
     try:
         text = sample.decode("utf-8-sig")
