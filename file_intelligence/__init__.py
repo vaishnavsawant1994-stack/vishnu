@@ -27,6 +27,7 @@ from .production import (
 )
 from .readers import ContentReadError
 from .semantic import LocalSemanticGraph, extract_entities
+from .stage15_vision import Stage15DocumentVisionOcrProvider
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
 
 __all__ = [
@@ -52,6 +53,7 @@ __all__ = [
     "ProductionContentStore",
     "ResourceClass",
     "SourceReference",
+    "Stage15DocumentVisionOcrProvider",
     "StoredObject",
     "TesseractOcrProvider",
     "TranscriptSegment",
