@@ -43,7 +43,7 @@ from identity import IdentityStore
 from integrations.plugins import PluginManifestRegistry
 from integrations.runtime import build_integrations
 from knowledge.governance import KnowledgeAuthority
-from knowledge.store import KnowledgeStore
+from knowledge.universal_store import UniversalKnowledgeStore
 from memory.governance import GovernedMemory
 from memory.second_brain import SecondBrain
 from memory.store import MemoryStore
@@ -70,7 +70,7 @@ def build_runtime():
     events=EventBus(); telemetry=Telemetry(settings.data_dir/'telemetry.json'); preferences=Preferences(settings.data_dir/'preferences.json'); backups=BackupService(settings.data_dir)
     vault=SecretVault(settings.data_dir/'vault.json',settings.vault_password or None)
     memory=MemoryStore(settings.data_dir/'assistant.sqlite3'); models=GovernedModelRouter(settings,events=events,audit=memory.audit,vault=vault); models.set_owner_privacy(str(preferences.get('model_privacy_mode',settings.model_privacy_mode))); vector=VectorStore(settings.data_dir/'vectors.sqlite3',lambda text:models.embed(text,sensitivity='sensitive')); memory_engine=SecondBrain(memory,models,vector); second_brain=GovernedMemory(memory_engine,settings.data_dir/'memory-candidates.sqlite3',events=events,is_enabled=lambda: bool(preferences.get('memory_enabled',True)))
-    knowledge_store=KnowledgeStore(settings.data_dir/'knowledge.sqlite3',settings.data_dir/'knowledge'/'objects'); knowledge=KnowledgeAuthority(knowledge_store,events=events); device_registry=DeviceRegistry(settings.data_dir/'devices.sqlite3'); owner_access=OwnerAccessStore(settings.data_dir/'owner-access.sqlite3'); device_gateway=DeviceGateway(device_registry,events); continuity=ContinuityService(settings.data_dir/'continuity.sqlite3',events=events,second_brain=second_brain)
+    knowledge_store=UniversalKnowledgeStore(settings.data_dir/'knowledge.sqlite3',settings.data_dir/'knowledge'/'objects'); knowledge=KnowledgeAuthority(knowledge_store,events=events); device_registry=DeviceRegistry(settings.data_dir/'devices.sqlite3'); owner_access=OwnerAccessStore(settings.data_dir/'owner-access.sqlite3'); device_gateway=DeviceGateway(device_registry,events); continuity=ContinuityService(settings.data_dir/'continuity.sqlite3',events=events,second_brain=second_brain)
     primary_thread=continuity.latest_thread()
     if primary_thread is None: primary_thread_id=continuity.create_thread('Primary Vishnu Context',device_id='desktop',context={'surface':'desktop','topic':'current work'})
     else: primary_thread_id=primary_thread['id']; continuity.set_active('desktop',primary_thread_id)
