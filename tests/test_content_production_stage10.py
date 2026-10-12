@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
 
 from file_intelligence import FileIntelligenceEngine
 from file_intelligence.production import (
-    ContentAddressedObjectStore,
     ContentBenchmark,
     ContentResourceRouter,
     ContentWorker,
@@ -102,20 +101,25 @@ def test_gpu_required_jobs_are_not_claimed_by_cpu_only_workers(tmp_path):
 def test_expired_leases_are_reclaimed_and_retry_exhaustion_is_durable(tmp_path):
     store = ProductionContentStore(tmp_path / "runtime.sqlite3", tmp_path / "objects")
     obj = store.object_store.put_bytes(b"work")
-    job = store.enqueue(object_sha256=obj.sha256, filename="work.txt", scope_type="knowledge", scope_id="owner", max_attempts=2)
+    # The stale claim is a real processing attempt, so use three total attempts:
+    # stale lease -> retryable failure -> terminal failure.
+    job = store.enqueue(object_sha256=obj.sha256, filename="work.txt", scope_type="knowledge", scope_id="owner", max_attempts=3)
     claimed = store.claim(worker_id="stale")
+    assert claimed["attempts"] == 1
     with store.con() as con:
         con.execute("UPDATE content_ingestion_jobs SET lease_expires_at='2000-01-01T00:00:00+00:00' WHERE job_id=?", (job["job_id"],))
     assert store.reclaim_expired() == 1
     claimed = store.claim(worker_id="retry")
+    assert claimed["attempts"] == 2
     first = store.fail(claimed["job_id"], worker_id="retry", error=RuntimeError("transient"), retryable=True)
     assert first["status"] == JobStatus.QUEUED.value
     with store.con() as con:
         con.execute("UPDATE content_ingestion_jobs SET available_at='2000-01-01T00:00:00+00:00' WHERE job_id=?", (job["job_id"],))
     second_claim = store.claim(worker_id="retry")
+    assert second_claim["attempts"] == 3
     final = store.fail(second_claim["job_id"], worker_id="retry", error=RuntimeError("still failing"), retryable=True)
     assert final["status"] == JobStatus.FAILED.value
-    assert final["attempts"] == 2
+    assert final["attempts"] == 3
 
 
 def test_resource_router_metrics_health_and_benchmark_helpers(tmp_path):
@@ -148,9 +152,10 @@ def test_runtime_state_router_preserves_old_route_and_mounts_one_cross_platform_
         "content_ingestion": store,
         "base_project_store": SimpleNamespace(get=lambda project_id: {"id": project_id, "status": "active"}),
     }
-    router = runtime_state_router(runtime)
-    paths = {route.path for route in router.routes}
+    app = FastAPI()
+    app.include_router(runtime_state_router(runtime))
+    paths = {getattr(route, "path", None) for route in app.routes}
     assert "/iphone/api/runtime-state" in paths
     assert "/iphone/api/content-ingestion/uploads" in paths
     assert "/iphone/api/content-ingestion/jobs/{job_id}/result" in paths
-    assert len([path for path in paths if path.endswith("/uploads")]) == 1
+    assert len([path for path in paths if path and path.endswith("/uploads")]) == 1
