@@ -5,7 +5,7 @@ import time
 
 from .engine import FileIntelligenceEngine
 from .production import ProductionContentStore
-from .stage17_runtime import Stage17ProductionContentRuntime
+from .stage17_grounded_runtime import Stage17ProductionContentRuntime
 
 
 class Stage17ContentWorker:
@@ -34,6 +34,29 @@ class Stage17ContentWorker:
         self.max_materialize_bytes = int(max_materialize_bytes)
         if not self.worker_id:
             raise ValueError("worker_id is required")
+
+    def _persist_job_completion_metadata(self, job_id: str, metadata: dict) -> dict:
+        """Make Stage 17 completion evidence durable on the canonical job row.
+
+        ProductionContentStore.complete() historically writes completion metadata
+        to content_extractions only. Stage 17 also needs the job itself to expose
+        its semantic completion authority to status clients, so merge rather than
+        replace the enqueue metadata after the job has atomically completed.
+        """
+        with self.store.con() as con:
+            row = con.execute("SELECT metadata_json FROM content_ingestion_jobs WHERE job_id=?", (job_id,)).fetchone()
+            if row is None:
+                raise KeyError(job_id)
+            merged = json.loads(row["metadata_json"] or "{}")
+            merged.update(metadata)
+            con.execute(
+                "UPDATE content_ingestion_jobs SET metadata_json=? WHERE job_id=?",
+                (json.dumps(merged, sort_keys=True, default=str), job_id),
+            )
+        current = self.store.job(job_id)
+        if current is None:
+            raise KeyError(job_id)
+        return current
 
     def process_once(self) -> dict | None:
         job = self.store.claim(worker_id=self.worker_id, has_gpu=self.has_gpu)
@@ -89,24 +112,31 @@ class Stage17ContentWorker:
                 json.dumps(document.as_dict(), sort_keys=True, ensure_ascii=False, default=str).encode()
             )
             elapsed = (time.perf_counter() - started) * 1000
-            return self.store.complete(
+            completion_metadata = {
+                "result_size_bytes": result.size_bytes,
+                "content_kind": document.content_kind.value,
+                "stage17_completed": True,
+                "stage17_runtime": intelligence["runtime_version"],
+                "stage17_version_fingerprint": intelligence["version_fingerprint"],
+                "stage17_graph_sha256": intelligence.get("graph_sha256"),
+            }
+            self.store.complete(
                 job["job_id"],
                 worker_id=self.worker_id,
                 result_sha256=result.sha256,
                 document_id=document.document_id,
                 schema_version=document.schema_version,
                 parser_version=document.parser_version,
-                metadata={
-                    "result_size_bytes": result.size_bytes,
-                    "content_kind": document.content_kind.value,
-                    "stage17_completed": True,
-                    "stage17_runtime": intelligence["runtime_version"],
-                    "stage17_version_fingerprint": intelligence["version_fingerprint"],
-                    "stage17_graph_sha256": intelligence.get("graph_sha256"),
-                },
+                metadata=completion_metadata,
                 duration_ms=elapsed,
             )
+            return self._persist_job_completion_metadata(job["job_id"], completion_metadata)
         except Exception as exc:
+            # If the canonical job was already marked completed, a later metadata
+            # persistence failure must not attempt an invalid second fail transition.
+            current = self.store.job(job["job_id"])
+            if current and current.get("status") == "completed":
+                raise
             return self.store.fail(
                 job["job_id"],
                 worker_id=self.worker_id,
