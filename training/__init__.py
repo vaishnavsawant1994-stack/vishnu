@@ -28,6 +28,21 @@ from training.content_models import (
     NaiveBayesDocumentClassifierTrainer,
     VishnuDocumentClassifier,
 )
+from training.continuous_content_models import (
+    ContinuousContentModelCoordinator,
+    FeatureBaseline,
+    FeedbackPolicyError,
+    GovernedContentFeedbackStore,
+    ModelCycleEvidence,
+    ModelCycleEvidenceStore,
+    SequenceRasterVectorizer,
+    TesseractLineBaseline,
+    TextBaseline,
+    VishnuCentroidFeatureTrainer,
+    VishnuFeatureClassifier,
+    VishnuSequencePrototypeTrainer,
+    VishnuSequenceRecognizer,
+)
 from training.contribution_settings import ContributionSettingsService, ContributionSettingsSnapshot
 from training.contributions import (
     ContributionDecision,
@@ -228,4 +243,17 @@ __all__ = [
     'TesseractGlyphBaseline',
     'VishnuGlyphPrototypeTrainer',
     'VishnuGlyphRecognizer',
+    'ContinuousContentModelCoordinator',
+    'FeatureBaseline',
+    'FeedbackPolicyError',
+    'GovernedContentFeedbackStore',
+    'ModelCycleEvidence',
+    'ModelCycleEvidenceStore',
+    'SequenceRasterVectorizer',
+    'TesseractLineBaseline',
+    'TextBaseline',
+    'VishnuCentroidFeatureTrainer',
+    'VishnuFeatureClassifier',
+    'VishnuSequencePrototypeTrainer',
+    'VishnuSequenceRecognizer',
 ]
