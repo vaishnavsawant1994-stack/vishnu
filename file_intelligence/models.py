@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
-SCHEMA_VERSION = "1.2"
+SCHEMA_VERSION = "1.3"
 
 
 class ContentKind(str, Enum):
@@ -13,6 +13,8 @@ class ContentKind(str, Enum):
     SPREADSHEET = "spreadsheet"
     PRESENTATION = "presentation"
     IMAGE = "image"
+    AUDIO = "audio"
+    VIDEO = "video"
     TEXT = "text"
     STRUCTURED = "structured"
     EMAIL = "email"
@@ -26,6 +28,8 @@ class ExtractionMethod(str, Enum):
     NATIVE = "native"
     OCR = "ocr"
     HYBRID = "hybrid"
+    SPEECH = "speech"
+    MEDIA = "media"
 
 
 @dataclass(slots=True)
@@ -88,8 +92,9 @@ class VishnuDocument:
     blocks: list[VishnuBlock] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
     warnings: list[str] = field(default_factory=list)
-    parser_version: str = "vishnu-file-intelligence/2"
+    parser_version: str = "vishnu-file-intelligence/3"
     ocr_version: str | None = None
+    media_version: str | None = None
     layout_version: str = "vishnu-layout/3"
     schema_version: str = SCHEMA_VERSION
 
@@ -112,6 +117,7 @@ class VishnuDocument:
             "warnings": self.warnings,
             "parser_version": self.parser_version,
             "ocr_version": self.ocr_version,
+            "media_version": self.media_version,
             "layout_version": self.layout_version,
             "blocks": [block.as_dict() for block in self.blocks],
             "full_text": self.full_text,
