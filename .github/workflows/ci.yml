@@ -94,4 +94,6 @@ jobs:
           tests/test_release_recovery.py
           tests/test_release_monitoring.py
           tests/test_owner_release_api.py
+      - name: Universal Content Intelligence V1 release qualification gate
+        run: pytest -q tests/test_content_intelligence_v1_release.py
       - run: pytest -q
