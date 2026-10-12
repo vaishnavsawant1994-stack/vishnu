@@ -44,6 +44,19 @@ from training.deployment import (
     UnavailableDeploymentBackend,
 )
 from training.exporter import TrainingDatasetExporter, TrainingExport
+from training.ocr_family import (
+    GlyphBaseline,
+    GlyphImageVectorizer,
+    GovernedOCRSampleCollector,
+    OCRBenchmarkResult,
+    OCRModelMaturationCoordinator,
+    OCRSamplePolicyError,
+    OCRShadowBenchmark,
+    ShadowQualificationStore,
+    TesseractGlyphBaseline,
+    VishnuGlyphPrototypeTrainer,
+    VishnuGlyphRecognizer,
+)
 from training.self_improvement import (
     AutoTrainingRuntime,
     EvaluationResult,
@@ -204,4 +217,15 @@ __all__ = [
     'ContentTrainerBackend',
     'NaiveBayesDocumentClassifierTrainer',
     'VishnuDocumentClassifier',
+    'GlyphBaseline',
+    'GlyphImageVectorizer',
+    'GovernedOCRSampleCollector',
+    'OCRBenchmarkResult',
+    'OCRModelMaturationCoordinator',
+    'OCRSamplePolicyError',
+    'OCRShadowBenchmark',
+    'ShadowQualificationStore',
+    'TesseractGlyphBaseline',
+    'VishnuGlyphPrototypeTrainer',
+    'VishnuGlyphRecognizer',
 ]
