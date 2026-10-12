@@ -80,7 +80,7 @@ def test_owner_discovers_approves_connects_executes_and_revokes_get(tmp_path, mo
     integrations = IntegrationRegistry()
     state = State(tmp_path / "integrations.sqlite3")
     integrations.state_store = state
-    vault = SecretVault(tmp_path / "vault.json")
+    vault = SecretVault(tmp_path / "vault.json", password="test-only-password")
     memory = MemoryStore(tmp_path / "memory.sqlite3")
     runtime = {
         "device_registry": Devices(), "tools": tools, "integrations": integrations,
