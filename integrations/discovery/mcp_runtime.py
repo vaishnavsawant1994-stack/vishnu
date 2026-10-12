@@ -229,7 +229,9 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
             encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
             if len(encoded) > MAX_RESPONSE_BYTES:
                 raise MCPProtocolError("response_too_large", "MCP tool result exceeds the size limit")
-            current.audit("mcp.execution.succeeded", connector_id=connector_id, **actor, payload=audit_data)
+            # Tool result delivery is not evidence that a remote side effect
+            # completed or persisted; reserve "verified" for independent proof.
+            current.audit("mcp.execution.accepted", connector_id=connector_id, **actor, payload=audit_data)
             return result
         except Exception as exc:
             current.audit("mcp.execution.failed", connector_id=connector_id, **actor,

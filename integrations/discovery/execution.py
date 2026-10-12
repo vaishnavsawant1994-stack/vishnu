@@ -5,9 +5,11 @@ import ipaddress
 import math
 import re
 import socket
+import ssl
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import requests
+from requests.adapters import HTTPAdapter
 
 from integrations.contracts import ConnectorManifest, ConnectorOperation, RetryPolicy
 from integrations.gateway import ConnectorGateway, ConnectorError
@@ -15,6 +17,19 @@ from integrations.registry import Integration
 from tools.registry import Risk, Tool
 
 MAX_RESPONSE_BYTES = 1024 * 1024
+
+
+def _resolve_public_addresses(host: str) -> tuple[str, ...]:
+    """Resolve and validate every address that the transport may connect to."""
+    try:
+        addresses = ({ipaddress.ip_address(host)} if _is_ip(host) else {
+            ipaddress.ip_address(row[4][0]) for row in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        })
+    except (OSError, ValueError) as exc:
+        raise ValueError("server host could not be verified") from exc
+    if not addresses or any(not addr.is_global for addr in addresses):
+        raise ValueError("server must resolve only to public IP addresses")
+    return tuple(sorted((str(addr) for addr in addresses), key=lambda item: (":" in item, item)))
 
 
 def _public_https_url(value: str) -> str:
@@ -30,14 +45,14 @@ def _public_https_url(value: str) -> str:
     if port not in (None, 443):
         raise ValueError("only the standard HTTPS port is supported")
     host = parts.hostname.rstrip(".").lower()
-    try:
-        addresses = {ipaddress.ip_address(host)} if _is_ip(host) else {
-            ipaddress.ip_address(row[4][0]) for row in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
-        }
-    except (OSError, ValueError) as exc:
-        raise ValueError("server host could not be verified") from exc
-    if not addresses or any(not addr.is_global for addr in addresses):
-        raise ValueError("server must resolve only to public IP addresses")
+    if not _is_ip(host):
+        try:
+            host = host.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("invalid server host") from exc
+        if len(host) > 253 or not re.fullmatch(r"[a-z0-9.-]+", host):
+            raise ValueError("invalid server host")
+    _resolve_public_addresses(host)
     netloc = f"[{host}]" if ":" in host else host
     path = parts.path.rstrip("/")
     return urlunsplit(("https", netloc, path, "", ""))
@@ -57,19 +72,79 @@ class _BoundedHTTPSession:
         self.base_url = base_url
         self.origin = urlsplit(base_url).netloc.lower()
         self.session = requests.Session()
+    @staticmethod
+    def _pinned_session(address: str):
+        """Create a one-request transport pinned to a validated DNS answer.
+
+        The connection still uses the original URL hostname for TLS SNI and
+        certificate verification; only the TCP destination is pinned.
+        """
+        from urllib3.connection import HTTPSConnection
+        from urllib3.exceptions import NewConnectionError
+
+        class PinnedHTTPSConnection(HTTPSConnection):
+            def _new_conn(self):
+                try:
+                    return socket.create_connection(
+                        (address, self.port), self.timeout, source_address=self.source_address,
+                    )
+                except OSError as exc:
+                    raise NewConnectionError(self, "pinned HTTPS connection failed") from exc
+
+        class PinnedHTTPAdapter(HTTPAdapter):
+            def _pin(self, pool):
+                pool.ConnectionCls = PinnedHTTPSConnection
+                return pool
+
+            def get_connection(self, url, proxies=None):
+                if proxies and any(proxies.values()):
+                    raise ValueError("proxy routing is disabled for external capabilities")
+                return self._pin(super().get_connection(url, proxies=None))
+
+            # requests 2.32+ uses this method from send(); older supported
+            # versions use get_connection().
+            def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+                parent = getattr(super(), "get_connection_with_tls_context", None)
+                if parent is None:
+                    return self.get_connection(request.url, proxies=proxies)
+                if proxies and any(proxies.values()):
+                    raise ValueError("proxy routing is disabled for external capabilities")
+                return self._pin(parent(request, verify, proxies=None, cert=cert))
+
+        session = requests.Session()
+        session.mount("https://", PinnedHTTPAdapter(max_retries=0))
+        return session
 
     def request(self, method, url, **kwargs):
         parts = urlsplit(url)
         if parts.scheme != "https" or parts.netloc.lower() != self.origin or parts.username or parts.password:
             raise ConnectorError("destination_denied", "The operation destination is not approved.", "permission_denied", 403, False)
-        _public_https_url(urlunsplit((parts.scheme, parts.netloc, "", "", "")))
+        normalized_origin = _public_https_url(urlunsplit((parts.scheme, parts.netloc, "", "", "")))
+        host = (urlsplit(normalized_origin).hostname or "").rstrip(".").lower()
+        # Resolve immediately before opening the socket, then make the socket
+        # connect to this exact public IP. This closes the validation/connect
+        # DNS-rebinding window while retaining hostname-based TLS validation.
+        addresses = _resolve_public_addresses(host)
         prefix = urlsplit(self.base_url).path.rstrip("/")
         if prefix and not (parts.path == prefix or parts.path.startswith(prefix + "/")):
             raise ConnectorError("destination_denied", "The operation path is outside the approved API base path.", "permission_denied", 403, False)
         kwargs["allow_redirects"] = False
         kwargs["stream"] = True
         kwargs["timeout"] = min(max(float(kwargs.get("timeout", 8)), 0.1), 8.0)
-        response = self.session.request(method, url, **kwargs)
+        # Test doubles used by the fixture suite intentionally do not expose
+        # mount(); production requests sessions always use the pinned adapter.
+        if hasattr(self.session, "mount"):
+            session = self._pinned_session(addresses[0])
+            try:
+                # Explicit None entries suppress HTTP(S)_PROXY while retaining
+                # platform CA-bundle configuration such as REQUESTS_CA_BUNDLE.
+                response = session.request(method, url, proxies={"http": None, "https": None}, **kwargs)
+            finally:
+                session.close()
+        else:
+            # Injectable fixture transport; production requests.Session always
+            # takes the pinned, environment-independent path above.
+            response = self.session.request(method, url, **kwargs)
         try:
             if 300 <= int(response.status_code) < 400:
                 raise ConnectorError("redirect_denied", "API redirects are disabled for this connector.", "permission_denied", 502, False)
@@ -225,7 +300,9 @@ def attach_approved_capability(capability: dict, connection: dict, *, tools, int
                                      parameters={"capability_id": capability["id"], "query_names": sorted(query), "body": body or {}},
                                      headers=headers, params=query, json_body=body, timeout=8, max_response_bytes=MAX_RESPONSE_BYTES,
                                      destination=destination)
-            current.audit("capability.execution.succeeded", connector_id=connector_id, **actor, payload={"capability_id": capability["id"], "operation": operation_name})
+            # A successful HTTP status proves only provider acceptance. It does
+            # not prove the provider persisted the intended state.
+            current.audit("capability.execution.accepted", connector_id=connector_id, **actor, payload={"capability_id": capability["id"], "operation": operation_name})
             return result
         except Exception as exc:
             current.audit("capability.execution.failed", connector_id=connector_id, **actor, payload={"capability_id": capability["id"], "operation": operation_name, "error_type": type(exc).__name__})

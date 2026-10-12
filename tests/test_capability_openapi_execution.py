@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import socket
 import time
 from types import SimpleNamespace
 
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from integrations.registry import IntegrationRegistry
+from integrations.discovery.execution import _resolve_public_addresses
 from integrations.state import ConnectorStateStore
 from memory.store import MemoryStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
@@ -24,6 +26,18 @@ class Devices:
 
     def authorize(self, device_id, scope):
         return device_id == "owner-device" and scope in {"device:read", "device:admin"}
+
+
+def test_dns_resolution_rejects_mixed_public_and_private_answers(monkeypatch):
+    public = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443))
+    private = (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", 443))
+    monkeypatch.setattr("integrations.discovery.execution.socket.getaddrinfo", lambda *args, **kwargs: [public, private])
+    try:
+        _resolve_public_addresses("provider.example")
+    except ValueError as exc:
+        assert "public IP" in str(exc)
+    else:
+        raise AssertionError("mixed DNS answers must fail closed")
 
 
 class State:
@@ -75,6 +89,7 @@ def test_owner_discovers_approves_connects_executes_and_revokes_get(tmp_path, mo
 
     monkeypatch.setattr(apps_tools_api, "_public_https_url", lambda url: url.rstrip("/"))
     monkeypatch.setattr("integrations.discovery.execution._public_https_url", lambda url: url.rstrip("/"))
+    monkeypatch.setattr("integrations.discovery.execution._resolve_public_addresses", lambda host: ("93.184.216.34",))
     monkeypatch.setattr("integrations.discovery.execution.requests.Session", Session)
 
     tools = ToolRegistry(SimpleNamespace(autonomy_mode="ask", data_dir=tmp_path))
@@ -125,7 +140,7 @@ def test_owner_discovers_approves_connects_executes_and_revokes_get(tmp_path, mo
     assert calls[0][2]["params"] == {"city": "Oslo"}
     assert calls[0][2]["headers"]["Authorization"] == "Bearer secret-test-token"
     assert {event for event, _ in state.events} >= {
-        "capability.discovered", "capability.approved", "capability.execution.started", "capability.execution.succeeded",
+        "capability.discovered", "capability.approved", "capability.execution.started", "capability.execution.accepted",
     }
 
     detail = client.get(f"/iphone/api/apps-tools/capabilities/{capability_id}").json()["capability"]
@@ -177,6 +192,7 @@ def test_openapi_write_requires_exact_durable_owner_approval_and_is_one_shot(tmp
 
     monkeypatch.setattr(apps_tools_api, "_public_https_url", lambda url: url.rstrip("/"))
     monkeypatch.setattr("integrations.discovery.execution._public_https_url", lambda url: url.rstrip("/"))
+    monkeypatch.setattr("integrations.discovery.execution._resolve_public_addresses", lambda host: ("93.184.216.34",))
     monkeypatch.setattr("integrations.discovery.execution.requests.Session", Session)
     tools = ToolRegistry(SimpleNamespace(autonomy_mode="ask", data_dir=tmp_path))
     integrations = IntegrationRegistry()

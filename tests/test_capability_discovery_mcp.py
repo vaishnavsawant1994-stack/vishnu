@@ -103,6 +103,7 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
             return {"content": [{"type": "text", "text": "sunny"}], "isError": False}
 
     monkeypatch.setattr(apps_tools_api, "_public_https_url", lambda url: url.rstrip("/"))
+    monkeypatch.setattr("integrations.discovery.execution._resolve_public_addresses", lambda host: ("93.184.216.34",))
     monkeypatch.setattr(apps_tools_api, "MCPHTTPClient", FakeMCPClient)
     monkeypatch.setattr("integrations.discovery.mcp_runtime.MCPHTTPClient", FakeMCPClient)
 
@@ -148,7 +149,7 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
     assert executed.json()["verified"] is True
     assert {event for event, _ in state.events} >= {
         "mcp.server.discovered", "mcp.server.connected", "mcp.capability.approved",
-        "mcp.execution.started", "mcp.execution.succeeded",
+        "mcp.execution.started", "mcp.execution.accepted",
     }
     assert "mcp-secret-token" not in json.dumps(state.events)
 
@@ -235,6 +236,7 @@ def test_live_https_bridges_approve_execute_audit_and_revoke(tmp_path, monkeypat
 
     monkeypatch.setattr(apps_tools_api, "_public_https_url", allow_local_test_origin)
     monkeypatch.setattr("integrations.discovery.execution._public_https_url", allow_local_test_origin)
+    monkeypatch.setattr("integrations.discovery.execution._resolve_public_addresses", lambda host: ("127.0.0.1",))
     try:
         for _ in range(50):
             try:
@@ -287,7 +289,7 @@ def test_live_https_bridges_approve_execute_audit_and_revoke(tmp_path, monkeypat
         })
         assert executed.status_code == 200, executed.text
         assert executed.json()["result"]["forecast"] == "sunny"
-        assert any(event == "capability.execution.succeeded" for event, _ in state.events)
+        assert any(event == "capability.execution.accepted" for event, _ in state.events)
         assert "qualification-only-token" not in json.dumps(state.events)
         assert "qualification-only-token" not in (tmp_path / "vault.json").read_text()
         assert client.post(f"/iphone/api/apps-tools/capabilities/{cap_id}/disconnect").status_code == 200
@@ -338,7 +340,7 @@ def test_live_https_bridges_approve_execute_audit_and_revoke(tmp_path, monkeypat
         })
         assert mcp_result.status_code == 200, mcp_result.text
         assert json.loads(mcp_result.json()["result"]["content"][0]["text"]) == {"city": "Oslo", "forecast": "sunny"}
-        assert any(event == "mcp.execution.succeeded" for event, _ in state.events)
+        assert any(event == "mcp.execution.accepted" for event, _ in state.events)
         assert "qualification-only-token" not in json.dumps(state.events)
         assert client.post(f"/iphone/api/apps-tools/mcp/servers/{server_id}/disconnect").status_code == 200
         assert client.post(f"/iphone/api/apps-tools/capabilities/{tool_id}/execute", json={
