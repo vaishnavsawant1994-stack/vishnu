@@ -56,6 +56,13 @@ def _line_image(text: str) -> bytes:
     return buffer.getvalue()
 
 
+def _blank_image() -> bytes:
+    image = Image.new("L", (64, 30), 255)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _make_stage(tmp_path):
     models = ContentModelCoordinator(
         datasets_root=tmp_path / "datasets",
@@ -107,7 +114,7 @@ class BadLineBaseline:
         return "xxxx"
 
 
-def test_stage14_neural_ocr_trains_open_vocabulary_candidate_and_keeps_owner_gate(tmp_path):
+def test_stage14_neural_ctc_ocr_is_sequence_native_open_vocabulary_and_owner_gated(tmp_path):
     models, feedback, stage = _make_stage(tmp_path)
     train_source = _source_for(models.datasets, "train", "stage14-ocr-train")
     validation_source = _source_for(models.datasets, "validation", "stage14-ocr-validation")
@@ -145,39 +152,60 @@ def test_stage14_neural_ocr_trains_open_vocabulary_candidate_and_keeps_owner_gat
         languages=("multi",),
     )
     assert candidate["status"] == "candidate"
-    assert candidate["backend_id"] == "vishnu-neural-grapheme-ocr-v1"
+    assert candidate["backend_id"] == "vishnu-neural-ctc-ocr-v2"
     assert candidate["metadata"]["stage"] == 14
     assert candidate["metadata"]["neural_encoder"] is True
+    assert candidate["metadata"]["sequence_ctc_ready"] is True
+    assert candidate["metadata"]["stage13_geometry_decoder_reused"] is False
     assert candidate["metadata"]["foundation_model"] is False
-    assert candidate["metadata"]["sequence_ctc_ready"] is False
+    assert candidate["metadata"]["real_world_corpus_qualified"] is False
     assert candidate["metadata"]["lexicon_required"] is False
     assert candidate["metrics"]["cer"] <= 0.15
     assert candidate["metrics"]["word_accuracy"] >= 0.85
 
     artifact = json.loads((Path(candidate["checkpoint_ref"]) / "model.json").read_text())
-    assert artifact["architecture"]["family"] == "mlp_visual_grapheme_encoder"
-    assert artifact["architecture"]["decoder"] == "stage13_geometry_sequence_v1"
+    assert artifact["architecture"]["family"] == "temporal_mlp_ctc"
+    assert artifact["architecture"]["sequence_objective"] == "ctc_forward_backward"
+    assert artifact["architecture"]["decoder"] == "ctc_prefix_beam_search"
+    assert artifact["architecture"]["stage13_character_geometry"] is False
+    assert artifact["calibration"]["reject_threshold"] > 0.0
+    assert set(artifact["augmentation"]["profiles_supported"]) >= {
+        "rotation",
+        "blur",
+        "perspective",
+        "noise",
+        "lighting",
+        "compression",
+        "scan",
+        "screenshot",
+        "photo",
+    }
+    assert artifact["augmentation"]["real_images_claimed"] is False
     assert artifact["trained_by_vishnu"] is True
     assert artifact["open_vocabulary"] is True
 
     recognizer = VishnuNeuralOpenVocabularyRecognizer(candidate["checkpoint_ref"])
     vectorizer = OpenVocabularyLineVectorizer(height=32)
-    unseen = vectorizer.payload(_line_image("AΩB"))
-    assert recognizer.predict_payload(unseen)[0] == "AΩB"
+    assert recognizer.predict_payload(vectorizer.payload(_line_image("AΩB")))[0] == "AΩB"
     assert recognizer.predict_payload(vectorizer.payload(_line_image("AB BA")))[0] == "AB BA"
+    rejected = recognizer.predict_detailed(vectorizer.payload(_blank_image()))
+    assert rejected["accepted"] is False
+    assert rejected["rejection_reason"] == "insufficient_ink"
 
     with pytest.raises(ValueError, match="Stage 14 model requires successful shadow qualification"):
         stage.approve(candidate["model_id"], owner_id="owner")
 
     evidence = stage.shadow_qualify(candidate["model_id"], baseline=BadLineBaseline())
     assert evidence["passed"] is True
+    assert evidence["candidate_metrics"]["robust_profiles"] == 9.0
+    assert evidence["candidate_metrics"]["robust_word_accuracy"] >= 0.85
     approved = stage.approve(candidate["model_id"], owner_id="owner")
     assert approved["status"] == "owner_approved"
     active = stage.activate(candidate["model_id"], owner_authorized=True)
     assert active["status"] == "active"
 
 
-def test_stage14_handwriting_is_a_separate_neural_task_and_artifact(tmp_path):
+def test_stage14_handwriting_uses_separate_neural_ctc_task_artifact_and_robust_shadow(tmp_path):
     models, feedback, stage = _make_stage(tmp_path)
     train_source = _source_for(models.datasets, "train", "stage14-hw-train")
     validation_source = _source_for(models.datasets, "validation", "stage14-hw-validation")
@@ -215,12 +243,16 @@ def test_stage14_handwriting_is_a_separate_neural_task_and_artifact(tmp_path):
         languages=("multi",),
     )
     assert candidate["status"] == "candidate"
-    assert candidate["backend_id"] == "vishnu-neural-grapheme-handwriting-v1"
+    assert candidate["backend_id"] == "vishnu-neural-ctc-handwriting-v2"
     assert candidate["metadata"]["stage"] == 14
     assert candidate["metadata"]["neural_encoder"] is True
+    assert candidate["metadata"]["sequence_ctc_ready"] is True
+    assert candidate["metadata"]["stage13_geometry_decoder_reused"] is False
     assert candidate["metrics"]["cer"] <= 0.25
     assert candidate["metrics"]["word_accuracy"] >= 0.70
-    assert stage.shadow_qualify(candidate["model_id"], baseline=BadLineBaseline())["passed"] is True
+    evidence = stage.shadow_qualify(candidate["model_id"], baseline=BadLineBaseline())
+    assert evidence["passed"] is True
+    assert evidence["candidate_metrics"]["robust_word_accuracy"] >= 0.70
 
 
 def test_stage14_does_not_weaken_stage9_fail_closed_thresholds():
