@@ -1,0 +1,1 @@
+Stage 18 scope: genuine-corpus qualification authority; charts; diagrams; equations; figures; screenshot/UI understanding; multimodal evidence graph; grounded visual Q&A; production ingestion and Knowledge integration; governed training and activation.
