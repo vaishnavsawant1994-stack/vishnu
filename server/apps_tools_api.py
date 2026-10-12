@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Path
 
 from apps_tools.projection import AppsToolsProjection
+from integrations.discovery.catalog_store import CapabilityCatalogStore
 from security.request_context import current_trusted_request
 
 
@@ -11,6 +12,9 @@ def apps_tools_router(runtime):
     router = APIRouter(prefix='/iphone/api/apps-tools', tags=['apps-tools'])
     devices = runtime['device_registry']
     projection = AppsToolsProjection(runtime['tools'], runtime.get('integrations'), runtime.get('memory'))
+
+    state = getattr(runtime.get('integrations'), 'state_store', None)
+    catalog = CapabilityCatalogStore(state.path.parent / 'capability-catalog.sqlite3') if state is not None else None
 
     def require_owner(scope='device:read'):
         context = current_trusted_request()
@@ -47,5 +51,15 @@ def apps_tools_router(runtime):
         if item is None:
             raise HTTPException(404, 'App not found')
         return {'app': item}
+
+    @router.get('/capabilities')
+    def search_capabilities(query: str = '', limit: int = 50):
+        require_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        try:
+            return {'capabilities': catalog.search(query, limit)}
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
 
     return router
