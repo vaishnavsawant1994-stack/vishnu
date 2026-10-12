@@ -234,3 +234,29 @@ def test_native_session_routes_require_owner_browser_and_support_exchange_reauth
     assert client.post("/iphone/api/native/sessions/logout", headers={"Authorization": "Bearer " + token}).status_code == 200
     assert sessions.authenticate_native(token) is None
 
+
+
+def test_native_authorization_fails_closed_without_registered_redirects(tmp_path):
+    from server.native_capability_auth import native_capability_auth_router
+
+    sessions = PwaSessionStore(tmp_path / "sessions.sqlite3")
+    app = FastAPI()
+    app.include_router(native_capability_auth_router({"pwa_sessions": sessions}))
+    client = TestClient(app, base_url="https://testserver")
+
+    response = client.get("/iphone/native/authorize", params={
+        "client_id": CLIENT,
+        "redirect_uri": REDIRECT,
+        "code_challenge": challenge("verifier-value-with-sufficient-entropy-0123456789abcdef"),
+        "state": "one-time-state-value-0123456789",
+    })
+
+    assert response.status_code == 400
+    assert "not registered" in response.text
+    with pytest.raises(ValueError, match="not registered"):
+        sessions.create_native_authorization_code(
+            browser_session_id="no-session", device_id="device-a", client_id=CLIENT,
+            redirect_uri=REDIRECT,
+            challenge=challenge("verifier-value-with-sufficient-entropy-0123456789abcdef"),
+            scopes=SCOPES,
+        )
