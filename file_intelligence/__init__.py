@@ -14,29 +14,49 @@ from .media import (
 )
 from .models import ContentKind, ExtractionMethod, SourceReference, VishnuBlock, VishnuDocument
 from .ocr import AdaptiveOcrProvider, OcrUnavailable, TesseractOcrProvider
+from .production import (
+    ContentAddressedObjectStore,
+    ContentBenchmark,
+    ContentResourceRouter,
+    ContentWorker,
+    JobStatus,
+    ProductionContentStore,
+    ResourceClass,
+    StoredObject,
+    UploadStatus,
+)
 from .readers import ContentReadError
 from .semantic import LocalSemanticGraph, extract_entities
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
 
 __all__ = [
     "AdaptiveOcrProvider",
+    "ContentAddressedObjectStore",
+    "ContentBenchmark",
     "ContentKind",
     "ContentReadError",
+    "ContentResourceRouter",
+    "ContentWorker",
     "Detection",
     "ExtractionMethod",
     "FasterWhisperProvider",
     "FileIntelligenceEngine",
     "ImageQuality",
+    "JobStatus",
     "LocalContentIndex",
     "LocalMediaDecoder",
     "LocalSemanticGraph",
     "MediaProbe",
     "MediaUnavailable",
     "OcrUnavailable",
+    "ProductionContentStore",
+    "ResourceClass",
     "SourceReference",
+    "StoredObject",
     "TesseractOcrProvider",
     "TranscriptSegment",
     "UnsupportedContentError",
+    "UploadStatus",
     "VishnuBlock",
     "VishnuDocument",
     "WhisperCppProvider",
