@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import ipaddress
+import math
 import re
 import socket
-from datetime import datetime, timezone
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 import requests
 
@@ -114,7 +114,7 @@ def _validate_parameters(capability: dict, values: dict) -> tuple[str, dict]:
                 raise ValueError(f"invalid parameter: {name}")
             normalized = value
         elif kind == "number":
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
                 raise ValueError(f"invalid parameter: {name}")
             normalized = value
         elif kind == "boolean":
@@ -129,7 +129,12 @@ def _validate_parameters(capability: dict, values: dict) -> tuple[str, dict]:
             path = path.replace("{" + name + "}", quote(str(normalized), safe=""))
         else:
             query[name] = normalized
-    if re.search(r"\{[^{}]+\}", path) or not path.startswith("/") or ".." in path.split("/"):
+    decoded_path = unquote(path)
+    parsed_path = urlsplit(path)
+    if (re.search(r"\{[^{}]+\}", path) or not path.startswith("/")
+            or parsed_path.query or parsed_path.fragment or "\\" in decoded_path
+            or any(ord(char) < 32 for char in decoded_path)
+            or any(segment in {".", ".."} for segment in decoded_path.split("/"))):
         raise ValueError("operation path has unsupported template parameters")
     return path, query
 

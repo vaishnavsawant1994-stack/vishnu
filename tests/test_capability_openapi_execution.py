@@ -153,3 +153,14 @@ def test_execution_parameter_validator_rejects_undeclared_and_missing_values():
         except ValueError:
             continue
         raise AssertionError("invalid OpenAPI parameters should be rejected")
+
+
+def test_execution_parameter_validator_blocks_path_traversal():
+    from integrations.discovery.execution import _validate_parameters
+
+    capability = {"path": "/api/%2e%2e/admin", "parameters": []}
+    try:
+        _validate_parameters(capability, {})
+    except ValueError:
+        return
+    raise AssertionError("encoded path traversal should be rejected")
