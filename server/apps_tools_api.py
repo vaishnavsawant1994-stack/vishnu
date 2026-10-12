@@ -40,7 +40,7 @@ def apps_tools_router(runtime):
                     if capability.get('type') == 'mcp_tool' and capability.get('approved_risk'):
                         attach_approved_mcp_tool(capability, connection, tools=runtime['tools'],
                             integrations=runtime['integrations'], vault=runtime.get('vault'), catalog_store=catalog)
-                    elif capability.get('type') != 'mcp_tool' and capability.get('method') in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE'}:
+                    elif capability.get('type') != 'mcp_tool' and capability.get('execution_supported', True) and capability.get('method') in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE'}:
                         attach_approved_capability(capability, connection, tools=runtime['tools'],
                             integrations=runtime['integrations'], vault=runtime.get('vault'),
                             state_store=state, catalog_store=catalog)
@@ -322,6 +322,8 @@ def apps_tools_router(runtime):
             raise HTTPException(404, 'Capability not found')
         if capability.get('method') not in {'GET', 'POST', 'PUT', 'PATCH', 'DELETE'}:
             raise HTTPException(403, 'This OpenAPI operation uses an unsupported HTTP method')
+        if capability.get('execution_supported') is False:
+            raise HTTPException(403, 'This OpenAPI operation uses an unsupported request parameter or body schema')
         if capability.get('method') != 'GET' and not capability.get('request_body') and capability.get('method') not in {'DELETE'}:
             raise HTTPException(403, 'This write operation has no supported bounded JSON request schema')
         existing_connection = catalog.connection(capability_id)

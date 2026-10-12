@@ -65,13 +65,21 @@ def parse_openapi(document: dict, *, max_operations: int = 500, source_url: str 
                 *(operations.get("parameters", []) if isinstance(operations.get("parameters", []), list) else []),
                 *(operation.get("parameters", []) if isinstance(operation.get("parameters", []), list) else []),
             ]
+            execution_supported = True
             for parameter in raw_parameters[:100]:
-                if not isinstance(parameter, dict) or parameter.get("in") not in {"path", "query"}:
+                if not isinstance(parameter, dict):
+                    execution_supported = False
+                    continue
+                if parameter.get("in") not in {"path", "query"}:
+                    if parameter.get("required") is True:
+                        execution_supported = False
                     continue
                 name = parameter.get("name")
                 schema = parameter.get("schema") if isinstance(parameter.get("schema"), dict) else {}
                 kind = schema.get("type", "string")
                 if not isinstance(name, str) or not name or len(name) > 100 or kind not in {"string", "integer", "number", "boolean"}:
+                    if parameter.get("required") is True or parameter.get("in") == "path":
+                        execution_supported = False
                     continue
                 item = {"name": name, "in": parameter["in"], "type": kind, "required": bool(parameter.get("required")) or parameter["in"] == "path"}
                 if isinstance(schema.get("enum"), list) and len(schema["enum"]) <= 50:
@@ -84,17 +92,20 @@ def parse_openapi(document: dict, *, max_operations: int = 500, source_url: str 
             content = request_body.get("content") if isinstance(request_body, dict) else None
             json_content = content.get("application/json") if isinstance(content, dict) else None
             raw_schema = json_content.get("schema") if isinstance(json_content, dict) else None
-            if isinstance(raw_schema, dict) and not any(key in raw_schema for key in ("$ref", "allOf", "oneOf", "anyOf", "not")):
+            if isinstance(raw_schema, dict) and raw_schema.get("type") == "object" and not any(key in raw_schema for key in ("$ref", "allOf", "oneOf", "anyOf", "not")):
                 properties = raw_schema.get("properties")
                 required = raw_schema.get("required", [])
                 normalized_properties = {}
+                body_supported = True
                 if isinstance(properties, dict) and len(properties) <= 32 and isinstance(required, list):
                     for prop_name, prop_schema in properties.items():
                         if (not isinstance(prop_name, str) or not prop_name or len(prop_name) > 100
                                 or not isinstance(prop_schema, dict) or any(k in prop_schema for k in ("$ref", "allOf", "oneOf", "anyOf", "not"))):
+                            body_supported = False
                             continue
                         prop_type = prop_schema.get("type")
                         if prop_type not in {"string", "integer", "number", "boolean"}:
+                            body_supported = False
                             continue
                         item = {"type": prop_type}
                         if prop_type == "string":
@@ -102,10 +113,20 @@ def parse_openapi(document: dict, *, max_operations: int = 500, source_url: str 
                         if isinstance(prop_schema.get("enum"), list) and len(prop_schema["enum"]) <= 50:
                             item["enum"] = [v for v in prop_schema["enum"] if isinstance(v, (str, int, float, bool))][:50]
                         normalized_properties[prop_name] = item
-                    body_schema = {"required": [name for name in required if name in normalized_properties][:32],
-                                   "properties": normalized_properties, "max_bytes": 65536}
+                    if any(not isinstance(name, str) or name not in normalized_properties for name in required):
+                        body_supported = False
+                    if body_supported and len(normalized_properties) == len(properties):
+                        body_schema = {"required": required[:32], "properties": normalized_properties, "max_bytes": 65536}
+                    else:
+                        execution_supported = False
+                else:
+                    execution_supported = False
+            elif request_body is not None:
+                execution_supported = False
+            if method.lower() in {"post", "put", "patch"} and request_body is None:
+                execution_supported = False
             identity = hashlib.sha256((source_identity + "\n" + method.upper() + " " + path).encode()).hexdigest()[:24]
-            result.append({"id": "openapi:" + identity, "name": str(operation.get("summary") or operation_name or method.upper() + " " + path)[:200], "operation_id": operation_name, "method": method.upper(), "path": path, "parameters": parameters, "request_body": body_schema, "description": str(operation.get("description") or "")[:1000], "source_url": origin, "api_title": str(info.get("title") or "")[:200], "api_version": str(info.get("version") or "")[:80], "risk": "read" if method.lower() in {"get", "head", "options"} else "write", "lifecycle": "discovered", "executable": False})
+            result.append({"id": "openapi:" + identity, "name": str(operation.get("summary") or operation_name or method.upper() + " " + path)[:200], "operation_id": operation_name, "method": method.upper(), "path": path, "parameters": parameters, "request_body": body_schema, "execution_supported": execution_supported, "description": str(operation.get("description") or "")[:1000], "source_url": origin, "api_title": str(info.get("title") or "")[:200], "api_version": str(info.get("version") or "")[:80], "risk": "read" if method.lower() in {"get", "head", "options"} else "write", "lifecycle": "discovered", "executable": False})
             if len(result) >= max_operations:
                 return result
     return result
