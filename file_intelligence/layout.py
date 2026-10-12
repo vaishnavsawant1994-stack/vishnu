@@ -18,6 +18,15 @@ def _copy_source(source: SourceReference, **changes) -> SourceReference:
     return SourceReference(**values)
 
 
+def _looks_like_heading(text: str) -> bool:
+    clean = str(text or "").strip()
+    if not clean or "\n" in clean or len(clean) > 140:
+        return False
+    if _HEADING_NUMBER.match(clean):
+        return True
+    return clean.isupper() and 1 <= len(clean.split()) <= 12 and len(clean) <= 120
+
+
 def _normalized_table(block: VishnuBlock) -> None:
     rows = []
     if isinstance(block.data, dict) and isinstance(block.data.get("rows"), list):
@@ -89,6 +98,16 @@ def _line_blocks(block: VishnuBlock) -> list[VishnuBlock]:
                 block.confidence,
                 metadata={"derived": True},
             ))
+            continue
+        if _looks_like_heading(line):
+            derived.append(VishnuBlock(
+                "heading",
+                line,
+                source,
+                block.extraction_method,
+                block.confidence,
+                metadata={"derived": True, "layout": "heading", "inferred": True},
+            ))
     return derived
 
 
@@ -127,10 +146,7 @@ def enrich_layout(blocks: Iterable[VishnuBlock]) -> list[VishnuBlock]:
         if block.kind == "table":
             _normalized_table(block)
         elif block.kind in {"text", "paragraph"} and text:
-            if _HEADING_NUMBER.match(text) and "\n" not in text and len(text) <= 140:
-                block.kind = "heading"
-                block.metadata = {**block.metadata, "layout": "heading", "inferred": True}
-            elif text.isupper() and 2 <= len(text.split()) <= 12 and len(text) <= 120:
+            if _looks_like_heading(text):
                 block.kind = "heading"
                 block.metadata = {**block.metadata, "layout": "heading", "inferred": True}
             else:
