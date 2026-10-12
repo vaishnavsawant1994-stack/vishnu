@@ -12,9 +12,9 @@ import re
 from urllib.parse import urlsplit
 
 SOURCE = "https://github.com/public-apis/public-apis"
-_HEADER = re.compile(r"^### ([^#].*?)\\s*$")
-_ROW = re.compile(r"^\\|(.+)\\|\\s*$")
-_LINK = re.compile(r"^\\[([^]]+)\\]\\((https?://[^)]+)\\)$")
+_HEADER = re.compile(r"^### ([^#].*?)\s*$")
+_ROW = re.compile(r"^\|(.+)\|\s*$")
+_LINK = re.compile(r"^\[([^]]+)\]\((https?://[^)]+)\)$")
 
 
 @dataclass(frozen=True)
@@ -79,7 +79,7 @@ def parse_public_apis_category(text: str, *, max_entries: int = 10000) -> list[C
         name = name.strip()[:200]
         if not name:
             continue
-        identity = hashlib.sha256((category.casefold() + "\\n" + url).encode("utf-8")).hexdigest()[:24]
+        identity = hashlib.sha256((category.casefold() + "\n" + url).encode("utf-8")).hexdigest()[:24]
         if identity in seen:
             continue
         seen.add(identity)
