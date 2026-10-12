@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import socket
+from concurrent.futures import ThreadPoolExecutor
 import time
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -14,6 +16,7 @@ from integrations.discovery.execution import _resolve_public_addresses
 from integrations.state import ConnectorStateStore
 from memory.store import MemoryStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
+from security.approvals import ApprovalManager
 from security.vault import SecretVault
 from server import apps_tools_api
 from server.apps_tools_api import apps_tools_router
@@ -251,3 +254,34 @@ def test_openapi_write_body_is_strictly_bounded():
         except ValueError:
             continue
         raise AssertionError("invalid OpenAPI JSON body should be rejected")
+
+
+def test_capability_write_approval_expiry_and_restart_recovery_are_durable(tmp_path):
+    path = tmp_path / "trusted-actions.sqlite3"
+    manager = ApprovalManager(path=path, ttl_seconds=60)
+    parameters = {"body": {"name": "approved"}}
+    expired = manager.create("capability:items", "openapi_items_post", parameters,
+                             destination="https://items.example/api")
+    with pytest.raises(PermissionError, match="expired"):
+        manager.approve(expired.id, expired.execution_id, expired.tool_name, parameters,
+                        owner_id="owner", security_epoch=0, destination="https://items.example/api",
+                        data_classification="internal", now=expired.expires_at + 1)
+    assert manager.record(expired.id)["status"] == "expired"
+
+    ticket = manager.create("capability:items", "openapi_items_post", parameters,
+                            destination="https://items.example/api")
+    manager.approve(ticket.id, ticket.execution_id, ticket.tool_name, parameters,
+                    owner_id="owner", security_epoch=0, destination="https://items.example/api",
+                    data_classification="internal")
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        dispatches = list(pool.map(lambda worker: manager.begin_dispatch(ticket.id, worker_id=worker),
+                                   ("worker-a", "worker-b")))
+    assert sum(bool(result["dispatch"]) for result in dispatches) == 1
+    assert sorted(result["status"] for result in dispatches) == ["dispatching", "dispatching"]
+
+    # A process loss after dispatch cannot make the one-use approval reusable.
+    assert manager.mark_recovery_required(ticket.id, "simulated_process_loss")
+    restarted = ApprovalManager(path=path)
+    record = restarted.record(ticket.id)
+    assert record["status"] == "recovery_required"
+    assert restarted.begin_dispatch(ticket.id, worker_id="after-restart")["dispatch"] is False
