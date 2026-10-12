@@ -1,3 +1,11 @@
+from .deep_document import (
+    DocumentGraph,
+    EvidenceAnchor,
+    Stage16DeepDocumentUnderstanding,
+    Stage16DeepDocumentUnderstandingProvider,
+    Stage16DocumentTypeClassifier,
+    Stage16PolicyError,
+)
 from .detection import Detection, detect_content
 from .engine import FileIntelligenceEngine, UnsupportedContentError
 from .index import LocalContentIndex
@@ -39,6 +47,8 @@ __all__ = [
     "ContentResourceRouter",
     "ContentWorker",
     "Detection",
+    "DocumentGraph",
+    "EvidenceAnchor",
     "ExtractionMethod",
     "FasterWhisperProvider",
     "FileIntelligenceEngine",
@@ -54,6 +64,10 @@ __all__ = [
     "ResourceClass",
     "SourceReference",
     "Stage15DocumentVisionOcrProvider",
+    "Stage16DeepDocumentUnderstanding",
+    "Stage16DeepDocumentUnderstandingProvider",
+    "Stage16DocumentTypeClassifier",
+    "Stage16PolicyError",
     "StoredObject",
     "TesseractOcrProvider",
     "TranscriptSegment",
