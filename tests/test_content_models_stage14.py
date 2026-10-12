@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import io
 import json
@@ -11,7 +12,11 @@ from PIL import Image, ImageDraw
 from training.content_models import ContentDatasetBuilder, ContentModelCoordinator, ContentModelEvaluator, ContentModelTask
 from training.continuous_content_models import GovernedContentFeedbackStore
 from training.neural_ocr import Stage14NeuralOCRCoordinator, VishnuNeuralOpenVocabularyRecognizer
-from training.open_vocabulary_ocr import OpenVocabularyLineVectorizer, UnicodeGraphemeTokenizer
+from training.open_vocabulary_ocr import (
+    OpenVocabularyLineVectorizer,
+    OpenVocabularyPolicyError,
+    UnicodeGraphemeTokenizer,
+)
 
 
 def _source_for(builder: ContentDatasetBuilder, target: str, prefix: str) -> str:
@@ -203,8 +208,23 @@ def test_stage14_neural_ctc_ocr_is_sequence_native_open_vocabulary_and_owner_gat
         assert production_spaced["text"] == ""
         assert production_spaced["rejection_reason"] == "low_confidence"
 
-    rejected = recognizer.predict_detailed(vectorizer.payload(_blank_image()))
+    # The public Stage 13 vectorizer remains the first fail-closed boundary and
+    # must reject a truly blank input before it reaches any OCR model.
+    blank_bytes = _blank_image()
+    with pytest.raises(OpenVocabularyPolicyError, match="line image is blank"):
+        vectorizer.payload(blank_bytes)
+
+    # Exercise Stage 14's own defense in depth directly: if an already-formed
+    # payload contains a blank raster, the neural recognizer also rejects it as
+    # insufficient ink rather than emitting or hallucinating text.
+    internal_blank_payload = {
+        "schema_version": 1,
+        "kind": "open_vocabulary_line",
+        "image_png_b64": base64.b64encode(blank_bytes).decode("ascii"),
+    }
+    rejected = recognizer.predict_detailed(internal_blank_payload)
     assert rejected["accepted"] is False
+    assert rejected["text"] == ""
     assert rejected["rejection_reason"] == "insufficient_ink"
 
     with pytest.raises(ValueError, match="Stage 14 model requires successful shadow qualification"):
