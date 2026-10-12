@@ -6,7 +6,7 @@ from file_intelligence import (
     ContentKind,
     FileIntelligenceEngine,
     OcrUnavailable,
-    Stage17ProductionContentRuntime,
+    Stage18ProductionMultimodalRuntime,
     TesseractOcrProvider,
     VishnuDocument,
 )
@@ -16,7 +16,7 @@ from knowledge.store import KnowledgeError, KnowledgeOcrUnavailable, KnowledgeSt
 
 
 class UniversalKnowledgeStore(LegacyKnowledgeStore):
-    """KnowledgeStore compatibility layer backed by Vishnu File Intelligence."""
+    """KnowledgeStore compatibility layer backed by Stage 18 File Intelligence."""
 
     MAX_FILE_BYTES = FileIntelligenceEngine.MAX_FILE_BYTES
 
@@ -32,9 +32,12 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
 
     def _init(self):
         super()._init()
-        self.stage17_runtime = Stage17ProductionContentRuntime(self.path)
-        self.content_index = self.stage17_runtime.content_index
-        self.semantic_graph = self.stage17_runtime.semantic_graph
+        self.stage18_runtime = Stage18ProductionMultimodalRuntime(self.path)
+        # Compatibility: existing semantic callers/tests still use the Stage 17
+        # name, while the runtime now composes and persists both Stage 17 and 18.
+        self.stage17_runtime = self.stage18_runtime
+        self.content_index = self.stage18_runtime.content_index
+        self.semantic_graph = self.stage18_runtime.semantic_graph
 
     def _segments_for(self, filename: str, data: bytes, access_class: str):
         provider = self.ocr_provider
@@ -82,6 +85,21 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
             method = ExtractionMethod.NATIVE
         return VishnuBlock(kind, str(chunk.get("content") or ""), source, method, confidence)
 
+    @staticmethod
+    def _content_kind_for(filename: str) -> ContentKind:
+        suffix = Path(filename).suffix.lower()
+        if suffix in {".png", ".jpg", ".jpeg", ".webp", ".tif", ".tiff"}:
+            return ContentKind.IMAGE
+        if suffix == ".pdf":
+            return ContentKind.PDF
+        if suffix in {".xlsx", ".csv"}:
+            return ContentKind.SPREADSHEET
+        if suffix == ".pptx":
+            return ContentKind.PRESENTATION
+        if suffix in {".txt", ".md", ".markdown"}:
+            return ContentKind.TEXT
+        return ContentKind.DOCUMENT
+
     def _document_from_detail(self, detail: dict) -> VishnuDocument:
         chunks = detail.get("chunks") or []
         blocks = [self._block_from_chunk(chunk) for chunk in chunks if str(chunk.get("content") or "").strip()]
@@ -90,12 +108,12 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         return VishnuDocument(
             document_id=str(detail["id"]),
             filename=filename,
-            content_kind=ContentKind.DOCUMENT,
-            detected_mime=str((detail.get("metadata") or {}).get("detected_mime") or "application/octet-stream"),
-            declared_mime=str((detail.get("metadata") or {}).get("declared_mime") or "application/octet-stream"),
+            content_kind=self._content_kind_for(filename),
+            detected_mime=str((detail.get("metadata") or {}).get("detected_mime") or detail.get("media_type") or "application/octet-stream"),
+            declared_mime=str((detail.get("metadata") or {}).get("declared_mime") or detail.get("media_type") or "application/octet-stream"),
             extension=extension,
             sha256=str(detail["checksum"]),
-            size_bytes=int((detail.get("metadata") or {}).get("size_bytes") or 0),
+            size_bytes=int(detail.get("size_bytes") or (detail.get("metadata") or {}).get("size_bytes") or 0),
             blocks=blocks,
             metadata={
                 "knowledge": True,
@@ -103,12 +121,21 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
                 "version": detail.get("version"),
                 "source": detail.get("source"),
                 "access_class": detail.get("access_class"),
+                "capture_kind": (detail.get("metadata") or {}).get("capture_kind"),
             },
         )
 
+    def _raw_content_for(self, document_id: str) -> bytes | None:
+        with self._con() as con:
+            row = con.execute("SELECT object_name FROM knowledge_documents WHERE id=?", (str(document_id),)).fetchone()
+        if not row:
+            return None
+        path = self.object_dir / str(row["object_name"])
+        return path.read_bytes() if path.is_file() else None
+
     def _index_detail(self, detail: dict) -> None:
         document = self._document_from_detail(detail)
-        status = self.stage17_runtime.process(
+        status = self.stage18_runtime.process(
             document,
             scope_type="knowledge",
             scope_id=str(detail["access_class"]),
@@ -121,9 +148,10 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
                 "source": detail.get("source"),
                 "available_to_vishnu": bool((detail.get("metadata") or {}).get("available_to_vishnu", True)),
             },
+            raw_content=self._raw_content_for(detail["id"]),
         )
-        if status.get("state") != "completed":
-            raise KnowledgeError("Stage 17 knowledge intelligence did not complete")
+        if status.get("state") != "completed" or dict(status.get("stage17") or {}).get("state") != "completed":
+            raise KnowledgeError("Stage 18 knowledge intelligence did not complete")
 
     def ingest(self, **kwargs):
         detail = super().ingest(**kwargs)
@@ -134,10 +162,20 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
     def ensure_exact_index(self, *, access_classes: set[str] | None = None) -> int:
         indexed = 0
         for item in self.list(limit=500, access_classes=access_classes):
-            status = self.stage17_runtime.status(
+            stage17 = self.stage18_runtime.status(
                 document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
             )
-            if status and status["state"] == "completed" and status["object_sha256"] == item["checksum"]:
+            stage18 = self.stage18_runtime.stage18_status(
+                document_id=item["id"], scope_type="knowledge", scope_id=item["access_class"]
+            )
+            if (
+                stage17
+                and stage17["state"] == "completed"
+                and stage17["object_sha256"] == item["checksum"]
+                and stage18
+                and stage18["state"] == "completed"
+                and stage18["object_sha256"] == item["checksum"]
+            ):
                 continue
             detail = self.detail(item["id"])
             if detail:
@@ -150,9 +188,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         classes = access_classes or {"owner", "trusted-devices", "private"}
         results = []
         for access_class in sorted(classes):
-            hits = self.content_index.search(
-                query, scope_type="knowledge", scope_id=access_class, limit=max(limit, 20)
-            )
+            hits = self.content_index.search(query, scope_type="knowledge", scope_id=access_class, limit=max(limit, 20))
             for hit in hits:
                 detail = self.detail(hit["document_id"], include_history=False)
                 if not detail or not detail.get("current"):
@@ -176,7 +212,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            self.stage17_runtime.search(query, scope_type="knowledge", scope_id=access_class, limit=limit)
+            self.stage18_runtime.search(query, scope_type="knowledge", scope_id=access_class, limit=limit)
             for access_class in sorted(classes)
         ]
 
@@ -185,19 +221,33 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         classes = access_classes or {"owner", "trusted-devices", "private"}
         answers = []
         for access_class in sorted(classes):
-            result = self.stage17_runtime.answer(
-                question,
-                scope_type="knowledge",
-                scope_id=access_class,
-                document_id=document_id,
-            )
+            result = self.stage18_runtime.answer(question, scope_type="knowledge", scope_id=access_class, document_id=document_id)
+            result["access_class"] = access_class
+            answers.append(result)
+        return answers
+
+    def grounded_visual_answer(self, question: str, *, access_classes: set[str] | None = None, document_id: str | None = None) -> list[dict]:
+        self.ensure_exact_index(access_classes=access_classes)
+        classes = access_classes or {"owner", "trusted-devices", "private"}
+        answers = []
+        for access_class in sorted(classes):
+            result = self.stage18_runtime.answer_visual(question, scope_type="knowledge", scope_id=access_class, document_id=document_id)
             result["access_class"] = access_class
             answers.append(result)
         return answers
 
     def compare_documents(self, first_document_id: str, second_document_id: str, *, access_class: str) -> dict:
         self.ensure_exact_index(access_classes={access_class})
-        return self.stage17_runtime.compare(
+        return self.stage18_runtime.compare(
+            first_document_id=first_document_id,
+            second_document_id=second_document_id,
+            scope_type="knowledge",
+            scope_id=access_class,
+        )
+
+    def compare_visual_documents(self, first_document_id: str, second_document_id: str, *, access_class: str) -> dict:
+        self.ensure_exact_index(access_classes={access_class})
+        return self.stage18_runtime.compare_visual(
             first_document_id=first_document_id,
             second_document_id=second_document_id,
             scope_type="knowledge",
@@ -208,7 +258,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "links": self.stage17_runtime.links(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "links": self.stage18_runtime.links(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]
 
@@ -216,7 +266,7 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "contradictions": self.stage17_runtime.contradictions(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "contradictions": self.stage18_runtime.contradictions(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]
 
@@ -224,6 +274,6 @@ class UniversalKnowledgeStore(LegacyKnowledgeStore):
         self.ensure_exact_index(access_classes=access_classes)
         classes = access_classes or {"owner", "trusted-devices", "private"}
         return [
-            {"access_class": access_class, "events": self.stage17_runtime.timeline(scope_type="knowledge", scope_id=access_class, limit=limit)}
+            {"access_class": access_class, "events": self.stage18_runtime.timeline(scope_type="knowledge", scope_id=access_class, limit=limit)}
             for access_class in sorted(classes)
         ]
