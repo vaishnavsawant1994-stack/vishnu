@@ -5,6 +5,7 @@ from copy import deepcopy
 from typing import Iterable
 
 from .models import SourceReference, VishnuBlock
+from .visual import infer_spatial_layout
 
 _KEY_VALUE = re.compile(r"^\s*([A-Za-z][A-Za-z0-9 _./()#-]{0,80})\s*[:=]\s*(\S.+?)\s*$")
 _BULLET = re.compile(r"^\s*(?:[-*•‣◦]|\d+[.)])\s+(.+)$")
@@ -154,4 +155,4 @@ def enrich_layout(blocks: Iterable[VishnuBlock]) -> list[VishnuBlock]:
         enriched.append(block)
         enriched.extend(_line_blocks(block))
         enriched.extend(_table_key_values(block))
-    return enriched
+    return infer_spatial_layout(enriched)

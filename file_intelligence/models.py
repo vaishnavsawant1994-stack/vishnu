@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass, field
 from enum import Enum
 from typing import Any
 
-SCHEMA_VERSION = "1.1"
+SCHEMA_VERSION = "1.2"
 
 
 class ContentKind(str, Enum):
@@ -90,7 +90,7 @@ class VishnuDocument:
     warnings: list[str] = field(default_factory=list)
     parser_version: str = "vishnu-file-intelligence/2"
     ocr_version: str | None = None
-    layout_version: str = "vishnu-layout/2"
+    layout_version: str = "vishnu-layout/3"
     schema_version: str = SCHEMA_VERSION
 
     @property
