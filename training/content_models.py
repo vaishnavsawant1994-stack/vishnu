@@ -34,6 +34,7 @@ class ContentModelTask(StrEnum):
     LAYOUT = "layout"
     TABLE = "table"
     DOCUMENT_CLASSIFICATION = "document_classification"
+    MULTIMODAL_VISUAL = "multimodal_visual"
 
 
 class ContentModelStatus(StrEnum):
@@ -200,6 +201,7 @@ class ContentModelEvaluator:
         ContentModelTask.LAYOUT: {"min": {"f1": 0.85}},
         ContentModelTask.TABLE: {"min": {"cell_f1": 0.85}},
         ContentModelTask.DOCUMENT_CLASSIFICATION: {"min": {"accuracy": 0.85}},
+        ContentModelTask.MULTIMODAL_VISUAL: {"min": {"accuracy": 0.85}},
     }
 
     def evaluate_metrics(self, task: ContentModelTask | str, metrics: dict[str, Any]) -> ContentEvaluation:
