@@ -15,6 +15,19 @@ from training.candidates import (
 )
 from training.collector import TrainingCollector
 from training.comprehensive_evaluation import ComprehensiveCheckpointEvaluator as LocalCheckpointEvaluator
+from training.content_models import (
+    ContentDatasetBuilder,
+    ContentDatasetSnapshot,
+    ContentEvaluation,
+    ContentModelCoordinator,
+    ContentModelEvaluator,
+    ContentModelRegistry,
+    ContentModelStatus,
+    ContentModelTask,
+    ContentTrainerBackend,
+    NaiveBayesDocumentClassifierTrainer,
+    VishnuDocumentClassifier,
+)
 from training.contribution_settings import ContributionSettingsService, ContributionSettingsSnapshot
 from training.contributions import (
     ContributionDecision,
@@ -180,4 +193,15 @@ __all__ = [
     'ShadowQualificationRuntime',
     'ShadowResult',
     'TrainingGovernanceLedger',
+    'ContentDatasetBuilder',
+    'ContentDatasetSnapshot',
+    'ContentEvaluation',
+    'ContentModelCoordinator',
+    'ContentModelEvaluator',
+    'ContentModelRegistry',
+    'ContentModelStatus',
+    'ContentModelTask',
+    'ContentTrainerBackend',
+    'NaiveBayesDocumentClassifierTrainer',
+    'VishnuDocumentClassifier',
 ]
