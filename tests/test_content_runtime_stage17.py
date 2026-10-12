@@ -13,6 +13,7 @@ from file_intelligence import (
     Stage17ContentWorker,
     Stage17PolicyError,
     Stage17ProductionContentRuntime,
+    Stage18ContentWorker,
     VishnuBlock,
     VishnuDocument,
 )
@@ -61,8 +62,9 @@ def _document(document_id: str, invoice_number: str = "INV-700", company: str = 
     )
 
 
-def test_stage17_package_worker_is_the_canonical_production_worker():
-    assert ContentWorker is Stage17ContentWorker
+def test_stage17_worker_remains_available_after_stage18_becomes_canonical():
+    assert Stage17ContentWorker is not None
+    assert ContentWorker is Stage18ContentWorker
 
 
 def test_stage17_production_worker_requires_understanding_and_indexes_before_completion(tmp_path: Path):
@@ -76,14 +78,13 @@ def test_stage17_production_worker_requires_understanding_and_indexes_before_com
         declared_mime="text/plain",
         max_attempts=1,
     )
-
     worker = ContentWorker(store, worker_id="stage17-test-worker")
     completed = worker.process_once()
-
     assert completed is not None
     assert completed["job_id"] == job["job_id"]
     assert completed["status"] == JobStatus.COMPLETED.value
     assert completed["metadata"]["stage17_completed"] is True
+    assert completed["metadata"]["stage18_completed"] is True
 
     result = store.result(job["job_id"])
     assert result is not None
@@ -104,24 +105,12 @@ def test_stage17_production_worker_requires_understanding_and_indexes_before_com
     assert graph.document_type == "invoice"
     assert any(field["name"] == "invoice_number" and field["value"] == "INV-700" for field in graph.fields)
     assert graph.evidence
-
-    answer = intelligence.answer(
-        "What is the invoice number?",
-        scope_type="project",
-        scope_id="project-a",
-        document_id=document_id,
-    )
+    answer = intelligence.answer("What is the invoice number?", scope_type="project", scope_id="project-a", document_id=document_id)
     assert answer["answered"] is True
     assert answer["grounded"] is True
     assert answer["answer"] == "INV-700"
     assert answer["citations"]
-
-    unsupported = intelligence.answer(
-        "What will the weather be tomorrow?",
-        scope_type="project",
-        scope_id="project-a",
-        document_id=document_id,
-    )
+    unsupported = intelligence.answer("What will the weather be tomorrow?", scope_type="project", scope_id="project-a", document_id=document_id)
     assert unsupported["answered"] is False
     assert unsupported["grounded"] is False
     assert unsupported["reason"] == "unsupported_by_available_evidence"
@@ -132,19 +121,15 @@ def test_stage17_scope_isolation_blocks_cross_project_retrieval(tmp_path: Path):
     runtime = Stage17ProductionContentRuntime(tmp_path / "stage17.sqlite3")
     document = _document("invoice-project-a")
     runtime.process(document, scope_type="project", scope_id="project-a", object_sha256=document.sha256)
-
     same_scope = runtime.search("INV-700", scope_type="project", scope_id="project-a")
     assert same_scope["lexical"]
-
     other_scope = runtime.search("INV-700", scope_type="project", scope_id="project-b")
     assert other_scope["lexical"] == []
     assert other_scope["semantic"]["entities"] == []
     assert other_scope["semantic"]["relations"] == []
-
     rejected = runtime.answer("What is the invoice number?", scope_type="project", scope_id="project-b")
     assert rejected["answered"] is False
     assert rejected["citations"] == []
-
     assert runtime.status(document_id=document.document_id, scope_type="project", scope_id="project-b") is None
     assert runtime.graph(document_id=document.document_id, scope_type="project", scope_id="project-b") is None
 
@@ -155,20 +140,12 @@ def test_stage17_compare_links_and_versioned_reprocessing_are_grounded(tmp_path:
     second = _document("invoice-b", "INV-800")
     runtime.process(first, scope_type="project", scope_id="project-a", object_sha256=first.sha256, extraction_version=1)
     runtime.process(second, scope_type="project", scope_id="project-a", object_sha256=second.sha256, extraction_version=1)
-
-    comparison = runtime.compare(
-        first_document_id=first.document_id,
-        second_document_id=second.document_id,
-        scope_type="project",
-        scope_id="project-a",
-    )
+    comparison = runtime.compare(first_document_id=first.document_id, second_document_id=second.document_id, scope_type="project", scope_id="project-a")
     assert comparison["grounded"] is True
     assert comparison["semantic_change_count"] >= 1
     assert any(change["kind"] == "field_change" for change in comparison["changes"])
-
     links = runtime.links(scope_type="project", scope_id="project-a")
     assert any(link["kind"] == "organization" and set(link["document_ids"]) == {"invoice-a", "invoice-b"} for link in links)
-
     assert runtime.needs_reprocessing(first, scope_type="project", scope_id="project-a", extraction_version=1) is False
     assert runtime.needs_reprocessing(first, scope_type="project", scope_id="project-a", extraction_version=2) is True
     candidates = runtime.reprocessing_candidates(scope_type="project", scope_id="project-a", runtime_version="future-stage17-runtime")
@@ -190,11 +167,7 @@ def test_stage17_fail_closed_does_not_complete_ingestion_when_semantics_fail(tmp
         declared_mime="text/plain",
         max_attempts=1,
     )
-    worker = Stage17ContentWorker(
-        store,
-        worker_id="failing-stage17-worker",
-        intelligence_runtime=FailingIntelligence(),
-    )
+    worker = Stage17ContentWorker(store, worker_id="failing-stage17-worker", intelligence_runtime=FailingIntelligence())
     failed = worker.process_once()
     assert failed is not None
     assert failed["status"] == JobStatus.FAILED.value
@@ -204,29 +177,17 @@ def test_stage17_fail_closed_does_not_complete_ingestion_when_semantics_fail(tmp
 
 def test_stage17_knowledge_uses_deep_graph_and_preserves_access_classes(tmp_path: Path):
     store = UniversalKnowledgeStore(tmp_path / "knowledge.sqlite3", tmp_path / "knowledge-objects")
-    owner = store.ingest(
-        filename="owner-invoice.txt",
-        data=INVOICE_TEXT,
-        title="Owner invoice",
-        access_class="owner",
-    )
+    owner = store.ingest(filename="owner-invoice.txt", data=INVOICE_TEXT, title="Owner invoice", access_class="owner")
     assert owner is not None
     owner_status = store.stage17_runtime.status(document_id=owner["id"], scope_type="knowledge", scope_id="owner")
     assert owner_status is not None and owner_status["state"] == "completed"
-
     answers = store.grounded_answer("What is the invoice number?", access_classes={"owner"}, document_id=owner["id"])
     assert len(answers) == 1
     assert answers[0]["answered"] is True
     assert answers[0]["answer"] == "INV-700"
     assert answers[0]["access_class"] == "owner"
-
     private_payload = INVOICE_TEXT.replace(b"INV-700", b"INV-PRIVATE")
-    private = store.ingest(
-        filename="private-invoice.txt",
-        data=private_payload,
-        title="Private invoice",
-        access_class="private",
-    )
+    private = store.ingest(filename="private-invoice.txt", data=private_payload, title="Private invoice", access_class="private")
     assert private is not None
     owner_search = store.semantic_query("INV-PRIVATE", access_classes={"owner"})
     assert owner_search[0]["lexical"] == []
@@ -247,10 +208,8 @@ def test_stage17_content_ingestion_router_exposes_grounded_intelligence_surface(
     class Registry:
         def is_active(self, device_id):
             return True
-
         def authorize(self, device_id, scope):
             return True
-
     class Projects:
         def get(self, project_id):
             return {"id": project_id, "status": "active"}

@@ -39,11 +39,19 @@ from .stage15_vision import Stage15DocumentVisionOcrProvider
 from .stage17_runtime import Stage17PolicyError
 from .stage17_grounded_runtime import Stage17ProductionContentRuntime
 from .stage17_worker import Stage17ContentWorker
+from .stage18_multimodal import (
+    MultimodalDocumentGraph,
+    Stage18PolicyError,
+    Stage18ProductionMultimodalRuntime,
+    Stage18VisualAnalyzer,
+    VisualEvidenceAnchor,
+)
+from .stage18_worker import Stage18ContentWorker
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
 
-# Stage 17 is the canonical package-level production worker. The legacy worker
-# remains importable explicitly for compatibility and migration tests.
-ContentWorker = Stage17ContentWorker
+# Stage 18 is the canonical package-level production worker. Older workers
+# remain explicitly importable for compatibility/migration and qualification.
+ContentWorker = Stage18ContentWorker
 
 __all__ = [
     "AdaptiveOcrProvider",
@@ -67,6 +75,7 @@ __all__ = [
     "LocalSemanticGraph",
     "MediaProbe",
     "MediaUnavailable",
+    "MultimodalDocumentGraph",
     "OcrUnavailable",
     "ProductionContentStore",
     "ResourceClass",
@@ -79,6 +88,10 @@ __all__ = [
     "Stage17ContentWorker",
     "Stage17PolicyError",
     "Stage17ProductionContentRuntime",
+    "Stage18ContentWorker",
+    "Stage18PolicyError",
+    "Stage18ProductionMultimodalRuntime",
+    "Stage18VisualAnalyzer",
     "StoredObject",
     "TesseractOcrProvider",
     "TranscriptSegment",
@@ -86,6 +99,7 @@ __all__ = [
     "UploadStatus",
     "VishnuBlock",
     "VishnuDocument",
+    "VisualEvidenceAnchor",
     "WhisperCppProvider",
     "build_preprocess_variants",
     "detect_content",
