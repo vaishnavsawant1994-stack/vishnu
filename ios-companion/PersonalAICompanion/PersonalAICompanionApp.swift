@@ -46,9 +46,8 @@ struct PersonalAICompanionApp: App {
                         } label: {
                             Label("Manage Universal Capabilities", systemImage: "point.3.connected.trianglepath.dotted")
                         }
-                        Link(destination:URL(string:"https://personal-ai-runtime-production.up.railway.app/iphone/")!) {
-                            Label("Open Vishnu",systemImage:"sparkles")
-                        }
+                        Text("Vishnu cloud access is disabled in this internal-testing build until a non-production server is configured.")
+                            .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                         Text("Uses Safari so Google sign-in, trusted-device cookies, microphone access and conversation continuity work correctly.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                     }
                     Section("Vishnu computer") {
