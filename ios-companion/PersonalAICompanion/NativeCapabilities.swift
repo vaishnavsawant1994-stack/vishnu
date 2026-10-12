@@ -34,7 +34,7 @@ struct CapabilityEnvelope: Decodable {
 @MainActor
 final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     static let shared = NativeCapabilitiesStore()
-    private let host = "personal-ai-runtime-production.up.railway.app"
+    private let host = ""
     private let clientID = "ai.personal.companion.ios"
     private let redirectPath = "/iphone/native/callback/ios"
     private let keychain = KeychainStore.shared
@@ -49,6 +49,15 @@ final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthentica
     override init() {
         super.init()
         expiry = Date(timeIntervalSince1970: Double(keychain.get("native.capabilities.expiry") ?? "0") ?? 0)
+        guard !host.isEmpty else {
+            keychain.remove("native.capabilities.token")
+            keychain.remove("native.capabilities.expiry")
+            keychain.remove("native.capabilities.pending.verifier")
+            keychain.remove("native.capabilities.pending.state")
+            status = "Capability sign-in is disabled until a non-production Vishnu server and callback are configured."
+            signedIn = false
+            return
+        }
         signedIn = token != nil && expiry > Date()
         if signedIn { Task { await reload() } }
     }
@@ -59,6 +68,10 @@ final class NativeCapabilitiesStore: NSObject, ObservableObject, ASWebAuthentica
     }
 
     func authorize() {
+        guard !host.isEmpty else {
+            status = "Capability sign-in is disabled until a non-production Vishnu server and callback are configured."
+            return
+        }
         do {
             let verifier = Self.randomURLSafe(count: 48)
             let state = Self.randomURLSafe(count: 32)

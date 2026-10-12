@@ -46,3 +46,22 @@ def test_desktop_callback_wait_can_be_cancelled():
     waiter.join(timeout=2)
     server.server_close()
     assert outcome.get("cancelled") is True
+
+
+def test_mobile_capability_clients_fail_closed_without_production_associations():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    android_manifest = (root / "android-companion/app/src/main/AndroidManifest.xml").read_text()
+    android_client = (root / "android-companion/app/src/main/java/ai/personal/companion/MainActivity.kt").read_text()
+    ios_entitlements = (root / "ios-companion/PersonalAICompanion/PersonalAICompanion.entitlements").read_text()
+    ios_client = (root / "ios-companion/PersonalAICompanion/NativeCapabilities.swift").read_text()
+    ios_app = (root / "ios-companion/PersonalAICompanion/PersonalAICompanionApp.swift").read_text()
+
+    production_host = "personal-ai-runtime-production.up.railway.app"
+    assert production_host not in android_manifest + android_client + ios_entitlements + ios_client + ios_app
+    assert "android:autoVerify" not in android_manifest
+    assert 'const val NATIVE_AUTH_URL = ""' in android_client
+    assert 'const val API_BASE = ""' in android_client
+    assert 'private let host = ""' in ios_client
+    assert "associated-domains" not in ios_entitlements

@@ -8,12 +8,6 @@
     <service android:name=".DeviceCommandService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
     <activity android:name=".MainActivity" android:exported="true">
       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
-      <intent-filter android:autoVerify="true">
-        <action android:name="android.intent.action.VIEW"/>
-        <category android:name="android.intent.category.DEFAULT"/>
-        <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="https" android:host="personal-ai-runtime-production.up.railway.app" android:path="/iphone/native/callback/android"/>
-      </intent-filter>
     </activity>
   </application>
 </manifest>

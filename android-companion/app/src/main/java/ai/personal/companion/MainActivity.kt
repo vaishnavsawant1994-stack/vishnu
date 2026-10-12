@@ -38,11 +38,12 @@ import java.nio.charset.StandardCharsets
 
 class MainActivity : AppCompatActivity() {
     companion object {
-        const val PERSONAL_AI_CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/iphone/"
-        const val API_BASE = "https://personal-ai-runtime-production.up.railway.app/iphone/api"
-        const val NATIVE_AUTH_URL = "https://personal-ai-runtime-production.up.railway.app/iphone/native/authorize"
+        // Internal-testing builds have no production runtime or callback configured.
+        const val PERSONAL_AI_CLOUD_URL = ""
+        const val API_BASE = ""
+        const val NATIVE_AUTH_URL = ""
         const val NATIVE_CLIENT_ID = "ai.personal.companion"
-        const val NATIVE_REDIRECT = "https://personal-ai-runtime-production.up.railway.app/iphone/native/callback/android"
+        const val NATIVE_REDIRECT = ""
         const val MAX_API_RESPONSE_BYTES = 1_048_576
     }
 
@@ -159,6 +160,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun manageCapabilities() {
+        if (NATIVE_AUTH_URL.isBlank() || API_BASE.isBlank() || NATIVE_REDIRECT.isBlank()) {
+            status.text = "Capability sign-in is disabled until a non-production Vishnu server and callback are configured."
+            return
+        }
         val expires = prefs.getLong("native_expires_at", 0L)
         val token = prefs.getString("native_access_token", null)
         if (token.isNullOrBlank() || expires <= System.currentTimeMillis()) {
@@ -626,6 +631,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openPersonalAI() {
+        if (PERSONAL_AI_CLOUD_URL.isBlank()) {
+            status.text = "The production Vishnu URL is disabled in this internal-testing build."
+            return
+        }
         openUrl(PERSONAL_AI_CLOUD_URL)
     }
 
