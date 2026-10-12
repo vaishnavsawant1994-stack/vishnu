@@ -15,6 +15,7 @@ from .media import (
 from .models import ContentKind, ExtractionMethod, SourceReference, VishnuBlock, VishnuDocument
 from .ocr import AdaptiveOcrProvider, OcrUnavailable, TesseractOcrProvider
 from .readers import ContentReadError
+from .semantic import LocalSemanticGraph, extract_entities
 from .visual import ImageQuality, build_preprocess_variants, inspect_image_quality
 
 __all__ = [
@@ -28,6 +29,7 @@ __all__ = [
     "ImageQuality",
     "LocalContentIndex",
     "LocalMediaDecoder",
+    "LocalSemanticGraph",
     "MediaProbe",
     "MediaUnavailable",
     "OcrUnavailable",
@@ -42,6 +44,7 @@ __all__ = [
     "detect_content",
     "discover_local_speech_provider",
     "enrich_layout",
+    "extract_entities",
     "inspect_image_quality",
     "read_subtitles",
 ]
