@@ -7,6 +7,8 @@ from fastapi import APIRouter, HTTPException, Path, Request
 from apps_tools.projection import AppsToolsProjection
 from integrations.discovery.catalog_store import CapabilityCatalogStore
 from integrations.discovery.execution import _public_https_url, attach_approved_capability
+from integrations.discovery.mcp import normalize_mcp_server
+from integrations.discovery.mcp_runtime import MCPHTTPClient, MCPProtocolError, attach_approved_mcp_tool
 from integrations.gateway import ConnectorError
 from security.request_context import current_trusted_request
 
@@ -73,7 +75,8 @@ def apps_tools_router(runtime):
         if catalog is None:
             raise HTTPException(503, 'Catalog unavailable')
         try:
-            return {'capabilities': catalog.search(query, limit)}
+            items = catalog.search(query, limit)
+            return {'capabilities': [{**item, 'connection': catalog.connection(item['id'])} for item in items]}
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
@@ -112,6 +115,168 @@ def apps_tools_router(runtime):
             ctx = current_trusted_request()
             state_store.audit('capability.discovered', device_id=ctx.device_id, session_id=ctx.session_id, payload={'operations': count})
         return {'discovered': count, 'executable': False}
+
+    @router.get('/mcp/servers')
+    def list_mcp_servers():
+        require_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        servers = []
+        for server in catalog.mcp_servers():
+            connection = catalog.connection(server['id'])
+            tools = catalog.mcp_tools(server['id'])
+            servers.append({**server, 'connection': connection,
+                            'tools': [{**tool, 'connection': catalog.connection(tool['id'])} for tool in tools]})
+        return {'servers': servers}
+
+    @router.post('/mcp/servers')
+    async def add_mcp_server(request: Request):
+        context = require_recent_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        raw = await request.body()
+        if len(raw) > 16_384:
+            raise HTTPException(413, 'MCP server descriptor exceeds the size limit')
+        try:
+            descriptor = normalize_mcp_server(json.loads(raw))
+            descriptor['url'] = _public_https_url(descriptor['url'])
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(422, 'Invalid MCP server descriptor') from exc
+        catalog.import_mcp_server(descriptor)
+        state_store = getattr(runtime.get('integrations'), 'state_store', None)
+        if state_store:
+            state_store.audit('mcp.server.discovered', device_id=context.device_id, session_id=context.session_id,
+                              payload={'server_id': descriptor['id'], 'server_name': descriptor['name']})
+        return {'server': {**descriptor, 'connection': catalog.connection(descriptor['id']), 'tools': []}}
+
+    @router.post('/mcp/servers/{server_id}/discover')
+    async def discover_mcp_tools(server_id: str, request: Request):
+        context = require_recent_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        server = catalog.get(server_id)
+        if server is None or server.get('type') != 'mcp_server':
+            raise HTTPException(404, 'MCP server not found')
+        server_connection = catalog.connection(server_id)
+        if server_connection and server_connection.get('status') == 'connected':
+            raise HTTPException(409, 'MCP server is already connected')
+        if not getattr(runtime.get('integrations'), 'state_store', None) or not runtime.get('vault'):
+            raise HTTPException(503, 'Secure connector services unavailable')
+        raw = await request.body()
+        if len(raw) > 16_384:
+            raise HTTPException(413, 'MCP connection settings exceed the size limit')
+        try:
+            payload = json.loads(raw) if raw else {}
+            if not isinstance(payload, dict):
+                raise ValueError()
+            auth_type = payload.get('auth_type', 'none')
+            token = payload.get('api_key')
+            if auth_type not in {'none', 'bearer_token'} or (auth_type == 'bearer_token' and (not isinstance(token, str) or not token or len(token) > 4096)):
+                raise ValueError()
+            if auth_type == 'none' and token not in (None, ''):
+                raise ValueError()
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(422, 'Invalid MCP connection settings') from exc
+        credential_ref = 'mcp-credential:' + server_id.split(':', 1)[-1] if auth_type == 'bearer_token' else None
+        vault = runtime['vault']
+        if credential_ref:
+            vault.set(credential_ref, token)
+        state_store = runtime['integrations'].state_store
+        try:
+            remote_tools = MCPHTTPClient(server['url'], token).list_tools()
+            entries = catalog.import_mcp_tools(server_id, remote_tools, server_name=server['name'], server_url=server['url'])
+            connector_id = 'mcpserver_' + server_id.split(':', 1)[-1]
+            catalog.connect(server_id, server_url=server['url'], auth_type=auth_type, credential_ref=credential_ref,
+                            approved_by=context.device_id, approved_at=time.time(), connector_id=connector_id)
+        except MCPProtocolError as exc:
+            if credential_ref:
+                vault.delete(credential_ref)
+            state_store.audit('mcp.server.discovery_failed', device_id=context.device_id, session_id=context.session_id,
+                              payload={'server_id': server_id, 'error_code': exc.code})
+            raise HTTPException(502, exc.safe_message) from exc
+        except Exception as exc:
+            if credential_ref:
+                vault.delete(credential_ref)
+            raise HTTPException(502, 'MCP server could not be reached') from exc
+        state_store.audit('mcp.server.connected', connector_id=connector_id, device_id=context.device_id,
+                          session_id=context.session_id, payload={'server_id': server_id, 'tools_discovered': len(entries)})
+        return {'server_id': server_id, 'connected': True, 'tools': [{**entry, 'connection': None} for entry in entries]}
+
+    @router.post('/mcp/capabilities/{capability_id}/approve')
+    async def approve_mcp_tool(capability_id: str, request: Request):
+        context = require_recent_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        capability = catalog.get(capability_id)
+        if capability is None or capability.get('type') != 'mcp_tool':
+            raise HTTPException(404, 'MCP tool not found')
+        raw = await request.body()
+        try:
+            payload = json.loads(raw) if raw else {}
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            raise HTTPException(422, 'Invalid approval request') from exc
+        if not isinstance(payload, dict) or payload.get('read_only_attested') is not True:
+            raise HTTPException(422, 'Owner must attest that this MCP tool is read-only')
+        server_connection = catalog.connection(capability['server_id'], include_credential_ref=True)
+        if not server_connection or server_connection.get('status') != 'connected':
+            raise HTTPException(409, 'Connect and discover this MCP server first')
+        connector_id = 'mcp_' + capability_id.split(':', 1)[-1]
+        approved = {**capability, 'read_only_attested': True}
+        try:
+            catalog.update_payload(capability_id, approved)
+            catalog.connect(capability_id, server_url=server_connection['server_url'], auth_type=server_connection['auth_type'],
+                            credential_ref=server_connection.get('credential_ref'), approved_by=context.device_id,
+                            approved_at=time.time(), connector_id=connector_id)
+            connection = catalog.connection(capability_id, include_credential_ref=True)
+            tool_name = attach_approved_mcp_tool(approved, connection, tools=runtime['tools'],
+                integrations=runtime['integrations'], vault=runtime['vault'], catalog_store=catalog)
+        except Exception as exc:
+            catalog.revoke(capability_id)
+            catalog.update_payload(capability_id, {**capability, 'read_only_attested': False})
+            try:
+                runtime['integrations'].get(connector_id).configured = False
+            except (AttributeError, KeyError):
+                pass
+            for tool in runtime['tools'].all():
+                if tool.name == 'mcp_' + capability_id.split(':', 1)[-1] + '_call':
+                    tool.prohibited = True
+                    break
+            raise HTTPException(422, 'MCP tool could not be approved') from exc
+        state_store = runtime['integrations'].state_store
+        state_store.audit('mcp.capability.approved', connector_id=connector_id, device_id=context.device_id,
+                          session_id=context.session_id, payload={'capability_id': capability_id, 'tool': tool_name})
+        return {'approved': True, 'capability_id': capability_id, 'tool': tool_name,
+                'connection': catalog.connection(capability_id)}
+
+    @router.post('/mcp/servers/{server_id}/disconnect')
+    def disconnect_mcp_server(server_id: str):
+        context = require_recent_owner()
+        if catalog is None:
+            raise HTTPException(503, 'Catalog unavailable')
+        server = catalog.get(server_id)
+        if server is None or server.get('type') != 'mcp_server':
+            raise HTTPException(404, 'MCP server not found')
+        secret_ref = catalog.revoke(server_id)
+        if secret_ref and runtime.get('vault'):
+            runtime['vault'].delete(secret_ref)
+        for capability in catalog.mcp_tools(server_id):
+            cap_ref = catalog.revoke(capability['id'])
+            connection = catalog.connection(capability['id'])
+            if connection:
+                try:
+                    runtime['integrations'].get(connection['connector_id']).configured = False
+                except (AttributeError, KeyError):
+                    pass
+                tool_name = 'mcp_' + connection['connector_id'].removeprefix('mcp_') + '_call'
+                for tool in runtime['tools'].all():
+                    if tool.name == tool_name:
+                        tool.prohibited = True
+                        break
+        state_store = getattr(runtime.get('integrations'), 'state_store', None)
+        if state_store:
+            state_store.audit('mcp.server.revoked', device_id=context.device_id, session_id=context.session_id,
+                              payload={'server_id': server_id})
+        return {'connected': False, 'server_id': server_id}
 
     @router.post('/capabilities/{capability_id}/connect')
     async def connect_capability(capability_id: str, request: Request):
@@ -188,15 +353,21 @@ def apps_tools_router(runtime):
         if connection.get('status') != 'connected':
             raise HTTPException(409, 'Capability is not connected')
         try:
-            attach_approved_capability(capability, connection, tools=runtime['tools'],
-                integrations=runtime['integrations'], vault=runtime.get('vault'),
-                state_store=getattr(runtime.get('integrations'), 'state_store', None), catalog_store=catalog)
+            if capability.get('type') == 'mcp_tool':
+                attach_approved_mcp_tool(capability, connection, tools=runtime['tools'],
+                    integrations=runtime['integrations'], vault=runtime.get('vault'), catalog_store=catalog)
+            else:
+                attach_approved_capability(capability, connection, tools=runtime['tools'],
+                    integrations=runtime['integrations'], vault=runtime.get('vault'),
+                    state_store=getattr(runtime.get('integrations'), 'state_store', None), catalog_store=catalog)
             raw = await request.body()
             if len(raw) > 16_384:
                 raise HTTPException(413, 'Operation parameters exceed the size limit')
             payload = json.loads(raw) if raw else {}
             parameters = payload.get('parameters', {}) if isinstance(payload, dict) else None
-            tool_name = 'openapi_' + connection['connector_id'].removeprefix('openapi_') + '_get'
+            tool_name = ('mcp_' + connection['connector_id'].removeprefix('mcp_') + '_call'
+                         if capability.get('type') == 'mcp_tool'
+                         else 'openapi_' + connection['connector_id'].removeprefix('openapi_') + '_get')
             tool = runtime['tools'].get(tool_name)
             decision = runtime['tools'].authorize(tool, parameters=parameters, data_classification='internal')
             if not decision.allowed:
@@ -209,6 +380,8 @@ def apps_tools_router(runtime):
             raise HTTPException(422, 'Invalid operation parameters') from exc
         except ConnectorError as exc:
             raise HTTPException(exc.http_status, exc.safe_dict()) from exc
+        except MCPProtocolError as exc:
+            raise HTTPException(502, {'code': exc.code, 'message': exc.safe_message}) from exc
         except PermissionError as exc:
             raise HTTPException(403, str(exc)) from exc
         except Exception as exc:
@@ -222,7 +395,8 @@ def apps_tools_router(runtime):
         if catalog is None:
             raise HTTPException(503, 'Catalog unavailable')
         credential_ref = catalog.revoke(capability_id)
-        if credential_ref and runtime.get('vault'):
+        capability = catalog.get(capability_id)
+        if credential_ref and runtime.get('vault') and (not capability or capability.get('type') != 'mcp_tool'):
             runtime['vault'].delete(credential_ref)
         if credential_ref is None and catalog.connection(capability_id) is None:
             raise HTTPException(404, 'Connected capability not found')
@@ -237,7 +411,9 @@ def apps_tools_router(runtime):
                 runtime['integrations'].get(connection['connector_id']).configured = False
             except (AttributeError, KeyError):
                 pass
-            tool_name = 'openapi_' + connection['connector_id'].removeprefix('openapi_') + '_get'
+            tool_name = ('mcp_' + connection['connector_id'].removeprefix('mcp_') + '_call'
+                         if capability and capability.get('type') == 'mcp_tool'
+                         else 'openapi_' + connection['connector_id'].removeprefix('openapi_') + '_get')
             for tool in runtime['tools'].all():
                 if tool.name == tool_name:
                     tool.prohibited = True

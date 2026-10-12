@@ -4,6 +4,7 @@ import sqlite3
 from pathlib import Path
 from integrations.discovery.public_apis import parse_public_apis
 from integrations.discovery.openapi import parse_openapi
+from integrations.discovery.mcp import normalize_mcp_tool
 
 class CapabilityCatalogStore:
     def __init__(self, path: Path):
@@ -32,6 +33,48 @@ class CapabilityCatalogStore:
                 db.execute("INSERT OR REPLACE INTO capability_catalog VALUES (?, ?, ?, ?)",
                            (entry["id"], "OpenAPI", entry["name"], json.dumps(entry)))
         return len(entries)
+
+    def import_mcp_server(self, server: dict) -> None:
+        with sqlite3.connect(self.path) as db:
+            db.execute("INSERT OR REPLACE INTO capability_catalog VALUES (?, ?, ?, ?)",
+                       (server["id"], "MCP", server["name"], json.dumps(server)))
+
+    def import_mcp_tools(self, server_id: str, tools: list[dict], *, server_name: str = "", server_url: str = "") -> list[dict]:
+        if not isinstance(tools, list) or len(tools) > 500:
+            raise ValueError("invalid MCP tools list")
+        entries = [normalize_mcp_tool(server_id, raw) for raw in tools]
+        if len({entry["id"] for entry in entries}) != len(entries):
+            raise ValueError("MCP server returned duplicate tool names")
+        for entry in entries:
+            entry.update({"server_name": str(server_name)[:200], "server_url": server_url})
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT id,payload FROM capability_catalog WHERE category='MCP'").fetchall()
+            old_ids = {row[0] for row in rows if json.loads(row[1]).get("type") == "mcp_tool" and json.loads(row[1]).get("server_id") == server_id}
+            current_ids = {entry["id"] for entry in entries}
+            for stale_id in old_ids - current_ids:
+                db.execute("DELETE FROM capability_connections WHERE capability_id=?", (stale_id,))
+                db.execute("DELETE FROM capability_catalog WHERE id=?", (stale_id,))
+            for entry in entries:
+                db.execute("INSERT OR REPLACE INTO capability_catalog VALUES (?, ?, ?, ?)",
+                           (entry["id"], "MCP", entry["name"], json.dumps(entry)))
+        return entries
+
+    def update_payload(self, capability_id: str, payload: dict) -> None:
+        with sqlite3.connect(self.path) as db:
+            cur = db.execute("UPDATE capability_catalog SET category=?,name=?,payload=? WHERE id=?",
+                             ("MCP", str(payload.get("name") or "Capability")[:200], json.dumps(payload), capability_id))
+            if cur.rowcount != 1:
+                raise KeyError(capability_id)
+
+    def mcp_tools(self, server_id: str) -> list[dict]:
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT payload FROM capability_catalog WHERE category='MCP' ORDER BY name").fetchall()
+        return [entry for (payload,) in rows if (entry := json.loads(payload)).get("type") == "mcp_tool" and entry.get("server_id") == server_id]
+
+    def mcp_servers(self) -> list[dict]:
+        with sqlite3.connect(self.path) as db:
+            rows = db.execute("SELECT payload FROM capability_catalog WHERE category='MCP' ORDER BY name").fetchall()
+        return [entry for (payload,) in rows if (entry := json.loads(payload)).get("type") == "mcp_server"]
 
     def get(self, capability_id: str) -> dict | None:
         if not isinstance(capability_id, str) or len(capability_id) > 200:
