@@ -324,7 +324,11 @@ def _ctc_prefix_beam_search(
         return "", 0.0, []
     denominator = _logsumexp(score for _, score in ranked_final)
     best_prefix, best_score = ranked_final[0]
-    confidence = max(0.0, min(1.0, math.exp(best_score - denominator)))
+    posterior = max(0.0, min(1.0, math.exp(best_score - denominator)))
+    # Raw sequence posterior falls exponentially with decoded length even when
+    # each grapheme is locally strong. Normalize it geometrically per decoded
+    # grapheme so rejection confidence remains comparable across line lengths.
+    confidence = posterior ** (1.0 / max(1, len(best_prefix)))
     alternatives = [
         ("".join(vocabulary[index] for index in prefix), float(score))
         for prefix, score in ranked_final[:3]
