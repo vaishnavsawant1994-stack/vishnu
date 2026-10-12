@@ -17,6 +17,17 @@ def _link_id(kind: str, value: str, documents: list[str]) -> str:
     return "link_" + hashlib.sha256(payload.encode("utf-8")).hexdigest()[:24]
 
 
+_EVIDENCE_FIELDS: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("invoice_number", re.compile(r"\b(?:invoice\s*(?:no\.?|number|#))\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{1,40})", re.I)),
+    ("purchase_order_number", re.compile(r"\b(?:purchase\s*order|po)\s*(?:no\.?|number|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{1,40})", re.I)),
+    ("account_number", re.compile(r"\baccount\s*(?:no\.?|number|#)\s*[:#-]?\s*([A-Z0-9*][A-Z0-9*._/-]{2,40})", re.I)),
+    ("reference_number", re.compile(r"\b(?:reference|ref)\s*(?:no\.?|number|#)?\s*[:#-]?\s*([A-Z0-9][A-Z0-9._/-]{1,40})", re.I)),
+)
+_ORGANIZATION = re.compile(
+    r"\b([A-Z][\w&.'-]*(?:\s+[A-Z][\w&.'-]*){0,5}\s+(?:Inc\.?|LLC|Ltd\.?|Limited|Corp\.?|Corporation|Company|Co\.?|GmbH|AG|PLC|LLP|Technologies|Systems|Group))\b"
+)
+
+
 class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
     """Production-hardened Stage 17 runtime.
 
@@ -46,6 +57,19 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
                 continue
             confidence = max(0.0, min(0.99, float(field.get("confidence") or 0.0)))
             candidates.append((confidence, str(field.get("value") or ""), citations, name))
+
+        # Legacy Knowledge chunks can predate Stage 16 field projection. Recover
+        # only exact, deterministic identifiers from the persisted evidence text;
+        # the evidence anchor itself remains the citation authority.
+        for field_name, pattern in _EVIDENCE_FIELDS:
+            name_tokens = _tokens(field_name.replace("_", " "))
+            if not name_tokens.issubset(question_tokens):
+                continue
+            for anchor in graph.evidence:
+                match = pattern.search(str(anchor.get("text") or ""))
+                if match:
+                    candidates.append((0.98, str(match.group(1)).strip(), [anchor], field_name))
+
         if not candidates:
             return None
         candidates.sort(key=lambda item: (-item[0], item[3], item[1]))
@@ -95,7 +119,20 @@ class Stage17ProductionContentRuntime(_Stage17BaseRuntime):
         for graph in graphs:
             for anchor in graph.evidence:
                 anchor_id = str(anchor.get("anchor_id") or "")
-                for entity in extract_entities(str(anchor.get("text") or "")):
+                text = str(anchor.get("text") or "")
+                entities = list(extract_entities(text))
+                # Keep a conservative organization fallback for older persisted
+                # evidence whose semantic projection was produced before the
+                # current entity extractor. No fuzzy or model-generated value is
+                # introduced: the exact organization string must appear in text.
+                seen = {(str(item["kind"]), str(item["normalized"])) for item in entities}
+                for match in _ORGANIZATION.finditer(text):
+                    canonical = str(match.group(1)).strip()
+                    normalized = re.sub(r"\s+", " ", canonical).casefold()
+                    if ("organization", normalized) not in seen:
+                        entities.append({"kind": "organization", "normalized": normalized, "canonical": canonical})
+                        seen.add(("organization", normalized))
+                for entity in entities:
                     key = (str(entity["kind"]), str(entity["normalized"]))
                     by_document = evidence_entities.setdefault(key, {})
                     by_document.setdefault(graph.document_id, [])
