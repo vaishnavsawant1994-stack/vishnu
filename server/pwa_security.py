@@ -10,10 +10,25 @@ class PasswordReauthBody(BaseModel):
     password: str = Field(min_length=1, max_length=256)
 
 
+class NativeAuthorizationBody(BaseModel):
+    client_id: str = Field(min_length=1, max_length=160)
+    redirect_uri: str = Field(min_length=1, max_length=1000)
+    code_challenge: str = Field(min_length=43, max_length=128)
+    scopes: list[str] = Field(min_length=1, max_length=2)
+
+
+class NativeExchangeBody(BaseModel):
+    code: str = Field(min_length=1, max_length=256)
+    code_verifier: str = Field(min_length=43, max_length=128)
+    client_id: str = Field(min_length=1, max_length=160)
+    redirect_uri: str = Field(min_length=1, max_length=1000)
+
+
 def pwa_security_router(runtime):
     router = APIRouter(prefix='/iphone/api', tags=['iphone-pwa-security'])
     sessions = runtime['pwa_sessions']
     owner_access = runtime['owner_access']
+    devices = runtime['device_registry']
 
     def context():
         current = current_trusted_request()
@@ -23,6 +38,12 @@ def pwa_security_router(runtime):
                 'message': 'This browser session is missing, expired, or revoked.',
             })
         return current
+
+    def audit(event, current, **payload):
+        state = getattr(runtime.get('integrations'), 'state_store', None)
+        if state is not None:
+            state.audit(event, device_id=current.device_id, session_id=current.session_id,
+                        payload=payload)
 
     @router.post('/access/reauth/password')
     def reauth_password(body: PasswordReauthBody):
@@ -43,6 +64,87 @@ def pwa_security_router(runtime):
                 'message': 'This browser session is no longer active.',
             })
         return {'ok': True, 'session_id': current.session_id}
+
+    @router.post('/native/sessions/authorize')
+    def authorize_native(body: NativeAuthorizationBody):
+        current = context()
+        if current.auth_type != 'browser':
+            raise HTTPException(403, 'Only a signed-in owner browser can authorize a native session')
+        if not devices.is_active(current.device_id):
+            raise HTTPException(401, 'Trusted device is revoked')
+        if set(body.scopes) - sessions.NATIVE_SCOPES:
+            raise HTTPException(403, 'Requested native permissions are not supported')
+        for scope in body.scopes:
+            if not devices.authorize(current.device_id, scope):
+                raise HTTPException(403, f'This device is not permitted to grant {scope}')
+        try:
+            code = sessions.create_native_authorization_code(
+                browser_session_id=current.session_id, device_id=current.device_id,
+                client_id=body.client_id, redirect_uri=body.redirect_uri,
+                challenge=body.code_challenge, scopes=body.scopes,
+            )
+        except PermissionError as exc:
+            raise HTTPException(401, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        audit('native_session.authorization_issued', current,
+              client_id=body.client_id, scopes=sorted(set(body.scopes)))
+        return {'code': code, 'expires_in': sessions.NATIVE_CODE_TTL_SECONDS,
+                'redirect_uri': body.redirect_uri}
+
+    @router.post('/native/sessions/exchange')
+    def exchange_native(body: NativeExchangeBody):
+        try:
+            token, session = sessions.exchange_native_authorization_code(
+                code=body.code, verifier=body.code_verifier,
+                client_id=body.client_id, redirect_uri=body.redirect_uri,
+            )
+        except PermissionError as exc:
+            raise HTTPException(400, {'code': 'native_authorization_failed',
+                                      'message': 'Native authorization could not be completed.'}) from exc
+        if not devices.is_active(session.device_id):
+            sessions.revoke(session.id)
+            raise HTTPException(401, 'The authorizing device is no longer active')
+        audit('native_session.created', type('Context', (), {
+            'device_id': session.device_id, 'session_id': session.id
+        })(), client_id=body.client_id, scopes=list(session.scopes))
+        return {'access_token': token, 'token_type': 'Bearer', 'expires_in': int(session.expires_at - session.created_at),
+                'session_id': session.id, 'scopes': list(session.scopes)}
+
+    @router.post('/native/sessions/reauth')
+    def reauth_native(body: PasswordReauthBody):
+        current = context()
+        if current.auth_type != 'native':
+            raise HTTPException(400, 'A native session is required')
+        if not owner_access.password_configured() or not owner_access.verify_password(body.password):
+            raise HTTPException(401, 'Owner verification failed')
+        if not sessions.mark_reauthenticated(current.session_id):
+            raise HTTPException(401, 'Native session is no longer active')
+        audit('native_session.reauthenticated', current)
+        return {'ok': True, 'session_id': current.session_id}
+
+    @router.post('/native/sessions/logout')
+    def logout_native():
+        current = context()
+        if current.auth_type != 'native':
+            raise HTTPException(400, 'A native session is required')
+        sessions.revoke(current.session_id)
+        audit('native_session.revoked', current, reason='logout')
+        return {'ok': True}
+
+    @router.post('/native/sessions/rotate')
+    def rotate_native():
+        current = context()
+        if current.auth_type != 'native':
+            raise HTTPException(400, 'A native session is required')
+        try:
+            token, session = sessions.rotate_native(current.session_id)
+        except PermissionError as exc:
+            raise HTTPException(401, 'Native session is expired or revoked') from exc
+        audit('native_session.rotated', current)
+        return {'access_token': token, 'token_type': 'Bearer',
+                'expires_in': int(session.expires_at - session.created_at),
+                'session_id': session.id, 'scopes': list(session.scopes)}
 
     @router.get('/sessions')
     def list_sessions():
