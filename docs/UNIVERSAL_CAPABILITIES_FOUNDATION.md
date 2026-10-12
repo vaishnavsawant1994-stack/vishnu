@@ -37,10 +37,11 @@ This work extends Vishnu's existing integration registry, permission checks, too
 
 ## Current verification record
 
-- Baseline head: `7ec36a7831f443cd0104ef900caad648f7087677`.
-- Baseline required GitHub workflows: all reported successful on 2026-10-12.
+- Prior baseline head: `7ec36a7831f443cd0104ef900caad648f7087677`.
+- Hardening head: `7c594026495df8b0d267aa9e889c684ca59d253e`.
+- Required GitHub workflows on the hardening head: CI (including full `pytest -q`), Reliability and Security, Qualification Evidence Closure, Governed Release Authority, Android Companion, Android Instrumentation, responsive checks, and macOS/Ubuntu/Windows Package Validation all passed on 2026-10-12.
 - Local static verification for the hardening change: `python -m compileall -q integrations/discovery tests/test_capability_openapi_execution.py tests/test_capability_discovery_mcp.py` and `git diff --check` pass.
-- Local pytest execution is unavailable in this workspace because its configured Python runtime does not have `pytest` installed. The new commit must be qualified by CI before its test status is represented as passed.
+- Local pytest execution was unavailable in this workspace because its configured Python runtimes did not have `pytest` installed; the exact-head GitHub CI run executed and passed the full suite.
 
 ## Release decision
 
