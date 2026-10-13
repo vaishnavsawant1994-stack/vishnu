@@ -86,8 +86,9 @@ def test_desktop_vm_probe_fails_closed_outside_declared_vm(monkeypatch):
     monkeypatch.setattr("sensorium.native_lab.host_platform.system", lambda: "Linux")
     monkeypatch.setattr("sensorium.native_lab.host_platform.release", lambda: "6.0")
     monkeypatch.setattr("sensorium.native_lab.host_platform.machine", lambda: "x86_64")
+    non_vm_environment = {"GITHUB_ACTIONS": "", "VISHNU_DESKTOP_VM": ""}
     with pytest.raises(RuntimeError, match="declared VM"):
-        DesktopVMProbe({}).probe()
+        DesktopVMProbe(non_vm_environment).probe()
 
 
 def test_desktop_vm_probe_supports_linux_windows_and_macos_hosted_runners(monkeypatch):
