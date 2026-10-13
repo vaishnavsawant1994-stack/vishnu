@@ -91,11 +91,15 @@ class OwnerAccessStore:
     def consume_recovery_code(self, code: str) -> bool:
         candidate = str(code or '').strip().upper()
         with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
             rows = con.execute('SELECT id,salt,code_hash FROM recovery_codes WHERE used_at IS NULL').fetchall()
             for row in rows:
                 if verify_secret(candidate, row['salt'], row['code_hash']):
-                    con.execute('UPDATE recovery_codes SET used_at=? WHERE id=?', (_now(), row['id']))
-                    return True
+                    consumed = con.execute(
+                        'UPDATE recovery_codes SET used_at=? WHERE id=? AND used_at IS NULL',
+                        (_now(), row['id']),
+                    )
+                    return consumed.rowcount == 1
         return False
 
     def save_passkey(self, credential_id: bytes, public_key: bytes, sign_count: int, name: str, transports=''):
@@ -149,9 +153,14 @@ class OwnerAccessStore:
 
     def consume_challenge(self, challenge_id: str, kind: str, *, device_id=None):
         with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
             row = con.execute('SELECT * FROM auth_challenges WHERE id=?', (challenge_id,)).fetchone()
-            con.execute('DELETE FROM auth_challenges WHERE id=?', (challenge_id,))
-        if not row or row['kind'] != kind:
+            if row is None:
+                return None
+            consumed = con.execute('DELETE FROM auth_challenges WHERE id=?', (challenge_id,))
+            if consumed.rowcount != 1:
+                return None
+        if row['kind'] != kind:
             return None
         if int(row['expires_at']) < int(datetime.now(timezone.utc).timestamp()):
             return None
