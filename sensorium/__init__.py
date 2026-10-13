@@ -15,6 +15,18 @@ from sensorium.models import (
     VirtualDevice,
     VirtualScenario,
 )
+from sensorium.native_lab import (
+    AndroidEmulatorProbe,
+    CommandResult,
+    DesktopVMProbe,
+    IOSSimulatorProbe,
+    NativeDeviceEvidence,
+    NativeDeviceLab,
+    NativePlatform,
+    NativeProvider,
+    NativeProviderProfile,
+    NativeStatus,
+)
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
 from sensorium.service import SensoriumService
 from sensorium.virtual_device_lab import VirtualDeviceLab
@@ -29,10 +41,20 @@ from sensorium.virtual_fleet import (
 )
 
 __all__ = [
+    "AndroidEmulatorProbe",
+    "CommandResult",
     "DataClassification",
     "DesktopPhysicalSensorAdapter",
+    "DesktopVMProbe",
     "DeviceState",
+    "IOSSimulatorProbe",
     "MobilePhysicalSensorAdapter",
+    "NativeDeviceEvidence",
+    "NativeDeviceLab",
+    "NativePlatform",
+    "NativeProvider",
+    "NativeProviderProfile",
+    "NativeStatus",
     "NetworkType",
     "PermissionState",
     "SensorEvent",
