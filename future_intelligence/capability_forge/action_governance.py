@@ -1,0 +1,40 @@
+from __future__ import annotations
+
+from .action_runtime import GeneratedActionService
+from security.approvals import parameter_hash
+
+
+class GovernedGeneratedActionService(GeneratedActionService):
+    """Adds exact canonical ticket revalidation immediately before V2 commit."""
+
+    def commit(self, proposal_id: str, **kwargs):
+        proposal = self.get(proposal_id)
+        owner_id = str(kwargs.get("owner_id") or "owner")
+        device_id = kwargs.get("device_id")
+        session_id = kwargs.get("session_id")
+        current_epoch = self.approvals.current_security_epoch()
+        for call in proposal.get("calls") or []:
+            ticket_id = call.get("approval_id")
+            if not ticket_id:
+                continue
+            record = self.approvals.record(str(ticket_id))
+            if not record or record.get("status") != "approved":
+                raise PermissionError("all generated action tickets must be approved before commit")
+            ticket = record["ticket"]
+            if ticket.execution_id != f"forge-action:{proposal['id']}" or ticket.tool_name != call["tool"]:
+                raise PermissionError("generated action approval scope changed")
+            if ticket.parameter_hash != parameter_hash(call["parameters"]):
+                raise PermissionError("generated action approval parameters changed")
+            if ticket.owner_id and ticket.owner_id != owner_id:
+                raise PermissionError("generated action approval owner changed")
+            if ticket.device_id is not None and ticket.device_id != device_id:
+                raise PermissionError("generated action approval device changed")
+            if ticket.session_id is not None and ticket.session_id != session_id:
+                raise PermissionError("generated action approval session changed")
+            if ticket.security_epoch != current_epoch:
+                raise PermissionError("generated action approval security epoch changed")
+            if ticket.destination != str(call.get("destination") or "")[:1000]:
+                raise PermissionError("generated action approval destination changed")
+            if ticket.data_classification != str(proposal.get("data_classification") or "internal")[:40]:
+                raise PermissionError("generated action approval data classification changed")
+        return super().commit(proposal_id, **kwargs)
