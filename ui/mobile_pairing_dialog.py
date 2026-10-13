@@ -7,7 +7,6 @@ import qrcode
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -18,12 +17,13 @@ from PyQt6.QtWidgets import (
 )
 
 from core.security import PairingManager
-from devices.pairing_payload import build_pairing_uri, normalize_vishnu_origin
+from devices.local_gateway import get_local_device_gateway
+from devices.pairing_payload import build_zero_config_pairing_uri, normalize_vishnu_origin
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
 
 
 class MobilePairingDialog(QDialog):
-    """Generate one-time mobile pairing QR codes from the canonical authority."""
+    """Generate one-time zero-config mobile pairing QR codes."""
 
     def __init__(self, runtime: dict, parent=None):
         super().__init__(parent)
@@ -32,11 +32,12 @@ class MobilePairingDialog(QDialog):
         self.preferences = runtime.get('preferences')
         self.registry = runtime.get('device_registry')
         self.manager = PairingManager(self.settings.pairing_ttl_seconds)
+        self.gateway = get_local_device_gateway(runtime)
         self.offer = None
         self.baseline_devices: set[str] = set()
 
         self.setWindowTitle('Connect phone or device')
-        fit_window_to_screen(self, preferred=(620, 760), minimum=(520, 620))
+        fit_window_to_screen(self, preferred=(620, 780), minimum=(520, 640))
         self.setStyleSheet(design_system_stylesheet())
 
         layout = QVBoxLayout(self)
@@ -50,24 +51,13 @@ class MobilePairingDialog(QDialog):
         title.setStyleSheet('font-size:28px;font-weight:650;color:#edf3f6;')
         layout.addWidget(title)
         copy = QLabel(
-            'Open Vishnu on Android or iPhone and choose “Scan Vishnu QR”. '
-            'The QR contains a short-lived one-time connection offer. The phone receives its own revocable device credential after the offer is consumed.'
+            'Open Vishnu on Android or iPhone and scan this QR. Vishnu is discovered automatically on your local network, and the phone verifies this computer using the TLS fingerprint carried by the QR. No IP address or port is required.'
         )
         copy.setWordWrap(True)
         copy.setStyleSheet('color:#8fa0aa;')
         layout.addWidget(copy)
 
-        self.base = QLineEdit()
-        previous = self.preferences.get('mobile_pairing_base_url', '') if self.preferences else ''
-        self.base.setText(str(previous or ''))
-        self.base.setPlaceholderText('https://your-vishnu.example.com')
-        layout.addWidget(QLabel('Address this phone can use to reach this Vishnu'))
-        layout.addWidget(self.base)
-
-        self.local_http = QCheckBox('Allow HTTP only for localhost emulator/simulator development')
-        layout.addWidget(self.local_http)
-
-        generate = QPushButton('Generate one-time QR')
+        generate = QPushButton('Generate secure connection QR')
         generate.clicked.connect(self.generate)
         layout.addWidget(generate)
 
@@ -82,22 +72,41 @@ class MobilePairingDialog(QDialog):
         self.expiry.setStyleSheet('color:#8fa0aa;')
         layout.addWidget(self.expiry)
 
+        automatic = QLabel('Automatic discovery')
+        automatic.setStyleSheet('font-size:15px;font-weight:600;')
+        layout.addWidget(automatic)
+        self.discovery = self._readonly('Local discovery status')
+        layout.addWidget(self.discovery)
+
+        fallback_title = QLabel('Remote fallback · optional')
+        fallback_title.setStyleSheet('font-size:15px;font-weight:600;')
+        layout.addWidget(fallback_title)
+        fallback_copy = QLabel(
+            'If this Vishnu already has a public HTTPS endpoint, you may keep it here. The phone tries local zero-config discovery first and uses this address only when local discovery is unavailable.'
+        )
+        fallback_copy.setWordWrap(True)
+        fallback_copy.setStyleSheet('color:#71818b;')
+        layout.addWidget(fallback_copy)
+        self.base = QLineEdit()
+        previous = self.preferences.get('mobile_pairing_base_url', '') if self.preferences else ''
+        self.base.setText(str(previous or ''))
+        self.base.setPlaceholderText('https://your-vishnu.example.com · optional')
+        layout.addWidget(self.base)
+
         manual_title = QLabel('Manual fallback')
         manual_title.setStyleSheet('font-size:15px;font-weight:600;')
         layout.addWidget(manual_title)
-        manual_copy = QLabel('If the camera is unavailable, enter all three values in the mobile app. The six-digit code alone is never sufficient.')
+        manual_copy = QLabel('If QR scanning is unavailable, the high-entropy connection key and six-digit code can still be entered manually with a configured HTTPS fallback. The six-digit code alone is never sufficient.')
         manual_copy.setWordWrap(True)
         manual_copy.setStyleSheet('color:#71818b;')
         layout.addWidget(manual_copy)
 
-        self.origin = self._readonly('Vishnu address')
         self.connection_key = self._readonly('Connection key')
         self.code = self._readonly('6-digit code')
-        layout.addWidget(self.origin)
         layout.addWidget(self.connection_key)
         layout.addWidget(self.code)
 
-        self.status = QLabel('Ready to create a connection offer.')
+        self.status = QLabel('Ready to create a secure local connection offer.')
         self.status.setWordWrap(True)
         self.status.setStyleSheet('color:#9badb7;')
         layout.addWidget(self.status)
@@ -131,20 +140,20 @@ class MobilePairingDialog(QDialog):
             return set()
 
     def generate(self):
-        if not bool(getattr(self.settings, 'control_server_enabled', False)):
-            QMessageBox.warning(
-                self,
-                'Device pairing service is disabled',
-                'This Vishnu is not currently running its device control server. Enable the governed control server for the address you intend to use, then restart Vishnu. No QR was created.',
-            )
+        fallback = self.base.text().strip()
+        try:
+            fallback_origin = normalize_vishnu_origin(fallback) if fallback else None
+        except Exception as exc:
+            QMessageBox.warning(self, 'Remote fallback', str(exc))
             return
         try:
-            origin = normalize_vishnu_origin(
-                self.base.text(),
-                allow_local_http=self.local_http.isChecked(),
-            )
+            descriptor = self.gateway.ensure_running()
         except Exception as exc:
-            QMessageBox.warning(self, 'Vishnu address', str(exc))
+            QMessageBox.warning(
+                self,
+                'Automatic device discovery unavailable',
+                f'Vishnu could not start its secure local device gateway: {exc}\n\nNo LAN port was opened for the full Vishnu control server.',
+            )
             return
 
         if self.offer is not None:
@@ -152,12 +161,13 @@ class MobilePairingDialog(QDialog):
         self.baseline_devices = self._device_ids()
         self.offer = self.manager.create()
         try:
-            uri = build_pairing_uri(
-                base_url=origin,
+            uri = build_zero_config_pairing_uri(
+                service_id=descriptor.service_id,
+                cert_sha256=descriptor.cert_sha256,
                 token=self.offer.token,
                 code=self.offer.code,
                 expires_at=self.offer.expires_at,
-                allow_local_http=self.local_http.isChecked(),
+                fallback_url=fallback_origin,
             )
         except Exception as exc:
             self.manager.invalidate(self.offer.token)
@@ -165,8 +175,8 @@ class MobilePairingDialog(QDialog):
             QMessageBox.warning(self, 'Pairing offer', str(exc))
             return
 
-        if self.preferences is not None:
-            self.preferences.set('mobile_pairing_base_url', origin)
+        if self.preferences is not None and fallback_origin:
+            self.preferences.set('mobile_pairing_base_url', fallback_origin)
         image = qrcode.make(uri)
         stream = io.BytesIO()
         image.save(stream, format='PNG')
@@ -184,10 +194,10 @@ class MobilePairingDialog(QDialog):
                 Qt.TransformationMode.SmoothTransformation,
             )
         )
-        self.origin.setText(origin)
+        self.discovery.setText(f'Vishnu discovery active · {descriptor.service_name}')
         self.connection_key.setText(self.offer.token)
         self.code.setText(self.offer.code)
-        self.status.setText('One-time offer active. Scan it from the Vishnu mobile app.')
+        self.status.setText('One-time offer active. The phone will discover this Vishnu automatically and verify the pinned TLS identity.')
         self._tick()
 
     def _tick(self):
