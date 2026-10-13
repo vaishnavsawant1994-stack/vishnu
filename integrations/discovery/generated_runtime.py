@@ -28,6 +28,11 @@ _MAX_INPUT_BYTES = 256_000
 _MAX_OUTPUT_BYTES = 1_000_000
 _MAX_JSON_DEPTH = 32
 _MAX_JSON_NODES = 20_000
+_MAX_DELEGATED_CALLS = 16
+_GENERATED_VERIFICATION_METHODS = {
+    "qualified_generated_runtime",
+    "qualified_generated_toolchain_runtime",
+}
 
 _RUNNER = r'''
 import json, sys
@@ -85,6 +90,11 @@ def _validate_json_shape(value: Any) -> None:
             raise ValueError("generated capability values must be JSON-compatible")
 
 
+def _json_bytes(value: Any) -> bytes:
+    _validate_json_shape(value)
+    return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
+
+
 def _posix_resource_limiter(timeout_seconds: int):
     if os.name != "posix":
         return None
@@ -135,23 +145,51 @@ def load_generated_manifest(package_path: str | Path, *, expected_digest: str | 
     return payload
 
 
+def _allowed_tools(permissions: dict[str, Any]) -> tuple[str, ...]:
+    raw = permissions.get("allowed_tools") or ()
+    if isinstance(raw, str):
+        raw = (raw,)
+    if not isinstance(raw, (list, tuple)):
+        raise GeneratedCapabilitySecurityError("generated capability allowed_tools must be an array")
+    out: list[str] = []
+    for item in raw:
+        name = str(item or "").strip()
+        if not name or len(name) > 200:
+            raise GeneratedCapabilitySecurityError("generated capability contains an invalid delegated tool name")
+        if name not in out:
+            out.append(name)
+    if len(out) > 32:
+        raise GeneratedCapabilitySecurityError("generated capability delegates to too many tools")
+    return tuple(out)
+
+
 def validate_generated_manifest_authority(manifest: dict[str, Any]) -> None:
-    if manifest.get("runtime") != "pure_python_v1":
+    runtime = str(manifest.get("runtime") or "")
+    if runtime not in {"pure_python_v1", "governed_toolchain_v1"}:
         raise GeneratedCapabilitySecurityError("unsupported generated capability runtime")
     if str(manifest.get("risk")) != "read":
         raise GeneratedCapabilitySecurityError("generated local runtime is limited to read-only capabilities")
     permissions = dict(manifest.get("permissions") or {})
-    forbidden = (
-        "network_hosts", "filesystem_read", "filesystem_write", "secret_names",
-        "connector_ids", "side_effects",
-    )
-    if any(permissions.get(key) for key in forbidden):
-        raise GeneratedCapabilitySecurityError("generated local runtime cannot receive external authority")
     if permissions.get("background_allowed") or permissions.get("ui_required"):
         raise GeneratedCapabilitySecurityError("background/UI generated capabilities are not enabled in this runtime")
     forge = dict(manifest.get("forge") or {})
     if not forge.get("qualified") or forge.get("review_decision") != "approved":
         raise GeneratedCapabilitySecurityError("generated capability is not independently qualified and approved")
+
+    if runtime == "pure_python_v1":
+        forbidden = (
+            "network_hosts", "filesystem_read", "filesystem_write", "secret_names",
+            "connector_ids", "side_effects", "allowed_tools",
+        )
+        if any(permissions.get(key) for key in forbidden):
+            raise GeneratedCapabilitySecurityError("pure generated runtime cannot receive external authority")
+        return
+
+    allowed = _allowed_tools(permissions)
+    if not allowed:
+        raise GeneratedCapabilitySecurityError("governed generated toolchain requires an explicit tool allowlist")
+    if permissions.get("filesystem_write") or permissions.get("secret_names") or permissions.get("side_effects"):
+        raise GeneratedCapabilitySecurityError("governed generated toolchain cannot receive raw secrets, write authority, or side effects")
 
 
 def validate_pure_python_source(source: str) -> None:
@@ -169,6 +207,48 @@ def validate_pure_python_source(source: str) -> None:
             raise GeneratedCapabilitySecurityError(f"forbidden generated-code call: {node.func.id}")
 
 
+def _entrypoint(package_path: Path, descriptor: dict[str, Any], *, label: str) -> tuple[Path, str, str]:
+    rel = Path(str(descriptor.get("file") or ""))
+    function = str(descriptor.get("function") or "")
+    if not function or rel.is_absolute() or ".." in rel.parts:
+        raise ValueError(f"invalid generated capability {label}")
+    source_path = (package_path / rel).resolve()
+    if package_path not in source_path.parents or not source_path.is_file():
+        raise GeneratedCapabilitySecurityError(f"generated capability {label} escapes package root")
+    source = source_path.read_text(encoding="utf-8")
+    validate_pure_python_source(source)
+    return source_path, function, source
+
+
+def _invoke_isolated(source_path: Path, function: str, parameters: Any, *, package_path: Path, timeout_seconds: int) -> Any:
+    serialized = _json_bytes(parameters).decode("utf-8")
+    if len(serialized.encode("utf-8")) > _MAX_INPUT_BYTES:
+        raise ValueError("generated capability input exceeds size limit")
+    kwargs: dict[str, Any] = {
+        "input": serialized,
+        "text": True,
+        "capture_output": True,
+        "cwd": str(package_path),
+        "env": {"PYTHONIOENCODING": "utf-8"},
+        "timeout": timeout_seconds,
+        "check": False,
+    }
+    limiter = _posix_resource_limiter(timeout_seconds)
+    if limiter is not None:
+        kwargs["preexec_fn"] = limiter
+    completed = subprocess.run(
+        [sys.executable, "-I", "-S", "-c", _RUNNER, str(source_path), function],
+        **kwargs,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("generated capability execution failed")
+    if len(completed.stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
+        raise RuntimeError("generated capability output exceeds size limit")
+    result = json.loads(completed.stdout or "null")
+    _validate_json_shape(result)
+    return result
+
+
 class PurePythonGeneratedCapability:
     def __init__(
         self,
@@ -181,60 +261,170 @@ class PurePythonGeneratedCapability:
         self.package_path = Path(package_path).resolve()
         self.manifest = load_generated_manifest(self.package_path, expected_digest=expected_digest)
         validate_generated_manifest_authority(self.manifest)
-        entrypoint = dict(self.manifest.get("entrypoint") or {})
-        rel = Path(str(entrypoint.get("file") or ""))
-        function = str(entrypoint.get("function") or "")
-        if not function or rel.is_absolute() or ".." in rel.parts:
-            raise ValueError("invalid generated capability entrypoint")
-        self.source_path = (self.package_path / rel).resolve()
-        if self.package_path not in self.source_path.parents or not self.source_path.is_file():
-            raise GeneratedCapabilitySecurityError("generated capability entrypoint escapes package root")
-        self.function = function
+        if self.manifest.get("runtime") != "pure_python_v1":
+            raise GeneratedCapabilitySecurityError("manifest is not a pure generated capability")
+        self.source_path, self.function, self._source = _entrypoint(
+            self.package_path, dict(self.manifest.get("entrypoint") or {}), label="entrypoint"
+        )
         self.timeout_seconds = max(1, min(int(timeout_seconds), 30))
         self.on_invocation = on_invocation
-        self._source = self.source_path.read_text(encoding="utf-8")
-        validate_pure_python_source(self._source)
 
     def invoke(self, parameters: dict[str, Any]) -> Any:
         if not isinstance(parameters, dict):
             raise ValueError("generated capability parameters must be an object")
-        _validate_json_shape(parameters)
-        serialized = json.dumps(parameters, separators=(",", ":"), ensure_ascii=False)
-        if len(serialized.encode("utf-8")) > _MAX_INPUT_BYTES:
-            raise ValueError("generated capability input exceeds size limit")
         started = time.perf_counter()
         ok = False
         error_code = None
         try:
-            kwargs = {
-                "input": serialized,
-                "text": True,
-                "capture_output": True,
-                "cwd": str(self.package_path),
-                "env": {"PYTHONIOENCODING": "utf-8"},
-                "timeout": self.timeout_seconds,
-                "check": False,
-            }
-            limiter = _posix_resource_limiter(self.timeout_seconds)
-            if limiter is not None:
-                kwargs["preexec_fn"] = limiter
-            completed = subprocess.run(
-                [sys.executable, "-I", "-S", "-c", _RUNNER, str(self.source_path), self.function],
-                **kwargs,
+            result = _invoke_isolated(
+                self.source_path,
+                self.function,
+                parameters,
+                package_path=self.package_path,
+                timeout_seconds=self.timeout_seconds,
             )
-            if completed.returncode != 0:
-                error_code = "generated_runtime_failed"
-                raise RuntimeError("generated capability execution failed")
-            if len(completed.stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
-                error_code = "generated_output_too_large"
-                raise RuntimeError("generated capability output exceeds size limit")
-            result = json.loads(completed.stdout or "null")
-            _validate_json_shape(result)
             ok = True
             return result
         except subprocess.TimeoutExpired as exc:
             error_code = "generated_timeout"
             raise TimeoutError("generated capability execution timed out") from exc
+        except Exception:
+            error_code = "generated_runtime_failed"
+            raise
+        finally:
+            if self.on_invocation is not None:
+                duration_ms = (time.perf_counter() - started) * 1000.0
+                try:
+                    self.on_invocation(ok=ok, duration_ms=duration_ms, error_code=error_code)
+                except Exception:
+                    pass
+
+
+class GovernedToolchainGeneratedCapability:
+    """Generated planner whose only external access is brokered through ToolRegistry.
+
+    The generated Python process can produce a JSON call plan and optionally
+    reduce verified results. It never receives ToolRegistry, credentials, sockets,
+    filesystem handles, or process environment. The host executes each call only
+    after existing owner policy, risk, destination, input/output and verification
+    checks succeed. Side-effecting or generated tools are never delegated.
+    """
+
+    def __init__(
+        self,
+        package_path: str | Path,
+        *,
+        expected_digest: str,
+        tools,
+        capability_id: str,
+        timeout_seconds: int = 10,
+        on_invocation: Callable[..., None] | None = None,
+    ) -> None:
+        self.package_path = Path(package_path).resolve()
+        self.manifest = load_generated_manifest(self.package_path, expected_digest=expected_digest)
+        validate_generated_manifest_authority(self.manifest)
+        if self.manifest.get("runtime") != "governed_toolchain_v1":
+            raise GeneratedCapabilitySecurityError("manifest is not a governed generated toolchain")
+        self.source_path, self.function, self._source = _entrypoint(
+            self.package_path, dict(self.manifest.get("entrypoint") or {}), label="entrypoint"
+        )
+        reducer = self.manifest.get("reducer")
+        self.reducer_path = None
+        self.reducer_function = None
+        if reducer is not None:
+            self.reducer_path, self.reducer_function, _ = _entrypoint(
+                self.package_path, dict(reducer or {}), label="reducer"
+            )
+        self.allowed_tools = frozenset(_allowed_tools(dict(self.manifest.get("permissions") or {})))
+        self.tools = tools
+        self.capability_id = str(capability_id)
+        self.timeout_seconds = max(1, min(int(timeout_seconds), 30))
+        self.on_invocation = on_invocation
+
+    def _delegated_tool(self, name: str, parameters: dict[str, Any]):
+        if name not in self.allowed_tools:
+            raise GeneratedCapabilitySecurityError("generated capability requested a tool outside its immutable allowlist")
+        if name == self.capability_id:
+            raise GeneratedCapabilitySecurityError("generated capability cannot recursively invoke itself")
+        try:
+            tool = self.tools.get(name)
+        except (KeyError, TypeError) as exc:
+            raise GeneratedCapabilitySecurityError("allowlisted delegated tool is unavailable") from exc
+        if getattr(tool, "verification_method", None) in _GENERATED_VERIFICATION_METHODS:
+            raise GeneratedCapabilitySecurityError("generated capabilities cannot delegate to generated capabilities")
+        if Risk(int(getattr(tool, "risk", Risk.CRITICAL))) is not Risk.READ_ONLY:
+            raise GeneratedCapabilitySecurityError("generated toolchain can delegate only to read-only tools")
+        minimum = getattr(tool, "minimum_risk", None)
+        if minimum is not None and Risk(int(minimum)) is not Risk.READ_ONLY:
+            raise GeneratedCapabilitySecurityError("delegated tool has a higher minimum risk")
+        effective = self.tools.effective_risk(tool, parameters=parameters, data_classification="internal") if hasattr(self.tools, "effective_risk") else Risk.READ_ONLY
+        if Risk(int(effective)) is not Risk.READ_ONLY:
+            raise GeneratedCapabilitySecurityError("delegated tool effective risk is not read-only")
+        decision = self.tools.authorize(tool, confirmed=False, parameters=parameters, data_classification="internal")
+        if not getattr(decision, "allowed", False) or getattr(decision, "requires_confirmation", False):
+            raise PermissionError(getattr(decision, "reason", "delegated tool requires owner approval"))
+        return tool
+
+    def invoke(self, parameters: dict[str, Any]) -> Any:
+        if not isinstance(parameters, dict):
+            raise ValueError("generated capability parameters must be an object")
+        started = time.perf_counter()
+        ok = False
+        error_code = None
+        try:
+            plan = _invoke_isolated(
+                self.source_path,
+                self.function,
+                parameters,
+                package_path=self.package_path,
+                timeout_seconds=self.timeout_seconds,
+            )
+            if not isinstance(plan, dict) or not isinstance(plan.get("calls"), list):
+                raise ValueError("governed generated toolchain must return an object with a calls array")
+            calls = plan["calls"]
+            if len(calls) > _MAX_DELEGATED_CALLS:
+                raise GeneratedCapabilitySecurityError("generated capability requested too many delegated calls")
+            results: list[dict[str, Any]] = []
+            aggregate_bytes = 0
+            for index, call in enumerate(calls):
+                if not isinstance(call, dict):
+                    raise ValueError("delegated call must be an object")
+                name = str(call.get("tool") or "").strip()
+                call_parameters = call.get("parameters", {})
+                if not name or not isinstance(call_parameters, dict):
+                    raise ValueError("delegated call requires tool and object parameters")
+                tool = self._delegated_tool(name, call_parameters)
+                result = self.tools.dispatch(tool, call_parameters)
+                verification = self.tools.verify_result(tool, call_parameters, result)
+                if not getattr(verification, "verified", False):
+                    raise RuntimeError("delegated read-only tool result was not verified")
+                encoded = _json_bytes(result)
+                aggregate_bytes += len(encoded)
+                if aggregate_bytes > _MAX_OUTPUT_BYTES:
+                    raise RuntimeError("delegated results exceed generated capability size limit")
+                results.append({"index": index, "tool": name, "result": result})
+            reduction_input = {"input": parameters, "results": results}
+            if self.reducer_path is not None and self.reducer_function is not None:
+                output = _invoke_isolated(
+                    self.reducer_path,
+                    self.reducer_function,
+                    reduction_input,
+                    package_path=self.package_path,
+                    timeout_seconds=self.timeout_seconds,
+                )
+            else:
+                output = {"results": results}
+            ok = True
+            return output
+        except subprocess.TimeoutExpired as exc:
+            error_code = "generated_timeout"
+            raise TimeoutError("generated capability execution timed out") from exc
+        except PermissionError:
+            error_code = "generated_policy_denied"
+            raise
+        except Exception:
+            error_code = "generated_runtime_failed"
+            raise
         finally:
             if self.on_invocation is not None:
                 duration_ms = (time.perf_counter() - started) * 1000.0
@@ -262,12 +452,27 @@ def attach_approved_generated_capability(
     if capability.get("type") != "generated_capability" or capability.get("state") != "active":
         raise ValueError("generated capability is not active")
     package_path = resolve_generated_package(data_root, str(capability.get("package_ref") or ""))
-    runtime = PurePythonGeneratedCapability(
-        package_path,
-        expected_digest=str(capability.get("manifest_digest") or ""),
-        on_invocation=on_invocation,
-    )
-    manifest = runtime.manifest
+    manifest = load_generated_manifest(package_path, expected_digest=str(capability.get("manifest_digest") or ""))
+    validate_generated_manifest_authority(manifest)
+    runtime_name = str(manifest.get("runtime") or "")
+    if runtime_name == "pure_python_v1":
+        runtime = PurePythonGeneratedCapability(
+            package_path,
+            expected_digest=str(capability.get("manifest_digest") or ""),
+            on_invocation=on_invocation,
+        )
+        verification_method = "qualified_generated_runtime"
+    elif runtime_name == "governed_toolchain_v1":
+        runtime = GovernedToolchainGeneratedCapability(
+            package_path,
+            expected_digest=str(capability.get("manifest_digest") or ""),
+            tools=tools,
+            capability_id=str(capability["id"]),
+            on_invocation=on_invocation,
+        )
+        verification_method = "qualified_generated_toolchain_runtime"
+    else:  # pragma: no cover - already rejected above
+        raise GeneratedCapabilitySecurityError("unsupported generated capability runtime")
     if str(manifest.get("id")) != str(capability.get("id")) or str(manifest.get("version")) != str(capability.get("version")):
         raise GeneratedCapabilitySecurityError("catalog identity does not match generated package")
     tool = Tool(
@@ -277,20 +482,20 @@ def attach_approved_generated_capability(
         risk=Risk.READ_ONLY,
         verifier=lambda _parameters, _result: VerificationResult(
             True,
-            "qualified pure generated capability returned contract-valid output",
-            {"manifest_digest": str(capability.get("manifest_digest") or "")},
+            "qualified generated capability returned contract-valid output",
+            {"manifest_digest": str(capability.get("manifest_digest") or ""), "runtime": runtime_name},
         ),
         verification_required=True,
         capability=str(capability["id"]),
         input_schema=dict(capability.get("input_schema") or {}),
         output_schema=dict(capability.get("output_schema") or {}),
-        verification_method="qualified_generated_runtime",
+        verification_method=verification_method,
     )
     existing = getattr(tools, "_tools", {}).get(tool.name)
     if existing is None:
         tools.register(tool)
     elif (
-        getattr(existing, "verification_method", None) == "qualified_generated_runtime"
+        getattr(existing, "verification_method", None) in _GENERATED_VERIFICATION_METHODS
         and getattr(existing, "capability", None) == tool.capability
     ):
         tools._tools[tool.name] = tool
@@ -305,7 +510,7 @@ def detach_generated_capability(tools, capability_id: str) -> bool:
     if existing is None:
         return False
     if (
-        getattr(existing, "verification_method", None) != "qualified_generated_runtime"
+        getattr(existing, "verification_method", None) not in _GENERATED_VERIFICATION_METHODS
         or getattr(existing, "capability", None) != name
     ):
         raise PermissionError("refusing to detach a non-generated tool")
