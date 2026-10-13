@@ -17,7 +17,7 @@ struct ConnectOnboardingView: View {
                         .tracking(3)
                     Text("Connect to my Vishnu")
                         .font(.largeTitle.weight(.semibold))
-                    Text("Scan the one-time QR shown by your primary Vishnu. This iPhone receives its own revocable device credential; your owner password and model-provider keys are never copied here.")
+                    Text("Scan the one-time QR shown by your primary Vishnu. This iPhone finds the computer automatically on the local network and verifies its TLS identity before sending any pairing secret. No IP address or port is required.")
                         .font(PersonalAITheme.Typography.body)
                         .foregroundStyle(.secondary)
 
@@ -30,7 +30,7 @@ struct ConnectOnboardingView: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
 
-                    Button(showManual ? "Hide manual connection" : "Enter connection details instead") {
+                    Button(showManual ? "Hide advanced fallback" : "Advanced manual fallback") {
                         withAnimation { showManual.toggle() }
                     }
                     .buttonStyle(.bordered)
@@ -66,7 +66,7 @@ struct ConnectOnboardingView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label(store.status, systemImage: store.connected ? "checkmark.circle.fill" : "lock.shield")
                             .font(.subheadline)
-                        Text("The QR expires automatically and can be used only once. If it expires, generate a new one from Vishnu.")
+                        Text("The QR is one-use and expires automatically. Bonjour discovery exposes no owner password, model key, memory, or device bearer credential.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -107,6 +107,8 @@ struct ConnectOnboardingView: View {
             guard code.count == 6, code.allSatisfy(\.isNumber) else { throw PairingPayloadError.invalidCode }
             store.pairingToken = token
             store.pairingCode = code
+            store.pairingTLSFingerprint = ""
+            store.pairingServiceID = ""
             await store.pair()
         } catch {
             store.status = (error as? LocalizedError)?.errorDescription ?? "The connection details are invalid."
@@ -116,11 +118,41 @@ struct ConnectOnboardingView: View {
     private func acceptScannedPayload(_ raw: String) {
         do {
             let payload = try PairingPayload.parse(raw, allowLocalHTTP: store.allowInsecureDevelopment)
-            store.baseURL = payload.baseURL
             store.pairingToken = payload.token
             store.pairingCode = payload.code
-            store.status = "Vishnu found. Connecting this iPhone…"
-            Task { await store.pair() }
+            if payload.zeroConfig, let service = payload.serviceID, let fingerprint = payload.certSHA256 {
+                store.pairingTLSFingerprint = fingerprint
+                store.pairingServiceID = service
+                store.status = "Finding your Vishnu automatically…"
+                VishnuBonjourDiscovery.discover(serviceID: service) { result in
+                    Task { @MainActor in
+                        switch result {
+                        case .success(let origin):
+                            store.baseURL = origin
+                            store.status = "Vishnu discovered. Verifying its secure identity…"
+                            await store.pair()
+                        case .failure:
+                            if let fallback = payload.fallbackURL {
+                                store.baseURL = fallback
+                                store.pairingTLSFingerprint = ""
+                                store.pairingServiceID = ""
+                                store.status = "Local discovery unavailable. Trying the configured secure Vishnu endpoint…"
+                                await store.pair()
+                            } else {
+                                store.status = "Could not find this Vishnu on the local network. Make sure both devices are on the same Wi‑Fi, then scan a new QR."
+                            }
+                        }
+                    }
+                }
+            } else if let base = payload.baseURL {
+                store.baseURL = base
+                store.pairingTLSFingerprint = ""
+                store.pairingServiceID = ""
+                store.status = "Vishnu found. Connecting this iPhone…"
+                Task { await store.pair() }
+            } else {
+                store.status = "This Vishnu connection offer is incomplete."
+            }
         } catch {
             store.status = (error as? LocalizedError)?.errorDescription ?? "That QR code is not a valid Vishnu connection offer."
         }
