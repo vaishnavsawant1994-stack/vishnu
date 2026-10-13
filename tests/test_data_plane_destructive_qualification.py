@@ -168,7 +168,7 @@ def test_cloud_off_prevents_canonical_adapter_creation_before_network_use(tmp_pa
 
 def test_pending_transfer_frame_survives_process_recreation_without_cursor_skip(tmp_path):
     manager, _registry, gateway, _vault, envelopes, transport = transfer_stack(tmp_path)
-    opened = transport.open_transfer('file:phone', requester_device_id='laptop', expected_size=10, chunk_size=1024)
+    opened = transport.open_transfer('file:phone', requester_device_id='laptop', expected_size=11, chunk_size=1024)
     frame = transport.encrypt_chunk(opened['session_id'], 0, b'first-half')
     assert transport.status(opened['session_id'])['bytes_transferred'] == 0
 
@@ -183,7 +183,7 @@ def test_pending_transfer_frame_survives_process_recreation_without_cursor_skip(
     assert restarted.decrypt_chunk(second) == b'x'
     completed = restarted.acknowledge_chunk(opened['session_id'], 1)
     assert completed['state'] == 'complete'
-    assert completed['bytes_transferred'] == 10
+    assert completed['bytes_transferred'] == 11
 
 
 def test_bounded_multi_chunk_transfer_endurance_completes_without_persistent_copy(tmp_path):
