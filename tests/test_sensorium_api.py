@@ -85,6 +85,14 @@ def test_sensorium_api_virtual_flow_and_planner_boundary(tmp_path):
     assert planner.json()["screenshot_evidence_ref"] is None
     assert planner.json()["sensorium_context"]["execution_authority"] is False
 
+    live = client.get("/sensorium/live-work", headers=headers)
+    assert live.status_code == 200
+    assert live.json()["authority"] == "read_only_projection"
+    assert live.json()["presentation_only"] is True
+    assert live.json()["execution_authority"] is False
+    assert live.json()["raw_sensor_content_exposed"] is False
+    assert "sensitive value" not in repr(live.json())
+
 
 def test_raw_clipboard_context_requires_sensitive_scope(tmp_path):
     client, _registry, _device, headers = _client(tmp_path, {"device:read", "device:admin"})

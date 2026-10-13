@@ -11,6 +11,7 @@ from sensorium import (
     VirtualDevice,
     VirtualDeviceLab,
 )
+from sensorium.live_work import SensoriumLiveWorkProjection
 
 
 class VirtualDeviceCreateBody(BaseModel):
@@ -83,6 +84,11 @@ def sensorium_router(runtime) -> APIRouter:
         lab = VirtualDeviceLab.from_device_registry(registry, event_bus=events)
         runtime["sensorium_lab"] = lab
 
+    live_work = runtime.get("sensorium_live_work") if runtime else None
+    if live_work is None and events is not None:
+        live_work = SensoriumLiveWorkProjection(events)
+        runtime["sensorium_live_work"] = live_work
+
     def controller(
         authorization: str | None,
         device_id: str | None,
@@ -105,6 +111,17 @@ def sensorium_router(runtime) -> APIRouter:
             controller_device_id=controller_device_id,
             event_bus=events,
         )
+
+    @router.get("/live-work")
+    def live_work_snapshot(
+        limit: int = Query(default=50, ge=1, le=200),
+        authorization: str | None = Header(default=None),
+        x_device_id: str | None = Header(default=None),
+    ):
+        controller(authorization, x_device_id, "device:read")
+        if live_work is None:
+            raise HTTPException(503, "Sensorium Live Work projection unavailable")
+        return live_work.snapshot(limit=limit)
 
     @router.get("/virtual-devices")
     def list_virtual_devices(

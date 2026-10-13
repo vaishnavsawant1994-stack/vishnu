@@ -6,6 +6,7 @@ from sensorium.adapters import (
     VirtualScreenAdapter,
     VirtualSystemAdapter,
 )
+from sensorium.live_work import SensoriumLiveWorkProjection
 from sensorium.models import (
     DataClassification,
     DeviceState,
@@ -22,6 +23,7 @@ __all__ = [
     "DeviceState",
     "SensorEvent",
     "SensorKind",
+    "SensoriumLiveWorkProjection",
     "SensoriumService",
     "VirtualAdapterBinding",
     "VirtualClipboardAdapter",
