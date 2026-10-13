@@ -26,6 +26,7 @@ from future_intelligence.capability_forge import (
     CapabilityForgeLifecycle,
     CapabilityForgeWorkBridge,
     CapabilityPackageBuilder,
+    GeneratedCapabilityEvaluator,
     build_capability_forge,
 )
 from future_intelligence.capability_forge.governed_activation import GovernedCapabilityActivationService
@@ -76,6 +77,7 @@ class FutureIntelligenceProgram:
         # inert unless they were already owner-approved and persisted active.
         self.capability_forge=None
         self.capability_forge_lifecycle=None
+        self.capability_forge_evaluator=None
         self.capability_forge_work=None
         self.capability_forge_activation=None
         self.capability_forge_packages=CapabilityPackageBuilder()
@@ -89,6 +91,7 @@ class FutureIntelligenceProgram:
                 self.capability_catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
                 self.capability_forge=build_capability_forge(data_root,catalog=self.capability_catalog,events=runtime.get('events'))
                 self.capability_forge_lifecycle=CapabilityForgeLifecycle(data_root/'capability-forge.sqlite3')
+                self.capability_forge_evaluator=GeneratedCapabilityEvaluator(self.capability_forge_lifecycle,events=runtime.get('events'))
                 work_runtime=getattr(self.autonomy,'_work_bridge',None)
                 work_store=getattr(work_runtime,'work',None)
                 if work_store is not None:
@@ -126,6 +129,7 @@ class FutureIntelligenceProgram:
                     'capability_forge':self.capability_forge,
                     'capability_forge_store':self.capability_forge.store,
                     'capability_forge_lifecycle':self.capability_forge_lifecycle,
+                    'capability_forge_evaluator':self.capability_forge_evaluator,
                     'capability_forge_work':self.capability_forge_work,
                     'capability_forge_packages':self.capability_forge_packages,
                     'capability_forge_activation':self.capability_forge_activation,
@@ -140,6 +144,7 @@ class FutureIntelligenceProgram:
                         rehydrated=list(self.rehydrated_generated_capabilities),
                         activation_available=bool(self.capability_forge_activation),
                         engineering_available=bool(runtime.get('engineering_executor')),
+                        monitoring_available=True,
                     )
             except Exception as exc:
                 # Forge startup is fail-closed and cannot break the canonical
