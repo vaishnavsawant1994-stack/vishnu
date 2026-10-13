@@ -11,11 +11,15 @@ def test_forge_ui_script_uses_only_governed_owner_endpoints_and_keeps_approval_s
     assert "/activation/request" in JS
     assert "/activation/commit" in JS
     assert "/disable/request" in JS
+    assert "/disable/commit" in JS
     assert "/rollback/request" in JS
+    assert "/rollback/commit" in JS
     assert "Approvals Center" in JS
     assert "self-approve" not in JS.lower()
     assert "queue_draft_work" in JS
     assert "production_activation" in JS
+    assert "data-commit-disable" in JS
+    assert "data-commit-rollback" in JS
 
 
 def test_forge_ui_middleware_injects_console_into_iphone_and_capability_console_only():
