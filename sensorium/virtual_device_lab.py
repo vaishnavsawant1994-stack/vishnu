@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Iterable
+from copy import deepcopy
 from dataclasses import replace
 from threading import RLock
 from typing import Any
@@ -62,11 +63,11 @@ class VirtualDeviceLab:
             raise PermissionError(f"controller device lacks {scope}")
 
     def _emit(self, event: str, **payload: Any) -> None:
-        audit = {"event": event, **payload}
+        audit = {"event": event, **deepcopy(payload)}
         with self._lock:
             self._audit.append(audit)
         if self._event_bus is not None:
-            self._event_bus.emit(event, **payload)
+            self._event_bus.emit(event, **deepcopy(payload))
 
     @staticmethod
     def _sensor_event_projection(event: SensorEvent) -> dict[str, Any]:
@@ -206,11 +207,38 @@ class VirtualDeviceLab:
         *,
         controller_device_id: str | None = None,
     ) -> list[dict[str, Any]]:
+        self._authorize(controller_device_id, self.ADMIN_SCOPE)
         materialized = list(events)
         if any(event.device_id != device_id for event in materialized):
             raise ValueError("replay events must all belong to the requested virtual device")
         ordered = sorted(materialized, key=lambda event: (event.timestamp, event.event_id))
-        return [self.inject_event(event, controller_device_id=controller_device_id) for event in ordered]
+        if not ordered:
+            return []
+
+        with self._lock:
+            device = self._devices.get(device_id)
+            if device is None:
+                raise KeyError("virtual device not found")
+            if device.state != DeviceState.ONLINE:
+                raise RuntimeError("virtual device must be online to inject sensor events")
+            if any(event.kind not in device.capabilities for event in ordered):
+                raise PermissionError("virtual device does not declare this sensor capability")
+            current = self._events[device_id]
+            if len(current) + len(ordered) > self._max_events:
+                raise RuntimeError("virtual device event buffer is full")
+            current_ids = {event.event_id for event in current}
+            replay_ids = [event.event_id for event in ordered]
+            if len(set(replay_ids)) != len(replay_ids) or current_ids.intersection(replay_ids):
+                raise ValueError("duplicate sensor event id")
+            current.extend(ordered)
+
+        for event in ordered:
+            self._emit(
+                "sensorium.sensor_event.injected",
+                controller_device_id=controller_device_id,
+                sensor_event=self._sensor_event_projection(event),
+            )
+        return [event.to_dict() for event in ordered]
 
     def run_scenario(
         self,
@@ -246,4 +274,4 @@ class VirtualDeviceLab:
     def audit_events(self, *, controller_device_id: str | None = None) -> list[dict[str, Any]]:
         self._authorize(controller_device_id, self.READ_SCOPE)
         with self._lock:
-            return [dict(item) for item in self._audit]
+            return deepcopy(self._audit)
