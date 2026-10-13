@@ -274,7 +274,7 @@ class IOSSimulatorProbe:
         self._runner = runner
 
     def probe(self, udid: str | None = None) -> NativeDeviceEvidence:
-        raw = _checked(self._runner, ("xcrun", "simctl", "list", "devices", "available", "--json"))
+        raw = _checked(self._runner, ("xcrun", "simctl", "list", "devices", "available", "--json"), timeout=60)
         payload = json.loads(raw)
         options: list[tuple[str, dict[str, Any]]] = []
         for runtime, devices in dict(payload.get("devices") or {}).items():
@@ -316,7 +316,7 @@ class DesktopVMProbe:
     """Probe the current desktop qualification host when it is explicitly VM-scoped."""
 
     def __init__(self, environment: Mapping[str, str] | None = None) -> None:
-        self._environment = dict(environment or os.environ)
+        self._environment = dict(os.environ if environment is None else environment)
 
     def probe(self) -> NativeDeviceEvidence:
         env = self._environment

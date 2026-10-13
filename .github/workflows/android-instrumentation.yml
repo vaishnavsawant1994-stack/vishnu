@@ -40,8 +40,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
           script: |
             gradle connectedDebugAndroidTest --stacktrace --info
-            cd ..
-            python scripts/native_device_probe.py android --output native-evidence/android-emulator.json
+            python "$GITHUB_WORKSPACE/scripts/native_device_probe.py" android --output "$GITHUB_WORKSPACE/native-evidence/android-emulator.json"
       - name: Validate Android Sensorium evidence boundary
         run: |
           python - <<'PY'

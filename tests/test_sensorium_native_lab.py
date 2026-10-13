@@ -62,6 +62,30 @@ def test_android_probe_rejects_physical_adb_serials():
         AndroidEmulatorProbe(runner).probe("R58M1234")
 
 
+def test_ios_probe_allows_xcode_core_simulator_inventory_to_finish():
+    udid = "A1B2C3D4-E5F6-47A8-9B10-111213141516"
+    payload = {"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0": [
+        {"name": "iPhone 17 Pro", "udid": udid, "state": "Booted", "isAvailable": True}
+    ]}}
+    observed_timeouts = []
+
+    def runner(args: tuple[str, ...], timeout: int) -> CommandResult:
+        observed_timeouts.append(timeout)
+        return CommandResult(0, json.dumps(payload), "")
+
+    IOSSimulatorProbe(runner).probe(udid)
+    assert observed_timeouts == [60]
+
+
+def test_desktop_vm_probe_respects_explicit_empty_environment(monkeypatch):
+    monkeypatch.setattr("sensorium.native_lab.os.environ", {
+        "GITHUB_ACTIONS": "true",
+        "VISHNU_DESKTOP_VM": "true",
+    })
+    with pytest.raises(RuntimeError, match="declared VM"):
+        DesktopVMProbe({}).probe()
+
+
 def test_ios_probe_reads_core_simulator_inventory_without_execution_authority():
     udid = "A1B2C3D4-E5F6-47A8-9B10-111213141516"
     payload = {
