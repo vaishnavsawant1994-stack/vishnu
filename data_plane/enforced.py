@@ -18,7 +18,89 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
     """
 
     SYNC_SCHEMA_VERSION = 1
+    DATA_SCHEMA_VERSION = 1
     SYNC_EVENT_KINDS = frozenset({'update', 'delete'})
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # This database is data-plane-only, so PRAGMA user_version gives future
+        # migrations an explicit compatibility boundary. Existing PR databases
+        # created before this marker safely enter version 1; newer databases are
+        # rejected rather than being silently interpreted by older code.
+        with self._con() as con:
+            version = int(con.execute('PRAGMA user_version').fetchone()[0])
+            if version == 0:
+                con.execute(f'PRAGMA user_version={self.DATA_SCHEMA_VERSION}')
+            elif version > self.DATA_SCHEMA_VERSION:
+                raise RuntimeError('data-plane database was created by a newer Vishnu version')
+            elif version < self.DATA_SCHEMA_VERSION:
+                raise RuntimeError('data-plane database migration is required before use')
+
+    def _assert_active_device(self, device_id: str, scope: str):
+        # Older base methods used ai:chat as a generic trusted-device check.
+        # Inside the data plane that must resolve to the dedicated data scope so
+        # chat permission and data permission remain independently revocable.
+        effective_scope = 'data:read' if str(scope) == 'ai:chat' else str(scope)
+        return super()._assert_active_device(device_id, effective_scope)
+
+    def register_item(
+        self,
+        global_id: str,
+        *,
+        entity_type: str,
+        primary_device_id: str,
+        policy: str | StoragePolicy | None = None,
+        remote_access_allowed: bool = True,
+        copy_allowed: bool = False,
+        backup_mode: str | BackupMode = BackupMode.OFF,
+        origin_device_id: str | None = None,
+        content_digest: str | None = None,
+        metadata: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Register once; never use registration as a policy-change bypass.
+
+        Existing items may be re-registered only as an exact idempotent replay.
+        Authority changes must go through their governed mutation paths.
+        """
+        try:
+            existing = self.item(global_id)
+        except KeyError:
+            existing = None
+        if existing is not None:
+            target_policy = StoragePolicy(policy or existing['storage_policy']).value
+            target_backup = BackupMode(backup_mode).value
+            target_origin = str(origin_device_id or primary_device_id)
+            target_metadata = dict(metadata or {})
+            same = (
+                existing['entity_type'] == str(entity_type)
+                and existing['primary_device_id'] == str(primary_device_id)
+                and existing['storage_policy'] == target_policy
+                and existing['remote_access_allowed'] == bool(remote_access_allowed)
+                and existing['copy_allowed'] == bool(copy_allowed)
+                and existing['backup_mode'] == target_backup
+                and existing['origin_device_id'] == target_origin
+                and existing['content_digest'] == content_digest
+                and existing['metadata'] == target_metadata
+                and not existing['tombstone']
+            )
+            if same:
+                return existing
+            raise PermissionError(
+                'existing data-plane item cannot be changed through registration; '
+                'use the governed policy/domain mutation path'
+            )
+        return super().register_item(
+            global_id,
+            entity_type=entity_type,
+            primary_device_id=primary_device_id,
+            policy=policy,
+            remote_access_allowed=remote_access_allowed,
+            copy_allowed=copy_allowed,
+            backup_mode=backup_mode,
+            origin_device_id=origin_device_id,
+            content_digest=content_digest,
+            metadata=metadata,
+        )
 
     def update_settings(
         self,
@@ -54,9 +136,10 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
                 (self.SCHEMA_VERSION, int(enabled), mode.value, int(remote), policy.value, int(backup), stamp),
             )
             if current['remote_access_enabled'] and not remote:
+                now = __import__('time').time()
                 con.execute(
                     'UPDATE data_plane_remote_leases SET revoked_at=? WHERE revoked_at IS NULL AND expires_at>?',
-                    (__import__('time').time(), __import__('time').time()),
+                    (now, now),
                 )
         result = self.settings()
         self._emit('data_plane.settings_changed', **result)
@@ -250,7 +333,7 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
             raise ValueError('invalid sync event kind or version')
         if storage_policy is StoragePolicy.DEVICE_ONLY:
             raise PermissionError('device-only item rejects replicated payloads')
-        self._assert_active_device(origin_device_id, 'ai:chat')
+        self._assert_active_device(origin_device_id, 'data:sync')
         payload = dict(event.get('payload') or {})
         expected_hash = str(event.get('payload_hash') or '')
         if not expected_hash or _hash(payload) != expected_hash:
@@ -334,8 +417,7 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
         device_id = str(device_id or '').strip()
         if not device_id:
             raise ValueError('device_id is required')
-        if self.device_registry is not None and not self.device_registry.is_active(device_id):
-            raise PermissionError('trusted active device required')
+        self._assert_active_device(device_id, 'data:sync')
         limit = max(1, min(int(limit), 500))
         with self._con() as con:
             rows = con.execute(
@@ -375,8 +457,7 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
         event_id = str(event_id or '').strip()
         if not device_id or not event_id:
             raise ValueError('device_id and event_id are required')
-        if self.device_registry is not None and not self.device_registry.is_active(device_id):
-            raise PermissionError('trusted active device required')
+        self._assert_active_device(device_id, 'data:sync')
         with self._con() as con:
             known = con.execute('SELECT 1 FROM data_plane_sync_events WHERE event_id=?', (event_id,)).fetchone()
             if not known:
@@ -399,6 +480,8 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
     ) -> dict[str, Any]:
         item = self.item(global_id)
         source = item['primary_device_id']
+        self._assert_active_device(requester_device_id, 'data:admin' if allow_persist else 'data:read')
+        self._assert_active_device(source, 'data:read')
         if source != str(requester_device_id):
             if self.device_gateway is None:
                 raise RuntimeError('canonical device gateway is required for cross-device access')
@@ -419,8 +502,10 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
         item = self.item(observed['global_id'])
         if item['tombstone'] or not item['remote_access_allowed']:
             raise PermissionError('remote access is no longer allowed for this item')
-        if require_persist and not item['copy_allowed']:
-            raise PermissionError('current item policy no longer permits persistence')
+        if require_persist:
+            self._assert_active_device(observed['requester_device_id'], 'data:admin')
+            if not item['copy_allowed']:
+                raise PermissionError('current item policy no longer permits persistence')
         source = str(observed['source_device_id'])
         requester = str(observed['requester_device_id'])
         if source != requester:
@@ -440,5 +525,6 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
                 'SELECT COUNT(*) FROM data_plane_remote_leases WHERE revoked_at IS NULL AND expires_at>?',
                 (__import__('time').time(),),
             ).fetchone()[0]
+            result['database_schema_version'] = int(con.execute('PRAGMA user_version').fetchone()[0])
         result['cloud_bytes_present'] = bool(result['remote_durable_locations'])
         return result
