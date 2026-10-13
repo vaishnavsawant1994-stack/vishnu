@@ -18,12 +18,23 @@ from sensorium.models import (
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
 from sensorium.service import SensoriumService
 from sensorium.virtual_device_lab import VirtualDeviceLab
+from sensorium.virtual_fleet import (
+    NetworkType,
+    PermissionState,
+    VirtualDeviceFleet,
+    VirtualFault,
+    VirtualPlatform,
+    VirtualPlatformProfile,
+    VirtualRuntimeState,
+)
 
 __all__ = [
     "DataClassification",
     "DesktopPhysicalSensorAdapter",
     "DeviceState",
     "MobilePhysicalSensorAdapter",
+    "NetworkType",
+    "PermissionState",
     "SensorEvent",
     "SensorKind",
     "SensoriumLiveWorkProjection",
@@ -31,7 +42,12 @@ __all__ = [
     "VirtualAdapterBinding",
     "VirtualClipboardAdapter",
     "VirtualDevice",
+    "VirtualDeviceFleet",
     "VirtualDeviceLab",
+    "VirtualFault",
+    "VirtualPlatform",
+    "VirtualPlatformProfile",
+    "VirtualRuntimeState",
     "VirtualScenario",
     "VirtualScreenAdapter",
     "VirtualSystemAdapter",
