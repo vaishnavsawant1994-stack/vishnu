@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import queue
 import socket
 import threading
 import time
@@ -286,3 +285,17 @@ class LocalDeviceGatewayRuntime:
             server.should_exit = True
         if thread and thread.is_alive():
             thread.join(timeout=5)
+
+
+def get_local_device_gateway(runtime: dict) -> LocalDeviceGatewayRuntime:
+    existing = runtime.get('local_device_gateway')
+    if isinstance(existing, LocalDeviceGatewayRuntime):
+        return existing
+    gateway = LocalDeviceGatewayRuntime(
+        settings=runtime['settings'],
+        device_registry=runtime.get('device_registry'),
+        device_gateway=runtime.get('device_gateway'),
+        runtime=runtime,
+    )
+    runtime['local_device_gateway'] = gateway
+    return gateway
