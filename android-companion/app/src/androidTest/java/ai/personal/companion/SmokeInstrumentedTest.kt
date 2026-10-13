@@ -91,6 +91,7 @@ class SmokeInstrumentedTest {
             val status = store.status()
             assertFalse(status.getBoolean("raw_file_bytes_stored"))
             assertFalse(status.getBoolean("secrets_stored"))
+            assertEquals(0, status.getLong("pending_local_events"))
         } finally {
             store.close()
             context.deleteDatabase("vishnu-data-plane.db")
@@ -98,7 +99,7 @@ class SmokeInstrumentedTest {
     }
 
     @Test
-    fun mobileDataPlaneRejectsSecretsRawBytesAndStaleVersions() {
+    fun mobileDataPlaneRejectsSecretsRawBytesStaleAndDivergentVersions() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         context.deleteDatabase("vishnu-data-plane.db")
         val store = MobileDataPlaneStore(context)
@@ -134,8 +135,42 @@ class SmokeInstrumentedTest {
             assertFalse(stale.getBoolean("applied"))
             assertTrue(stale.getBoolean("conflict"))
             assertEquals(3, stale.getLong("local_version"))
+            val divergent = store.putProgress(
+                "project:conflict-test",
+                "project",
+                3,
+                JSONObject().put("status", "different"),
+            )
+            assertFalse(divergent.getBoolean("applied"))
+            assertTrue(divergent.getBoolean("conflict"))
             assertTrue(store.tombstone("project:conflict-test", 4))
             assertTrue(store.get("project:conflict-test")!!.getBoolean("tombstone"))
+        } finally {
+            store.close()
+            context.deleteDatabase("vishnu-data-plane.db")
+        }
+    }
+
+    @Test
+    fun localOfflineProgressIsJournaledUntilAcknowledged() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase("vishnu-data-plane.db")
+        val store = MobileDataPlaneStore(context)
+        try {
+            val local = store.putLocalProgress(
+                "project:offline-phone",
+                "project",
+                JSONObject().put("project_name", "Rudra").put("status", "active").put("next_step", "Continue on laptop"),
+            )
+            assertTrue(local.getBoolean("applied"))
+            assertEquals(1, local.getLong("version"))
+            val sourceEventId = local.getString("source_event_id")
+            val pending = store.pending().getJSONArray("events")
+            assertEquals(1, pending.length())
+            assertEquals(sourceEventId, pending.getJSONObject(0).getString("source_event_id"))
+            assertEquals("Continue on laptop", pending.getJSONObject(0).getJSONObject("payload").getString("next_step"))
+            assertTrue(store.acknowledge(sourceEventId))
+            assertEquals(0, store.pending().getJSONArray("events").length())
         } finally {
             store.close()
             context.deleteDatabase("vishnu-data-plane.db")
