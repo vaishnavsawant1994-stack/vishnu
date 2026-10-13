@@ -166,6 +166,7 @@ def attach_generated_capability(
         capability=str(capability["id"]),
         input_schema=dict(capability.get("input_schema") or {}),
         output_schema=None,
+        prohibited_data_classifications=("sensitive", "secret", "restricted"),
         verification_method=ACTION_VERIFICATION_METHOD,
     )
     existing = getattr(tools, "_tools", {}).get(tool.name)
