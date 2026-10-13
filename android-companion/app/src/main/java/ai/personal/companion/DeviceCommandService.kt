@@ -17,6 +17,7 @@ class DeviceCommandService: Service() {
   @Volatile private var connecting=false
   private val prefs by lazy { val key=MasterKey.Builder(this).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(); EncryptedSharedPreferences.create(this,"personal_ai_device",key,EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM) }
   private val dataPlane by lazy { MobileDataPlaneStore(applicationContext) }
+  private val byteStore by lazy { ManagedByteStore(applicationContext) }
   override fun onCreate(){super.onCreate(); val channel=NotificationChannel("personal_ai_device","Vishnu Device",NotificationManager.IMPORTANCE_LOW); getSystemService(NotificationManager::class.java).createNotificationChannel(channel); startForeground(7,NotificationCompat.Builder(this,"personal_ai_device").setContentTitle("Vishnu connected").setContentText("Secure device command channel active").setSmallIcon(android.R.drawable.stat_notify_sync).build()); connect()}
   override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int{if(ws==null)connect();return START_STICKY}
   override fun onBind(intent:Intent?)=null
@@ -51,7 +52,7 @@ class DeviceCommandService: Service() {
         val capabilities=JSONArray(listOf(
           "device_info","battery","flashlight","open_url","launch_app",
           "data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone",
-          "data_plane_progress_pending","data_plane_progress_ack"
+          "data_plane_progress_pending","data_plane_progress_ack","data_plane_byte_read"
         ))
         w.send(JSONObject().put("type","hello").put("device_id",device).put("platform","android").put("capabilities",capabilities).toString())
       }
@@ -86,6 +87,14 @@ class DeviceCommandService: Service() {
         "data_plane_tombstone"->JSONObject().put("deleted",dataPlane.tombstone(p.getString("global_id"),p.getLong("version")))
         "data_plane_progress_pending"->dataPlane.pending(p.optInt("limit",100))
         "data_plane_progress_ack"->JSONObject().put("acknowledged",dataPlane.acknowledge(p.getString("source_event_id")))
+        "data_plane_byte_read"->{
+          val sessionId=p.getString("session_id")
+          val leaseId=p.getString("lease_id")
+          require(sessionId.length in 8..200 && leaseId.length in 8..200){"valid lease-bound session identity is required"}
+          byteStore.readChunk(
+            p.getString("global_id"),p.getLong("object_version"),p.getLong("offset"),p.getInt("length")
+          )
+        }
         else->throw IllegalArgumentException("unsupported action")
       }
       w.send(JSONObject().put("type","result").put("request_id",id).put("ok",true).put("result",result).toString())
