@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import pytest
+
 from core.permissions import PermissionDecision
 from future_intelligence.capability_forge.action_governance import GovernedGeneratedActionService
 from future_intelligence.capability_forge.models import CapabilityPlan, CapabilityRisk, CapabilityRoute, CapabilitySpec, RiskAssessment
@@ -21,6 +23,14 @@ class Registry:
         return PermissionDecision(bool(tool.risk is Risk.READ_ONLY or confirmed), bool(tool.risk is not Risk.READ_ONLY and not confirmed), "policy")
     def dispatch(self, tool, parameters): return tool.handler(parameters)
     def verify_result(self, tool, parameters, result): return tool.verifier(parameters,result) if tool.verifier else VerificationResult(tool.risk is Risk.READ_ONLY,"read",{})
+
+
+def _qualified_execution(path):
+    return SimpleNamespace(
+        work_order_id="work",attempt_id="attempt",candidate_revision="candidate",
+        changed_paths=(path,),status="qualified",qualified=True,
+        qualification={"qualified":True},review={"decision":"approved"},
+    )
 
 
 def test_governed_action_package_freezes_ui_background_scope_and_stages_without_world_dispatch(tmp_path):
@@ -71,3 +81,30 @@ def test_governed_action_package_freezes_ui_background_scope_and_stages_without_
     assert effects == []
     proposal=actions.get(result["proposal_id"])
     assert proposal["calls"][0]["tool"] == "write.item"
+
+
+@pytest.mark.parametrize("runtime,metadata", [
+    ("pure_python_v1", {"runtime":"pure_python_v1","entrypoint":"capability.py:run"}),
+    ("governed_toolchain_v1", {"runtime":"governed_toolchain_v1","allowed_tools":["read.item"],"entrypoint":"capability.py:plan"}),
+])
+@pytest.mark.parametrize("ui_required,background_allowed", [(True,False),(False,True)])
+def test_v1_packages_cannot_claim_v2_only_ui_or_background_wrappers(tmp_path,runtime,metadata,ui_required,background_allowed):
+    workspace=tmp_path/"workspace"; source=workspace/"generated-capabilities"/runtime; source.mkdir(parents=True)
+    function="run" if runtime=="pure_python_v1" else "plan"
+    (source/"capability.py").write_text(f"def {function}(payload):\n    return {{}}\n",encoding="utf-8")
+    spec=CapabilitySpec(
+        id=f"spec-{runtime}",gap_id="gap",name="Read capability",purpose="Read only",
+        inputs={"type":"object"},outputs={"type":"object"},ui_required=ui_required,
+        background_allowed=background_allowed,acceptance_criteria=("read only",),
+        metadata={**metadata,**({"ui":{"schema_version":1,"title":"Read","fields":[],"submit_label":"Run"}} if ui_required else {})},
+    )
+    plan=CapabilityPlan(
+        id=f"plan-{runtime}",spec_id=spec.id,route=CapabilityRoute.GENERATED,rationale="read",
+        risk=RiskAssessment(CapabilityRisk.READ,("read",),True,False),owner_review_required=True,
+    )
+    changed=f"generated-capabilities/{runtime}/capability.py"
+    with pytest.raises(PermissionError,match="require governed_action_v2"):
+        CapabilityPackageBuilder().build(
+            spec=spec,plan=plan,execution_result=_qualified_execution(changed),workspace_root=workspace,
+            source_root=f"generated-capabilities/{runtime}",output_root=tmp_path/"data"/"generated-capabilities",version="1.0.0",
+        )
