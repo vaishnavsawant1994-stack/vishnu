@@ -20,7 +20,7 @@ jobs:
       - run: pip-audit -r requirements.txt
       - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products security sensorium server tools training ui updates vision voice packaging
       - name: Sensorium safety boundary
-        run: pytest -q tests/test_sensorium_virtual_device_lab.py tests/test_sensorium_virtual_fleet.py tests/test_sensorium_virtual_fleet_api.py tests/test_sensorium_service.py tests/test_sensorium_security.py tests/test_sensorium_api.py tests/test_sensorium_live_work.py tests/test_sensorium_living_bridge.py tests/test_sensorium_physical.py tests/test_sensorium_physical_api.py tests/test_sensorium_physical_live_work.py
+        run: pytest -q tests/test_sensorium_virtual_device_lab.py tests/test_sensorium_virtual_lab_hardening.py tests/test_sensorium_virtual_fleet.py tests/test_sensorium_virtual_fleet_api.py tests/test_sensorium_service.py tests/test_sensorium_security.py tests/test_sensorium_api.py tests/test_sensorium_live_work.py tests/test_sensorium_living_bridge.py tests/test_sensorium_physical.py tests/test_sensorium_physical_api.py tests/test_sensorium_physical_live_work.py
       - name: Our Products distribution and Product Composer security boundary
         run: pytest -q tests/test_our_products.py tests/test_product_composer.py tests/test_product_composer_security.py tests/test_product_distribution.py tests/test_product_artifact_builders.py tests/test_product_platform_jobs.py tests/test_product_runner_leases.py tests/test_product_platform_callback_authority.py
       - name: Self-improvement training and evolution security boundary
