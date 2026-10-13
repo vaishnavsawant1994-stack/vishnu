@@ -27,6 +27,11 @@ PUBLIC_PATHS = {
     '/iphone/api/access/passkey/login/complete',
     '/iphone/api/enroll',
     '/iphone/api/native/sessions/exchange',
+    # External OAuth providers cannot carry Vishnu browser/native sessions back
+    # to this callback. Forge validates its own one-time durable state + PKCE +
+    # security epoch before exchanging the code, so the middleware must not
+    # pre-empt that callback with a session challenge.
+    '/iphone/capability-oauth/callback',
 }
 
 LOGIN_PATHS = {
@@ -92,7 +97,11 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
         device_id = request.cookies.get('pa_device')
         authorization = request.headers.get('authorization', '')
         bearer = authorization[7:].strip() if authorization.lower().startswith('bearer ') else ''
-        native_route = path.startswith('/iphone/api/apps-tools') or path.startswith('/iphone/api/native/sessions/')
+        native_route = (
+            path.startswith('/iphone/api/apps-tools')
+            or path.startswith('/iphone/api/native/sessions/')
+            or path.startswith('/iphone/api/owner/forge/v3')
+        )
 
         if not _is_public(path):
             session = None
