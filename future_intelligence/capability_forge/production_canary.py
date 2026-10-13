@@ -11,7 +11,7 @@ from .canary_rollout import CapabilityCanaryRollout, _now
 
 
 class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
-    """V3 hardening for rollout promotion and fail-safe quarantine."""
+    """V3 hardening for staged promotion and evidence-driven quarantine."""
 
     def promote(self, capability_id: str, version: str, *, target_stage: str, ticket_id: str,
                 owner_id: str = "owner", device_id: str | None = None,
@@ -24,7 +24,7 @@ class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
             raise PermissionError("Forge rollout approval destination changed")
         if str(ticket.data_classification or "internal") != "internal":
             raise PermissionError("Forge rollout approval data classification changed")
-        return super().promote(
+        result = super().promote(
             capability_id,
             version,
             target_stage=target_stage,
@@ -33,6 +33,35 @@ class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
             device_id=device_id,
             session_id=session_id,
         )
+        if target_stage == "broad_eligible":
+            # Freeze the independently observed limited-canary behavior as the
+            # production-health baseline. Operators cannot provide a friendlier
+            # baseline later to suppress automatic regression detection.
+            baseline = self._candidate_metrics(capability_id, version)
+            if baseline.sample_count < self.thresholds.min_sample_count:
+                raise PermissionError("Forge broad-eligible rollout lacks sufficient baseline evidence")
+            with self._con() as con:
+                con.execute(
+                    "UPDATE forge_rollouts SET baseline_json=?,updated_at=? WHERE capability_id=? AND version=?",
+                    (json.dumps(baseline.__dict__, sort_keys=True), _now(), str(capability_id), str(version)),
+                )
+            result = self.get(capability_id, version)
+        return result
+
+    def active_health_from_rollout(self, capability_id: str, version: str) -> dict[str, Any]:
+        rollout = self.get(capability_id, version)
+        baseline_data = rollout.get("baseline")
+        if rollout.get("stage") != "broad_eligible" or not isinstance(baseline_data, dict):
+            raise PermissionError("Forge active health requires a frozen broad-eligible canary baseline")
+        try:
+            baseline = CanaryMetrics(
+                int(baseline_data["sample_count"]),
+                float(baseline_data["error_rate"]),
+                float(baseline_data["p95_latency_ms"]),
+            )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise PermissionError("Forge active health baseline is invalid") from exc
+        return self.active_health(capability_id, version, baseline=baseline)
 
     def active_health(self, capability_id: str, version: str, *, baseline: CanaryMetrics) -> dict[str, Any]:
         with self.lifecycle._con() as con:
