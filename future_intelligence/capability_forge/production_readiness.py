@@ -24,6 +24,8 @@ class CapabilityForgeProductionReadiness:
     lineage are complete before production capability sign-in can be enabled.
     """
 
+    OAUTH_CALLBACK_PATH = "/iphone/capability-oauth/callback"
+
     @staticmethod
     def _https_url(value: str, *, allow_path: bool = True) -> bool:
         try:
@@ -105,6 +107,10 @@ class CapabilityForgeProductionReadiness:
         base_ok = self._https_url(str(public_base_url or ""), allow_path=False)
         callback_ok = self._https_url(str(oauth_redirect_uri or ""))
         same_origin = False
+        callback_path_ok = False
+        if callback_ok:
+            callback = urlparse(str(oauth_redirect_uri))
+            callback_path_ok = callback.path == self.OAUTH_CALLBACK_PATH and not callback.query
         if base_ok and callback_ok:
             base = urlparse(str(public_base_url))
             callback = urlparse(str(oauth_redirect_uri))
@@ -112,6 +118,7 @@ class CapabilityForgeProductionReadiness:
         checks = {
             "public_https_origin": base_ok,
             "oauth_https_callback": callback_ok,
+            "oauth_callback_path": callback_path_ok,
             "oauth_callback_same_origin": same_origin,
             "android_app_links": self._android_valid(android_asset_links),
             "ios_universal_links": self._apple_valid(apple_app_site_association),
@@ -126,6 +133,7 @@ class CapabilityForgeProductionReadiness:
         labels = {
             "public_https_origin": "production HTTPS origin is not configured",
             "oauth_https_callback": "production OAuth callback is not configured",
+            "oauth_callback_path": "OAuth callback does not target the Capability Forge V3 callback route",
             "oauth_callback_same_origin": "OAuth callback is not bound to the production origin",
             "android_app_links": "Android App Link association is incomplete",
             "ios_universal_links": "iOS Universal Link association is incomplete",
