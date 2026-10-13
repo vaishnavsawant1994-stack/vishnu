@@ -25,10 +25,13 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     assert "projects-work-visualization-runtime.js" in loader
     sw = Path("pwa/sw.js").read_text()
     assert "project-autonomy-controls.js" in sw
-    # v36 intentionally advances the offline shell because Agent Workforce adds
-    # new first-class HTML/CSS/JS assets. Keeping v35 would strand installed
-    # PWAs on the pre-workforce cache after an upgrade.
-    assert "personal-ai-iphone-v36" in sw
+    # v37 advances the offline shell for the bounded local-first data-plane cache.
+    # Keeping v36 would leave installed PWAs on the older unbounded dynamic-cache
+    # behavior and would omit the new privacy-preserving continuation cache asset.
+    assert "personal-ai-iphone-v37" in sw
+    assert "data-plane-cache.js" in sw
     assert "agents.html" in sw
     assert "agents-workforce.js" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw
+    assert "SHELL_SET.has(url.pathname)" in sw
+    assert "dataPolicy==='device_only'" in sw
