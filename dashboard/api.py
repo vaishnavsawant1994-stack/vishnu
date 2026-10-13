@@ -1,24 +1,29 @@
 from __future__ import annotations
+import uuid
 from fastapi import APIRouter,HTTPException,Header
 from pydantic import BaseModel,Field
-import uuid
 from data_plane.runtime import ensure_data_plane_tools
 from devices.gateway import DeviceCommand
+
 class ActionRequest(BaseModel):tool:str;parameters:dict=Field(default_factory=dict)
 class DeviceActionRequest(BaseModel):action:str;parameters:dict=Field(default_factory=dict);timeout:float=15
+class RelayPutRequest(BaseModel):recipient_device_id:str=Field(min_length=1,max_length=200);frame:dict;ttl_seconds:int=Field(default=300,ge=1,le=900)
+class RelayAckRequest(BaseModel):frame_id:str=Field(min_length=8,max_length=200)
 
 def dashboard_router(runtime,auth_device):
     r=APIRouter(prefix='/dashboard',tags=['dashboard'])
     data_plane=ensure_data_plane_tools(runtime)
     def auth(a,d,scope='ai:chat'):auth_device(a,d,scope)
     def data_plane_projection():
-        if data_plane is None:
-            return {'available':False,'reason':'canonical data directory unavailable'}
+        if data_plane is None:return {'available':False,'reason':'canonical data directory unavailable'}
         return {'available':True,**data_plane.settings()}
     def require_data_plane():
-        if data_plane is None:
-            raise HTTPException(503,'Vishnu data plane is unavailable in this reduced runtime')
+        if data_plane is None:raise HTTPException(503,'Vishnu data plane is unavailable in this reduced runtime')
         return data_plane
+    def require_relay():
+        relay=runtime.get('data_plane_relay')
+        if relay is None:raise HTTPException(503,'Vishnu encrypted data relay is unavailable')
+        return relay
     @r.get('/status')
     def status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
         auth(authorization,x_device_id,'device:read'); return {'automations':len(runtime['automations'].list()),'devices':len(runtime['device_registry'].list()),'online_devices':runtime['device_gateway'].online(),'integrations':runtime.get('integrations').list() if runtime.get('integrations') else [],'memory_nodes':len(runtime['second_brain'].graph().get('nodes',[])),'voice_state':'active' if getattr(runtime.get('voice'),'thread',None) and runtime['voice'].thread.is_alive() else 'idle','security':{'vault':'keychain-backed' if runtime.get('vault') else 'unavailable','autonomy':runtime['tools'].settings.autonomy_mode},'data_plane':data_plane_projection()}
@@ -30,23 +35,38 @@ def dashboard_router(runtime,auth_device):
     def memory(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'memory:sensitive');return runtime['second_brain'].graph()
     @r.get('/data-plane')
     def data_plane_status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'data:read')
-        return require_data_plane().diagnostics()
+        auth(authorization,x_device_id,'data:read');return require_data_plane().diagnostics()
     @r.get('/data-plane/item/{global_id:path}')
     def data_plane_item(global_id:str,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
         auth(authorization,x_device_id,'data:read')
         try:return require_data_plane().item(global_id)
         except KeyError:raise HTTPException(404,'data item unavailable')
+    @r.get('/data-relay/status')
+    def relay_status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        auth(authorization,x_device_id,'data:read');return require_relay().diagnostics()
+    @r.post('/data-relay/frame')
+    def relay_put(body:RelayPutRequest,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        sender=auth(authorization,x_device_id,'data:read')
+        try:return require_relay().put(sender,body.recipient_device_id,body.frame,ttl_seconds=body.ttl_seconds)
+        except PermissionError as exc:raise HTTPException(403,str(exc))
+        except ValueError as exc:raise HTTPException(422,str(exc))
+    @r.get('/data-relay/frames')
+    def relay_pull(limit:int=50,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        recipient=auth(authorization,x_device_id,'data:read')
+        try:return {'frames':require_relay().pull(recipient,limit=max(1,min(int(limit),100)))}
+        except PermissionError as exc:raise HTTPException(403,str(exc))
+    @r.post('/data-relay/ack')
+    def relay_ack(body:RelayAckRequest,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        recipient=auth(authorization,x_device_id,'data:read')
+        try:return {'acknowledged':require_relay().acknowledge(recipient,body.frame_id)}
+        except PermissionError as exc:raise HTTPException(403,str(exc))
     @r.post('/tool')
     def tool(req:ActionRequest,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'ai:chat')
-        raise HTTPException(409,'Direct dashboard tool execution is disabled; use the canonical governed Vishnu runtime')
+        auth(authorization,x_device_id,'ai:chat');raise HTTPException(409,'Direct dashboard tool execution is disabled; use the canonical governed Vishnu runtime')
     @r.post('/device/{device_id}/command')
     async def device_command(device_id:str,req:DeviceActionRequest,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'device:read')
-        action=str(req.action or '').strip()
-        if action not in {'device_info','battery','voice_status'}:
-            raise HTTPException(409,'Consequential device commands require canonical governed execution')
+        auth(authorization,x_device_id,'device:read');action=str(req.action or '').strip()
+        if action not in {'device_info','battery','voice_status'}:raise HTTPException(409,'Consequential device commands require canonical governed execution')
         cmd=DeviceCommand(action,dict(req.parameters or {}),str(uuid.uuid4()))
         try:return await runtime['device_gateway'].request(device_id,cmd,max(1,min(req.timeout,60)))
         except Exception as e:raise HTTPException(409,str(e))
