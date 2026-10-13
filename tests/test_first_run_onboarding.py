@@ -74,6 +74,8 @@ def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_
     coordinator.begin(SetupMode.CREATE)
     coordinator.configure_owner(first_name='Vishnu', last_name='Owner', display_name='Owner')
     codes = coordinator.configure_security('correct horse battery staple')
+    assert coordinator.snapshot()['stage'] == 'recovery'
+    coordinator.confirm_recovery_codes_saved()
     coordinator.configure_preferences(
         privacy_mode='local_preferred',
         autonomy_mode='ask',
@@ -98,6 +100,36 @@ def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_
     assert 'sk-test-secret-value-1234567890' not in persisted
     for code in codes:
         assert code not in persisted
+
+
+def test_setup_cannot_complete_before_recovery_codes_are_confirmed(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Owner')
+    coordinator.configure_security('correct horse battery staple')
+
+    with pytest.raises(RuntimeError, match='recovery'):
+        coordinator.configure_preferences(
+            privacy_mode='local_preferred', autonomy_mode='ask', memory_enabled=True
+        )
+    with pytest.raises(RuntimeError, match='Recovery codes'):
+        coordinator.complete()
+
+
+def test_regenerating_security_invalidates_prior_recovery_confirmation(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Owner')
+    coordinator.configure_security('correct horse battery staple')
+    coordinator.confirm_recovery_codes_saved()
+    assert 'recovery_saved' in coordinator.snapshot()['completed_steps']
+
+    coordinator.configure_security('another correct horse battery staple')
+    state = coordinator.snapshot()
+    assert state['stage'] == 'recovery'
+    assert 'recovery_saved' not in state['completed_steps']
 
 
 def test_local_provider_needs_no_api_key(tmp_path):
@@ -131,6 +163,7 @@ def test_partial_new_setup_is_never_promoted_as_legacy_install(tmp_path):
     assert restarted.should_run() is True
     state = restarted.snapshot()
     assert state['status'] == SetupStatus.SETUP_IN_PROGRESS.value
+    assert state['stage'] == 'recovery'
     assert state['migrated_legacy_install'] is False
 
 
