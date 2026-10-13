@@ -89,7 +89,7 @@ class CapabilityPackageBuilder:
                 str(getattr(execution_result, "status", "")) == "qualified"
                 and bool(qualification.get("qualified"))
             )
-        ) and str(review.get("decision", "approved")) == "approved"
+        ) and str(review.get("decision", "pending")) == "approved"
 
     def build(
         self,
