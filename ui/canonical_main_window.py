@@ -3,10 +3,12 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QPushButton
 
 from core.runtime_presentation import presentation_for
+from data_plane.runtime import get_data_plane
 from devices.local_gateway import get_local_device_gateway
 from ui.main_window import MainWindow
 from ui.mobile_pairing_dialog import MobilePairingDialog
 from ui.products_panel import ProductsPanel
+from ui.storage_settings_dialog import StorageSettingsDialog
 
 
 class CanonicalMainWindow(MainWindow):
@@ -55,6 +57,10 @@ class CanonicalMainWindow(MainWindow):
         self._apply_canonical(snapshot.state.value, snapshot.sequence)
         self._local_device_gateway = None
         if self.runtime:
+            # Attach exactly one local-first data-plane authority to the existing
+            # runtime. It reuses the canonical DeviceRegistry/DeviceGateway and
+            # never turns a provider into a second execution authority.
+            get_data_plane(self.runtime)
             try:
                 gateway = get_local_device_gateway(self.runtime)
                 gateway.start_if_needed()
@@ -69,11 +75,20 @@ class CanonicalMainWindow(MainWindow):
 
     def _settings_content(self, layout):
         super()._settings_content(layout)
+        storage = QPushButton('Data & Cloud Storage')
+        storage.setObjectName('navAction')
+        storage.setToolTip('Local-first data rules, remote access and optional online storage providers')
+        storage.clicked.connect(self.open_storage_settings)
+        layout.addWidget(storage)
         connect = QPushButton('Connect phone or device')
         connect.setObjectName('navAction')
         connect.setToolTip('Generate a short-lived one-time QR for the Vishnu Android or iPhone companion')
         connect.clicked.connect(self.open_mobile_pairing)
         layout.addWidget(connect)
+
+    def open_storage_settings(self):
+        StorageSettingsDialog(self.runtime, self).exec()
+        self._refresh_home_indicators()
 
     def open_mobile_pairing(self):
         MobilePairingDialog(self.runtime, self).exec()
