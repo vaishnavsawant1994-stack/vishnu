@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 import uuid
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import StrEnum
@@ -95,8 +96,12 @@ class SensorEvent:
             raise ValueError("payload must be an object")
         if not isinstance(self.metadata, dict):
             raise ValueError("metadata must be an object")
-        _json_size(self.payload, field_name="payload", limit=MAX_EVENT_PAYLOAD_BYTES)
-        _json_size(self.metadata, field_name="metadata", limit=MAX_EVENT_METADATA_BYTES)
+        payload = deepcopy(self.payload)
+        metadata = deepcopy(self.metadata)
+        _json_size(payload, field_name="payload", limit=MAX_EVENT_PAYLOAD_BYTES)
+        _json_size(metadata, field_name="metadata", limit=MAX_EVENT_METADATA_BYTES)
+        object.__setattr__(self, "payload", payload)
+        object.__setattr__(self, "metadata", metadata)
 
     @classmethod
     def create(
@@ -117,8 +122,8 @@ class SensorEvent:
             device_id=device_id,
             kind=SensorKind(kind),
             timestamp=timestamp or _utc_now(),
-            payload=dict(payload),
-            metadata=dict(metadata or {}),
+            payload=deepcopy(payload),
+            metadata=deepcopy(metadata or {}),
             data_classification=DataClassification(data_classification),
             source=source,
             correlation_id=correlation_id,
@@ -130,8 +135,8 @@ class SensorEvent:
             "device_id": self.device_id,
             "kind": self.kind.value,
             "timestamp": self.timestamp.isoformat(),
-            "payload": dict(self.payload),
-            "metadata": dict(self.metadata),
+            "payload": deepcopy(self.payload),
+            "metadata": deepcopy(self.metadata),
             "data_classification": self.data_classification.value,
             "source": self.source,
             "correlation_id": self.correlation_id,
@@ -150,8 +155,8 @@ class SensorEvent:
             device_id=value["device_id"],
             kind=SensorKind(value["kind"]),
             timestamp=timestamp,
-            payload=dict(value["payload"]),
-            metadata=dict(value.get("metadata") or {}),
+            payload=deepcopy(value["payload"]),
+            metadata=deepcopy(value.get("metadata") or {}),
             data_classification=DataClassification(value.get("data_classification", "internal")),
             source=value.get("source", "virtual-device-lab"),
             correlation_id=value.get("correlation_id"),
@@ -187,7 +192,9 @@ class VirtualDevice:
             object.__setattr__(self, "state", DeviceState(str(self.state)))
         if not isinstance(self.metadata, dict):
             raise ValueError("metadata must be an object")
-        _json_size(self.metadata, field_name="metadata", limit=MAX_EVENT_METADATA_BYTES)
+        metadata = deepcopy(self.metadata)
+        _json_size(metadata, field_name="metadata", limit=MAX_EVENT_METADATA_BYTES)
+        object.__setattr__(self, "metadata", metadata)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -196,7 +203,7 @@ class VirtualDevice:
             "platform": self.platform,
             "capabilities": sorted(item.value for item in self.capabilities),
             "state": self.state.value,
-            "metadata": dict(self.metadata),
+            "metadata": deepcopy(self.metadata),
         }
 
 
