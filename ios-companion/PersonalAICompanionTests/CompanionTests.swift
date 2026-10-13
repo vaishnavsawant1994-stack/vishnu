@@ -65,4 +65,36 @@ final class CompanionTests: XCTestCase {
         }
         XCTAssertEqual(try PairingPayload.normalizeOrigin("http://localhost:8766/path",allowLocalHTTP:true),"http://localhost:8766")
     }
+
+    func testMobileDataPlaneStoresOnlyProgressProjection() async throws {
+        let store=MobileDataPlaneStore()
+        let id="test:\(UUID().uuidString)"
+        let result=try await store.put(globalID:id,entityType:"project",version:1,payload:[
+            "project_name":"Rudra",
+            "status":"active",
+            "next_step":"Finish homepage",
+            "private_detail":"must not replicate"
+        ])
+        let payload=try XCTUnwrap(result["payload"] as? [String:Any])
+        XCTAssertEqual(payload["project_name"] as? String,"Rudra")
+        XCTAssertEqual(payload["next_step"] as? String,"Finish homepage")
+        XCTAssertNil(payload["private_detail"])
+    }
+
+    func testMobileDataPlaneRejectsSecretAndRawContent() async {
+        let store=MobileDataPlaneStore()
+        let id="test:\(UUID().uuidString)"
+        do {
+            _=try await store.put(globalID:id,entityType:"project",version:1,payload:["status":"active","api_key":"secret"])
+            XCTFail("secret-bearing progress must fail closed")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.lowercased().contains("prohibited"))
+        }
+        do {
+            _=try await store.put(globalID:id,entityType:"project",version:1,payload:["status":"active","file_bytes":"raw"])
+            XCTFail("raw file bytes must fail closed")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.lowercased().contains("prohibited"))
+        }
+    }
 }
