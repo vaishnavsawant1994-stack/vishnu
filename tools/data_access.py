@@ -93,7 +93,7 @@ def register(registry, data_plane):
 
     add(Tool(
         'data_storage_policy_set',
-        'Change where a Vishnu item may be persisted. This is owner-authority work; params: global_id,policy,copy_allowed,remote_access_allowed',
+        'Change where a Vishnu item may be persisted. On-demand syncs references/metadata and materializes bytes only through a separately authorized transfer. This is owner-authority work; params: global_id,policy,copy_allowed,remote_access_allowed',
         lambda p: data_plane.set_policy(
             str(p['global_id']),
             str(p['policy']),
@@ -110,7 +110,7 @@ def register(registry, data_plane):
             'required': ['global_id', 'policy'],
             'properties': {
                 'global_id': {'type': 'string', 'minLength': 1, 'maxLength': 240},
-                'policy': {'type': 'string', 'enum': ['device_only', 'sync_everywhere', 'progress_only']},
+                'policy': {'type': 'string', 'enum': ['device_only', 'sync_everywhere', 'progress_only', 'on_demand']},
                 'copy_allowed': {'type': 'boolean'},
                 'remote_access_allowed': {'type': 'boolean'},
             },
