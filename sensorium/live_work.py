@@ -20,6 +20,7 @@ class SensoriumLiveWorkProjection:
     _EVENTS: dict[str, tuple[str, str]] = {
         "sensorium.sensor_event.injected": ("watching", "Device context updated"),
         "sensorium.context.observed": ("watching", "Context observed"),
+        "sensorium.physical.observed": ("watching", "Physical device context observed"),
         "computer.observed": ("watching", "Screen observed"),
         "computer.planned": ("thinking", "Action plan prepared"),
         "computer.execution.started": ("working", "Computer work started"),
@@ -40,6 +41,9 @@ class SensoriumLiveWorkProjection:
         "event_id",
         "virtual_device_id",
         "controller_device_id",
+        "target_device_id",
+        "platform",
+        "sensor",
         "run_id",
         "automation_id",
         "workflow_id",

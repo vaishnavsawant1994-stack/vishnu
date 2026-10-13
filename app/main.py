@@ -57,6 +57,12 @@ from qualification.voice import VoiceQualificationRecorder
 from recovery.backup import BackupService
 from security.vault import SecretVault
 from security.owner_access import OwnerAccessStore
+from sensorium import (
+    DesktopPhysicalSensorAdapter,
+    MobilePhysicalSensorAdapter,
+    SensoriumLiveWorkProjection,
+    VirtualDeviceLab,
+)
 from tools import benchmark as benchmark_tools
 from tools import engineering_repository as engineering_repository_tools
 from tools import engineering_work as engineering_work_tools
@@ -86,8 +92,9 @@ def build_runtime():
         latest=continuity.latest_thread(); return {'devices':device_registry.list(),'integrations':integrations.list(),'memory_count':len(second_brain.graph().get('nodes',[])),'continuity':latest or {},'focus_mode':bool(preferences.get('focus_mode',False))}
     automations=AutomationEngine(settings.data_dir/'automations.sqlite3',executor=executor,events=events,context_provider=context_provider,default_timeout_seconds=settings.workflow_default_timeout_seconds,default_retries=settings.workflow_default_retries)
     capability_objects=register_builtin_tools(tools,memory,settings,models=models,automation_engine=automations,apns=apns,second_brain=second_brain,events=events,proactive_engine=proactive,continuity_service=continuity,integration_adapters=adapters,memory_enabled=lambda: bool(preferences.get('memory_enabled',True)))
+    sensorium_lab=VirtualDeviceLab.from_device_registry(device_registry,event_bus=events); sensorium_live_work=SensoriumLiveWorkProjection(events); sensorium_desktop=DesktopPhysicalSensorAdapter(device_registry,computer=capability_objects.get('computer'),event_bus=events); sensorium_mobile=MobilePhysicalSensorAdapter(device_registry,device_gateway,event_bus=events)
     voice=RealtimeVoiceSession(models,executor,events); voice_qualification=VoiceQualificationRecorder(settings.data_dir/'voice-qualification.sqlite3',events=events); p3_qualification=P3QualificationProgram(settings.data_dir/'p3-qualification.sqlite3'); wake_phrase=WakePhraseGate(events,phrases=(str(preferences.get('wake_phrase','Hey Personal')),)); events.subscribe('voice.transcript',lambda event:wake_phrase.accept(event.get('text',''))); events.subscribe('state',lambda event:telemetry.increment(f"state.{event.get('state','unknown')}")); events.subscribe('voice.reply',lambda event:telemetry.increment('voice.replies'))
-    runtime={'settings':settings,'events':events,'runtime_state':events.runtime_state,'memory':memory,'models':models,'second_brain':second_brain,'knowledge':knowledge,'knowledge_store':knowledge_store,'vector_store':vector,'device_registry':device_registry,'owner_access':owner_access,'device_gateway':device_gateway,'continuity':continuity,'proactive':proactive,'tools':tools,'executor':executor,'turn_runtime':executor,'agent_executor':agent_executor,'effect_ledger':agent_executor.effect_ledger,'evidence_store':evidence_store,'evidence_ingestor':evidence_ingestor,'identity_store':identity_store,'evolution_store':evolution_store,'evolution':evolution,'evolution_handoff':None,'code_body_config':code_body_config,'repository_provider':None,'engineering':None,'engineering_executor':None,'engineering_finalizer':None,'code_body':None,'body_adoption':None,'code_worker_epoch':int(time.time()),'automations':automations,'integrations':integrations,'integration_adapters':adapters,'oauth':oauth,'oauth_providers':oauth_providers,'plugins':plugins,'vault':vault,'voice':voice,'voice_qualification':voice_qualification,'p3_qualification':p3_qualification,'wake_phrase':wake_phrase,'apns':apns,'notifications':notifications,'telemetry':telemetry,'preferences':preferences,'backups':backups,'computer':capability_objects.get('computer'),'primary_continuity_thread_id':primary_thread_id,'worker_intelligence':None,'work_dispatcher':None,**agent_continuity_runtime}; p3_qualification.runtime=runtime
+    runtime={'settings':settings,'events':events,'runtime_state':events.runtime_state,'memory':memory,'models':models,'second_brain':second_brain,'knowledge':knowledge,'knowledge_store':knowledge_store,'vector_store':vector,'device_registry':device_registry,'owner_access':owner_access,'device_gateway':device_gateway,'continuity':continuity,'proactive':proactive,'tools':tools,'executor':executor,'turn_runtime':executor,'agent_executor':agent_executor,'effect_ledger':agent_executor.effect_ledger,'evidence_store':evidence_store,'evidence_ingestor':evidence_ingestor,'identity_store':identity_store,'evolution_store':evolution_store,'evolution':evolution,'evolution_handoff':None,'code_body_config':code_body_config,'repository_provider':None,'engineering':None,'engineering_executor':None,'engineering_finalizer':None,'code_body':None,'body_adoption':None,'code_worker_epoch':int(time.time()),'automations':automations,'integrations':integrations,'integration_adapters':adapters,'oauth':oauth,'oauth_providers':oauth_providers,'plugins':plugins,'vault':vault,'voice':voice,'voice_qualification':voice_qualification,'p3_qualification':p3_qualification,'wake_phrase':wake_phrase,'apns':apns,'notifications':notifications,'telemetry':telemetry,'preferences':preferences,'backups':backups,'computer':capability_objects.get('computer'),'sensorium_lab':sensorium_lab,'sensorium_live_work':sensorium_live_work,'sensorium_desktop':sensorium_desktop,'sensorium_mobile':sensorium_mobile,'primary_continuity_thread_id':primary_thread_id,'worker_intelligence':None,'work_dispatcher':None,**agent_continuity_runtime}; p3_qualification.runtime=runtime
     future=FutureIntelligenceProgram(settings.data_dir/'future-intelligence',runtime=runtime); runtime.update({'future_intelligence':future,'everyday_intelligence':future.everyday,'life_graph':future.life_graph,'personal_operations':future.operations,'world_understanding':future.world,'personal_ai_everywhere':future.everywhere,'hybrid_intelligence':future.hybrid,'advanced_autonomy':future.autonomy})
     if hasattr(executor,'attach_autonomy'): executor.attach_autonomy(future.autonomy)
     work_bridge=getattr(future.autonomy,'_work_bridge',None)
@@ -103,7 +110,7 @@ def build_runtime():
                 engineering_repository_tools.register(tools,engineering)
                 inner_verifier=None
                 if code_body_config.local_verification_enabled:
-                    inner_verifier=LocalSubprocessVerificationProvider((('compile', (sys.executable,'-m','compileall','-q','app','agent','automation','browser','capabilities','continuity','core','dashboard','desktop','devices','evidence','evolution','future_intelligence','identity','integrations','knowledge','memory','models','proactive','qualification','security','server','tools','training','ui','updates','vision','voice','visual_intelligence')),('evolution-safety-tests',(sys.executable,'-m','pytest','-q','tests/test_evolution_e5.py','tests/test_evolution_e6_handoff.py','tests/test_evolution_e7_code_body.py')),('integration-full-suite',(sys.executable,'-m','pytest','-q'))),enabled=True,timeout_seconds=code_body_config.verification_timeout_seconds)
+                    inner_verifier=LocalSubprocessVerificationProvider((('compile', (sys.executable,'-m','compileall','-q','app','agent','automation','browser','capabilities','continuity','core','dashboard','desktop','devices','evidence','evolution','future_intelligence','identity','integrations','knowledge','memory','models','proactive','qualification','security','sensorium','server','tools','training','ui','updates','vision','voice','visual_intelligence')),('evolution-safety-tests',(sys.executable,'-m','pytest','-q','tests/test_evolution_e5.py','tests/test_evolution_e6_handoff.py','tests/test_evolution_e7_code_body.py')),('integration-full-suite',(sys.executable,'-m','pytest','-q'))),enabled=True,timeout_seconds=code_body_config.verification_timeout_seconds)
                 verification_provider=GuardedVerificationProvider(repository_provider=repository_provider,inner=inner_verifier) if inner_verifier is not None else None
                 engineering_executor=EngineeringWorkExecutor(runtime=engineering,models=models,verification_provider=verification_provider)
                 engineering_finalizer=EngineeringCandidateFinalizer(runtime=engineering,models=models)
@@ -138,9 +145,10 @@ def start_server(runtime):
     from server.evolution_api import evolution_router
     from server.identity_api import identity_router
     from server.model_provider_api import model_provider_router
+    from server.sensorium_physical_api import sensorium_physical_router
     import uvicorn
     app=create_app(runtime['executor'],settings,device_registry=runtime['device_registry'],device_gateway=runtime['device_gateway'],second_brain=runtime['second_brain'],automations=runtime['automations'],runtime=runtime)
-    app.include_router(evolution_router(runtime)); app.include_router(identity_router(runtime)); app.include_router(evidence_router(runtime)); app.include_router(agent_continuity_router(runtime)); app.include_router(model_provider_router(runtime))
+    app.include_router(evolution_router(runtime)); app.include_router(identity_router(runtime)); app.include_router(evidence_router(runtime)); app.include_router(agent_continuity_router(runtime)); app.include_router(model_provider_router(runtime)); app.include_router(sensorium_physical_router(runtime),prefix='/owner/ai')
     uvicorn.run(app,host=settings.control_server_host,port=settings.control_server_port,log_level='warning')
 
 
@@ -153,7 +161,7 @@ def main():
     if settings.control_server_enabled:threading.Thread(target=start_server,args=(runtime,),daemon=True).start()
     window=CanonicalMainWindow(events=runtime['events'],executor=runtime['executor'],memory=runtime['memory'],runtime=runtime); window.show(); floating_presence=FloatingPresence(runtime=runtime); runtime['floating_presence']=floating_presence; floating_presence.show()
     if runtime['preferences'].get('launch_voice_on_start'):window.toggle_voice()
-    code=app.exec(); floating_presence.close(); runtime['voice'].stop(); stop_e9_services(runtime); runtime['automations'].stop(); runtime['notifications'].close(); runtime['telemetry'].persist(); runtime['apns'].close(); runtime['evidence_store'].close(); runtime['identity_store'].close(); return code
+    code=app.exec(); floating_presence.close(); runtime['voice'].stop(); runtime['sensorium_live_work'].close(); stop_e9_services(runtime); runtime['automations'].stop(); runtime['notifications'].close(); runtime['telemetry'].persist(); runtime['apns'].close(); runtime['evidence_store'].close(); runtime['identity_store'].close(); return code
 
 
 if __name__=='__main__':raise SystemExit(main())
