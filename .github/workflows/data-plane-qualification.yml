@@ -38,6 +38,7 @@ jobs:
           tests/test_data_plane_fail_closed.py
           tests/test_data_plane_hardening.py
           tests/test_data_plane_provider_bridge.py
+          tests/test_data_plane_provider_bridges.py
           tests/test_secure_data_transport.py
           tests/test_data_plane_production_readiness.py
       - name: Portable disaster-recovery certification
