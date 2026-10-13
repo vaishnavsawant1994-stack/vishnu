@@ -42,9 +42,16 @@ class GovernedGeneratedActionService(GeneratedActionService):
             if not ticket_id:
                 continue
             record = self.approvals.record(str(ticket_id))
-            if not record or record.get("status") != "approved":
+            if not record:
                 raise PermissionError("all generated action tickets must be approved before commit")
             ticket = record["ticket"]
+            # Report an epoch fence before the generic status check. Advancing the
+            # canonical security epoch invalidates approved tickets, and callers
+            # need the precise reason instead of a misleading approval-state error.
+            if ticket.security_epoch != current_epoch:
+                raise PermissionError("generated action approval security epoch changed")
+            if record.get("status") != "approved":
+                raise PermissionError("all generated action tickets must be approved before commit")
             if ticket.execution_id != f"forge-action:{proposal['id']}" or ticket.tool_name != call["tool"]:
                 raise PermissionError("generated action approval scope changed")
             if ticket.parameter_hash != parameter_hash(call["parameters"]):
@@ -55,8 +62,6 @@ class GovernedGeneratedActionService(GeneratedActionService):
                 raise PermissionError("generated action approval device changed")
             if ticket.session_id is not None and ticket.session_id != session_id:
                 raise PermissionError("generated action approval session changed")
-            if ticket.security_epoch != current_epoch:
-                raise PermissionError("generated action approval security epoch changed")
             if ticket.destination != str(call.get("destination") or "")[:1000]:
                 raise PermissionError("generated action approval destination changed")
             if ticket.data_classification != "internal":
