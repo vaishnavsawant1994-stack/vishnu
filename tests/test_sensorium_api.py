@@ -122,7 +122,11 @@ def test_sensorium_api_has_no_physical_capture_or_input_routes(tmp_path):
         tmp_path,
         {"device:read", "device:admin", "memory:sensitive"},
     )
-    paths = {route.path for route in client.app.routes}
+    paths = {
+        str(path)
+        for route in client.app.routes
+        if (path := getattr(route, "path", None))
+    }
     forbidden_fragments = {
         "camera-capture",
         "microphone-capture",
