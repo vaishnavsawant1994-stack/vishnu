@@ -1,6 +1,6 @@
 """Capability Forge intelligence and governed generated-capability lifecycle."""
 
-from .action_runtime import GeneratedActionService
+from .action_governance import GovernedGeneratedActionService as GeneratedActionService
 from .activation import CapabilityActivationService, ForgeActivationDecision
 from .automation_bridge import CapabilityForgeAutomationBridge
 from .build_service import CapabilityForgeBuildService
