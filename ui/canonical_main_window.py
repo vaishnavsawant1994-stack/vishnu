@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from PyQt6.QtWidgets import QPushButton
+
 from core.runtime_presentation import presentation_for
 from ui.main_window import MainWindow
+from ui.mobile_pairing_dialog import MobilePairingDialog
 from ui.products_panel import ProductsPanel
 
 
@@ -54,6 +57,18 @@ class CanonicalMainWindow(MainWindow):
         if name == "Our Products":
             return ProductsPanel(runtime=self.runtime)
         return super()._build_page(name)
+
+    def _settings_content(self, layout):
+        super()._settings_content(layout)
+        connect = QPushButton('Connect phone or device')
+        connect.setObjectName('navAction')
+        connect.setToolTip('Generate a short-lived one-time QR for the Vishnu Android or iPhone companion')
+        connect.clicked.connect(self.open_mobile_pairing)
+        layout.addWidget(connect)
+
+    def open_mobile_pairing(self):
+        MobilePairingDialog(self.runtime, self).exec()
+        self._refresh_home_indicators()
 
     def _set_state(self, state):
         # Compatibility/local UI code cannot invent semantic AI truth.
