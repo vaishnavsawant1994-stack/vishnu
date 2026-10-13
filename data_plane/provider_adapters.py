@@ -243,7 +243,9 @@ class OneDriveAdapter(ProviderObjectAdapter):
             location = response.headers.get("location")
             if not location:
                 raise ProviderAdapterError("OneDrive download redirect is missing location")
-            # Download URLs are pre-authenticated and may use Microsoft CDN hosts.
+            # Microsoft returns a pre-authenticated CDN URL. Treat it as untrusted
+            # provider input: require credential-free HTTPS before following it.
+            location = self._https(location)
             response = self.client.get(location, follow_redirects=False)
         response.raise_for_status()
         data = bytes(response.content)
