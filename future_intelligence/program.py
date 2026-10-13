@@ -21,17 +21,20 @@ from future_intelligence.work_orchestration.event_normalization import WorkEvent
 from future_intelligence.work_orchestration.notification_bridge import WorkNotificationBridge
 from future_intelligence.work_orchestration.memory_promotion import WorkMemoryPromotionBridge
 from future_intelligence.capability_forge import (
+    CapabilityForgeAutomationBridge,
     CapabilityForgeBuildService,
     CapabilityForgeExecutionBridge,
     CapabilityForgeLifecycle,
     CapabilityForgeWorkBridge,
+    CapabilityImprovementService,
     CapabilityPackageBuilder,
+    GeneratedActionService,
     GeneratedCapabilityEvaluator,
     build_capability_forge,
 )
-from future_intelligence.capability_forge.governed_activation import GovernedCapabilityActivationService
+from future_intelligence.capability_forge.governed_activation_v2 import GovernedCapabilityActivationServiceV2
 from integrations.discovery.catalog_store import CapabilityCatalogStore
-from integrations.discovery.generated_runtime import rehydrate_generated_capabilities
+from integrations.discovery.generated_runtime_v2 import rehydrate_generated_capabilities_v2
 from core.p10_approval_continuation import install as install_p10_turn_continuation
 
 install_autonomy_runtime(AdvancedAutonomy)
@@ -72,13 +75,16 @@ class FutureIntelligenceProgram:
         runtime['advanced_autonomy']=self.autonomy
         install_completion_propagation(self.autonomy)
 
-        # Capability Forge reuses Universal Capabilities + Canonical Work. This
-        # startup hook is intentionally additive: generated capabilities remain
-        # inert unless they were already owner-approved and persisted active.
+        # Capability Forge reuses Universal Capabilities, Canonical Work,
+        # canonical approvals, ToolRegistry and AutomationEngine. Generated
+        # packages remain inert unless qualified and owner-activated.
         self.capability_forge=None
         self.capability_forge_lifecycle=None
         self.capability_forge_evaluator=None
         self.capability_forge_work=None
+        self.capability_forge_actions=None
+        self.capability_forge_automation=None
+        self.capability_forge_improvement=None
         self.capability_forge_activation=None
         self.capability_forge_packages=CapabilityPackageBuilder()
         self.capability_catalog=None
@@ -97,14 +103,31 @@ class FutureIntelligenceProgram:
                 if work_store is not None:
                     self.capability_forge_work=CapabilityForgeWorkBridge(work_store,events=runtime.get('events'))
                 if approvals is not None:
-                    self.capability_forge_activation=GovernedCapabilityActivationService(
+                    self.capability_forge_actions=GeneratedActionService(
+                        data_root/'capability-forge.sqlite3',
+                        tools=tools,
+                        approvals=approvals,
+                        events=runtime.get('events'),
+                    )
+                    self.capability_forge_activation=GovernedCapabilityActivationServiceV2(
                         catalog=self.capability_catalog,
                         approvals=approvals,
                         tools=tools,
                         data_root=data_root,
                         lifecycle=self.capability_forge_lifecycle,
                         events=runtime.get('events'),
+                        action_service=self.capability_forge_actions,
                     )
+                if runtime.get('automations') is not None:
+                    self.capability_forge_automation=CapabilityForgeAutomationBridge(
+                        runtime.get('automations'), self.capability_catalog, events=runtime.get('events')
+                    )
+                self.capability_forge_improvement=CapabilityImprovementService(
+                    self.capability_forge,
+                    self.capability_forge_evaluator,
+                    self.capability_catalog,
+                    events=runtime.get('events'),
+                )
 
                 def forge_invocation_observer(capability, _context):
                     capability_id=str(capability.get('id') or '')
@@ -119,18 +142,23 @@ class FutureIntelligenceProgram:
                         )
                     return observe
 
-                self.rehydrated_generated_capabilities=tuple(rehydrate_generated_capabilities(
-                    self.capability_catalog,
-                    tools=tools,
-                    data_root=data_root,
-                    invocation_observer=forge_invocation_observer,
-                ))
+                if self.capability_forge_actions is not None:
+                    self.rehydrated_generated_capabilities=tuple(rehydrate_generated_capabilities_v2(
+                        self.capability_catalog,
+                        tools=tools,
+                        data_root=data_root,
+                        action_service=self.capability_forge_actions,
+                        invocation_observer=forge_invocation_observer,
+                    ))
                 runtime.update({
                     'capability_forge':self.capability_forge,
                     'capability_forge_store':self.capability_forge.store,
                     'capability_forge_lifecycle':self.capability_forge_lifecycle,
                     'capability_forge_evaluator':self.capability_forge_evaluator,
                     'capability_forge_work':self.capability_forge_work,
+                    'capability_forge_actions':self.capability_forge_actions,
+                    'capability_forge_automation':self.capability_forge_automation,
+                    'capability_forge_improvement':self.capability_forge_improvement,
                     'capability_forge_packages':self.capability_forge_packages,
                     'capability_forge_activation':self.capability_forge_activation,
                     'capability_catalog':self.capability_catalog,
@@ -143,6 +171,9 @@ class FutureIntelligenceProgram:
                         'capability_forge.runtime_ready',
                         rehydrated=list(self.rehydrated_generated_capabilities),
                         activation_available=bool(self.capability_forge_activation),
+                        action_staging_available=bool(self.capability_forge_actions),
+                        background_available=bool(self.capability_forge_automation),
+                        improvement_available=bool(self.capability_forge_improvement),
                         engineering_available=bool(runtime.get('engineering_executor')),
                         monitoring_available=True,
                     )
@@ -153,8 +184,6 @@ class FutureIntelligenceProgram:
                     runtime['events'].emit('capability_forge.runtime_unavailable',error_type=type(exc).__name__)
 
         # One canonical raw->work.* translation layer on the existing EventBus.
-        # It is installed before Notifications/Memory so every downstream product
-        # surface observes the same taxonomy and Activities audit the same events.
         self.work_event_normalizer=None
         if runtime.get('events') is not None:
             audit=getattr(runtime.get('memory'),'audit',None) if runtime.get('memory') is not None else None

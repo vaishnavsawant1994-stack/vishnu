@@ -5,7 +5,7 @@ import time
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Cookie, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from future_intelligence.capability_forge.models import GapStatus
@@ -72,6 +72,30 @@ class ForgeRollbackBody(BaseModel):
     target_activation_id: str = Field(min_length=1, max_length=400)
 
 
+class ForgeScheduleBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+    next_run_at: str = Field(min_length=10, max_length=80)
+    interval_seconds: int | None = Field(default=None, ge=3600, le=31_536_000)
+    condition: dict[str, Any] = Field(default_factory=dict)
+    title: str | None = Field(default=None, max_length=200)
+
+
+class ForgeScheduleStateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool
+
+
+class ForgeImproveBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    force: bool = False
+
+
+class ForgeInvokeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 def capability_forge_router(runtime) -> APIRouter:
     router = APIRouter(prefix="/iphone/api/owner/forge", tags=["capability-forge"])
     registry = runtime["device_registry"]
@@ -86,9 +110,9 @@ def capability_forge_router(runtime) -> APIRouter:
             raise HTTPException(403, "This device is not permitted to manage Capability Forge")
         return device_id
 
-    def require_fresh_owner_verification(device_id: str) -> None:
+    def require_fresh_owner_verification(device_id: str):
         if runtime.get("pwa_sessions") is None:
-            return
+            return None
         context = current_trusted_request()
         ttl = int(getattr(runtime.get("agent_executor"), "reauth_ttl_seconds", 300) or 300)
         ttl = max(30, min(ttl, 900))
@@ -102,6 +126,7 @@ def capability_forge_router(runtime) -> APIRouter:
                 "code": "reauthentication_required",
                 "message": "Fresh owner verification is required for Capability Forge mutations.",
             })
+        return context
 
     def forge():
         value = runtime.get("capability_forge")
@@ -133,6 +158,24 @@ def capability_forge_router(runtime) -> APIRouter:
             raise HTTPException(503, "Capability Forge activation is unavailable on this host")
         return value
 
+    def action_service():
+        value = runtime.get("capability_forge_actions")
+        if value is None:
+            raise HTTPException(503, "Capability Forge governed action service is unavailable on this host")
+        return value
+
+    def automation_bridge():
+        value = runtime.get("capability_forge_automation")
+        if value is None:
+            raise HTTPException(503, "Capability Forge automation bridge is unavailable on this host")
+        return value
+
+    def improvement_service():
+        value = runtime.get("capability_forge_improvement")
+        if value is None:
+            raise HTTPException(503, "Capability Forge improvement service is unavailable on this host")
+        return value
+
     def build_service():
         factory = runtime.get("capability_forge_build_factory")
         value = factory() if callable(factory) else None
@@ -143,6 +186,25 @@ def capability_forge_router(runtime) -> APIRouter:
     def emit(name: str, **payload: Any) -> None:
         if events is not None:
             events.emit(name, **payload)
+
+    def catalog_item(capability_id: str) -> dict[str, Any]:
+        catalog = runtime.get("capability_catalog")
+        item = catalog.get(str(capability_id)) if catalog is not None else None
+        if not item or item.get("type") != "generated_capability":
+            raise HTTPException(404, "Generated capability not found")
+        return item
+
+    def active_manifest(capability_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+        item = catalog_item(capability_id)
+        if item.get("state") != "active":
+            raise HTTPException(409, "Generated capability is not active")
+        data_root = Path(runtime["settings"].data_dir).resolve()
+        try:
+            package_path = resolve_generated_package(data_root, str(item.get("package_ref") or ""))
+            manifest = load_generated_manifest(package_path, expected_digest=str(item.get("manifest_digest") or ""))
+        except Exception as exc:
+            raise HTTPException(409, f"Generated capability package validation failed: {type(exc).__name__}") from exc
+        return item, manifest
 
     def latest_build_for_work(work_order_id: str) -> dict[str, Any] | None:
         life = lifecycle()
@@ -187,17 +249,26 @@ def capability_forge_router(runtime) -> APIRouter:
         gaps = store().list_gaps(limit=100)
         catalog = runtime.get("capability_catalog")
         generated = generated_capabilities(catalog) if catalog is not None else []
+        actions = action_service().list(limit=100) if runtime.get("capability_forge_actions") is not None else []
         return {
             "available": True,
             "gaps": len(gaps),
             "open_gaps": sum(1 for item in gaps if item.status not in {GapStatus.REJECTED, GapStatus.ACTIVE}),
             "generated_capabilities": len(generated),
             "active_generated_capabilities": sum(1 for item in generated if item.get("state") == "active"),
-            "engineering_available": build_service is not None and callable(runtime.get("capability_forge_build_factory")),
+            "pending_generated_actions": sum(1 for item in actions if item.get("state") in {"waiting_approval", "ready"}),
+            "engineering_available": callable(runtime.get("capability_forge_build_factory")),
             "activation_available": runtime.get("capability_forge_activation") is not None,
+            "actions_available": runtime.get("capability_forge_actions") is not None,
+            "background_available": runtime.get("capability_forge_automation") is not None,
+            "improvement_available": runtime.get("capability_forge_improvement") is not None,
             "authorities": {
                 "queue_draft_work": False,
                 "self_approve_activation": False,
+                "self_approve_generated_actions": False,
+                "automatic_generated_action_commit": False,
+                "raw_secret_access": False,
+                "critical_generated_actions": False,
                 "remote_push": False,
                 "merge": False,
                 "deploy": False,
@@ -333,8 +404,6 @@ def capability_forge_router(runtime) -> APIRouter:
     def build_status(work_order_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         authenticate(pa_device, pa_token)
         build = latest_build_for_work(str(work_order_id))
-        if build is None:
-            return {"work_order_id": str(work_order_id), "build": None}
         return {"work_order_id": str(work_order_id), "build": build}
 
     @router.get("/capabilities")
@@ -342,12 +411,125 @@ def capability_forge_router(runtime) -> APIRouter:
         authenticate(pa_device, pa_token)
         catalog = runtime.get("capability_catalog")
         items = generated_capabilities(catalog) if catalog is not None else []
+        return {"items": [{**item, "metrics": lifecycle().metrics(str(item.get("id") or ""))} for item in items]}
+
+    @router.get("/capabilities/{capability_id}/ui")
+    def generated_ui(capability_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token)
+        item = catalog_item(capability_id)
+        ui = item.get("ui")
+        if not ui:
+            raise HTTPException(404, "Generated capability has no declarative UI contract")
+        return {"capability_id": capability_id, "ui": ui, "executable_code": False}
+
+    @router.post("/capabilities/{capability_id}/invoke")
+    def invoke_generated(capability_id: str, body: ForgeInvokeBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        item, manifest = active_manifest(capability_id)
+        if str(manifest.get("runtime") or "") == "governed_action_v2":
+            require_fresh_owner_verification(device_id)
+        tools = runtime.get("tools")
+        if tools is None:
+            raise HTTPException(503, "ToolRegistry is unavailable on this host")
+        try:
+            tool = tools.get(str(capability_id))
+        except (KeyError, TypeError) as exc:
+            raise HTTPException(409, "Active generated capability is not attached to ToolRegistry") from exc
+        if getattr(tool, "capability", None) != str(capability_id) or not str(getattr(tool, "verification_method", "") or "").startswith("qualified_generated_"):
+            raise HTTPException(409, "Registered tool is not the qualified generated capability")
+        try:
+            decision = tools.authorize(tool, confirmed=False, parameters=body.parameters, data_classification="internal")
+            if not getattr(decision, "allowed", False) or getattr(decision, "requires_confirmation", False):
+                raise PermissionError(getattr(decision, "reason", "Generated capability invocation is not authorized"))
+            result = tools.dispatch(tool, body.parameters)
+            verification = tools.verify_result(tool, body.parameters, result)
+            if not getattr(verification, "verified", False):
+                raise RuntimeError("Generated capability output did not pass verification")
+        except (ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        emit("owner.capability_forge.invoked", device_id=device_id, capability_id=str(capability_id), runtime=item.get("runtime"), committed=False)
         return {
-            "items": [
-                {**item, "metrics": lifecycle().metrics(str(item.get("id") or ""))}
-                for item in items
-            ]
+            "capability_id": str(capability_id),
+            "runtime": item.get("runtime"),
+            "result": result,
+            "verified": True,
+            "world_side_effect_committed": False if item.get("runtime") == "governed_action_v2" else None,
         }
+
+    @router.get("/actions")
+    def actions(capability_id: str | None = Query(default=None, max_length=200), limit: int = Query(default=100, ge=1, le=500), pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token)
+        return {"items": action_service().list(capability_id=capability_id, limit=limit)}
+
+    @router.get("/actions/{proposal_id}")
+    def action_detail(proposal_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        authenticate(pa_device, pa_token)
+        try:
+            return action_service().get(proposal_id)
+        except KeyError as exc:
+            raise HTTPException(404, str(exc)) from exc
+
+    @router.post("/actions/{proposal_id}/commit")
+    def action_commit(proposal_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        context = require_fresh_owner_verification(device_id)
+        try:
+            proposal = action_service().get(proposal_id)
+            item, manifest = active_manifest(str(proposal["capability_id"]))
+            return action_service().commit(
+                proposal_id,
+                manifest=manifest,
+                manifest_digest=str(item.get("manifest_digest") or ""),
+                owner_id="owner",
+                device_id=device_id,
+                session_id=getattr(context, "session_id", None) if context is not None else None,
+                reauthenticated_at=getattr(context, "reauthenticated_at", None) if context is not None else time.time(),
+            )
+        except (KeyError, ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post("/actions/{proposal_id}/cancel")
+    def action_cancel(proposal_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        context = require_fresh_owner_verification(device_id)
+        try:
+            return action_service().cancel(proposal_id, device_id=device_id, session_id=getattr(context, "session_id", None) if context is not None else None)
+        except (KeyError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post("/capabilities/{capability_id}/schedule")
+    def schedule_capability(capability_id: str, body: ForgeScheduleBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        try:
+            return automation_bridge().schedule(
+                capability_id,
+                body.parameters,
+                next_run_at=body.next_run_at,
+                interval_seconds=body.interval_seconds,
+                condition=body.condition,
+                title=body.title,
+            )
+        except (KeyError, ValueError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+
+    @router.post("/schedules/{automation_id}")
+    def schedule_state(automation_id: str, body: ForgeScheduleStateBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        return automation_bridge().enable(automation_id, body.enabled)
+
+    @router.post("/capabilities/{capability_id}/improve")
+    def improve_capability(capability_id: str, body: ForgeImproveBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        try:
+            result = improvement_service().propose(capability_id, force=body.force)
+        except (KeyError, ValueError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if result is None:
+            return {"proposed": False, "reason": "health evidence does not currently justify a new version"}
+        return {"proposed": True, **result}
 
     @router.post("/activation/request")
     def request_activation(body: ForgeActivationBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):

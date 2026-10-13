@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Any
 
 from .models import CapabilityPlan, CapabilityRisk, CapabilityRoute, CapabilitySpec
+from .ui_contract import validate_generated_ui_contract
 
 
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9._-]+)?$")
 _SAFE_ID_RE = re.compile(r"[^a-z0-9._-]+")
-_SUPPORTED_RUNTIMES = {"pure_python_v1", "governed_toolchain_v1"}
+_SUPPORTED_RUNTIMES = {"pure_python_v1", "governed_toolchain_v1", "governed_action_v2"}
 
 
 def _canonical_json(data: dict[str, Any]) -> bytes:
@@ -93,6 +94,8 @@ class PackagedCapability:
             "output_schema": self.manifest["output_schema"],
             "permissions": self.manifest["permissions"],
             "risk": self.manifest["risk"],
+            "ui": self.manifest.get("ui"),
+            "action_policy": self.manifest.get("action_policy"),
             "package_ref": str(package_ref),
             "manifest_digest": self.manifest_digest,
             "build_id": self.build_id,
@@ -105,11 +108,11 @@ class PackagedCapability:
 class CapabilityPackageBuilder:
     """Create immutable versioned packages only from qualified Forge candidates.
 
-    ``pure_python_v1`` receives no external authority. ``governed_toolchain_v1``
-    may request a bounded set of already-registered read-only Vishnu tools, but
-    never receives raw network, filesystem, connector credentials, or secrets.
-    Every delegated tool call remains subject to ToolRegistry policy, contracts,
-    destination rules, verification, and the emergency stop.
+    V1 pure/toolchain packages retain their already-qualified read-only runtime
+    boundary. V2 action packages may request trusted wrapper features (declarative
+    UI and canonical AutomationEngine scheduling) plus scoped delegated writes.
+    Generated code itself still receives no socket, credential, process-env or
+    arbitrary filesystem authority.
     """
 
     MAX_FILES = 32
@@ -201,16 +204,39 @@ class CapabilityPackageBuilder:
         if runtime not in _SUPPORTED_RUNTIMES:
             raise ValueError("unsupported generated capability runtime")
         risk = plan.risk.risk.value if plan.risk is not None else CapabilityRisk.WRITE.value
-        if runtime == "governed_toolchain_v1":
+
+        if spec.secret_names:
+            raise PermissionError("generated capability packages cannot receive raw secrets or secret values")
+        if runtime != "governed_action_v2" and (spec.ui_required or spec.background_allowed):
+            raise PermissionError("generated UI and background wrappers require governed_action_v2 in this qualified milestone")
+        if runtime == "pure_python_v1":
+            if risk != CapabilityRisk.READ.value:
+                raise PermissionError("pure generated runtime is limited to read-only capabilities")
+            if allowed_tools or spec.network_hosts or spec.filesystem_read or spec.filesystem_write or spec.connector_ids or spec.side_effects:
+                raise PermissionError("pure generated runtime cannot receive external authority")
+        elif runtime == "governed_toolchain_v1":
             if risk != CapabilityRisk.READ.value:
                 raise PermissionError("governed generated toolchains are limited to read-only capabilities")
             if not allowed_tools:
                 raise ValueError("governed generated toolchain requires explicit allowed_tools")
-            if spec.filesystem_write or spec.secret_names or spec.side_effects or spec.background_allowed or spec.ui_required:
-                raise PermissionError("governed generated toolchain cannot request raw secrets, writes, side effects, background work, or UI authority")
+            if spec.filesystem_write or spec.side_effects:
+                raise PermissionError("read-only generated toolchain cannot request write authority or side effects")
+        elif runtime == "governed_action_v2":
+            if not allowed_tools:
+                raise ValueError("governed generated action requires explicit allowed_tools")
+            if risk == CapabilityRisk.READ.value:
+                raise PermissionError("read-only compositions should use governed_toolchain_v1")
+
+        ui_contract = None
+        if spec.ui_required:
+            if metadata.get("ui") is None:
+                raise ValueError("UI-qualified generated capability requires a declarative ui contract")
+            ui_contract = validate_generated_ui_contract(metadata["ui"])
+        elif metadata.get("ui") is not None:
+            raise ValueError("generated UI contract requires ui_required=true in the frozen specification")
 
         packaged_names = {name for name, _src, _size in files}
-        default_entry = "capability.py:plan" if runtime == "governed_toolchain_v1" else "capability.py:run"
+        default_entry = "capability.py:plan" if runtime in {"governed_toolchain_v1", "governed_action_v2"} else "capability.py:run"
         entry = _entrypoint(str(entrypoint or metadata.get("entrypoint") or default_entry), label="entrypoint", packaged_names=packaged_names)
         reducer = None
         if runtime == "governed_toolchain_v1" and metadata.get("reducer"):
@@ -220,8 +246,8 @@ class CapabilityPackageBuilder:
         qualification_digest = hashlib.sha256(_canonical_json(qualification)).hexdigest()
         capability_id = _safe_capability_id(spec)
         build_id = f"build:{attempt_id}"
-        manifest = {
-            "schema_version": 1,
+        manifest: dict[str, Any] = {
+            "schema_version": 2,
             "id": capability_id,
             "name": spec.name,
             "version": version,
@@ -234,7 +260,7 @@ class CapabilityPackageBuilder:
                 "network_hosts": list(spec.network_hosts),
                 "filesystem_read": list(spec.filesystem_read),
                 "filesystem_write": list(spec.filesystem_write),
-                "secret_names": list(spec.secret_names),
+                "secret_names": [],
                 "connector_ids": list(spec.connector_ids),
                 "side_effects": list(spec.side_effects),
                 "background_allowed": bool(spec.background_allowed),
@@ -257,6 +283,17 @@ class CapabilityPackageBuilder:
         }
         if reducer is not None:
             manifest["reducer"] = reducer
+        if ui_contract is not None:
+            manifest["ui"] = ui_contract
+        if runtime == "governed_action_v2":
+            manifest["action_policy"] = {
+                "owner_approval_required": True,
+                "automatic_commit": False,
+                "max_calls": 16,
+                "max_plan_bytes": 1_000_000,
+                "critical_actions_enabled": False,
+                "rollback_on_failure": True,
+            }
 
         output = Path(output_root)
         output.mkdir(parents=True, exist_ok=True)
