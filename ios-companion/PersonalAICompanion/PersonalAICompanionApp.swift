@@ -51,7 +51,7 @@ struct PersonalAICompanionApp: App {
                         } label: {
                             Label("Capability Forge V3", systemImage: "hammer.circle")
                         }
-                        Text("Capability and Forge cloud access is disabled in this internal-testing build until a non-production server is configured.")
+                        Text("Vishnu cloud access is disabled in this internal-testing build; Capability Forge cloud controls are also disabled until a non-production server is configured.")
                             .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                         Text("Uses Safari so Google sign-in, trusted-device cookies, microphone access and conversation continuity work correctly.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                     }
