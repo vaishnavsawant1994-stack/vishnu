@@ -48,7 +48,11 @@ class DeviceCommandService: Service() {
     ws=PinnedTls.client(pin).newWebSocket(req,object:WebSocketListener(){
       override fun onOpen(w:WebSocket,r:Response){
         connecting=false
-        val capabilities=JSONArray(listOf("device_info","battery","flashlight","open_url","launch_app","data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone"))
+        val capabilities=JSONArray(listOf(
+          "device_info","battery","flashlight","open_url","launch_app",
+          "data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone",
+          "data_plane_progress_pending","data_plane_progress_ack"
+        ))
         w.send(JSONObject().put("type","hello").put("device_id",device).put("platform","android").put("capabilities",capabilities).toString())
       }
       override fun onMessage(w:WebSocket,text:String){handle(w,JSONObject(text))}
@@ -80,6 +84,8 @@ class DeviceCommandService: Service() {
         )
         "data_plane_progress_get"->dataPlane.get(p.getString("global_id"))?:JSONObject().put("missing",true)
         "data_plane_tombstone"->JSONObject().put("deleted",dataPlane.tombstone(p.getString("global_id"),p.getLong("version")))
+        "data_plane_progress_pending"->dataPlane.pending(p.optInt("limit",100))
+        "data_plane_progress_ack"->JSONObject().put("acknowledged",dataPlane.acknowledge(p.getString("source_event_id")))
         else->throw IllegalArgumentException("unsupported action")
       }
       w.send(JSONObject().put("type","result").put("request_id",id).put("ok",true).put("result",result).toString())
