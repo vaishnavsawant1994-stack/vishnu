@@ -21,13 +21,14 @@ from future_intelligence.work_orchestration.event_normalization import WorkEvent
 from future_intelligence.work_orchestration.notification_bridge import WorkNotificationBridge
 from future_intelligence.work_orchestration.memory_promotion import WorkMemoryPromotionBridge
 from future_intelligence.capability_forge import (
-    CapabilityActivationService,
+    CapabilityForgeBuildService,
     CapabilityForgeExecutionBridge,
     CapabilityForgeLifecycle,
     CapabilityForgeWorkBridge,
     CapabilityPackageBuilder,
     build_capability_forge,
 )
+from future_intelligence.capability_forge.governed_activation import GovernedCapabilityActivationService
 from integrations.discovery.catalog_store import CapabilityCatalogStore
 from integrations.discovery.generated_runtime import rehydrate_generated_capabilities
 from core.p10_approval_continuation import install as install_p10_turn_continuation
@@ -93,7 +94,7 @@ class FutureIntelligenceProgram:
                 if work_store is not None:
                     self.capability_forge_work=CapabilityForgeWorkBridge(work_store,events=runtime.get('events'))
                 if approvals is not None:
-                    self.capability_forge_activation=CapabilityActivationService(
+                    self.capability_forge_activation=GovernedCapabilityActivationService(
                         catalog=self.capability_catalog,
                         approvals=approvals,
                         tools=tools,
@@ -131,6 +132,7 @@ class FutureIntelligenceProgram:
                     'capability_catalog':self.capability_catalog,
                     'generated_capabilities_rehydrated':self.rehydrated_generated_capabilities,
                     'capability_forge_execution_factory':self.forge_execution_bridge,
+                    'capability_forge_build_factory':self.forge_build_service,
                 })
                 if runtime.get('events') is not None:
                     runtime['events'].emit(
@@ -174,6 +176,24 @@ class FutureIntelligenceProgram:
             executor,
             events=self.runtime.get('events'),
             lifecycle=self.capability_forge_lifecycle,
+        )
+
+    def forge_build_service(self):
+        """Return the governed execute->package service after Engineering is ready."""
+        executor=self.runtime.get('engineering_executor')
+        engineering=self.runtime.get('engineering')
+        work_runtime=getattr(self.autonomy,'_work_bridge',None)
+        work_store=getattr(work_runtime,'work',None)
+        if executor is None or engineering is None or work_store is None or self.capability_forge_lifecycle is None:
+            return None
+        return CapabilityForgeBuildService(
+            work_store=work_store,
+            engineering_runtime=engineering,
+            engineering_executor=executor,
+            package_builder=self.capability_forge_packages,
+            output_root=Path(self.runtime.get('settings_data_dir') or engineering.evidence_root.parent)/'generated-capabilities',
+            lifecycle=self.capability_forge_lifecycle,
+            events=self.runtime.get('events'),
         )
 
     def status(self):
