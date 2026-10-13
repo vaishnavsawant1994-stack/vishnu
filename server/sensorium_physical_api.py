@@ -11,9 +11,10 @@ def sensorium_physical_router(runtime) -> APIRouter:
 
     Physical observations reuse existing desktop and companion primitives. The
     returned root router also mounts the native emulator/simulator/VM evidence
-    surface. Neither surface exposes physical input, app-launch, notification,
-    URL-opening, arbitrary adb/simctl/shell, or other side-effecting authority.
-    Those remain owned by the governed tool and Computer Control runtimes.
+    surface when the full runtime supplies durable storage. Neither surface
+    exposes physical input, app-launch, notification, URL-opening, arbitrary
+    adb/simctl/shell, or other side-effecting authority. Those remain owned by
+    the governed tool and Computer Control runtimes.
     """
 
     root = APIRouter()
@@ -100,5 +101,8 @@ def sensorium_physical_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     root.include_router(router)
-    root.include_router(sensorium_native_router(runtime))
+    settings = runtime.get("settings") if runtime else None
+    native_lab = runtime.get("sensorium_native_lab") if runtime else None
+    if native_lab is not None or getattr(settings, "data_dir", None) is not None:
+        root.include_router(sensorium_native_router(runtime))
     return root
