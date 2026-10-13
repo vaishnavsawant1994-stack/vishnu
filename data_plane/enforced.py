@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from .manager import UnifiedDataPlane
+from .policy import StoragePolicy
 
 
 class PolicyEnforcedDataPlane(UnifiedDataPlane):
@@ -50,6 +51,40 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
             provider_id=provider_id,
             has_bytes=has_bytes,
             available=available,
+        )
+
+    def set_policy(
+        self,
+        global_id: str,
+        policy: str | StoragePolicy,
+        *,
+        copy_allowed: bool | None = None,
+        remote_access_allowed: bool | None = None,
+    ) -> dict[str, Any]:
+        target = StoragePolicy(policy)
+        if target is StoragePolicy.DEVICE_ONLY:
+            item = self.item(global_id)
+            primary = item['primary_device_id']
+            durable_elsewhere = [
+                location
+                for location in item['locations']
+                if location['has_bytes']
+                and not (
+                    location['location_type'] == 'device'
+                    and location['location_id'] == primary
+                    and location['provider_id'] == 'local'
+                )
+            ]
+            if durable_elsewhere:
+                raise PermissionError(
+                    'cannot switch to device_only while durable bytes remain at another location; '
+                    'remove and verify those copies first'
+                )
+        return super().set_policy(
+            global_id,
+            target,
+            copy_allowed=copy_allowed,
+            remote_access_allowed=remote_access_allowed,
         )
 
     def grant_remote_access(
