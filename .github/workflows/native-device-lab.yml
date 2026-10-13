@@ -1,0 +1,69 @@
+name: Native Device Lab
+
+on:
+  pull_request:
+    paths:
+      - "sensorium/**"
+      - "server/sensorium_*"
+      - "scripts/native_device_probe.py"
+      - "tests/test_sensorium_native_*"
+      - ".github/workflows/native-device-lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Compile native Sensorium layer
+        run: python -m compileall -q sensorium server scripts/native_device_probe.py
+      - name: Run native Sensorium contract tests
+        run: pytest -q tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py tests/test_sensorium_native_live_work.py tests/test_sensorium_native_router_integration.py
+
+  desktop-vm:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    env:
+      VISHNU_DESKTOP_VM: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+      - name: Compile desktop Sensorium runtime
+        run: python -m compileall -q sensorium desktop app scripts/native_device_probe.py
+      - name: Run native Sensorium contract tests
+        run: pytest -q tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py tests/test_sensorium_native_live_work.py tests/test_sensorium_native_router_integration.py
+      - name: Collect hosted desktop VM evidence
+        run: python scripts/native_device_probe.py desktop --output native-evidence/desktop-vm.json
+      - name: Validate desktop VM evidence boundary
+        shell: python
+        run: |
+          import json
+          from pathlib import Path
+          data = json.loads(Path('native-evidence/desktop-vm.json').read_text())
+          assert data['provider'] == 'desktop_vm'
+          assert data['platform'] in {'linux', 'windows', 'macos'}
+          assert data['physical_device'] is False
+          assert data['execution_authority'] is False
+          assert data['status'] == 'ready'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-native-desktop-${{ runner.os }}
+          path: native-evidence/desktop-vm.json
+          if-no-files-found: error

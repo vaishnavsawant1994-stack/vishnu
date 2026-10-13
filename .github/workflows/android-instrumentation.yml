@@ -3,13 +3,22 @@ on:
   pull_request:
     paths:
       - "android-companion/**"
+      - "sensorium/native_lab.py"
+      - "scripts/native_device_probe.py"
+      - "tests/test_sensorium_native_*"
       - ".github/workflows/android-instrumentation.yml"
   workflow_dispatch:
 jobs:
   emulator:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -29,13 +38,35 @@ jobs:
           arch: x86_64
           working-directory: android-companion
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: gradle connectedDebugAndroidTest --stacktrace --info
+          script: |
+            gradle connectedDebugAndroidTest --stacktrace --info
+            python "$GITHUB_WORKSPACE/scripts/native_device_probe.py" android --output "$GITHUB_WORKSPACE/native-evidence/android-emulator.json"
+      - name: Validate Android Sensorium evidence boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('native-evidence/android-emulator.json').read_text())
+          assert data['provider'] == 'android_emulator'
+          assert data['platform'] == 'android'
+          assert data['status'] == 'ready'
+          assert data['physical_device'] is False
+          assert data['execution_authority'] is False
+          assert data['metadata']['qemu'] is True
+          PY
+      - name: Upload Android Sensorium evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-native-android-emulator
+          path: native-evidence/android-emulator.json
+          if-no-files-found: error
       - name: Capture emulator diagnostics on failure
         if: failure()
+        timeout-minutes: 1
         run: |
           mkdir -p android-diagnostics
-          adb devices -l > android-diagnostics/adb-devices.txt || true
-          adb logcat -d > android-diagnostics/logcat.txt || true
+          timeout 5s adb devices -l > android-diagnostics/adb-devices.txt 2>&1 || true
+          timeout 10s adb logcat -d > android-diagnostics/logcat.txt 2>&1 || true
           cp -R android-companion/app/build/reports/androidTests android-diagnostics/reports 2>/dev/null || true
       - name: Upload emulator diagnostics
         if: failure()
