@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from .device_sync import DeviceProgressSyncService
-from .enforced import PolicyEnforcedDataPlane
+from .hardened import HardenedDataPlane
 from .manager import UnifiedDataPlane
 from .provider_bridge import reconcile_runtime_providers
 
@@ -22,7 +22,7 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane | None:
     settings = runtime.get('settings')
     if settings is None or getattr(settings, 'data_dir', None) is None:
         return None
-    manager = PolicyEnforcedDataPlane(
+    manager = HardenedDataPlane(
         settings.data_dir / 'data-plane.sqlite3',
         device_registry=runtime.get('device_registry'),
         device_gateway=runtime.get('device_gateway'),

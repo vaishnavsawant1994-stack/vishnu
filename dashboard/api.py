@@ -30,11 +30,11 @@ def dashboard_router(runtime,auth_device):
     def memory(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'memory:sensitive');return runtime['second_brain'].graph()
     @r.get('/data-plane')
     def data_plane_status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'device:read')
+        auth(authorization,x_device_id,'data:read')
         return require_data_plane().diagnostics()
     @r.get('/data-plane/item/{global_id:path}')
     def data_plane_item(global_id:str,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'device:read')
+        auth(authorization,x_device_id,'data:read')
         try:return require_data_plane().item(global_id)
         except KeyError:raise HTTPException(404,'data item unavailable')
     @r.post('/tool')
