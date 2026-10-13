@@ -27,14 +27,34 @@ def approval_router(runtime, executor):
         return context
 
     def request_id_for_approval(approval_id: str):
-        # Read-only correlation to the Stage 1 canonical turn. Approval authority
-        # remains the Stage 2 durable ApprovalManager/continuation runtime.
         lookup = getattr(turn_runtime, '_turn_by_approval', None)
         try:
             turn = lookup(approval_id) if callable(lookup) else None
         except Exception:
             turn = None
         return str(turn.get('request_id')) if turn and turn.get('request_id') else None
+
+    def forge_action_context(approval_id: str):
+        try:
+            value = agent.approvals.context(str(approval_id))
+        except Exception:
+            return None
+        return value if value and value.get('approval_kind') == 'capability_forge_action' else None
+
+    def approval_item(approval_id: str):
+        item = agent.approval_result(approval_id)
+        if item is not None:
+            return item
+        record = agent.approvals.record(str(approval_id))
+        if not record:
+            return None
+        ticket = record.get('ticket')
+        return {
+            'approval_id': str(approval_id),
+            'status': record.get('status'),
+            'device_id': getattr(ticket, 'device_id', None),
+            'session_id': getattr(ticket, 'session_id', None),
+        }
 
     def terminal_result(approval_id: str):
         item = agent.approval_result(approval_id)
@@ -80,13 +100,38 @@ def approval_router(runtime, executor):
         replay = terminal_result(approval_id)
         if replay is not None:
             return replay
-        item = agent.approval_result(approval_id)
+        item = approval_item(approval_id)
         if item is None:
             raise HTTPException(404, {'code': 'approval_not_found', 'message': 'This approval is missing or unavailable.'})
         if item.get('device_id') not in (None, context.device_id):
             raise HTTPException(404, {'code': 'approval_not_found', 'message': 'This approval does not belong to this trusted device.'})
         if item.get('session_id') not in (None, context.session_id):
             raise HTTPException(409, {'code': 'approval_session_mismatch', 'message': 'This approval belongs to a different trusted session.'})
+
+        forge_context = forge_action_context(approval_id)
+        if forge_context is not None:
+            service = runtime.get('capability_forge_actions')
+            if service is None:
+                raise HTTPException(503, {'code':'forge_actions_unavailable','message':'Capability Forge action authority is unavailable.'})
+            try:
+                result = service.approve_ticket(
+                    approval_id,
+                    owner_id='owner',
+                    device_id=context.device_id,
+                    session_id=context.session_id,
+                )
+            except (KeyError, PermissionError) as exc:
+                raise HTTPException(409, {'code':'approval_invalid','message':str(exc)}) from exc
+            return {
+                'status': 'approved',
+                'reply': 'Generated action step approved. No side effect has been dispatched; commit the Forge action proposal separately.',
+                'approval_id': approval_id,
+                'request_id': None,
+                'canonical_status': 'approved_pending_commit',
+                'proposal_id': result['proposal_id'],
+                'replayed': False,
+            }
+
         request_id = request_id_for_approval(approval_id)
         try:
             reply = executor.approve(approval_id)
@@ -147,13 +192,34 @@ def approval_router(runtime, executor):
         replay = terminal_result(approval_id)
         if replay is not None:
             return replay
-        item = agent.approval_result(approval_id)
+        item = approval_item(approval_id)
         if item is None:
             raise HTTPException(404, {'code': 'approval_not_found', 'message': 'This approval is missing or unavailable.'})
         if item.get('device_id') not in (None, context.device_id):
             raise HTTPException(404, {'code': 'approval_not_found', 'message': 'This approval does not belong to this trusted device.'})
         if item.get('session_id') not in (None, context.session_id):
             raise HTTPException(409, {'code': 'approval_session_mismatch', 'message': 'This approval belongs to a different trusted session.'})
+
+        forge_context = forge_action_context(approval_id)
+        if forge_context is not None:
+            service = runtime.get('capability_forge_actions')
+            if service is None:
+                raise HTTPException(503, {'code':'forge_actions_unavailable','message':'Capability Forge action authority is unavailable.'})
+            try:
+                ok = service.reject_ticket(approval_id, device_id=context.device_id, session_id=context.session_id)
+            except PermissionError as exc:
+                raise HTTPException(409, {'code':'approval_invalid','message':str(exc)}) from exc
+            if not ok:
+                raise HTTPException(409, {'code':'approval_invalid','message':'Forge action approval is no longer pending.'})
+            return {
+                'status':'rejected',
+                'reply':'Generated action proposal rejected. No side effect was dispatched.',
+                'approval_id':approval_id,
+                'request_id':None,
+                'canonical_status':'rejected',
+                'replayed':False,
+            }
+
         request_id = request_id_for_approval(approval_id)
         try:
             reply = executor.reject(approval_id)
