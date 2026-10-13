@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+import os
+
 from .device_sync import DeviceProgressSyncService
 from .hardened import HardenedDataPlane
 from .manager import UnifiedDataPlane
 from .provider_bridge import reconcile_runtime_providers
 
 
+def _ensure_native_storage_bridges(runtime: dict) -> dict:
+    """Populate opt-in native bridge handles without persisting their locations."""
+    bridges = runtime.setdefault('native_storage_bridges', {})
+    if 'icloud_bridge' not in bridges:
+        root = os.getenv('VISHNU_ICLOUD_BRIDGE_PATH', '').strip()
+        if root:
+            bridges['icloud_bridge'] = root
+    return bridges
+
+
 def get_data_plane(runtime: dict) -> UnifiedDataPlane | None:
     """Return the single fail-closed data-plane authority for this Vishnu runtime."""
+    _ensure_native_storage_bridges(runtime)
     current = runtime.get('data_plane')
     if current is not None:
         reconcile_runtime_providers(current, runtime)
@@ -57,15 +70,17 @@ def ensure_data_plane_security(runtime: dict, manager: UnifiedDataPlane | None =
 
 
 def ensure_data_plane_provider_store(runtime: dict, manager: UnifiedDataPlane | None = None):
-    """Attach ciphertext-only provider storage using the existing vault/envelope authority.
+    """Attach ciphertext-only provider storage using existing Vishnu authorities.
 
-    This creates no provider connections by itself and performs no network I/O.
-    A provider remains unusable until its canonical data-plane config is enabled
-    and verified. Raw credentials are resolved only at operation time.
+    Direct vault-backed providers use the canonical SecretVault. Google Drive is
+    delegated to the existing governed Drive integration. Apple iCloud uses only
+    an explicitly configured Apple-host native bridge. No bridge stores provider
+    credentials or native filesystem paths in data-plane metadata.
     """
     current = runtime.get('data_plane_provider_store')
     if current is not None:
         return current
+    _ensure_native_storage_bridges(runtime)
     manager = manager or get_data_plane(runtime)
     if manager is None or runtime.get('vault') is None:
         return None
@@ -74,9 +89,10 @@ def ensure_data_plane_provider_store(runtime: dict, manager: UnifiedDataPlane | 
     envelopes = runtime.get('data_plane_envelopes')
     if envelopes is None:
         return None
-    from .provider_adapters import EncryptedProviderStore, ProviderAdapterFactory
+    from .provider_adapters import EncryptedProviderStore
+    from .provider_bridges import GovernedProviderAdapterFactory
 
-    factory = ProviderAdapterFactory(manager, runtime['vault'])
+    factory = GovernedProviderAdapterFactory(manager, runtime['vault'], runtime=runtime)
     store = EncryptedProviderStore(manager, envelopes, factory)
     runtime['data_plane_provider_factory'] = factory
     runtime['data_plane_provider_store'] = store
