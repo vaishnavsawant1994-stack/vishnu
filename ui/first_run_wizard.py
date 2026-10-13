@@ -193,18 +193,19 @@ class FirstRunWizard(QDialog):
         return page
 
     def _model_page(self):
-        page, layout = self._page('Choose your AI', 'Local AI is the privacy-first default. External provider keys are handed directly to the existing encrypted Vishnu vault through the canonical model router.')
+        page, layout = self._page('Choose your AI', 'Local AI is the privacy-first default. Owner-entered external credentials are live-validated and stored in the existing encrypted Vishnu vault.')
         form = QFormLayout()
         self.provider = QComboBox()
         for label, value in (
-            ('Local AI', 'local'), ('OpenAI', 'openai'), ('Gemini', 'gemini'),
-            ('OpenRouter', 'openrouter'), ('DeepSeek', 'deepseek'), ('Grok / xAI', 'xai'),
-            ('Groq', 'groq'), ('Cerebras', 'cerebras'), ('Mistral', 'mistral'), ('Other compatible provider', 'custom'),
+            ('Local AI', 'local'),
+            ('OpenAI', 'openai'),
+            ('Gemini', 'gemini'),
+            ('OpenRouter', 'openrouter'),
         ):
             self.provider.addItem(label, value)
         self.provider.currentIndexChanged.connect(self._provider_changed)
         self.model = QLineEdit()
-        self.model.setPlaceholderText('Model ID')
+        self.model.setPlaceholderText('Model ID returned by your provider')
         self.api_key = QLineEdit()
         self.api_key.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_key.setPlaceholderText('Provider API key')
@@ -303,8 +304,6 @@ class FirstRunWizard(QDialog):
         if status != 'setup_in_progress':
             return
 
-        # A restored installation goes through the same fresh owner/security
-        # sequence, but keeps its durable mode recorded as restore.
         self.mode = SetupMode.CREATE
         self.back_button.setVisible(True)
         self.title.setText('Finish restoring Vishnu' if mode_value == SetupMode.RESTORE.value else 'Continue setting up Vishnu')
@@ -313,9 +312,6 @@ class FirstRunWizard(QDialog):
         elif stage == 'security':
             self.stack.setCurrentIndex(2)
         elif stage == 'recovery' and 'recovery_saved' not in completed:
-            # Recovery codes are intentionally never persisted in plaintext.
-            # After a process restart they cannot be redisplayed, so security
-            # is regenerated instead of silently letting the owner lose them.
             self.stack.setCurrentIndex(2)
             self.subtitle.setText('Setup was interrupted before recovery codes were confirmed. Re-enter an owner password to generate a fresh recovery-code set.')
         elif stage == 'privacy' or ('recovery_saved' in completed and 'privacy' not in completed):
@@ -415,7 +411,7 @@ class FirstRunWizard(QDialog):
         self.model_hint.setText(
             'Local mode uses the configured local OpenAI-compatible endpoint. No API key is required here.'
             if local else
-            'The provider key is passed directly to the canonical model router/vault and is not written to onboarding state.'
+            'The provider key is live-validated, then passed directly to the canonical model router/vault and is never written to onboarding state.'
         )
 
     def _finish_model_setup(self):
