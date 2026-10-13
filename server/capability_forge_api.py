@@ -91,6 +91,11 @@ class ForgeImproveBody(BaseModel):
     force: bool = False
 
 
+class ForgeInvokeBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    parameters: dict[str, Any] = Field(default_factory=dict)
+
+
 def capability_forge_router(runtime) -> APIRouter:
     router = APIRouter(prefix="/iphone/api/owner/forge", tags=["capability-forge"])
     registry = runtime["device_registry"]
@@ -416,6 +421,40 @@ def capability_forge_router(runtime) -> APIRouter:
         if not ui:
             raise HTTPException(404, "Generated capability has no declarative UI contract")
         return {"capability_id": capability_id, "ui": ui, "executable_code": False}
+
+    @router.post("/capabilities/{capability_id}/invoke")
+    def invoke_generated(capability_id: str, body: ForgeInvokeBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token)
+        item, manifest = active_manifest(capability_id)
+        if str(manifest.get("runtime") or "") == "governed_action_v2":
+            require_fresh_owner_verification(device_id)
+        tools = runtime.get("tools")
+        if tools is None:
+            raise HTTPException(503, "ToolRegistry is unavailable on this host")
+        try:
+            tool = tools.get(str(capability_id))
+        except (KeyError, TypeError) as exc:
+            raise HTTPException(409, "Active generated capability is not attached to ToolRegistry") from exc
+        if getattr(tool, "capability", None) != str(capability_id) or not str(getattr(tool, "verification_method", "") or "").startswith("qualified_generated_"):
+            raise HTTPException(409, "Registered tool is not the qualified generated capability")
+        try:
+            decision = tools.authorize(tool, confirmed=False, parameters=body.parameters, data_classification="internal")
+            if not getattr(decision, "allowed", False) or getattr(decision, "requires_confirmation", False):
+                raise PermissionError(getattr(decision, "reason", "Generated capability invocation is not authorized"))
+            result = tools.dispatch(tool, body.parameters)
+            verification = tools.verify_result(tool, body.parameters, result)
+            if not getattr(verification, "verified", False):
+                raise RuntimeError("Generated capability output did not pass verification")
+        except (ValueError, PermissionError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        emit("owner.capability_forge.invoked", device_id=device_id, capability_id=str(capability_id), runtime=item.get("runtime"), committed=False)
+        return {
+            "capability_id": str(capability_id),
+            "runtime": item.get("runtime"),
+            "result": result,
+            "verified": True,
+            "world_side_effect_committed": False if item.get("runtime") == "governed_action_v2" else None,
+        }
 
     @router.get("/actions")
     def actions(capability_id: str | None = Query(default=None, max_length=200), limit: int = Query(default=100, ge=1, le=500), pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
