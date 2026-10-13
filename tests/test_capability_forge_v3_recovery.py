@@ -115,7 +115,9 @@ def test_v3_restart_quarantines_tampered_signed_package(tmp_path):
     assert payload["id"] not in registry._tools
 
 
-def test_capability_oauth_pending_route_survives_service_restart(tmp_path):
+def test_capability_oauth_pending_route_survives_service_restart(tmp_path, monkeypatch):
+    callback = "https://vishnu.example.com/iphone/capability-oauth/callback"
+    monkeypatch.setenv("VISHNU_CAPABILITY_OAUTH_REDIRECT_URI", callback)
     catalog = CapabilityCatalogStore(tmp_path / "catalog.sqlite3")
     with __import__("sqlite3").connect(catalog.path) as db:
         db.execute(
@@ -129,6 +131,11 @@ def test_capability_oauth_pending_route_survives_service_restart(tmp_path):
     )
     started = first.begin("cap.oauth", "provider", scopes=["read"], device_id="device", session_id="session", security_epoch=4)
     assert first.pending(started["state"])["capability_id"] == "cap.oauth"
+    try:
+        first.begin("cap.oauth", "provider", scopes=["read"], redirect_uri="https://evil.example/callback")
+        raise AssertionError("mismatched callback must fail closed")
+    except PermissionError as exc:
+        assert "configured V3 callback" in str(exc)
     restarted = DurableCapabilityOAuthLifecycle(
         oauth=FakeOAuth(), catalog=catalog, providers={"provider": provider}, path=path,
     )
