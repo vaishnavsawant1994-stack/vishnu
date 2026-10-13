@@ -13,6 +13,22 @@ from .canary_rollout import CapabilityCanaryRollout, _now
 class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
     """V3 hardening for staged promotion and evidence-driven quarantine."""
 
+    def _metrics_for_source(self, capability_id: str, version: str, source: str) -> CanaryMetrics:
+        with self._con() as con:
+            rows = con.execute(
+                "SELECT ok,duration_ms FROM forge_canary_samples WHERE capability_id=? AND version=? AND source=? ORDER BY id",
+                (str(capability_id), str(version), str(source)),
+            ).fetchall()
+        durations = sorted(float(row["duration_ms"]) for row in rows)
+        count = len(rows)
+        failures = sum(1 for row in rows if not int(row["ok"]))
+        if durations:
+            index = max(0, min(len(durations) - 1, int((len(durations) - 1) * 0.95)))
+            p95 = durations[index]
+        else:
+            p95 = 0.0
+        return CanaryMetrics(count, failures / count if count else 0.0, p95)
+
     def promote(self, capability_id: str, version: str, *, target_stage: str, ticket_id: str,
                 owner_id: str = "owner", device_id: str | None = None,
                 session_id: str | None = None) -> dict[str, Any]:
@@ -24,6 +40,18 @@ class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
             raise PermissionError("Forge rollout approval destination changed")
         if str(ticket.data_classification or "internal") != "internal":
             raise PermissionError("Forge rollout approval data classification changed")
+        limited_baseline = None
+        if target_stage == "broad_eligible":
+            # Broad eligibility must be earned from observations made while the
+            # capability was actually in the limited stage. Internal samples may
+            # qualify internal -> limited, but cannot be reused to skip limited
+            # exposure or manufacture a production-health baseline.
+            rollout = self.get(capability_id, version)
+            if rollout.get("stage") != "limited":
+                raise PermissionError("Forge broad-eligible rollout requires the limited stage")
+            limited_baseline = self._metrics_for_source(capability_id, version, "limited")
+            if limited_baseline.sample_count < self.thresholds.min_sample_count:
+                raise PermissionError("Forge broad-eligible rollout lacks sufficient limited-stage evidence")
         result = super().promote(
             capability_id,
             version,
@@ -34,16 +62,14 @@ class ProductionCapabilityCanaryRollout(CapabilityCanaryRollout):
             session_id=session_id,
         )
         if target_stage == "broad_eligible":
-            # Freeze the independently observed limited-canary behavior as the
-            # production-health baseline. Operators cannot provide a friendlier
-            # baseline later to suppress automatic regression detection.
-            baseline = self._candidate_metrics(capability_id, version)
-            if baseline.sample_count < self.thresholds.min_sample_count:
-                raise PermissionError("Forge broad-eligible rollout lacks sufficient baseline evidence")
+            # Freeze limited-stage behavior as the immutable active-health
+            # baseline. Operators cannot later provide a friendlier baseline to
+            # suppress automatic regression detection.
+            assert limited_baseline is not None
             with self._con() as con:
                 con.execute(
                     "UPDATE forge_rollouts SET baseline_json=?,updated_at=? WHERE capability_id=? AND version=?",
-                    (json.dumps(baseline.__dict__, sort_keys=True), _now(), str(capability_id), str(version)),
+                    (json.dumps(limited_baseline.__dict__, sort_keys=True), _now(), str(capability_id), str(version)),
                 )
             result = self.get(capability_id, version)
         return result
