@@ -5,6 +5,7 @@ import os
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
+from urllib.parse import urlparse
 
 from core.preferences import Preferences
 from recovery.backup import BackupError, BackupService
@@ -163,9 +164,13 @@ class FirstRunCoordinator:
 
     def should_run(self) -> bool:
         state = self._read_state()
-        if state.get('status') == SetupStatus.READY.value:
+        status = state.get('status')
+        if status == SetupStatus.READY.value:
             return False
-        if self._legacy_install_detected():
+        # Legacy migration is allowed only before this installation has entered
+        # the new state machine. A password/device created during a partially
+        # completed setup must never promote that incomplete setup to READY.
+        if status == SetupStatus.UNINITIALIZED.value and self._legacy_install_detected():
             state.update({
                 'status': SetupStatus.READY.value,
                 'mode': state.get('mode') or SetupMode.CREATE.value,
@@ -182,7 +187,7 @@ class FirstRunCoordinator:
 
     def begin(self, mode: str | SetupMode) -> dict:
         try:
-            selected = SetupMode(str(mode))
+            selected = mode if isinstance(mode, SetupMode) else SetupMode(str(mode))
         except ValueError as exc:
             raise ValueError('Unsupported setup mode') from exc
         state = self._read_state()
@@ -305,12 +310,23 @@ class FirstRunCoordinator:
         value = str(url or '').strip()
         if not value:
             raise ValueError('Existing Vishnu URL is required')
+        parsed = urlparse(value)
+        if not parsed.hostname:
+            raise ValueError('Existing Vishnu URL must include a hostname')
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError('Do not embed credentials in the Vishnu URL')
+        local_http = parsed.scheme == 'http' and parsed.hostname in {'127.0.0.1', 'localhost', '::1'}
+        if parsed.scheme != 'https' and not local_http:
+            raise ValueError('Existing Vishnu URL must use HTTPS except for localhost development')
+        # Persist only the origin. Paths, queries and fragments are not part of
+        # device identity and can accidentally contain sensitive information.
+        origin = f'{parsed.scheme}://{parsed.netloc}'.rstrip('/')
         state = self._read_state()
         state.update({
             'status': SetupStatus.CONNECT_PENDING.value,
             'mode': SetupMode.CONNECT.value,
             'stage': 'external_device_authorization',
-            'connect_url': value[:1000],
+            'connect_url': origin[:1000],
             'last_error': None,
         })
         return self._write_state(state)
