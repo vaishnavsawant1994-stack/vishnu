@@ -1,0 +1,44 @@
+name: Data Plane Qualification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-first-security-and-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip check
+      - name: Compile data and recovery boundaries
+        run: python -m compileall -q data_plane recovery tools
+      - name: Validate bounded PWA cache scripts
+        run: |
+          node --check pwa/sw.js
+          node --check pwa/data-plane-cache.js
+      - name: Local-first data-plane security suite
+        run: >-
+          pytest -q
+          tests/test_unified_data_plane.py
+          tests/test_data_plane_authority.py
+          tests/test_data_plane_device_sync.py
+          tests/test_data_plane_fail_closed.py
+          tests/test_data_plane_hardening.py
+          tests/test_data_plane_provider_bridge.py
+          tests/test_secure_data_transport.py
+          tests/test_data_plane_production_readiness.py
+      - name: Portable disaster-recovery certification
+        run: pytest -q tests/test_disaster_recovery.py
