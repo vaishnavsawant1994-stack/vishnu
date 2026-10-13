@@ -206,7 +206,7 @@ class CapabilityPackageBuilder:
         risk = plan.risk.risk.value if plan.risk is not None else CapabilityRisk.WRITE.value
 
         if spec.secret_names:
-            raise PermissionError("generated capability packages cannot receive raw secret values")
+            raise PermissionError("generated capability packages cannot receive raw secrets or secret values")
         if runtime != "governed_action_v2" and (spec.ui_required or spec.background_allowed):
             raise PermissionError("generated UI and background wrappers require governed_action_v2 in this qualified milestone")
         if runtime == "pure_python_v1":
