@@ -3,7 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QPushButton
 
 from core.runtime_presentation import presentation_for
-from data_plane.runtime import get_data_plane
+from data_plane.runtime import ensure_data_plane_tools
 from devices.local_gateway import get_local_device_gateway
 from ui.main_window import MainWindow
 from ui.mobile_pairing_dialog import MobilePairingDialog
@@ -58,9 +58,9 @@ class CanonicalMainWindow(MainWindow):
         self._local_device_gateway = None
         if self.runtime:
             # Attach exactly one local-first data-plane authority to the existing
-            # runtime. It reuses the canonical DeviceRegistry/DeviceGateway and
-            # never turns a provider into a second execution authority.
-            get_data_plane(self.runtime)
+            # runtime and register its governed tools. It reuses the canonical
+            # DeviceRegistry/DeviceGateway and never makes storage an execution authority.
+            ensure_data_plane_tools(self.runtime)
             try:
                 gateway = get_local_device_gateway(self.runtime)
                 gateway.start_if_needed()
