@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from core.events import EventBus
 from future_intelligence.capability_forge.automation_bridge import CapabilityForgeAutomationBridge
 from future_intelligence.capability_forge.improvement import CapabilityImprovementService
 from future_intelligence.capability_forge.ui_contract import GeneratedUIContractError, validate_generated_ui_contract
@@ -82,12 +83,16 @@ class FakeForge:
         )
 
 
-def test_health_degradation_creates_proposal_only_with_lineage_and_no_activation():
-    catalog=FakeCatalog({
+def _active_capability():
+    return {
         "id":"generated.action.test","type":"generated_capability","state":"active","name":"Action","version":"2.0.0",
         "runtime":"governed_action_v2","permissions":{"allowed_tools":["write.item"],"background_allowed":True,"ui_required":True},
         "ui":{"schema_version":1,"title":"Action","fields":[],"submit_label":"Stage"},
-    })
+    }
+
+
+def test_health_degradation_creates_proposal_only_with_lineage_and_no_activation():
+    catalog=FakeCatalog(_active_capability())
     forge=FakeForge(); service=CapabilityImprovementService(forge,FakeEvaluator(),catalog)
     result=service.propose("generated.action.test")
     assert result["activation"] is False
@@ -96,3 +101,26 @@ def test_health_degradation_creates_proposal_only_with_lineage_and_no_activation
     assert metadata["improvement_of"] == "generated.action.test"
     assert metadata["previous_version"] == "2.0.0"
     assert metadata["allowed_tools"] == ["write.item"]
+
+
+def test_health_event_auto_proposes_vnext_once_and_detach_removes_observer():
+    events=EventBus(); forge=FakeForge()
+    service=CapabilityImprovementService(forge,FakeEvaluator(),FakeCatalog(_active_capability()),events=events)
+    events.emit(
+        "capability_forge.health_evaluated",
+        capability_id="generated.action.test",
+        state="rollback_recommended",
+        rollback_recommended=True,
+        sufficient_evidence=True,
+    )
+    assert len(forge.calls) == 1
+    assert forge.calls[0][2]["metadata"]["improvement_of"] == "generated.action.test"
+    service.detach()
+    events.emit(
+        "capability_forge.health_evaluated",
+        capability_id="generated.action.test",
+        state="degraded",
+        rollback_recommended=False,
+        sufficient_evidence=True,
+    )
+    assert len(forge.calls) == 1
