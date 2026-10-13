@@ -1,67 +1,65 @@
 from __future__ import annotations
 
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / "pwa" / "global-work-awareness.js"
-LOADER = ROOT / "pwa" / "home-chat-redesign.js"
+LOADER = ROOT / "pwa" / "projects-work-loader.js"
 SERVICE_WORKER = ROOT / "pwa" / "sw.js"
-GLOBAL_API = ROOT / "server" / "global_work_api.py"
-CLOUD_APP = ROOT / "server" / "cloud_app.py"
+API = ROOT / "server" / "global_work_api.py"
+CLOUD = ROOT / "server" / "cloud.py"
 
 
 def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_global_work_awareness_is_read_only_and_canonical():
+def test_global_work_awareness_uses_existing_read_only_surfaces_and_no_execution_authority():
     source = _read(RUNTIME)
 
-    for marker in (
-        "authority:'presentation_only'",
-        "source:'canonical_project_work'",
-        "/work/summary",
-        "read_only_projection",
-        "WAITING_APPROVAL",
-        "RECOVERY_REQUIRED",
-        "UNCERTAIN",
-        "Canonical Work state only.",
-        "Vishnu work",
-        "openProject(order.projectId,'live')",
-    ):
-        assert marker in source, marker
+    assert "/iphone/api/global-work/summary" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/status" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/work-plan" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/activity?limit=24" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/live-work" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/health" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/timeline" in source
+    assert "/iphone/api/projects/${encodeURIComponent(id)}/recent-events?limit=12" in source
 
+    assert "fetch(url,{credentials:'same-origin',headers:{Accept:'application/json'}})" in source
     assert "method:'POST'" not in source
-    assert 'method:"POST"' not in source
-    assert "/execute" not in source
-    assert "/pause" not in source
-    assert "/resume" not in source
-    assert "/cancel" not in source
-    assert "approve(" not in source.lower()
+    assert "method:'PATCH'" not in source
+    assert "method:'DELETE'" not in source
+    assert "execute" not in source.lower()
+    assert "approval" not in source.lower()
 
 
-def test_global_awareness_updates_home_today_and_idle_living_state_only():
+def test_global_work_awareness_renders_multi_project_status_and_attention_signals():
     source = _read(RUNTIME)
 
-    assert "globalWorkPulse" in source
-    assert "globalWorkTodaySection" in source
-    assert "stateLabel" in source
-    assert "status" in source
-    assert "['idle','active','background'].includes(stateName)" in source
-    assert "@media(max-width:760px)" in source
-    assert "REFRESH_MS=30000" in source
+    assert "Global work awareness" in source
+    assert "Needs your attention" in source
+    assert "Projects continuing" in source
+    assert "project.workspace" in source
+    assert "project.status" in source
+    assert "project.health" in source
+    assert "project.progress" in source
+    assert "project.blocker" in source
+    assert "project.next_action" in source
+    assert "project.last_activity" in source
+    assert "project.live_work" in source
+    assert "project.timeline" in source
 
 
-def test_global_summary_api_is_owner_scoped_read_only_projection():
-    source = _read(GLOBAL_API)
-    cloud = _read(CLOUD_APP)
+def test_global_work_summary_api_is_read_only_and_reuses_existing_project_authority():
+    source = _read(API)
+    cloud = _read(CLOUD)
 
-    assert 'APIRouter(prefix="/iphone/api/work"' in source
     assert '@router.get("/summary")' in source
     assert '"authority": "read_only_projection"' in source
     assert 'execution_authority = "canonical_work" if authority else "existing_p10_p6_runtime"' in source
@@ -83,7 +81,7 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
     assert "loadGlobalAwareness" in loader
     assert "visual.onload=loadGlobalAwareness" in loader
 
-    assert "personal-ai-iphone-v36" in sw
+    assert "personal-ai-iphone-v37" in sw
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw
 
@@ -98,5 +96,6 @@ def test_global_work_awareness_has_valid_javascript_syntax():
         capture_output=True,
         text=True,
         timeout=30,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
