@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - "ios-companion/**"
+      - "sensorium/native_lab.py"
+      - "scripts/native_device_probe.py"
+      - "tests/test_sensorium_native_*"
       - ".github/workflows/ios.yml"
   workflow_dispatch:
 
@@ -13,6 +16,11 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
@@ -20,17 +28,45 @@ jobs:
         run: xcodegen generate
       - name: Show available simulators
         run: xcrun simctl list devices available
-      - name: Build and test iOS companion
-        working-directory: ios-companion
+      - name: Select and boot iOS Simulator
+        id: simulator
+        shell: bash
         run: |
           DESTINATION=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && /Shutdown|Booted/ {print $2; exit}')
           test -n "$DESTINATION"
+          xcrun simctl boot "$DESTINATION" 2>/dev/null || true
+          xcrun simctl bootstatus "$DESTINATION" -b
+          echo "udid=$DESTINATION" >> "$GITHUB_OUTPUT"
+      - name: Build and test iOS companion
+        working-directory: ios-companion
+        run: |
           xcodebuild \
             -project PersonalAICompanion.xcodeproj \
             -scheme PersonalAICompanion \
-            -destination "platform=iOS Simulator,id=$DESTINATION" \
+            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO \
             test
+      - name: Collect iOS Sensorium evidence
+        run: python scripts/native_device_probe.py ios --udid "${{ steps.simulator.outputs.udid }}" --output native-evidence/ios-simulator.json
+      - name: Validate iOS Sensorium evidence boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('native-evidence/ios-simulator.json').read_text())
+          assert data['provider'] == 'ios_simulator'
+          assert data['platform'] == 'ios'
+          assert data['status'] == 'ready'
+          assert data['physical_device'] is False
+          assert data['execution_authority'] is False
+          assert data['metadata']['state'] == 'Booted'
+          PY
+      - name: Upload iOS Sensorium evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-native-ios-simulator
+          path: native-evidence/ios-simulator.json
+          if-no-files-found: error
       - name: Build unsigned simulator application
         working-directory: ios-companion
         run: |
