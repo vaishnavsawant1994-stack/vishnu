@@ -30,4 +30,5 @@ playwright>=1.55,<2
 PyAutoGUI>=0.9.54,<1
 keyring>=25,<27
 PyInstaller>=6.15,<7
+psycopg[binary]>=3.2,<4
 tzdata>=2025.2
