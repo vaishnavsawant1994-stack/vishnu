@@ -19,6 +19,10 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: pip check
+      - name: Targeted Python static-quality gate
+        run: |
+          pip install "ruff==0.17.0"
+          ruff check security/owner_access.py tests/test_owner_access_atomicity.py
       - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products qualification security sensorium server tools training ui updates vision voice visual_intelligence
       - name: Our Products productization qualification gate
         run: |
