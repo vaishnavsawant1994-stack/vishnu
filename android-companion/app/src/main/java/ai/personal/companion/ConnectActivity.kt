@@ -20,25 +20,16 @@ import com.journeyapps.barcodescanner.ScanOptions
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 
 class ConnectActivity : AppCompatActivity() {
     companion object {
         private const val MAX_RESPONSE_BYTES = 1_048_576
     }
-
-    private val client = OkHttpClient.Builder()
-        .callTimeout(15, TimeUnit.SECONDS)
-        .retryOnConnectionFailure(false)
-        .followRedirects(false)
-        .followSslRedirects(false)
-        .build()
 
     private val prefs by lazy {
         val key = MasterKey.Builder(this)
@@ -63,16 +54,22 @@ class ConnectActivity : AppCompatActivity() {
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         val contents = result.contents
         if (contents.isNullOrBlank()) {
-            status.text = "QR scan cancelled. You can scan again or enter the connection details manually."
+            status.text = "QR scan cancelled. You can scan again or use the advanced fallback."
             return@registerForActivityResult
         }
         try {
             val payload = PairingPayloadParser.parse(contents, allowLocalDevelopment.isChecked)
-            base.setText(payload.baseUrl)
             token.setText(payload.token)
             code.setText(payload.code)
-            status.text = "Vishnu found. Connecting this Android device…"
-            pair(payload.baseUrl, payload.token, payload.code)
+            if (payload.zeroConfig) {
+                status.text = "Finding your Vishnu automatically…"
+                discoverAndPair(payload)
+            } else {
+                val origin = payload.baseUrl ?: throw IllegalArgumentException("The Vishnu address is missing")
+                base.setText(origin)
+                status.text = "Vishnu found. Connecting this Android device…"
+                pair(origin, payload.token, payload.code, null, null)
+            }
         } catch (exc: IllegalArgumentException) {
             status.text = exc.message ?: "That QR code is not a valid Vishnu connection offer."
         }
@@ -102,7 +99,7 @@ class ConnectActivity : AppCompatActivity() {
             setPadding(0, dp(18), 0, dp(10))
         }
         val copy = TextView(this).apply {
-            text = "Scan the one-time QR shown by your primary Vishnu. This phone receives its own revocable device credential; your owner password and provider keys are never copied here."
+            text = "Scan the one-time QR shown by your primary Vishnu. The app finds the computer automatically on your local network and verifies its TLS identity before sending any pairing secret. No IP address or port is required."
             textSize = 15f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, 0, 0, dp(24))
@@ -114,7 +111,7 @@ class ConnectActivity : AppCompatActivity() {
         styleButton(scan, true)
         scan.setOnClickListener { launchScanner() }
 
-        val manual = Button(this).apply { text = "Enter connection details instead" }
+        val manual = Button(this).apply { text = "Advanced manual fallback" }
         styleButton(manual, false)
 
         allowLocalDevelopment = CheckBox(this).apply {
@@ -154,17 +151,17 @@ class ConnectActivity : AppCompatActivity() {
             val show = manualBox.visibility != View.VISIBLE
             manualBox.visibility = if (show) View.VISIBLE else View.GONE
             allowLocalDevelopment.visibility = if (show) View.VISIBLE else View.GONE
-            manual.text = if (show) "Hide manual connection" else "Enter connection details instead"
+            manual.text = if (show) "Hide advanced fallback" else "Advanced manual fallback"
         }
 
         status = TextView(this).apply {
-            text = "Your primary Vishnu must be running and device pairing must be available."
+            text = "Your primary Vishnu only needs to be running. Scan its secure connection QR to continue."
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(20), 0, 0)
         }
         val safety = TextView(this).apply {
-            text = "The QR expires automatically and can be used only once. If it expires, generate a new one from Vishnu."
+            text = "The QR is one-use and expires automatically. Local discovery advertises no owner password, model key, memory, or device bearer credential."
             textSize = 12f
             setTextColor(Color.rgb(117, 135, 145))
             setPadding(0, dp(26), 0, 0)
@@ -194,6 +191,27 @@ class ConnectActivity : AppCompatActivity() {
         scanner.launch(options)
     }
 
+    private fun discoverAndPair(payload: PairingPayload) {
+        val serviceId = payload.serviceId ?: return
+        val pin = payload.certSha256 ?: return
+        VishnuDiscovery.discover(this, serviceId) { result ->
+            runOnUiThread {
+                result.onSuccess { origin ->
+                    status.text = "Vishnu discovered. Verifying its secure identity…"
+                    pair(origin, payload.token, payload.code, pin, serviceId)
+                }.onFailure {
+                    val fallback = payload.fallbackUrl
+                    if (!fallback.isNullOrBlank()) {
+                        status.text = "Local discovery unavailable. Trying the configured secure Vishnu endpoint…"
+                        pair(fallback, payload.token, payload.code, null, null)
+                    } else {
+                        status.text = "Could not find this Vishnu on the local network. Make sure both devices are on the same Wi‑Fi, then scan a new QR."
+                    }
+                }
+            }
+        }
+    }
+
     private fun pairManual() {
         try {
             val origin = PairingPayloadParser.normalizeOrigin(base.text.toString(), allowLocalDevelopment.isChecked)
@@ -201,14 +219,14 @@ class ConnectActivity : AppCompatActivity() {
             val pairingCode = code.text.toString().trim()
             if (pairingToken.length !in 16..256) throw IllegalArgumentException("Enter the connection key shown by Vishnu")
             if (pairingCode.length != 6 || pairingCode.any { !it.isDigit() }) throw IllegalArgumentException("Enter the six-digit pairing code")
-            pair(origin, pairingToken, pairingCode)
+            pair(origin, pairingToken, pairingCode, null, null)
         } catch (exc: IllegalArgumentException) {
             status.text = exc.message ?: "Connection details are invalid."
         }
     }
 
-    private fun pair(origin: String, pairingToken: String, pairingCode: String) {
-        status.text = "Connecting securely…"
+    private fun pair(origin: String, pairingToken: String, pairingCode: String, tlsPin: String?, serviceId: String?) {
+        status.text = if (tlsPin != null) "Verifying Vishnu and pairing securely…" else "Connecting securely…"
         val payload = JSONObject()
             .put("token", pairingToken)
             .put("code", pairingCode)
@@ -219,9 +237,15 @@ class ConnectActivity : AppCompatActivity() {
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
             .header("Accept", "application/json")
             .build()
-        client.newCall(request).enqueue(object : Callback {
+        PinnedTls.client(tlsPin).newCall(request).enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
-                runOnUiThread { status.text = "Could not reach Vishnu. Check that it is running and both devices can reach the same secure address." }
+                runOnUiThread {
+                    status.text = if (tlsPin != null) {
+                        "Secure Vishnu verification failed. The app did not send credentials to an unverified device. Generate a new QR and retry."
+                    } else {
+                        "Could not reach Vishnu. Check the secure endpoint and retry."
+                    }
+                }
             }
 
             override fun onResponse(call: Call, response: Response) {
@@ -246,11 +270,16 @@ class ConnectActivity : AppCompatActivity() {
                         runOnUiThread { status.text = "Vishnu did not return a valid device credential." }
                         return
                     }
-                    prefs.edit()
+                    val edit = prefs.edit()
                         .putString("base", origin)
                         .putString("device", device)
                         .putString("bearer", bearer)
-                        .apply()
+                    if (tlsPin != null && serviceId != null) {
+                        edit.putString("tls_pin", tlsPin).putString("service_id", serviceId)
+                    } else {
+                        edit.remove("tls_pin").remove("service_id")
+                    }
+                    edit.apply()
                     runOnUiThread {
                         token.setText("")
                         code.setText("")

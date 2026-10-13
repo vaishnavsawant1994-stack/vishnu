@@ -4,18 +4,27 @@ import android.net.Uri
 
 
 data class PairingPayload(
-    val baseUrl: String,
+    val version: Int,
     val token: String,
     val code: String,
     val expiresAtMillis: Long,
-)
+    val baseUrl: String? = null,
+    val serviceId: String? = null,
+    val certSha256: String? = null,
+    val fallbackUrl: String? = null,
+) {
+    val zeroConfig: Boolean get() = version == 2 && !serviceId.isNullOrBlank() && !certSha256.isNullOrBlank()
+}
 
 object PairingPayloadParser {
     private const val SCHEME = "vishnu"
     private const val HOST = "pair"
-    private const val VERSION = "1"
-    private val FIELDS = setOf("v", "base", "token", "code", "expires")
+    private val V1_FIELDS = setOf("v", "base", "token", "code", "expires")
+    private val V2_REQUIRED = setOf("v", "service", "fp", "token", "code", "expires")
+    private val V2_FIELDS = V2_REQUIRED + "fallback"
     private val LOCAL_HOSTS = setOf("127.0.0.1", "localhost", "::1")
+    private val SERVICE = Regex("^[A-Za-z0-9_-]{8,64}$")
+    private val FINGERPRINT = Regex("^[0-9a-fA-F]{64}$")
 
     fun normalizeOrigin(raw: String, allowLocalHttp: Boolean = false): String {
         val uri = Uri.parse(raw.trim())
@@ -44,32 +53,45 @@ object PairingPayloadParser {
         if (!uri.fragment.isNullOrBlank()) {
             throw IllegalArgumentException("Pairing QR code must not contain a fragment")
         }
-        if (uri.queryParameterNames != FIELDS) {
+        val version = uri.getQueryParameter("v")?.toIntOrNull()
+            ?: throw IllegalArgumentException("Unsupported Vishnu pairing QR version")
+        val fields = uri.queryParameterNames
+        val allowed = if (version == 1) V1_FIELDS else if (version == 2) V2_FIELDS else emptySet()
+        val required = if (version == 1) V1_FIELDS else if (version == 2) V2_REQUIRED else emptySet()
+        if (allowed.isEmpty() || !fields.containsAll(required) || !allowed.containsAll(fields)) {
             throw IllegalArgumentException("Pairing QR code fields are invalid")
         }
-        for (field in FIELDS) {
+        for (field in fields) {
             if (uri.getQueryParameters(field).size != 1) {
                 throw IllegalArgumentException("Pairing QR code fields are invalid")
             }
         }
-        if (uri.getQueryParameter("v") != VERSION) {
-            throw IllegalArgumentException("Unsupported Vishnu pairing QR version")
-        }
-        val base = normalizeOrigin(uri.getQueryParameter("base").orEmpty(), allowLocalHttp)
         val token = uri.getQueryParameter("token").orEmpty().trim()
         val code = uri.getQueryParameter("code").orEmpty().trim()
-        if (token.length !in 16..256) {
-            throw IllegalArgumentException("Pairing token length is invalid")
-        }
-        if (code.length != 6 || code.any { !it.isDigit() }) {
-            throw IllegalArgumentException("Pairing code must contain exactly six digits")
-        }
+        if (token.length !in 16..256) throw IllegalArgumentException("Pairing token length is invalid")
+        if (code.length != 6 || code.any { !it.isDigit() }) throw IllegalArgumentException("Pairing code must contain exactly six digits")
         val expiresSeconds = uri.getQueryParameter("expires")?.toDoubleOrNull()
             ?: throw IllegalArgumentException("Pairing expiry is invalid")
         val expiresMillis = (expiresSeconds * 1000.0).toLong()
-        if (expiresMillis <= nowMillis) {
-            throw IllegalArgumentException("This pairing QR code has expired")
+        if (expiresMillis <= nowMillis) throw IllegalArgumentException("This pairing QR code has expired")
+        if (version == 1) {
+            val base = normalizeOrigin(uri.getQueryParameter("base").orEmpty(), allowLocalHttp)
+            return PairingPayload(version, token, code, expiresMillis, baseUrl = base)
         }
-        return PairingPayload(base, token, code, expiresMillis)
+        val service = uri.getQueryParameter("service").orEmpty().trim()
+        val fingerprint = uri.getQueryParameter("fp").orEmpty().trim().lowercase()
+        if (!SERVICE.matches(service)) throw IllegalArgumentException("Local Vishnu service identity is invalid")
+        if (!FINGERPRINT.matches(fingerprint)) throw IllegalArgumentException("Local Vishnu TLS fingerprint is invalid")
+        val fallbackRaw = uri.getQueryParameter("fallback")?.trim().orEmpty()
+        val fallback = if (fallbackRaw.isBlank()) null else normalizeOrigin(fallbackRaw, false)
+        return PairingPayload(
+            version = 2,
+            token = token,
+            code = code,
+            expiresAtMillis = expiresMillis,
+            serviceId = service,
+            certSha256 = fingerprint,
+            fallbackUrl = fallback,
+        )
     }
 }

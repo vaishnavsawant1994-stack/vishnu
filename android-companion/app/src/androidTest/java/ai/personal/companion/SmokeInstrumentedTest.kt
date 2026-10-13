@@ -15,6 +15,8 @@ class SmokeInstrumentedTest {
         assertNotNull(Class.forName("ai.personal.companion.DeviceCommandService"))
         assertNotNull(Class.forName("ai.personal.companion.ConnectActivity"))
         assertNotNull(Class.forName("ai.personal.companion.MainActivity"))
+        assertNotNull(Class.forName("ai.personal.companion.VishnuDiscovery"))
+        assertNotNull(Class.forName("ai.personal.companion.PinnedTls"))
     }
 
     @Test
@@ -22,13 +24,29 @@ class SmokeInstrumentedTest {
         val token = "a".repeat(32)
         val raw = "vishnu://pair?v=1&base=https%3A%2F%2Fvishnu.example.test%2Fignored&token=$token&code=123456&expires=9999999999"
         val payload = PairingPayloadParser.parse(raw, nowMillis = 100_000)
+        assertEquals(1, payload.version)
         assertEquals("https://vishnu.example.test", payload.baseUrl)
         assertEquals(token, payload.token)
         assertEquals("123456", payload.code)
     }
 
     @Test
-    fun pairingQrRejectsExpiredOfferAndRemoteHttp() {
+    fun zeroConfigPairingQrCarriesServiceAndTlsPinWithoutAddress() {
+        val token = "b".repeat(32)
+        val service = "0123456789abcdef0123456789abcdef"
+        val pin = "ab".repeat(32)
+        val raw = "vishnu://pair?v=2&service=$service&fp=$pin&token=$token&code=654321&expires=9999999999&fallback=https%3A%2F%2Frelay.example.test"
+        val payload = PairingPayloadParser.parse(raw, nowMillis = 100_000)
+        assertTrue(payload.zeroConfig)
+        assertNull(payload.baseUrl)
+        assertEquals(service, payload.serviceId)
+        assertEquals(pin, payload.certSha256)
+        assertEquals("https://relay.example.test", payload.fallbackUrl)
+        assertEquals(pin, PinnedTls.normalizeFingerprint(pin.uppercase()))
+    }
+
+    @Test
+    fun pairingQrRejectsExpiredOfferRemoteHttpAndBadPin() {
         val token = "a".repeat(32)
         val expired = "vishnu://pair?v=1&base=https%3A%2F%2Fvishnu.example.test&token=$token&code=123456&expires=100"
         assertThrows(IllegalArgumentException::class.java) {
@@ -36,6 +54,10 @@ class SmokeInstrumentedTest {
         }
         assertThrows(IllegalArgumentException::class.java) {
             PairingPayloadParser.normalizeOrigin("http://vishnu.example.test")
+        }
+        val badPin = "vishnu://pair?v=2&service=0123456789abcdef&fp=bad&token=$token&code=123456&expires=9999999999"
+        assertThrows(IllegalArgumentException::class.java) {
+            PairingPayloadParser.parse(badPin, nowMillis = 100_000)
         }
         assertEquals(
             "http://localhost:8766",

@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 
 from core.security import PairingManager
-from devices.pairing_payload import build_pairing_uri, normalize_vishnu_origin, parse_pairing_uri
+from devices.pairing_payload import (
+    build_pairing_uri,
+    build_zero_config_pairing_uri,
+    normalize_vishnu_origin,
+    parse_pairing_uri,
+)
 
 
 def test_pairing_uri_round_trip_preserves_existing_pairing_authority():
@@ -16,11 +21,57 @@ def test_pairing_uri_round_trip_preserves_existing_pairing_authority():
         expires_at=offer.expires_at,
     )
     payload = parse_pairing_uri(uri, now=offer.expires_at - 10)
+    assert payload.version == 1
     assert payload.base_url == 'https://vishnu.example.test'
     assert payload.token == offer.token
     assert payload.code == offer.code
     assert manager.consume(payload.token, payload.code) is True
     assert manager.consume(payload.token, payload.code) is False
+
+
+def test_zero_config_pairing_uri_contains_identity_not_lan_address():
+    manager = PairingManager(ttl_seconds=300)
+    offer = manager.create()
+    service_id = '0123456789abcdef0123456789abcdef'
+    fingerprint = 'ab' * 32
+    uri = build_zero_config_pairing_uri(
+        service_id=service_id,
+        cert_sha256=fingerprint,
+        token=offer.token,
+        code=offer.code,
+        expires_at=offer.expires_at,
+        fallback_url='https://relay.example.test/path?ignored=1',
+    )
+    assert '192.168.' not in uri
+    assert '10.0.' not in uri
+    assert '8767' not in uri
+    payload = parse_pairing_uri(uri, now=offer.expires_at - 10)
+    assert payload.zero_config is True
+    assert payload.version == 2
+    assert payload.base_url is None
+    assert payload.service_id == service_id
+    assert payload.cert_sha256 == fingerprint
+    assert payload.fallback_url == 'https://relay.example.test'
+    assert manager.consume(payload.token, payload.code) is True
+
+
+def test_zero_config_pairing_rejects_bad_identity_pin_and_insecure_fallback():
+    sample_token = 'a' * 24
+    with pytest.raises(ValueError, match='service identity'):
+        build_zero_config_pairing_uri(
+            service_id='short', cert_sha256='ab' * 32, token=sample_token,
+            code='123456', expires_at=9_999_999_999,
+        )
+    with pytest.raises(ValueError, match='fingerprint'):
+        build_zero_config_pairing_uri(
+            service_id='0123456789abcdef', cert_sha256='not-a-pin', token=sample_token,
+            code='123456', expires_at=9_999_999_999,
+        )
+    with pytest.raises(ValueError, match='HTTPS'):
+        build_zero_config_pairing_uri(
+            service_id='0123456789abcdef', cert_sha256='ab' * 32, token=sample_token,
+            code='123456', expires_at=9_999_999_999, fallback_url='http://relay.example.test',
+        )
 
 
 def test_desktop_and_api_manager_instances_share_one_offer_authority():
@@ -67,3 +118,6 @@ def test_pairing_uri_rejects_duplicate_or_unknown_fields():
         parse_pairing_uri(base + '&token=duplicated')
     with pytest.raises(ValueError, match='fields'):
         parse_pairing_uri(base + '&extra=1')
+    v2 = f'vishnu://pair?v=2&service=0123456789abcdef&fp={"ab" * 32}&token={sample_token}&code=123456&expires=9999999999'
+    with pytest.raises(ValueError, match='fields'):
+        parse_pairing_uri(v2 + '&base=https%3A%2F%2Fexample.test')

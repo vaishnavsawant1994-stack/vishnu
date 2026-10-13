@@ -3,6 +3,7 @@ from __future__ import annotations
 from PyQt6.QtWidgets import QPushButton
 
 from core.runtime_presentation import presentation_for
+from devices.local_gateway import get_local_device_gateway
 from ui.main_window import MainWindow
 from ui.mobile_pairing_dialog import MobilePairingDialog
 from ui.products_panel import ProductsPanel
@@ -52,6 +53,14 @@ class CanonicalMainWindow(MainWindow):
         self._runtime_unsubscribe = events.subscribe('runtime.state', self._on_runtime_state)
         snapshot = events.runtime_state.snapshot()
         self._apply_canonical(snapshot.state.value, snapshot.sequence)
+        self._local_device_gateway = None
+        if self.runtime:
+            try:
+                gateway = get_local_device_gateway(self.runtime)
+                gateway.start_if_needed()
+                self._local_device_gateway = gateway
+            except Exception as exc:
+                events.emit('device.local_gateway_unavailable', error_type=type(exc).__name__)
 
     def _build_page(self, name):
         if name == "Our Products":
@@ -119,4 +128,8 @@ class CanonicalMainWindow(MainWindow):
         if unsubscribe:
             unsubscribe()
             self._runtime_unsubscribe = None
+        gateway = getattr(self, '_local_device_gateway', None)
+        if gateway:
+            gateway.stop()
+            self._local_device_gateway = None
         super().closeEvent(event)
