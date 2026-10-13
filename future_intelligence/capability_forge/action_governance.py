@@ -5,10 +5,18 @@ from security.approvals import parameter_hash
 
 
 class GovernedGeneratedActionService(GeneratedActionService):
-    """Adds exact canonical ticket revalidation immediately before V2 commit."""
+    """Adds strict data and exact canonical ticket revalidation before V2 commit."""
+
+    def stage(self, *args, **kwargs):
+        classification = str(kwargs.get("data_classification") or "internal").strip().lower()
+        if classification != "internal":
+            raise PermissionError("generated actions cannot receive sensitive, secret, or restricted data")
+        return super().stage(*args, **kwargs)
 
     def commit(self, proposal_id: str, **kwargs):
         proposal = self.get(proposal_id)
+        if str(proposal.get("data_classification") or "internal").strip().lower() != "internal":
+            raise PermissionError("generated actions cannot commit sensitive, secret, or restricted data")
         owner_id = str(kwargs.get("owner_id") or "owner")
         device_id = kwargs.get("device_id")
         session_id = kwargs.get("session_id")
@@ -35,6 +43,6 @@ class GovernedGeneratedActionService(GeneratedActionService):
                 raise PermissionError("generated action approval security epoch changed")
             if ticket.destination != str(call.get("destination") or "")[:1000]:
                 raise PermissionError("generated action approval destination changed")
-            if ticket.data_classification != str(proposal.get("data_classification") or "internal")[:40]:
+            if ticket.data_classification != "internal":
                 raise PermissionError("generated action approval data classification changed")
         return super().commit(proposal_id, **kwargs)
