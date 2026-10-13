@@ -6,10 +6,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
 
 from future_intelligence.capability_forge.governed_activation_v3 import GovernedCapabilityActivationServiceV3
 from future_intelligence.capability_forge.provenance import CapabilityPackageProvenance, CapabilityProvenanceError
 from future_intelligence.capability_forge.runtime_v3 import install_capability_forge_v3
+from server.capability_forge_v3_api import capability_forge_oauth_callback_router, capability_forge_v3_router
+from server.capability_forge_v3_ui import capability_forge_v3_ui_router
 from server.native_capability_auth import native_capability_auth_router
 
 
@@ -101,15 +104,19 @@ def test_v3_runtime_install_is_idempotent(tmp_path):
     assert runtime["capability_forge_activation"] is first_activation
 
 
-def test_native_capability_router_mounts_each_v3_path_once():
+def test_native_and_v3_routers_mount_each_v3_path_once():
     class Sessions:
         native_client_redirects = {}
     runtime = {
         "pwa_sessions": Sessions(),
         "device_registry": SimpleNamespace(),
     }
-    router = native_capability_auth_router(runtime)
-    paths = [route.path for route in router.routes]
+    app = FastAPI()
+    app.include_router(native_capability_auth_router(runtime))
+    app.include_router(capability_forge_v3_router(runtime))
+    app.include_router(capability_forge_oauth_callback_router(runtime))
+    app.include_router(capability_forge_v3_ui_router())
+    paths = [route.path for route in app.routes]
     readiness = "/iphone/api/owner/forge/v3/readiness"
     callback = "/iphone/capability-oauth/callback"
     assert paths.count(readiness) == 1
