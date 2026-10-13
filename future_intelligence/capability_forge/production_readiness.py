@@ -19,9 +19,9 @@ class CapabilityForgeProductionReadiness:
     """Fail-closed validation for externally configured production targets.
 
     This class deliberately does not create domains, OAuth clients, Android
-    fingerprints, Apple team IDs or provider credentials.  It proves that
-    operator-supplied runtime configuration is complete and internally
-    consistent before production capability sign-in can be enabled.
+    fingerprints, Apple team IDs or provider credentials. It proves that
+    operator-supplied runtime configuration and active generated-capability
+    lineage are complete before production capability sign-in can be enabled.
     """
 
     @staticmethod
@@ -100,7 +100,8 @@ class CapabilityForgeProductionReadiness:
                  android_asset_links: Any, apple_app_site_association: Any,
                  native_client_redirects: Any, provenance_available: bool,
                  provider_verification_available: bool, canary_available: bool,
-                 external_oauth_available: bool) -> CapabilityForgeReadiness:
+                 external_oauth_available: bool, active_packages_provenanced: bool = True,
+                 active_packages_broad_eligible: bool = True) -> CapabilityForgeReadiness:
         base_ok = self._https_url(str(public_base_url or ""), allow_path=False)
         callback_ok = self._https_url(str(oauth_redirect_uri or ""))
         same_origin = False
@@ -116,6 +117,8 @@ class CapabilityForgeProductionReadiness:
             "ios_universal_links": self._apple_valid(apple_app_site_association),
             "native_pkce_clients": self._native_redirects(native_client_redirects),
             "package_provenance": bool(provenance_available),
+            "active_packages_provenanced": bool(active_packages_provenanced),
+            "active_packages_broad_eligible": bool(active_packages_broad_eligible),
             "provider_verification": bool(provider_verification_available),
             "canary_rollout": bool(canary_available),
             "capability_oauth": bool(external_oauth_available),
@@ -128,6 +131,8 @@ class CapabilityForgeProductionReadiness:
             "ios_universal_links": "iOS Universal Link association is incomplete",
             "native_pkce_clients": "native PKCE redirect registrations are incomplete",
             "package_provenance": "generated package provenance is unavailable",
+            "active_packages_provenanced": "an active generated capability lacks V3 package provenance",
+            "active_packages_broad_eligible": "an active generated capability lacks broad-eligible staged rollout evidence",
             "provider_verification": "live provider verification is unavailable",
             "canary_rollout": "Forge canary rollout is unavailable",
             "capability_oauth": "capability-specific OAuth is unavailable",
