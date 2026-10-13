@@ -4,6 +4,13 @@ const MAX_ENTRIES=512;
 const MAX_TOTAL_BYTES=8*1024*1024;
 const MAX_RECORD_BYTES=64*1024;
 const DEFAULT_TTL_MS=7*24*60*60*1000;
+export const VISHNU_CONTINUATION_LIMITS=Object.freeze({
+  maxEntries:MAX_ENTRIES,
+  maxTotalBytes:MAX_TOTAL_BYTES,
+  maxRecordBytes:MAX_RECORD_BYTES,
+  maxTtlMs:DEFAULT_TTL_MS,
+  minTtlMs:60_000
+});
 const PROGRESS_FIELDS=new Set([
   'project_id','project_name','status','progress','task_id','task_title','task_status',
   'milestone_id','milestone_title','milestone_status','last_step','next_step','last_activity',
@@ -36,6 +43,27 @@ function progressProjection(payload){
 }
 function requestPromise(request){return new Promise((resolve,reject)=>{request.onsuccess=()=>resolve(request.result);request.onerror=()=>reject(request.error);});}
 function txDone(tx){return new Promise((resolve,reject)=>{tx.oncomplete=resolve;tx.onabort=()=>reject(tx.error||new Error('cache transaction aborted'));tx.onerror=()=>reject(tx.error);});}
+
+export function boundedContinuationTtl(ttlMs=DEFAULT_TTL_MS){
+  return Math.max(VISHNU_CONTINUATION_LIMITS.minTtlMs,Math.min(Number(ttlMs)||DEFAULT_TTL_MS,DEFAULT_TTL_MS));
+}
+
+export function continuationPrunePlan(rows,{now=Date.now(),maxEntries=MAX_ENTRIES,maxTotalBytes=MAX_TOTAL_BYTES}={}){
+  const expiredIds=new Set((rows||[]).filter(row=>Number(row.expiresAt||0)<=now).map(row=>String(row.globalId)));
+  const survivors=(rows||[])
+    .filter(row=>!expiredIds.has(String(row.globalId)))
+    .slice()
+    .sort((a,b)=>Number(a.lastAccess||0)-Number(b.lastAccess||0));
+  let total=survivors.reduce((sum,row)=>sum+Number(row.storedBytes||0),0);
+  const removeIds=[...expiredIds];
+  while(survivors.length>maxEntries||total>maxTotalBytes){
+    const row=survivors.shift();
+    if(!row)break;
+    removeIds.push(String(row.globalId));
+    total-=Number(row.storedBytes||0);
+  }
+  return {removeIds,remainingEntries:survivors.length,remainingBytes:Math.max(0,total)};
+}
 
 async function openDb(){
   return new Promise((resolve,reject)=>{
@@ -94,19 +122,8 @@ async function removeIds(db,ids){
   await txDone(tx);
 }
 async function prune(db){
-  const now=Date.now();
-  let rows=await allEntries(db);
-  await removeIds(db,rows.filter(row=>row.expiresAt<=now).map(row=>row.globalId));
-  rows=(await allEntries(db)).sort((a,b)=>a.lastAccess-b.lastAccess);
-  let total=rows.reduce((sum,row)=>sum+Number(row.storedBytes||0),0);
-  const remove=[];
-  while(rows.length-remove.length>MAX_ENTRIES||total>MAX_TOTAL_BYTES){
-    const row=rows[remove.length];
-    if(!row)break;
-    remove.push(row.globalId);
-    total-=Number(row.storedBytes||0);
-  }
-  await removeIds(db,remove);
+  const plan=continuationPrunePlan(await allEntries(db));
+  await removeIds(db,plan.removeIds);
 }
 
 export async function putVishnuContinuation(record,{ttlMs=DEFAULT_TTL_MS}={}){
@@ -130,7 +147,7 @@ export async function putVishnuContinuation(record,{ttlMs=DEFAULT_TTL_MS}={}){
   try{
     const encrypted=await encryptJson(db,safe);
     const now=Date.now();
-    const boundedTtl=Math.max(60_000,Math.min(Number(ttlMs)||DEFAULT_TTL_MS,DEFAULT_TTL_MS));
+    const boundedTtl=boundedContinuationTtl(ttlMs);
     const tx=db.transaction('entries','readwrite');
     tx.objectStore('entries').put({
       globalId,policy,version:safe.version,lastAccess:now,expiresAt:now+boundedTtl,

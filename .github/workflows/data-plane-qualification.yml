@@ -40,6 +40,7 @@ jobs:
           tests/test_data_plane_provider_bridge.py
           tests/test_data_plane_provider_bridges.py
           tests/test_data_plane_provider_contracts.py
+          tests/test_data_plane_pwa_cache_behavior.py
           tests/test_secure_data_transport.py
           tests/test_data_plane_production_readiness.py
           tests/test_data_plane_destructive_qualification.py
