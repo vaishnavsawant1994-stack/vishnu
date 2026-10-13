@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import secrets
 import time
 import uuid
@@ -16,7 +17,12 @@ from .manager import _json, _now
 
 
 class LeaseBoundByteTransport:
-    """Bounded raw-byte transport that cannot bypass the canonical data lease."""
+    """Bounded raw-byte transport that cannot bypass the canonical data lease.
+
+    A prepared frame is durable and replayable until explicitly acknowledged.
+    The committed byte cursor never advances merely because a frame was created,
+    so response loss/crash cannot silently skip bytes on retry.
+    """
 
     MAX_CHUNK_SIZE = 256 * 1024
     DEFAULT_CHUNK_SIZE = 64 * 1024
@@ -52,12 +58,28 @@ class LeaseBoundByteTransport:
                     state TEXT NOT NULL,
                     created_at TEXT NOT NULL,
                     completed_at TEXT,
+                    pending_sequence INTEGER,
+                    pending_plaintext_size INTEGER,
+                    pending_eof INTEGER,
+                    pending_frame_json TEXT,
+                    pending_created_at TEXT,
                     FOREIGN KEY(global_id) REFERENCES data_plane_items(global_id) ON DELETE CASCADE
                 );
                 CREATE INDEX IF NOT EXISTS idx_data_plane_transfer_item
                     ON data_plane_transfer_sessions(global_id,state);
                 """
             )
+            existing = {row['name'] for row in con.execute('PRAGMA table_info(data_plane_transfer_sessions)').fetchall()}
+            additions = {
+                'pending_sequence': 'INTEGER',
+                'pending_plaintext_size': 'INTEGER',
+                'pending_eof': 'INTEGER',
+                'pending_frame_json': 'TEXT',
+                'pending_created_at': 'TEXT',
+            }
+            for name, kind in additions.items():
+                if name not in existing:
+                    con.execute(f'ALTER TABLE data_plane_transfer_sessions ADD COLUMN {name} {kind}')
 
     def _emit(self, topic: str, **payload):
         if self.events is not None:
@@ -110,8 +132,9 @@ class LeaseBoundByteTransport:
                 """INSERT INTO data_plane_transfer_sessions(
                    session_id,lease_id,global_id,requester_device_id,source_device_id,object_version,
                    key_epoch,wrapped_key,wrap_nonce,chunk_size,next_sequence,bytes_transferred,
-                   expected_size,expected_digest,expires_at,state,created_at,completed_at
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,NULL)""",
+                   expected_size,expected_digest,expires_at,state,created_at,completed_at,
+                   pending_sequence,pending_plaintext_size,pending_eof,pending_frame_json,pending_created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,NULL,NULL,NULL,NULL,NULL,NULL)""",
                 (
                     session_id, lease["lease_id"], str(global_id), str(requester_device_id),
                     str(lease["source_device_id"]), version, int(wrapped["key_epoch"]),
@@ -130,11 +153,15 @@ class LeaseBoundByteTransport:
             "algorithm": "AES-256-GCM",
         }
 
-    def _row(self, session_id: str):
+    def _raw_row(self, session_id: str):
         with self.data_plane._con() as con:
             row = con.execute("SELECT * FROM data_plane_transfer_sessions WHERE session_id=?", (str(session_id),)).fetchone()
         if row is None:
             raise KeyError("byte-transfer session not found")
+        return row
+
+    def _row(self, session_id: str):
+        row = self._raw_row(session_id)
         if row["state"] != "open":
             raise RuntimeError(f"byte-transfer session is {row['state']}")
         if float(row["expires_at"]) <= time.time():
@@ -161,9 +188,24 @@ class LeaseBoundByteTransport:
             {"key_epoch": int(row["key_epoch"]), "wrapped_key": row["wrapped_key"], "wrap_nonce": row["wrap_nonce"]},
         )
 
+    @staticmethod
+    def _pending_frame(row) -> dict[str, Any] | None:
+        raw = row['pending_frame_json']
+        if not raw:
+            return None
+        value = json.loads(raw)
+        if not isinstance(value, dict):
+            raise RuntimeError('stored transfer frame is malformed')
+        return value
+
     def encrypt_chunk(self, session_id: str, sequence: int, plaintext: bytes, *, eof: bool = False) -> dict[str, Any]:
         row = self._row(session_id)
         sequence = int(sequence)
+        pending = self._pending_frame(row)
+        if pending is not None:
+            if sequence != int(row['pending_sequence']):
+                raise ValueError('previous transfer frame is still awaiting acknowledgment')
+            return pending
         if sequence != int(row["next_sequence"]):
             raise ValueError("unexpected transfer sequence")
         data = bytes(plaintext)
@@ -179,33 +221,65 @@ class LeaseBoundByteTransport:
 
         nonce = secrets.token_bytes(12)
         ciphertext = AESGCM(self._session_key(row)).encrypt(nonce, data, self._chunk_aad(row, sequence, bool(eof)))
-        digest = hashlib.sha256(data).hexdigest()
-        state = "complete" if eof else "open"
-        with self.data_plane._con() as con:
-            updated = con.execute(
-                """UPDATE data_plane_transfer_sessions SET next_sequence=?,bytes_transferred=?,state=?,completed_at=?
-                   WHERE session_id=? AND state='open' AND next_sequence=?""",
-                (sequence + 1, projected, state, _now() if eof else None, str(session_id), sequence),
-            )
-            if updated.rowcount != 1:
-                raise RuntimeError("transfer sequence changed concurrently")
         frame = {
             "protocol": "vishnu-byte-transfer-v1", "session_id": str(session_id),
             "global_id": row["global_id"], "object_version": int(row["object_version"]),
             "sequence": sequence, "offset": int(row["bytes_transferred"]), "plaintext_size": len(data),
-            "chunk_digest": digest, "nonce": _b64(nonce), "ciphertext": _b64(ciphertext),
+            "chunk_digest": hashlib.sha256(data).hexdigest(), "nonce": _b64(nonce), "ciphertext": _b64(ciphertext),
             "eof": bool(eof), "cache_policy": "no_store",
         }
-        self._emit("data_plane.transfer_chunk", session_id=str(session_id), global_id=row["global_id"],
+        with self.data_plane._con() as con:
+            updated = con.execute(
+                """UPDATE data_plane_transfer_sessions
+                   SET pending_sequence=?,pending_plaintext_size=?,pending_eof=?,pending_frame_json=?,pending_created_at=?
+                   WHERE session_id=? AND state='open' AND next_sequence=? AND pending_frame_json IS NULL""",
+                (sequence, len(data), int(bool(eof)), _json(frame), _now(), str(session_id), sequence),
+            )
+            if updated.rowcount != 1:
+                latest = self._raw_row(session_id)
+                replay = self._pending_frame(latest)
+                if replay is not None and int(latest['pending_sequence']) == sequence:
+                    return replay
+                raise RuntimeError("transfer sequence changed concurrently")
+        self._emit("data_plane.transfer_frame_prepared", session_id=str(session_id), global_id=row["global_id"],
                    sequence=sequence, plaintext_size=len(data), eof=bool(eof))
         return frame
 
+    def acknowledge_chunk(self, session_id: str, sequence: int) -> dict[str, Any]:
+        sequence = int(sequence)
+        raw = self._raw_row(session_id)
+        if raw['state'] == 'complete' and sequence == int(raw['next_sequence']) - 1:
+            return {'acknowledged': True, 'duplicate': True, 'state': 'complete', 'next_sequence': int(raw['next_sequence'])}
+        row = self._row(session_id)
+        if not row['pending_frame_json'] or row['pending_sequence'] is None:
+            if sequence < int(row['next_sequence']):
+                return {'acknowledged': True, 'duplicate': True, 'state': row['state'], 'next_sequence': int(row['next_sequence'])}
+            raise ValueError('no prepared transfer frame is awaiting acknowledgment')
+        if sequence != int(row['pending_sequence']):
+            raise ValueError('transfer acknowledgment sequence mismatch')
+        size = int(row['pending_plaintext_size'] or 0)
+        projected = int(row['bytes_transferred']) + size
+        eof = bool(row['pending_eof'])
+        new_state = 'complete' if eof else 'open'
+        with self.data_plane._con() as con:
+            updated = con.execute(
+                """UPDATE data_plane_transfer_sessions
+                   SET next_sequence=?,bytes_transferred=?,state=?,completed_at=?,
+                       pending_sequence=NULL,pending_plaintext_size=NULL,pending_eof=NULL,
+                       pending_frame_json=NULL,pending_created_at=NULL
+                   WHERE session_id=? AND state='open' AND pending_sequence=?""",
+                (sequence + 1, projected, new_state, _now() if eof else None, str(session_id), sequence),
+            )
+            if updated.rowcount != 1:
+                raise RuntimeError('transfer acknowledgment changed concurrently')
+        self._emit('data_plane.transfer_chunk_acknowledged', session_id=str(session_id), sequence=sequence,
+                   bytes_transferred=projected, complete=eof)
+        return {'acknowledged': True, 'duplicate': False, 'state': new_state,
+                'next_sequence': sequence + 1, 'bytes_transferred': projected}
+
     def decrypt_chunk(self, frame: Mapping[str, Any]) -> bytes:
         session_id = str(frame.get("session_id") or "")
-        with self.data_plane._con() as con:
-            row = con.execute("SELECT * FROM data_plane_transfer_sessions WHERE session_id=?", (session_id,)).fetchone()
-        if row is None:
-            raise KeyError("byte-transfer session not found")
+        row = self._raw_row(session_id)
         aad = _json({
             "protocol": "vishnu-byte-transfer-v1", "session_id": session_id,
             "global_id": row["global_id"], "object_version": int(row["object_version"]),
@@ -223,6 +297,9 @@ class LeaseBoundByteTransport:
 
     async def request_remote_chunk(self, session_id: str) -> dict[str, Any]:
         row = self._row(session_id)
+        pending = self._pending_frame(row)
+        if pending is not None:
+            return pending
         if self.gateway is None:
             raise RuntimeError("canonical DeviceGateway is required for remote byte access")
         command = DeviceCommand(
@@ -256,16 +333,15 @@ class LeaseBoundByteTransport:
         return True
 
     def status(self, session_id: str) -> dict[str, Any]:
-        with self.data_plane._con() as con:
-            row = con.execute("SELECT * FROM data_plane_transfer_sessions WHERE session_id=?", (str(session_id),)).fetchone()
-        if row is None:
-            raise KeyError("byte-transfer session not found")
+        row = self._raw_row(session_id)
         return {
             "session_id": row["session_id"], "lease_id": row["lease_id"], "global_id": row["global_id"],
             "requester_device_id": row["requester_device_id"], "source_device_id": row["source_device_id"],
             "object_version": int(row["object_version"]), "chunk_size": int(row["chunk_size"]),
             "next_sequence": int(row["next_sequence"]), "bytes_transferred": int(row["bytes_transferred"]),
             "expected_size": row["expected_size"], "expires_at": float(row["expires_at"]), "state": row["state"],
+            "pending_sequence": int(row['pending_sequence']) if row['pending_sequence'] is not None else None,
+            "pending_frame": bool(row['pending_frame_json']),
             "cache_policy": "no_store", "index_allowed": False, "backup_allowed": False,
             "raw_session_key_exposed": False,
         }

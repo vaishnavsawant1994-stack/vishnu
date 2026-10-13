@@ -121,7 +121,8 @@ final class CompanionTests: XCTestCase {
         XCTAssertEqual(events[0]["source_event_id"] as? String,sourceEventID)
         let payload=try XCTUnwrap(events[0]["payload"] as? [String:Any])
         XCTAssertEqual(payload["next_step"] as? String,"Continue on laptop")
-        XCTAssertTrue(try await store.acknowledge(sourceEventID:sourceEventID))
+        let acknowledged=try await store.acknowledge(sourceEventID:sourceEventID)
+        XCTAssertTrue(acknowledged)
         let after=await store.pending()
         XCTAssertEqual((after["events"] as? [[String:Any]])?.count,0)
     }

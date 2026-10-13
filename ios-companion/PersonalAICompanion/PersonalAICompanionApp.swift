@@ -40,6 +40,7 @@ struct PersonalAICompanionApp: App {
     init() {
         let companion=CompanionStore()
         MobileDataPlaneBridge.shared.install(on:companion.socket)
+        ManagedByteBridge.shared.install(on:companion.socket)
         _store=StateObject(wrappedValue:companion)
     }
 
