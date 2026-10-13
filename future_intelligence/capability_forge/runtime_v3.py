@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from integrations.discovery.generated_runtime_v3 import rehydrate_generated_capabilities_v3
@@ -30,6 +31,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         runtime["capability_forge_v3_installed"] = False
         return False
     root = Path(data_root)
+    readiness = CapabilityForgeProductionReadiness()
     provenance = CapabilityPackageProvenance(vault)
     rollout = ProductionCapabilityCanaryRollout(
         path=root / "capability-forge.sqlite3",
@@ -51,9 +53,15 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         rollout=rollout,
     )
     oauth_lifecycle = None
-    if runtime.get("oauth") is not None and runtime.get("oauth_providers") is not None:
+    oauth_manager = runtime.get("oauth")
+    if oauth_manager is not None and runtime.get("oauth_providers") is not None:
+        callback = str(os.getenv("VISHNU_CAPABILITY_OAUTH_REDIRECT_URI") or "").strip()
+        if callback:
+            if not readiness._https_url(callback):
+                raise ValueError("VISHNU_CAPABILITY_OAUTH_REDIRECT_URI must be a public HTTPS callback")
+            oauth_manager.allowed_redirects.add(callback)
         oauth_lifecycle = DurableCapabilityOAuthLifecycle(
-            oauth=runtime["oauth"],
+            oauth=oauth_manager,
             catalog=catalog,
             providers=dict(runtime.get("oauth_providers") or {}),
             events=runtime.get("events"),
@@ -71,7 +79,6 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         rollout=rollout,
         events=runtime.get("events"),
     )
-    readiness = CapabilityForgeProductionReadiness()
 
     def build_factory():
         executor = runtime.get("engineering_executor")
