@@ -164,15 +164,22 @@ def test_physical_sensorium_surface_has_no_side_effect_routes(tmp_path):
     client, _registry, _controller, _desktop, _gateway, _headers = _client(
         tmp_path, {"device:read", "device:admin", "memory:sensitive"}
     )
-    routes = []
-    for route in client.app.routes:
-        path = getattr(route, "path", "")
-        if not path.startswith("/sensorium/physical"):
-            continue
-        methods = set(getattr(route, "methods", set()) or set())
-        routes.append((path, methods))
+    routes = {
+        path: set(operation.keys())
+        for path, operation in client.app.openapi().get("paths", {}).items()
+        if path.startswith("/sensorium/physical")
+    }
 
     assert routes
-    assert all(methods <= {"GET", "HEAD"} for _path, methods in routes)
-    forbidden = {"click", "keyboard", "mouse", "type", "open_url", "launch_app", "flashlight", "notification"}
-    assert not any(fragment in path for path, _methods in routes for fragment in forbidden)
+    assert all(methods <= {"get"} for methods in routes.values())
+    forbidden = {
+        "click",
+        "keyboard",
+        "mouse",
+        "type",
+        "open_url",
+        "launch_app",
+        "flashlight",
+        "notification",
+    }
+    assert not any(fragment in path for path in routes for fragment in forbidden)
