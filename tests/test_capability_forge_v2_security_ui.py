@@ -109,6 +109,10 @@ def test_v2_forge_console_surfaces_actions_schedules_ui_and_improvements_without
     assert "/schedule" in JS
     assert "/improve" in JS
     assert "/ui`" in JS
+    assert "/invoke`" in JS
+    assert "data-generated-form" in JS
+    assert "data-generated-field" in JS
+    assert "Generated action staged. No world side effect was committed." in JS
     assert "Approvals Center" in JS
     assert "Forge cannot approve its own ticket" in JS
     assert "Sensitive, secret and restricted inputs are blocked" in JS
