@@ -10,6 +10,7 @@ class StoragePolicy(str, Enum):
     DEVICE_ONLY = 'device_only'
     SYNC_EVERYWHERE = 'sync_everywhere'
     PROGRESS_ONLY = 'progress_only'
+    ON_DEMAND = 'on_demand'
 
 
 class CloudMode(str, Enum):
