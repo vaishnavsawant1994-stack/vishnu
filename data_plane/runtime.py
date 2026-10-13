@@ -7,14 +7,7 @@ from .provider_bridge import reconcile_runtime_providers
 
 
 def get_data_plane(runtime: dict) -> UnifiedDataPlane | None:
-    """Return the single fail-closed data-plane authority for this Vishnu runtime.
-
-    Some legacy/control-test runtimes deliberately omit the canonical Settings
-    object and therefore have no durable data directory. In that reduced mode we
-    must not invent an arbitrary database location or crash unrelated APIs. The
-    data plane stays unavailable until a canonical Settings/data_dir exists.
-    """
-
+    """Return the single fail-closed data-plane authority for this Vishnu runtime."""
     current = runtime.get('data_plane')
     if current is not None:
         reconcile_runtime_providers(current, runtime)
@@ -31,6 +24,36 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane | None:
     runtime['data_plane'] = manager
     reconcile_runtime_providers(manager, runtime)
     return manager
+
+
+def ensure_data_plane_security(runtime: dict, manager: UnifiedDataPlane | None = None):
+    """Attach the secure byte/envelope layer only when the canonical vault exists."""
+    current = runtime.get('data_plane_byte_transport')
+    if current is not None:
+        return current
+    manager = manager or get_data_plane(runtime)
+    if manager is None:
+        return None
+    vault = runtime.get('vault')
+    if vault is None:
+        return None
+    from .byte_transport import LeaseBoundByteTransport
+    from .envelopes import EnvelopeKeyManager
+
+    envelopes = runtime.get('data_plane_envelopes')
+    if envelopes is None:
+        envelopes = EnvelopeKeyManager(manager, vault)
+        runtime['data_plane_envelopes'] = envelopes
+    transport = LeaseBoundByteTransport(
+        manager,
+        envelopes,
+        gateway=runtime.get('device_gateway'),
+        events=runtime.get('events'),
+    )
+    runtime['data_plane_byte_transport'] = transport
+    manager.envelopes = envelopes
+    manager.byte_transport = transport
+    return transport
 
 
 def ensure_data_plane_sync(runtime: dict, manager: UnifiedDataPlane | None = None):
@@ -53,6 +76,7 @@ def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane | None:
     manager = get_data_plane(runtime)
     if manager is None:
         return None
+    ensure_data_plane_security(runtime, manager)
     registry = runtime.get('tools')
     if registry is not None:
         from tools import data_access
