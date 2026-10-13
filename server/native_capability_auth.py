@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 from server.capability_forge_v3_api import capability_forge_oauth_callback_router, capability_forge_v3_router
+from server.capability_forge_v3_ui import capability_forge_v3_ui_router
 
 
 def native_capability_auth_router(runtime):
@@ -54,4 +55,5 @@ form.addEventListener('submit',async event=>{{event.preventDefault();const scope
     # the external provider callback is state/PKCE/security-epoch bound.
     router.include_router(capability_forge_v3_router(runtime))
     router.include_router(capability_forge_oauth_callback_router(runtime))
+    router.include_router(capability_forge_v3_ui_router())
     return router
