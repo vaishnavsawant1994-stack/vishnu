@@ -42,9 +42,10 @@ final class KeychainStore {
 @MainActor
 final class CompanionStore: ObservableObject {
     @Published var baseURL=KeychainStore.shared.get("base") ?? ""
-    @Published var pairingToken=""; @Published var pairingCode=""; @Published var status="Not paired"; @Published var connected=false; @Published var allowInsecureDevelopment=false; @Published var voiceActive=false
+    @Published var pairingToken=""; @Published var pairingCode=""; @Published var pairingTLSFingerprint=""; @Published var pairingServiceID=""
+    @Published var status="Not paired"; @Published var connected=false; @Published var allowInsecureDevelopment=false; @Published var voiceActive=false
     let socket=DeviceSocket(); let voice=VoiceSession(); private let keychain=KeychainStore.shared; private var observers:[NSObjectProtocol]=[]
-    var deviceID:String?{keychain.get("device")}; var bearer:String?{keychain.get("bearer")}
+    var deviceID:String?{keychain.get("device")}; var bearer:String?{keychain.get("bearer")}; var tlsPin:String?{keychain.get("tls_pin")}; var serviceID:String?{keychain.get("service_id")}
 
     init(){
         socket.onStatus={ [weak self] text,connected in Task{@MainActor in self?.status=text;self?.connected=connected} }
@@ -66,13 +67,35 @@ final class CompanionStore: ObservableObject {
             if scheme != "https" && !allowInsecureDevelopment{throw CompanionError.insecureTransport}
             var request=URLRequest(url:base.appending(path:"pair/confirm"));request.httpMethod="POST";request.setValue("application/json",forHTTPHeaderField:"Content-Type")
             request.httpBody=try JSONEncoder().encode(PairRequest(token:pairingToken,code:pairingCode,name:UIDevice.current.name,platform:"ios"))
-            let(data,response)=try await URLSession.shared.data(for:request);guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else{throw CompanionError.badResponse(String(data:data,encoding:.utf8) ?? "Pairing failed")}
-            let paired=try JSONDecoder().decode(PairResponse.self,from:data);try keychain.set(baseURL.trimmingCharacters(in:CharacterSet(charactersIn:"/")),for:"base");try keychain.set(paired.device.id,for:"device");try keychain.set(paired.bearer_token,for:"bearer")
-            status="Paired as \(paired.device.id)";pairingToken="";pairingCode="";connect()
+            let pin=pairingTLSFingerprint.trimmingCharacters(in:.whitespacesAndNewlines)
+            let transport=PinnedTransport.session(fingerprint:pin.isEmpty ? nil:pin)
+            let(data,response)=try await transport.0.data(for:request);guard let http=response as? HTTPURLResponse,(200..<300).contains(http.statusCode) else{throw CompanionError.badResponse(String(data:data,encoding:.utf8) ?? "Pairing failed")}
+            let paired=try JSONDecoder().decode(PairResponse.self,from:data)
+            try keychain.set(baseURL.trimmingCharacters(in:CharacterSet(charactersIn:"/")),for:"base");try keychain.set(paired.device.id,for:"device");try keychain.set(paired.bearer_token,for:"bearer")
+            if !pin.isEmpty && !pairingServiceID.isEmpty { try keychain.set(pin,for:"tls_pin");try keychain.set(pairingServiceID,for:"service_id") } else { keychain.remove("tls_pin");keychain.remove("service_id") }
+            status="Paired as \(paired.device.id)";pairingToken="";pairingCode="";pairingTLSFingerprint="";pairingServiceID="";connect()
         }catch{status="Pair failed: \(error.localizedDescription)"}
     }
 
-    func connect(){guard let base=keychain.get("base"),let device=deviceID,let bearer else{status="Pair first";return};socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:allowInsecureDevelopment)}
+    func connect(){
+        guard let base=keychain.get("base"),let device=deviceID,let bearer else{status="Pair first";return}
+        if let service=serviceID,let pin=tlsPin,!service.isEmpty,!pin.isEmpty {
+            status="Finding your Vishnu…"
+            VishnuBonjourDiscovery.discover(serviceID:service){[weak self] result in
+                guard let self else{return}
+                Task{@MainActor in
+                    switch result{
+                    case .success(let discovered):
+                        self.baseURL=discovered;try? self.keychain.set(discovered,for:"base");self.socket.connect(base:discovered,deviceID:device,bearer:bearer,allowInsecure:false,tlsPin:pin)
+                    case .failure:
+                        self.socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:self.allowInsecureDevelopment,tlsPin:pin)
+                    }
+                }
+            }
+            return
+        }
+        socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:allowInsecureDevelopment,tlsPin:nil)
+    }
     func disconnect(){socket.disconnect(reason:"User disconnected")}
     func forgetDevice(){socket.disconnect(reason:"Forgot device");keychain.clear();connected=false;status="Not paired"}
     func setVoiceActive(_ active:Bool)async{if active{do{try await voice.activate();voiceActive=true;status="Voice session ready"}catch{voiceActive=false;status="Voice unavailable: \(error.localizedDescription)"}}else{voice.deactivate();voiceActive=false}}
@@ -92,16 +115,19 @@ final class CompanionStore: ObservableObject {
 
 final class DeviceSocket:NSObject {
     var onStatus:((String,Bool)->Void)?;var commandHandler:(([String:Any])async->[String:Any])?
-    private var task:URLSessionWebSocketTask?;private var reconnectWork:DispatchWorkItem?;private var config:(String,String,String,Bool)?;private var intentionallyClosed=false
-    func connect(base:String,deviceID:String,bearer:String,allowInsecure:Bool){
-        disconnect(reason:"Reconnect");intentionallyClosed=false;config=(base,deviceID,bearer,allowInsecure);guard var components=URLComponents(string:base)else{onStatus?("Invalid server URL",false);return}
+    private var task:URLSessionWebSocketTask?;private var reconnectWork:DispatchWorkItem?;private var config:(String,String,String,Bool,String?)?;private var intentionallyClosed=false
+    private var ownedSession:URLSession?;private var pinnedDelegate:PinnedSessionDelegate?
+    func connect(base:String,deviceID:String,bearer:String,allowInsecure:Bool,tlsPin:String?=nil){
+        disconnect(reason:"Reconnect");intentionallyClosed=false;config=(base,deviceID,bearer,allowInsecure,tlsPin);guard var components=URLComponents(string:base)else{onStatus?("Invalid server URL",false);return}
         if components.scheme=="https"{components.scheme="wss"}else if components.scheme=="http" && allowInsecure{components.scheme="ws"}else{onStatus?("Secure WSS required",false);return}
         components.path=components.path.trimmingCharacters(in:CharacterSet(charactersIn:"/"))+"/device/ws/\(deviceID)";guard let url=components.url else{onStatus?("Invalid WebSocket URL",false);return}
-        var request=URLRequest(url:url);request.setValue("Bearer \(bearer)",forHTTPHeaderField:"Authorization");let task=URLSession.shared.webSocketTask(with:request);self.task=task;task.resume();onStatus?("Connecting…",false)
+        var request=URLRequest(url:url);request.setValue("Bearer \(bearer)",forHTTPHeaderField:"Authorization")
+        let transport=PinnedTransport.session(fingerprint:tlsPin);ownedSession=transport.0 === URLSession.shared ? nil:transport.0;pinnedDelegate=transport.1
+        let session=ownedSession ?? URLSession.shared;let task=session.webSocketTask(with:request);self.task=task;task.resume();onStatus?("Connecting…",false)
         Task{await send(["type":"hello","device_id":deviceID,"platform":"ios","capabilities":["device_info","battery","notification","open_url","launch_app","voice_status"]]);if let token=UserDefaults.standard.string(forKey:"personal_ai_apns_token"){await sendPushRegistration(token)};await receiveLoop()}
     }
-    func disconnect(reason:String){intentionallyClosed=true;reconnectWork?.cancel();task?.cancel(with:.normalClosure,reason:reason.data(using:.utf8));task=nil;onStatus?(reason,false)}
-    private func scheduleReconnect(){guard !intentionallyClosed,let c=config else{return};let work=DispatchWorkItem{[weak self]in self?.connect(base:c.0,deviceID:c.1,bearer:c.2,allowInsecure:c.3)};reconnectWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+3,execute:work)}
+    func disconnect(reason:String){intentionallyClosed=true;reconnectWork?.cancel();task?.cancel(with:.normalClosure,reason:reason.data(using:.utf8));task=nil;ownedSession?.invalidateAndCancel();ownedSession=nil;pinnedDelegate=nil;onStatus?(reason,false)}
+    private func scheduleReconnect(){guard !intentionallyClosed,let c=config else{return};let work=DispatchWorkItem{[weak self]in self?.connect(base:c.0,deviceID:c.1,bearer:c.2,allowInsecure:c.3,tlsPin:c.4)};reconnectWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+3,execute:work)}
     private func receiveLoop()async{while !intentionallyClosed,let task{do{let message=try await task.receive();let text:String;switch message{case .string(let s):text=s;case .data(let d):text=String(data:d,encoding:.utf8) ?? "" @unknown default:text=""};guard let data=text.data(using:.utf8),let obj=try JSONSerialization.jsonObject(with:data) as? [String:Any] else{continue};if obj["type"] as? String=="command",let handler=commandHandler{var result=await handler(obj);result["type"]="result";result["request_id"]=obj["request_id"];await send(result)}else if obj["type"] as? String=="ack"{onStatus?("Connected",true)}}catch{onStatus?("Disconnected: \(error.localizedDescription)",false);scheduleReconnect();return}}}
     func sendPushRegistration(_ token:String)async{await send(["type":"push_registration","provider":"apns","token":token,"environment":"development"])}
     func send(_ dict:[String:Any])async{guard let task,JSONSerialization.isValidJSONObject(dict),let data=try? JSONSerialization.data(withJSONObject:dict),let text=String(data:data,encoding:.utf8)else{return};do{try await task.send(.string(text))}catch{onStatus?("Send failed: \(error.localizedDescription)",false)}}
