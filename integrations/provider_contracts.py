@@ -130,7 +130,36 @@ def conformance_snapshot(provider: Any, *, kind: ProviderKind, provider_id: str 
     )
 
 
+def _ensure_capability_forge_v3(runtime: Mapping[str, Any]) -> None:
+    """Attach Forge V3 once at the fully assembled provider convergence point.
+
+    `attach_e9_runtime()` calls provider inventory only after the core runtime,
+    Future Intelligence, Engineering, ToolRegistry, OAuth manager and vault are
+    present. This makes the inventory boundary the first safe point to extend the
+    already-installed Forge V2 runtime without making web startup authoritative.
+    Failure is fail-closed and leaves V1/V2 intact.
+    """
+    if not isinstance(runtime, dict) or runtime.get("capability_forge_v3_install_attempted"):
+        return
+    runtime["capability_forge_v3_install_attempted"] = True
+    future = runtime.get("future_intelligence")
+    settings = runtime.get("settings")
+    if future is None or settings is None:
+        runtime["capability_forge_v3_installed"] = False
+        return
+    try:
+        from future_intelligence.capability_forge.runtime_v3 import install_capability_forge_v3
+        installed = bool(install_capability_forge_v3(future, runtime, data_root=settings.data_dir))
+        runtime["capability_forge_v3_installed"] = installed
+    except Exception as exc:
+        runtime["capability_forge_v3_installed"] = False
+        events = runtime.get("events")
+        if events is not None:
+            events.emit("capability_forge.v3_runtime_unavailable", error_type=type(exc).__name__)
+
+
 def runtime_provider_inventory(runtime: Mapping[str, Any]) -> list[dict[str, Any]]:
+    _ensure_capability_forge_v3(runtime)
     candidates = (
         ("models", ProviderKind.REASONING),
         ("tools", ProviderKind.TOOL),

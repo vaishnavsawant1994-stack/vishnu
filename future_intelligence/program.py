@@ -33,6 +33,7 @@ from future_intelligence.capability_forge import (
     build_capability_forge,
 )
 from future_intelligence.capability_forge.governed_activation_v2 import GovernedCapabilityActivationServiceV2
+from future_intelligence.capability_forge.runtime_v3 import install_capability_forge_v3
 from integrations.discovery.catalog_store import CapabilityCatalogStore
 from integrations.discovery.generated_runtime_v2 import rehydrate_generated_capabilities_v2
 from core.p10_approval_continuation import install as install_p10_turn_continuation
@@ -89,6 +90,7 @@ class FutureIntelligenceProgram:
         self.capability_forge_packages=CapabilityPackageBuilder()
         self.capability_catalog=None
         self.rehydrated_generated_capabilities=()
+        self.capability_forge_v3_ready=False
         data_root=root.parent
         state=getattr(runtime.get('integrations'),'state_store',None)
         tools=runtime.get('tools')
@@ -183,6 +185,20 @@ class FutureIntelligenceProgram:
                 if runtime.get('events') is not None:
                     runtime['events'].emit('capability_forge.runtime_unavailable',error_type=type(exc).__name__)
 
+        # V3 extends the successfully assembled V2 authorities in place. It
+        # performs provenance-aware restart rehydration before the runtime is
+        # returned to any surface, and replaces only the Forge activation/build
+        # adapters; ToolRegistry, approvals, catalog and Engineering remain
+        # canonical.
+        if self.capability_catalog is not None and self.capability_forge_activation is not None:
+            try:
+                self.capability_forge_v3_ready=bool(install_capability_forge_v3(self,runtime,data_root=data_root))
+            except Exception as exc:
+                self.capability_forge_v3_ready=False
+                if runtime.get('events') is not None:
+                    runtime['events'].emit('capability_forge.v3_runtime_unavailable',error_type=type(exc).__name__)
+        runtime['capability_forge_v3_ready']=self.capability_forge_v3_ready
+
         # One canonical raw->work.* translation layer on the existing EventBus.
         self.work_event_normalizer=None
         if runtime.get('events') is not None:
@@ -232,4 +248,4 @@ class FutureIntelligenceProgram:
 
     def status(self):
         p5_link=self.second_brain_life_graph.status(); p4_status=self.everyday.safe_status()
-        return {'p4':{'implemented':True,'activation':'safe-now','lifecycle':p4_status},'p5':{'implemented':True,'activation':'safe-now','second_brain_linked':p5_link['linked'],'linked_memory_nodes':p5_link['memory_nodes']},'p6':{'implemented':True,'activation':self.gate.decision('p6').reason,'operations':self.operations.safe_status()},'p7':{'implemented':True,'activation':self.gate.decision('p7').reason},'p8':{'implemented':True,'activation':self.gate.decision('p8').reason},'p9':{'implemented':True,'activation':self.gate.decision('p9').reason,'canonical_router':self.hybrid.authoritative},'p10':{'implemented':True,'activation':self.gate.decision('p10').reason,'autonomy':self.autonomy.status()}}
+        return {'p4':{'implemented':True,'activation':'safe-now','lifecycle':p4_status},'p5':{'implemented':True,'activation':'safe-now','second_brain_linked':p5_link['linked'],'linked_memory_nodes':p5_link['memory_nodes']},'p6':{'implemented':True,'activation':self.gate.decision('p6').reason,'operations':self.operations.safe_status()},'p7':{'implemented':True,'activation':self.gate.decision('p7').reason},'p8':{'implemented':True,'activation':self.gate.decision('p8').reason},'p9':{'implemented':True,'activation':self.gate.decision('p9').reason,'canonical_router':self.hybrid.authoritative},'p10':{'implemented':True,'activation':self.gate.decision('p10').reason,'autonomy':self.autonomy.status()},'capability_forge_v3':{'implemented':True,'ready':bool(self.capability_forge_v3_ready)}}
