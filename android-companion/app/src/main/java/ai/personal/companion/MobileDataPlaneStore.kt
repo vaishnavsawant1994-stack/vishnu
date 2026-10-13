@@ -91,7 +91,10 @@ class MobileDataPlaneStore(context: Context) : SQLiteOpenHelper(context, "vishnu
     return output
   }
 
-  private fun samePayload(left: JSONObject, right: JSONObject): Boolean = left.similar(right)
+  // Projection insertion order is fixed by PROGRESS_FIELDS, and persisted JSON
+  // is written from that projection. Avoid JSONObject.similar because it is not
+  // available consistently across every Android API level we qualify.
+  private fun samePayload(left: JSONObject, right: JSONObject): Boolean = left.toString() == right.toString()
 
   @Synchronized
   fun putProgress(globalId: String, entityType: String, version: Long, payload: JSONObject): JSONObject {
