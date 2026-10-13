@@ -3,17 +3,20 @@ from __future__ import annotations
 from fastapi import APIRouter, Header, HTTPException, Query
 
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
+from server.sensorium_native_api import sensorium_native_router
 
 
 def sensorium_physical_router(runtime) -> APIRouter:
-    """Read-only physical Sensorium surface.
+    """Read-only physical Sensorium plus native-emulator qualification routes.
 
-    Physical observations reuse existing desktop and companion primitives. This
-    router exposes no physical input, app-launch, notification, URL-opening, or
-    other side-effecting command. Those remain owned by the governed tool and
-    Computer Control runtimes.
+    Physical observations reuse existing desktop and companion primitives. The
+    returned root router also mounts the native emulator/simulator/VM evidence
+    surface. Neither surface exposes physical input, app-launch, notification,
+    URL-opening, arbitrary adb/simctl/shell, or other side-effecting authority.
+    Those remain owned by the governed tool and Computer Control runtimes.
     """
 
+    root = APIRouter()
     router = APIRouter(prefix="/sensorium/physical", tags=["sensorium"])
     registry = runtime.get("device_registry") if runtime else None
     gateway = runtime.get("device_gateway") if runtime else None
@@ -96,4 +99,6 @@ def sensorium_physical_router(runtime) -> APIRouter:
         except ValueError as exc:
             raise HTTPException(422, str(exc)) from exc
 
-    return router
+    root.include_router(router)
+    root.include_router(sensorium_native_router(runtime))
+    return root
