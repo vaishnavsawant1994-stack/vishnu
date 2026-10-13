@@ -6,7 +6,8 @@ from server.capability_forge_ui import CapabilityForgeUiMiddleware, JS, capabili
 
 
 def test_forge_ui_script_uses_only_governed_owner_endpoints_and_keeps_approval_separate():
-    assert "/owner/forge/summary" in JS
+    assert "API_BASE='/iphone/api/owner/forge'" in JS
+    assert "api('/summary')" in JS
     assert "/proposals" in JS
     assert "/activation/request" in JS
     assert "/activation/commit" in JS
@@ -15,7 +16,8 @@ def test_forge_ui_script_uses_only_governed_owner_endpoints_and_keeps_approval_s
     assert "/rollback/request" in JS
     assert "/rollback/commit" in JS
     assert "Approvals Center" in JS
-    assert "self-approve" not in JS.lower()
+    assert "Forge cannot approve its own ticket" in JS
+    assert "/approvals/" not in JS
     assert "queue_draft_work" in JS
     assert "production_activation" in JS
     assert "data-commit-disable" in JS
