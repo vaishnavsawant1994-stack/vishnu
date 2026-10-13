@@ -42,6 +42,26 @@ def _owner_guards(runtime):
     registry = runtime["device_registry"]
 
     def authenticate(device_id: str | None, token: str | None) -> str:
+        # The canonical session middleware supplies this context for both PWA
+        # sessions and scoped native Bearer sessions. Prefer it so Android/iOS/
+        # desktop capability managers use the same revocation and scope checks as
+        # the rest of Universal Capabilities.
+        context = current_trusted_request()
+        if context is not None:
+            trusted_device = str(getattr(context, "device_id", "") or "")
+            if not trusted_device or not registry.is_active(trusted_device):
+                raise HTTPException(401, "This trusted session or device was revoked")
+            if getattr(context, "auth_type", None) == "native":
+                scopes = getattr(context, "scopes", None)
+                if scopes is None or "device:admin" not in scopes:
+                    raise HTTPException(403, "This native session is not scoped to manage Capability Forge")
+            if hasattr(registry, "authorize") and not registry.authorize(trusted_device, "device:admin"):
+                raise HTTPException(403, "This device is not permitted to manage Capability Forge")
+            return trusted_device
+
+        # Compatibility for focused router tests and legacy browser requests that
+        # call the router without PwaSessionMiddleware. Real cloud requests reach
+        # the trusted-context branch above.
         if not device_id or not token or not registry.authenticate(device_id, token) or not registry.is_active(device_id):
             raise HTTPException(401, "This browser is not trusted or its session was revoked")
         if hasattr(registry, "authorize") and not registry.authorize(device_id, "device:admin"):
@@ -49,9 +69,9 @@ def _owner_guards(runtime):
         return device_id
 
     def fresh(device_id: str):
-        if runtime.get("pwa_sessions") is None:
-            return None
         context = current_trusted_request()
+        if runtime.get("pwa_sessions") is None:
+            return context
         ttl = int(getattr(runtime.get("agent_executor"), "reauth_ttl_seconds", 300) or 300)
         ttl = max(30, min(ttl, 900))
         stamp = getattr(context, "reauthenticated_at", None) if context is not None else None
