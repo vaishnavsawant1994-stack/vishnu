@@ -76,3 +76,60 @@ def test_verified_provider_can_be_recorded_when_policy_allows(tmp_path):
         provider_id='google_drive',
     )
     assert any(location['provider_id'] == 'google_drive' for location in item['locations'])
+
+
+def test_device_only_transition_refuses_to_forget_remote_bytes(tmp_path):
+    manager = PolicyEnforcedDataPlane(tmp_path / 'dp.sqlite3')
+    manager.update_settings(cloud_enabled=True, cloud_mode='hybrid')
+    manager.register_item('file:a', entity_type='file', primary_device_id='laptop', policy='sync_everywhere')
+    manager.configure_provider('google_drive', enabled=True, credential_ref='connector:drive', verified=True)
+    manager.mark_location(
+        'file:a',
+        location_type='provider',
+        location_id='drive-object',
+        provider_id='google_drive',
+        has_bytes=True,
+    )
+
+    with pytest.raises(PermissionError, match='durable bytes remain'):
+        manager.set_policy('file:a', 'device_only')
+
+    item = manager.item('file:a')
+    assert item['storage_policy'] == 'sync_everywhere'
+    assert any(location['has_bytes'] for location in item['locations'] if location['provider_id'] == 'google_drive')
+
+
+def test_device_only_transition_succeeds_after_verified_remote_removal(tmp_path):
+    manager = PolicyEnforcedDataPlane(tmp_path / 'dp.sqlite3')
+    manager.update_settings(cloud_enabled=True, cloud_mode='hybrid')
+    manager.register_item('file:a', entity_type='file', primary_device_id='laptop', policy='sync_everywhere')
+    manager.configure_provider('google_drive', enabled=True, credential_ref='connector:drive', verified=True)
+    manager.mark_location(
+        'file:a',
+        location_type='provider',
+        location_id='drive-object',
+        provider_id='google_drive',
+        has_bytes=True,
+    )
+    manager.mark_location(
+        'file:a',
+        location_type='provider',
+        location_id='drive-object',
+        provider_id='google_drive',
+        has_bytes=False,
+        available=True,
+    )
+
+    item = manager.set_policy('file:a', 'device_only')
+    assert item['storage_policy'] == 'device_only'
+    assert item['locations'] == [
+        {
+            'global_id': 'file:a',
+            'location_type': 'device',
+            'location_id': 'laptop',
+            'provider_id': 'local',
+            'has_bytes': True,
+            'available': True,
+            'updated_at': item['locations'][0]['updated_at'],
+        }
+    ]
