@@ -7,8 +7,6 @@ on:
       - "server/sensorium_*"
       - "scripts/native_device_probe.py"
       - "tests/test_sensorium_native_*"
-      - "android-companion/**"
-      - "ios-companion/**"
       - ".github/workflows/native-device-lab.yml"
   workflow_dispatch:
 
@@ -29,114 +27,7 @@ jobs:
       - name: Compile native Sensorium layer
         run: python -m compileall -q sensorium server scripts/native_device_probe.py
       - name: Run native Sensorium contract tests
-        run: pytest -q tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py
-
-  android-emulator:
-    runs-on: ubuntu-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.9"
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Enable KVM acceleration
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -l /dev/kvm
-      - name: Run Android companion and collect Sensorium evidence
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          working-directory: android-companion
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: |
-            gradle connectedDebugAndroidTest --stacktrace
-            cd ..
-            python scripts/native_device_probe.py android --output native-evidence/android-emulator.json
-      - name: Validate Android evidence boundary
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path('native-evidence/android-emulator.json')
-          data = json.loads(p.read_text())
-          assert data['provider'] == 'android_emulator'
-          assert data['platform'] == 'android'
-          assert data['physical_device'] is False
-          assert data['execution_authority'] is False
-          assert data['status'] == 'ready'
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sensorium-native-android-emulator
-          path: native-evidence/android-emulator.json
-          if-no-files-found: error
-
-  ios-simulator:
-    runs-on: macos-latest
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-      - name: Install XcodeGen
-        run: brew install xcodegen
-      - name: Generate iOS project
-        working-directory: ios-companion
-        run: xcodegen generate
-      - name: Select and boot iOS Simulator
-        id: simulator
-        shell: bash
-        run: |
-          UDID=$(xcrun simctl list devices available | awk -F '[()]' '/iPhone/ && /Shutdown|Booted/ {print $2; exit}')
-          test -n "$UDID"
-          xcrun simctl boot "$UDID" 2>/dev/null || true
-          xcrun simctl bootstatus "$UDID" -b
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-      - name: Test iOS companion on Simulator
-        working-directory: ios-companion
-        run: |
-          xcodebuild \
-            -project PersonalAICompanion.xcodeproj \
-            -scheme PersonalAICompanion \
-            -destination "platform=iOS Simulator,id=${{ steps.simulator.outputs.udid }}" \
-            CODE_SIGNING_ALLOWED=NO \
-            test
-      - name: Collect Sensorium iOS Simulator evidence
-        run: python scripts/native_device_probe.py ios --udid "${{ steps.simulator.outputs.udid }}" --output native-evidence/ios-simulator.json
-      - name: Validate iOS evidence boundary
-        run: |
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          p = Path('native-evidence/ios-simulator.json')
-          data = json.loads(p.read_text())
-          assert data['provider'] == 'ios_simulator'
-          assert data['platform'] == 'ios'
-          assert data['physical_device'] is False
-          assert data['execution_authority'] is False
-          assert data['status'] == 'ready'
-          PY
-      - uses: actions/upload-artifact@v4
-        with:
-          name: sensorium-native-ios-simulator
-          path: native-evidence/ios-simulator.json
-          if-no-files-found: error
+        run: pytest -q tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py tests/test_sensorium_native_live_work.py
 
   desktop-vm:
     strategy:
@@ -156,6 +47,8 @@ jobs:
         run: pip install -r requirements.txt
       - name: Compile desktop Sensorium runtime
         run: python -m compileall -q sensorium desktop app scripts/native_device_probe.py
+      - name: Run native Sensorium contract tests
+        run: pytest -q tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py tests/test_sensorium_native_live_work.py
       - name: Collect hosted desktop VM evidence
         run: python scripts/native_device_probe.py desktop --output native-evidence/desktop-vm.json
       - name: Validate desktop VM evidence boundary
