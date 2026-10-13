@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import sqlite3
 import time
 from pathlib import Path
@@ -8,7 +9,7 @@ from .oauth_lifecycle import CapabilityOAuthLifecycle
 
 
 class DurableCapabilityOAuthLifecycle(CapabilityOAuthLifecycle):
-    """Adds durable state->capability routing for a single OAuth callback URL."""
+    """Adds durable state->capability routing for the single V3 OAuth callback."""
 
     def __init__(self, *args, path: str | Path, **kwargs):
         super().__init__(*args, **kwargs)
@@ -35,6 +36,13 @@ class DurableCapabilityOAuthLifecycle(CapabilityOAuthLifecycle):
         return con
 
     def begin(self, capability_id: str, provider_id: str, **kwargs):
+        configured = str(os.getenv("VISHNU_CAPABILITY_OAUTH_REDIRECT_URI") or "").strip()
+        requested = str(kwargs.get("redirect_uri") or "").strip()
+        if not configured:
+            raise PermissionError("Capability OAuth callback URI is not configured")
+        if requested and requested != configured:
+            raise PermissionError("Capability OAuth redirect must match the configured V3 callback")
+        kwargs["redirect_uri"] = configured
         result = super().begin(capability_id, provider_id, **kwargs)
         now = time.time()
         expires = now + max(60, min(int(result.get("expires_in") or 600), 1800))
