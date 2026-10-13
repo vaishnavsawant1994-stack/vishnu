@@ -27,16 +27,25 @@ def sensorium_native_router(runtime) -> APIRouter:
 
     The API stores and reports read-only evidence. It intentionally exposes no
     adb, simctl, shell, VM-control, keyboard/mouse, app-launch or other command
-    execution endpoint.
+    execution endpoint. Probe collection happens outside the server through
+    fixed, bounded qualification adapters; this API accepts evidence only.
     """
 
     router = APIRouter(prefix="/sensorium/native", tags=["sensorium-native"])
     registry = runtime.get("device_registry") if runtime else None
-    lab = runtime.get("sensorium_native_lab") if runtime else None
     if registry is None:
         raise RuntimeError("device_registry is required for native Sensorium")
-    if lab is None or not isinstance(lab, NativeDeviceLab):
-        raise RuntimeError("sensorium_native_lab is required for native Sensorium")
+
+    lab = runtime.get("sensorium_native_lab") if runtime else None
+    if lab is None:
+        settings = runtime.get("settings") if runtime else None
+        data_dir = getattr(settings, "data_dir", None)
+        if data_dir is None:
+            raise RuntimeError("settings.data_dir is required for native Sensorium")
+        lab = NativeDeviceLab(data_dir / "sensorium-native.sqlite3", event_bus=runtime.get("events"))
+        runtime["sensorium_native_lab"] = lab
+    if not isinstance(lab, NativeDeviceLab):
+        raise RuntimeError("sensorium_native_lab is invalid")
 
     def controller(authorization: str | None, device_id: str | None, scope: str) -> str:
         resolved = str(device_id or "").strip()
