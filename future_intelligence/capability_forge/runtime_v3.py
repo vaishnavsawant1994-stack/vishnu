@@ -91,6 +91,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
     def invocation_observer(capability, _context):
         capability_id = str(capability.get("id") or "")
         version = str(capability.get("version") or "")
+
         def observe(*, ok, duration_ms, error_code=None):
             lifecycle.record_invocation(
                 capability_id=capability_id,
@@ -99,6 +100,26 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
                 duration_ms=float(duration_ms),
                 error_code=error_code,
             )
+            # V3 packages have a frozen limited-canary baseline. Re-evaluate
+            # health after each active invocation; insufficient evidence is a
+            # no-op, while a sufficiently proven regression can only REMOVE
+            # authority by quarantining the capability.
+            current = catalog.get(capability_id)
+            if not current or current.get("state") != "active" or not current.get("provenance_required"):
+                return
+            try:
+                rollout.active_health_from_rollout(capability_id, version)
+            except (KeyError, PermissionError):
+                return
+            except Exception as exc:
+                if runtime.get("events") is not None:
+                    runtime["events"].emit(
+                        "capability_forge.health_evaluation_failed",
+                        capability_id=capability_id,
+                        version=version,
+                        error_type=type(exc).__name__,
+                    )
+
         return observe
 
     rehydrated = tuple(rehydrate_generated_capabilities_v3(
@@ -136,6 +157,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
             canary=True,
             provider_verification=True,
             capability_oauth=oauth_lifecycle is not None,
+            automatic_health_quarantine=True,
             production_activation_authority=False,
             rehydrated=list(rehydrated),
         )
