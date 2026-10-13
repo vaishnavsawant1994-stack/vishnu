@@ -4,12 +4,11 @@ from typing import Any
 
 
 class CapabilityImprovementService:
-    """Convert degraded generated-capability evidence into a new governed proposal.
+    """Convert degraded generated-capability evidence into governed proposals.
 
-    This service has proposal authority only. It cannot build, approve, activate,
-    disable, roll back, merge or deploy anything. Existing Forge deduplication,
-    Canonical Work, Engineering qualification and owner activation remain the
-    only path from an improvement proposal to executable capability code.
+    The service can observe health events and create a deduplicated Forge gap/spec/
+    plan automatically, but it has no build, approval, activation, disable,
+    rollback, merge or deploy authority.
     """
 
     def __init__(self, forge, evaluator, catalog, *, events=None) -> None:
@@ -17,12 +16,38 @@ class CapabilityImprovementService:
         self.evaluator = evaluator
         self.catalog = catalog
         self.events = events
+        self._evaluating = False
+        self._unsubscribe = None
+        if events is not None and hasattr(events, "subscribe"):
+            self._unsubscribe = events.subscribe("capability_forge.health_evaluated", self._on_health_event)
+
+    def detach(self) -> None:
+        if callable(self._unsubscribe):
+            self._unsubscribe()
+        self._unsubscribe = None
+
+    def _on_health_event(self, event: dict[str, Any]) -> None:
+        if self._evaluating:
+            return
+        if not (event.get("rollback_recommended") or str(event.get("state") or "") == "degraded"):
+            return
+        capability_id = str(event.get("capability_id") or "")
+        if not capability_id:
+            return
+        try:
+            self.propose(capability_id)
+        except (KeyError, ValueError, PermissionError, RuntimeError):
+            return
 
     def propose(self, capability_id: str, *, force: bool = False) -> dict[str, Any] | None:
         capability = self.catalog.get(str(capability_id))
         if not capability or capability.get("type") != "generated_capability":
             raise KeyError("generated capability not found")
-        health = self.evaluator.evaluate(str(capability_id))
+        self._evaluating = True
+        try:
+            health = self.evaluator.evaluate(str(capability_id))
+        finally:
+            self._evaluating = False
         should_propose = bool(force or health.rollback_recommended or health.state == "degraded")
         if not should_propose:
             return None
@@ -82,11 +107,8 @@ class CapabilityImprovementService:
         if self.events is not None:
             self.events.emit(
                 "capability_forge.improvement_proposed",
-                capability_id=str(capability_id),
-                gap_id=gap.id,
-                spec_id=spec.id,
-                plan_id=plan.id,
-                health_state=health.state,
+                capability_id=str(capability_id), gap_id=gap.id, spec_id=spec.id, plan_id=plan.id,
+                health_state=health.state, activation=False,
             )
         return {
             "health": health.to_dict(),
