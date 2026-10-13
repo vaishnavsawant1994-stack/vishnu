@@ -116,7 +116,7 @@ def test_native_and_v3_routers_mount_each_v3_path_once():
     app.include_router(capability_forge_v3_router(runtime))
     app.include_router(capability_forge_oauth_callback_router(runtime))
     app.include_router(capability_forge_v3_ui_router())
-    paths = [route.path for route in app.routes]
+    paths = [path for route in app.routes if (path := getattr(route, "path", None))]
     readiness = "/iphone/api/owner/forge/v3/readiness"
     callback = "/iphone/capability-oauth/callback"
     assert paths.count(readiness) == 1
