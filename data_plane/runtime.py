@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from .enforced import PolicyEnforcedDataPlane
 from .manager import UnifiedDataPlane
+from .provider_bridge import reconcile_runtime_providers
 
 
 def get_data_plane(runtime: dict) -> UnifiedDataPlane:
@@ -9,6 +10,7 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane:
 
     current = runtime.get('data_plane')
     if current is not None:
+        reconcile_runtime_providers(current, runtime)
         return current
     settings = runtime['settings']
     manager = PolicyEnforcedDataPlane(
@@ -18,6 +20,7 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane:
         events=runtime.get('events'),
     )
     runtime['data_plane'] = manager
+    reconcile_runtime_providers(manager, runtime)
     return manager
 
 
