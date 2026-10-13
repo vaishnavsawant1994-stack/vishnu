@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import deque
 from datetime import datetime, timezone
 from threading import RLock
-from typing import Any
+from typing import Any, Mapping
 
 
 class SensoriumLiveWorkProjection:
@@ -117,3 +117,71 @@ class SensoriumLiveWorkProjection:
             except Exception:
                 pass
         self._unsubscribe = []
+
+
+_SENSORIUM_LIVING_STATES: dict[str, tuple[str, float, str]] = {
+    "watching": ("watching", 0.4, "Vishnu is observing authorized device context."),
+    "thinking": ("thinking", 0.5, "Vishnu is preparing the next governed computer action."),
+    "working": ("working", 0.68, "Vishnu is carrying out governed computer work."),
+    "waiting_for_approval": ("waiting_approval", 0.95, "Vishnu is waiting for owner approval."),
+    "verifying": ("verifying", 0.72, "Vishnu is verifying the latest governed computer action."),
+    "blocked": ("blocked", 0.8, "Governed computer work needs attention before it can continue."),
+    "completed": ("completed", 0.2, "Governed computer work is complete."),
+}
+_CANONICAL_IDLE_STATES = {"", "idle", "completed"}
+
+
+def overlay_sensorium_living(
+    canonical_living: Mapping[str, Any] | None,
+    sensorium_snapshot: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """Overlay safe Sensorium presence onto an idle/terminal living projection.
+
+    Canonical Project Work always wins while active, blocked, recovering,
+    verifying, reviewing, replanning, or waiting for approval. Sensorium may
+    provide the global living state only when canonical work is idle/terminal.
+    No Sensorium event, metadata, activity text, sensor payload, or model
+    reasoning is copied into this projection.
+    """
+
+    living = dict(canonical_living or {})
+    living.setdefault("authority", "presentation_only")
+    living.setdefault("source", "canonical_work_attention")
+    living["sensorium_overlay"] = False
+
+    if not sensorium_snapshot:
+        return living
+    if sensorium_snapshot.get("authority") != SensoriumLiveWorkProjection.AUTHORITY:
+        return living
+    if sensorium_snapshot.get("presentation_only") is not True:
+        return living
+    if sensorium_snapshot.get("execution_authority") is not False:
+        return living
+    if sensorium_snapshot.get("reasoning_exposed") is not False:
+        return living
+    if sensorium_snapshot.get("raw_sensor_content_exposed") is not False:
+        return living
+
+    canonical_state = str(living.get("state") or "").strip().lower()
+    if canonical_state not in _CANONICAL_IDLE_STATES:
+        return living
+
+    sensorium_state = str(sensorium_snapshot.get("state") or "").strip().lower()
+    mapped = _SENSORIUM_LIVING_STATES.get(sensorium_state)
+    if mapped is None or sensorium_state in {"", "completed"}:
+        return living
+
+    state, intensity, activity = mapped
+    living.update(
+        {
+            "authority": "presentation_only",
+            "source": "canonical_work_attention+sensorium",
+            "state": state,
+            "activity": activity,
+            "intensity": intensity,
+            "sensorium_overlay": True,
+            "sensorium_state": sensorium_state,
+            "sensorium_needs_attention": sensorium_state in {"waiting_for_approval", "blocked"},
+        }
+    )
+    return living

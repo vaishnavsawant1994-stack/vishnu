@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from future_intelligence.work_orchestration.living_projection import LivingAgentWorkProjection
 from future_intelligence.work_orchestration.review_attention import ReviewAwareWorkAttentionService
 from security.request_context import current_trusted_request
+from sensorium.live_work import SensoriumLiveWorkProjection, overlay_sensorium_living
 
 
 def work_attention_router(runtime: dict, store) -> APIRouter:
@@ -12,6 +13,10 @@ def work_attention_router(runtime: dict, store) -> APIRouter:
     router = APIRouter(prefix="/iphone/api/work/attention", tags=["work-attention"])
     service = ReviewAwareWorkAttentionService(runtime, store)
     registry = runtime["device_registry"]
+    sensorium_live_work = runtime.get("sensorium_live_work")
+    if sensorium_live_work is None and runtime.get("events") is not None:
+        sensorium_live_work = SensoriumLiveWorkProjection(runtime["events"])
+        runtime["sensorium_live_work"] = sensorium_live_work
 
     def require_owner():
         context = current_trusted_request()
@@ -34,7 +39,9 @@ def work_attention_router(runtime: dict, store) -> APIRouter:
                 limit=limit,
             )
             work_snapshot = service.work_service.summary(work_order_limit=500)
-            snapshot["living"] = LivingAgentWorkProjection.project(work_snapshot, snapshot)
+            canonical_living = LivingAgentWorkProjection.project(work_snapshot, snapshot)
+            sensorium_snapshot = sensorium_live_work.snapshot(limit=1) if sensorium_live_work is not None else None
+            snapshot["living"] = overlay_sensorium_living(canonical_living, sensorium_snapshot)
             return snapshot
         except RuntimeError as exc:
             raise HTTPException(409, str(exc)) from exc
