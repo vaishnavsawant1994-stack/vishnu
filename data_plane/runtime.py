@@ -18,3 +18,12 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane:
     )
     runtime['data_plane'] = manager
     return manager
+
+
+def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane:
+    manager = get_data_plane(runtime)
+    registry = runtime.get('tools')
+    if registry is not None:
+        from tools import data_access
+        data_access.register(registry, manager)
+    return manager
