@@ -3,6 +3,9 @@ on:
   pull_request:
     paths:
       - "android-companion/**"
+      - "sensorium/native_lab.py"
+      - "scripts/native_device_probe.py"
+      - "tests/test_sensorium_native_*"
       - ".github/workflows/android-instrumentation.yml"
   workflow_dispatch:
 jobs:
@@ -10,6 +13,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
@@ -29,7 +37,29 @@ jobs:
           arch: x86_64
           working-directory: android-companion
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics
-          script: gradle connectedDebugAndroidTest --stacktrace --info
+          script: |
+            gradle connectedDebugAndroidTest --stacktrace --info
+            cd ..
+            python scripts/native_device_probe.py android --output native-evidence/android-emulator.json
+      - name: Validate Android Sensorium evidence boundary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('native-evidence/android-emulator.json').read_text())
+          assert data['provider'] == 'android_emulator'
+          assert data['platform'] == 'android'
+          assert data['status'] == 'ready'
+          assert data['physical_device'] is False
+          assert data['execution_authority'] is False
+          assert data['metadata']['qemu'] is True
+          PY
+      - name: Upload Android Sensorium evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-native-android-emulator
+          path: native-evidence/android-emulator.json
+          if-no-files-found: error
       - name: Capture emulator diagnostics on failure
         if: failure()
         run: |
