@@ -56,6 +56,63 @@ def ensure_data_plane_security(runtime: dict, manager: UnifiedDataPlane | None =
     return transport
 
 
+def ensure_data_plane_provider_store(runtime: dict, manager: UnifiedDataPlane | None = None):
+    """Attach ciphertext-only provider storage using the existing vault/envelope authority.
+
+    This creates no provider connections by itself and performs no network I/O.
+    A provider remains unusable until its canonical data-plane config is enabled
+    and verified. Raw credentials are resolved only at operation time.
+    """
+    current = runtime.get('data_plane_provider_store')
+    if current is not None:
+        return current
+    manager = manager or get_data_plane(runtime)
+    if manager is None or runtime.get('vault') is None:
+        return None
+    if runtime.get('data_plane_envelopes') is None:
+        ensure_data_plane_security(runtime, manager)
+    envelopes = runtime.get('data_plane_envelopes')
+    if envelopes is None:
+        return None
+    from .provider_adapters import EncryptedProviderStore, ProviderAdapterFactory
+
+    factory = ProviderAdapterFactory(manager, runtime['vault'])
+    store = EncryptedProviderStore(manager, envelopes, factory)
+    runtime['data_plane_provider_factory'] = factory
+    runtime['data_plane_provider_store'] = store
+    manager.provider_store = store
+    return store
+
+
+def build_data_plane_relay(runtime: dict, *, local_device_id: str):
+    """Build the optional opaque relay only from an explicitly verified Vishnu Cloud config.
+
+    The relay is not started automatically and never becomes device or sync
+    authority. Callers must opt in with a concrete local trusted-device id.
+    """
+    manager = get_data_plane(runtime)
+    vault = runtime.get('vault')
+    if manager is None or vault is None:
+        return None
+    status = manager.provider_status('vishnu_cloud')
+    if not status.get('available'):
+        return None
+    config = status.get('config') or {}
+    endpoint = str(config.get('relay_endpoint') or config.get('endpoint') or '').strip()
+    credential_ref = str(status.get('credential_ref') or '').strip()
+    if not endpoint or not credential_ref:
+        return None
+    from .relay import OpaqueVishnuRelayClient
+
+    return OpaqueVishnuRelayClient(
+        manager,
+        vault,
+        endpoint=endpoint,
+        credential_ref=credential_ref,
+        local_device_id=str(local_device_id),
+    )
+
+
 def ensure_data_plane_sync(runtime: dict, manager: UnifiedDataPlane | None = None):
     current = runtime.get('data_plane_sync')
     if current is not None:
@@ -77,6 +134,7 @@ def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane | None:
     if manager is None:
         return None
     ensure_data_plane_security(runtime, manager)
+    ensure_data_plane_provider_store(runtime, manager)
     registry = runtime.get('tools')
     if registry is not None:
         from tools import data_access
