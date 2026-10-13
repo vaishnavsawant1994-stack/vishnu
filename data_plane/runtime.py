@@ -1,16 +1,17 @@
 from __future__ import annotations
 
+from .enforced import PolicyEnforcedDataPlane
 from .manager import UnifiedDataPlane
 
 
 def get_data_plane(runtime: dict) -> UnifiedDataPlane:
-    """Return the single data-plane authority for this Vishnu runtime."""
+    """Return the single fail-closed data-plane authority for this Vishnu runtime."""
 
     current = runtime.get('data_plane')
     if current is not None:
         return current
     settings = runtime['settings']
-    manager = UnifiedDataPlane(
+    manager = PolicyEnforcedDataPlane(
         settings.data_dir / 'data-plane.sqlite3',
         device_registry=runtime.get('device_registry'),
         device_gateway=runtime.get('device_gateway'),
