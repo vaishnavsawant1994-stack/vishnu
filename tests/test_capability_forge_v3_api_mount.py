@@ -19,7 +19,7 @@ def test_capability_forge_v3_routes_are_mounted_once_beside_native_capability_bo
     app.include_router(capability_forge_v3_router(runtime))
     app.include_router(capability_forge_oauth_callback_router(runtime))
     app.include_router(capability_forge_v3_ui_router())
-    paths = [route.path for route in app.routes]
+    paths = [path for route in app.routes if (path := getattr(route, "path", None))]
     assert paths.count("/iphone/api/owner/forge/v3/readiness") == 1
     assert paths.count("/iphone/api/owner/forge/v3/oauth/providers") == 1
     assert paths.count("/iphone/api/owner/forge/v3/providers/verify") == 1
