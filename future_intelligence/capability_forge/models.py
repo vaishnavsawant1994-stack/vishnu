@@ -25,6 +25,8 @@ class GapStatus(str, Enum):
     OPEN = "open"
     SPECIFIED = "specified"
     DISMISSED = "dismissed"
+    REJECTED = "rejected"
+    ACTIVE = "active"
 
 
 class CapabilityRoute(str, Enum):
