@@ -68,6 +68,26 @@ class VirtualDeviceLab:
         if self._event_bus is not None:
             self._event_bus.emit(event, **payload)
 
+    @staticmethod
+    def _sensor_event_projection(event: SensorEvent) -> dict[str, Any]:
+        """Return event metadata safe for shared audit/event projections.
+
+        Raw screen, clipboard, microphone, camera, location and other sensor
+        payloads remain in the bounded lab and are only returned by explicit
+        authorized reads. Shared EventBus listeners never receive the payload.
+        """
+
+        return {
+            "event_id": event.event_id,
+            "device_id": event.device_id,
+            "kind": event.kind.value,
+            "timestamp": event.timestamp.isoformat(),
+            "data_classification": event.data_classification.value,
+            "source": event.source,
+            "correlation_id": event.correlation_id,
+            "payload_projected": False,
+        }
+
     def register_device(self, device: VirtualDevice, *, controller_device_id: str | None = None) -> dict[str, Any]:
         self._authorize(controller_device_id, self.ADMIN_SCOPE)
         with self._lock:
@@ -152,7 +172,7 @@ class VirtualDeviceLab:
         self._emit(
             "sensorium.sensor_event.injected",
             controller_device_id=controller_device_id,
-            sensor_event=snapshot,
+            sensor_event=self._sensor_event_projection(event),
         )
         return snapshot
 

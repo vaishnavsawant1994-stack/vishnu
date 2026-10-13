@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from server.agent_workforce_api import agent_workforce_router
+from server.sensorium_api import sensorium_router
 
 
 class ProviderCredentialBody(BaseModel):
@@ -284,4 +285,5 @@ def model_provider_router(runtime) -> APIRouter:
     # desktop control server. Hosted/PWA registration uses the same router with
     # its trusted owner-session boundary rather than weakening this one.
     router.include_router(agent_workforce_router(runtime, prefix='/agents', require_loopback=True))
+    router.include_router(sensorium_router(runtime))
     return router
