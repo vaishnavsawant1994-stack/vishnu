@@ -220,8 +220,20 @@ class FirstRunCoordinator:
         owner_access = runtime['owner_access']
         owner_access.set_password(str(password or ''))
         codes = owner_access.regenerate_recovery_codes()
-        self._mark_step('security', stage='privacy', recovery_code_count=len(codes))
+        state = self._read_state()
+        completed = [item for item in state.get('completed_steps', []) if item != 'recovery_saved']
+        state['completed_steps'] = list(dict.fromkeys([*completed, 'security']))
+        state['stage'] = 'recovery'
+        state['recovery_code_count'] = len(codes)
+        self._write_state(state)
         return codes
+
+    def confirm_recovery_codes_saved(self) -> dict:
+        runtime = self._runtime_required()
+        owner_access = runtime['owner_access']
+        if not owner_access.password_configured() or owner_access.recovery_codes_remaining() <= 0:
+            raise RuntimeError('Owner security and recovery codes must be created first')
+        return self._mark_step('recovery_saved', stage='privacy')
 
     def configure_preferences(
         self,
@@ -231,6 +243,9 @@ class FirstRunCoordinator:
         memory_enabled: bool = True,
     ) -> dict:
         runtime = self._runtime_required()
+        state = self._read_state()
+        if 'recovery_saved' not in state.get('completed_steps', []):
+            raise RuntimeError('Save and confirm recovery codes before continuing')
         privacy = str(privacy_mode or '').strip()
         autonomy = str(autonomy_mode or '').strip()
         if privacy not in self.PRIVACY_MODES:
@@ -271,11 +286,11 @@ class FirstRunCoordinator:
                 raise ValueError('Provider model is required')
             result = service.connect_owner_provider(provider, key, selected_model)
             service.set_default_provider(provider)
-        self._mark_step('model', stage='recovery')
+        self._mark_step('model', stage='ready')
         return result if isinstance(result, dict) else {'provider': provider, 'configured': True}
 
     def skip_model_configuration(self) -> dict:
-        return self._mark_step('model_skipped', stage='recovery')
+        return self._mark_step('model_skipped', stage='ready')
 
     def schedule_restore(self, archive: str | Path) -> dict:
         runtime = self._runtime_required()
@@ -335,12 +350,19 @@ class FirstRunCoordinator:
         runtime = self._runtime_required()
         preferences = runtime['preferences']
         owner_access = runtime['owner_access']
+        state = self._read_state()
+        completed = set(state.get('completed_steps', []))
         if not str(preferences.get('preferred_name', '') or '').strip():
             raise RuntimeError('Owner profile is incomplete')
         if not owner_access.password_configured():
             raise RuntimeError('Owner security is incomplete')
+        if 'recovery_saved' not in completed:
+            raise RuntimeError('Recovery codes must be saved before setup can complete')
+        if 'privacy' not in completed:
+            raise RuntimeError('Privacy and autonomy preferences are incomplete')
+        if not ({'model', 'model_skipped'} & completed):
+            raise RuntimeError('AI configuration must be completed or explicitly skipped')
         preferences.set('onboarding_complete', True)
-        state = self._read_state()
         state.update({
             'status': SetupStatus.READY.value,
             'mode': state.get('mode') or SetupMode.CREATE.value,
