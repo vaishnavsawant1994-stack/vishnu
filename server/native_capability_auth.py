@@ -5,6 +5,8 @@ import html
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
+from server.capability_forge_v3_api import capability_forge_oauth_callback_router, capability_forge_v3_router
+
 
 def native_capability_auth_router(runtime):
     router = APIRouter(tags=["native-capability-auth"])
@@ -47,4 +49,9 @@ form.addEventListener('submit',async event=>{{event.preventDefault();const scope
         association = runtime.get("apple_app_site_association", {})
         return JSONResponse(association, headers={"Cache-Control": "public, max-age=300"})
 
+    # Capability Forge V3 extends the already-mounted native capability boundary.
+    # Owner mutations retain their own trusted-device + fresh-reauth checks, and
+    # the external provider callback is state/PKCE/security-epoch bound.
+    router.include_router(capability_forge_v3_router(runtime))
+    router.include_router(capability_forge_oauth_callback_router(runtime))
     return router
