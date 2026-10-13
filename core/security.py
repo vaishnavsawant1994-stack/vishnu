@@ -49,6 +49,10 @@ class PairingManager:
             return False
         return hmac.compare_digest(offer.code, str(code))
 
+    def invalidate(self, token: str) -> bool:
+        with self._shared_lock:
+            return self._shared_offers.pop(str(token), None) is not None
+
 def hash_secret(secret: str, salt: str) -> str:
     return hashlib.pbkdf2_hmac("sha256", secret.encode(), salt.encode(), 250_000).hex()
 
