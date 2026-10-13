@@ -29,8 +29,10 @@ class StorageSettingsDialog(QDialog):
         super().__init__(parent)
         self.runtime = runtime
         self.data_plane = get_data_plane(runtime)
+        if self.data_plane is None:
+            raise RuntimeError('Data & Cloud Storage requires the canonical Vishnu settings/data directory')
         self.setWindowTitle('Data & Cloud Storage')
-        fit_window_to_screen(self, preferred=(760, 820))
+        fit_window_to_screen(self, preferred=(760, 860))
         self.setStyleSheet(design_system_stylesheet())
 
         layout = QVBoxLayout(self)
@@ -41,9 +43,15 @@ class StorageSettingsDialog(QDialog):
             'Local-first is the permanent baseline. Online storage is optional. '
             'Device-only data never becomes a permanent copy elsewhere unless you explicitly change its policy.'
         ))
+        ai_note = QLabel(
+            '<b>Storage and AI are separate.</b> Turning online storage off does not disable Claude, OpenAI, Gemini or local models. '
+            'AI-provider controls remain under AI Providers; only context you authorize may be sent for inference.'
+        )
+        ai_note.setWordWrap(True)
+        layout.addWidget(ai_note)
 
         self.cloud = QCheckBox('Enable online / cloud storage')
-        self.cloud.setToolTip('Master switch. When OFF, cloud provider access is denied below the UI.')
+        self.cloud.setToolTip('Master switch. When OFF, new cloud provider use is denied below the UI. Existing remote bytes are not silently deleted.')
         layout.addWidget(self.cloud)
 
         form = QFormLayout()
@@ -58,6 +66,8 @@ class StorageSettingsDialog(QDialog):
         self.default_policy.addItem('Keep only here', StoragePolicy.DEVICE_ONLY.value)
         self.default_policy.addItem('Sync everywhere', StoragePolicy.SYNC_EVERYWHERE.value)
         self.default_policy.addItem('Sync progress only', StoragePolicy.PROGRESS_ONLY.value)
+        self.default_policy.addItem('On demand', StoragePolicy.ON_DEMAND.value)
+        self.default_policy.setToolTip('On demand syncs location/reference metadata; bytes materialize only through a separately authorized transfer.')
         form.addRow('Default data rule', self.default_policy)
         layout.addLayout(form)
 
@@ -66,6 +76,13 @@ class StorageSettingsDialog(QDialog):
         layout.addWidget(self.remote_access)
         self.backup = QCheckBox('Allow optional encrypted online backup')
         layout.addWidget(self.backup)
+
+        cloud_warning = QLabel(
+            'Cloud OFF prevents future Vishnu cloud-storage operations. It does not claim that copies already stored at a provider were deleted. '
+            'Removing an existing remote copy must be a separately verified action before an item can be declared device-only.'
+        )
+        cloud_warning.setWordWrap(True)
+        layout.addWidget(cloud_warning)
 
         save_row = QHBoxLayout()
         self.owner_password = QLineEdit()
@@ -161,9 +178,11 @@ class StorageSettingsDialog(QDialog):
             }
             for item in inventory
         ]
+        diagnostics = self.data_plane.diagnostics()
         self.status.setPlainText(json.dumps({
             'policy': config,
             'online_devices': self.data_plane.online_devices(),
+            'remote_durable_locations': diagnostics.get('remote_durable_locations', 0),
             'providers': safe_inventory,
         }, indent=2, default=str))
 
