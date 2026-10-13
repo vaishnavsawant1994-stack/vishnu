@@ -2,6 +2,7 @@ package ai.personal.companion
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,6 +18,7 @@ class SmokeInstrumentedTest {
         assertNotNull(Class.forName("ai.personal.companion.MainActivity"))
         assertNotNull(Class.forName("ai.personal.companion.VishnuDiscovery"))
         assertNotNull(Class.forName("ai.personal.companion.PinnedTls"))
+        assertNotNull(Class.forName("ai.personal.companion.MobileDataPlaneStore"))
     }
 
     @Test
@@ -63,5 +65,80 @@ class SmokeInstrumentedTest {
             "http://localhost:8766",
             PairingPayloadParser.normalizeOrigin("http://localhost:8766/path", allowLocalHttp = true),
         )
+    }
+
+    @Test
+    fun mobileDataPlaneStoresOnlyAllowedProgressFields() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase("vishnu-data-plane.db")
+        val store = MobileDataPlaneStore(context)
+        try {
+            val result = store.putProgress(
+                "project:android-test",
+                "project",
+                1,
+                JSONObject()
+                    .put("project_name", "Rudra")
+                    .put("status", "active")
+                    .put("next_step", "Finish homepage")
+                    .put("private_detail", "must not replicate"),
+            )
+            assertTrue(result.getBoolean("applied"))
+            val payload = result.getJSONObject("payload")
+            assertEquals("Rudra", payload.getString("project_name"))
+            assertEquals("Finish homepage", payload.getString("next_step"))
+            assertFalse(payload.has("private_detail"))
+            val status = store.status()
+            assertFalse(status.getBoolean("raw_file_bytes_stored"))
+            assertFalse(status.getBoolean("secrets_stored"))
+        } finally {
+            store.close()
+            context.deleteDatabase("vishnu-data-plane.db")
+        }
+    }
+
+    @Test
+    fun mobileDataPlaneRejectsSecretsRawBytesAndStaleVersions() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        context.deleteDatabase("vishnu-data-plane.db")
+        val store = MobileDataPlaneStore(context)
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                store.putProgress(
+                    "project:secret-test",
+                    "project",
+                    1,
+                    JSONObject().put("status", "active").put("api_key", "secret"),
+                )
+            }
+            assertThrows(IllegalArgumentException::class.java) {
+                store.putProgress(
+                    "project:raw-test",
+                    "project",
+                    1,
+                    JSONObject().put("status", "active").put("file_bytes", "raw"),
+                )
+            }
+            store.putProgress(
+                "project:conflict-test",
+                "project",
+                3,
+                JSONObject().put("status", "new"),
+            )
+            val stale = store.putProgress(
+                "project:conflict-test",
+                "project",
+                2,
+                JSONObject().put("status", "old"),
+            )
+            assertFalse(stale.getBoolean("applied"))
+            assertTrue(stale.getBoolean("conflict"))
+            assertEquals(3, stale.getLong("local_version"))
+            assertTrue(store.tombstone("project:conflict-test", 4))
+            assertTrue(store.get("project:conflict-test")!!.getBoolean("tombstone"))
+        } finally {
+            store.close()
+            context.deleteDatabase("vishnu-data-plane.db")
+        }
     }
 }
