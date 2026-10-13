@@ -7,8 +7,9 @@ import os
 import subprocess
 import sys
 import time
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
+from urllib.parse import urlparse
 
 from tools.registry import Risk, Tool, VerificationResult
 
@@ -95,6 +96,27 @@ def _json_bytes(value: Any) -> bytes:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False, allow_nan=False).encode("utf-8")
 
 
+def _bounded_string_tuple(value: Any, *, limit: int = 64, item_limit: int = 1000) -> tuple[str, ...]:
+    if value is None:
+        raw = ()
+    elif isinstance(value, str):
+        raw = (value,)
+    elif isinstance(value, (list, tuple)):
+        raw = value
+    else:
+        raise GeneratedCapabilitySecurityError("generated capability permission list is invalid")
+    out: list[str] = []
+    for item in raw:
+        clean = str(item or "").strip()
+        if not clean or len(clean) > item_limit:
+            raise GeneratedCapabilitySecurityError("generated capability contains an invalid permission value")
+        if clean not in out:
+            out.append(clean)
+        if len(out) > limit:
+            raise GeneratedCapabilitySecurityError("generated capability permission list exceeds limit")
+    return tuple(out)
+
+
 def _posix_resource_limiter(timeout_seconds: int):
     if os.name != "posix":
         return None
@@ -146,21 +168,7 @@ def load_generated_manifest(package_path: str | Path, *, expected_digest: str | 
 
 
 def _allowed_tools(permissions: dict[str, Any]) -> tuple[str, ...]:
-    raw = permissions.get("allowed_tools") or ()
-    if isinstance(raw, str):
-        raw = (raw,)
-    if not isinstance(raw, (list, tuple)):
-        raise GeneratedCapabilitySecurityError("generated capability allowed_tools must be an array")
-    out: list[str] = []
-    for item in raw:
-        name = str(item or "").strip()
-        if not name or len(name) > 200:
-            raise GeneratedCapabilitySecurityError("generated capability contains an invalid delegated tool name")
-        if name not in out:
-            out.append(name)
-    if len(out) > 32:
-        raise GeneratedCapabilitySecurityError("generated capability delegates to too many tools")
-    return tuple(out)
+    return _bounded_string_tuple(permissions.get("allowed_tools"), limit=32, item_limit=200)
 
 
 def validate_generated_manifest_authority(manifest: dict[str, Any]) -> None:
@@ -190,6 +198,9 @@ def validate_generated_manifest_authority(manifest: dict[str, Any]) -> None:
         raise GeneratedCapabilitySecurityError("governed generated toolchain requires an explicit tool allowlist")
     if permissions.get("filesystem_write") or permissions.get("secret_names") or permissions.get("side_effects"):
         raise GeneratedCapabilitySecurityError("governed generated toolchain cannot receive raw secrets, write authority, or side effects")
+    _bounded_string_tuple(permissions.get("network_hosts"), limit=64, item_limit=500)
+    _bounded_string_tuple(permissions.get("filesystem_read"), limit=64, item_limit=1000)
+    _bounded_string_tuple(permissions.get("connector_ids"), limit=64, item_limit=200)
 
 
 def validate_pure_python_source(source: str) -> None:
@@ -335,11 +346,50 @@ class GovernedToolchainGeneratedCapability:
             self.reducer_path, self.reducer_function, _ = _entrypoint(
                 self.package_path, dict(reducer or {}), label="reducer"
             )
-        self.allowed_tools = frozenset(_allowed_tools(dict(self.manifest.get("permissions") or {})))
+        permissions = dict(self.manifest.get("permissions") or {})
+        self.allowed_tools = frozenset(_allowed_tools(permissions))
+        self.network_hosts = tuple(value.lower().strip(".") for value in _bounded_string_tuple(permissions.get("network_hosts"), limit=64, item_limit=500))
+        self.filesystem_read = _bounded_string_tuple(permissions.get("filesystem_read"), limit=64, item_limit=1000)
+        self.connector_ids = frozenset(_bounded_string_tuple(permissions.get("connector_ids"), limit=64, item_limit=200))
         self.tools = tools
         self.capability_id = str(capability_id)
         self.timeout_seconds = max(1, min(int(timeout_seconds), 30))
         self.on_invocation = on_invocation
+
+    @staticmethod
+    def _path_within(value: str, allowed_roots: tuple[str, ...]) -> bool:
+        raw = str(value or "").strip().replace("\\", "/")
+        if not raw or "://" in raw:
+            return False
+        candidate = PurePosixPath(raw)
+        if ".." in candidate.parts:
+            return False
+        candidate_text = candidate.as_posix().lstrip("./")
+        for root_raw in allowed_roots:
+            root = PurePosixPath(str(root_raw).replace("\\", "/")).as_posix().lstrip("./").rstrip("/")
+            if root and (candidate_text == root or candidate_text.startswith(root + "/")):
+                return True
+        return False
+
+    def _validate_declared_scope(self, tool, parameters: dict[str, Any]) -> None:
+        connector_id = str(getattr(tool, "connector_id", None) or "").strip()
+        if connector_id and connector_id not in self.connector_ids:
+            raise GeneratedCapabilitySecurityError("delegated connector is outside the Forge specification")
+
+        for key in ("file_path", "path"):
+            value = parameters.get(key)
+            if value in (None, ""):
+                continue
+            if not self.filesystem_read or not self._path_within(str(value), self.filesystem_read):
+                raise GeneratedCapabilitySecurityError("delegated file path is outside the Forge read scope")
+
+        network_value = parameters.get("url") or parameters.get("domain")
+        if network_value not in (None, ""):
+            raw = str(network_value).strip()
+            parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+            host = (parsed.hostname or "").lower().strip(".")
+            if not host or not self.network_hosts or not any(host == allowed or host.endswith("." + allowed) for allowed in self.network_hosts):
+                raise GeneratedCapabilitySecurityError("delegated network destination is outside the Forge host scope")
 
     def _delegated_tool(self, name: str, parameters: dict[str, Any]):
         if name not in self.allowed_tools:
@@ -357,6 +407,7 @@ class GovernedToolchainGeneratedCapability:
         minimum = getattr(tool, "minimum_risk", None)
         if minimum is not None and Risk(int(minimum)) is not Risk.READ_ONLY:
             raise GeneratedCapabilitySecurityError("delegated tool has a higher minimum risk")
+        self._validate_declared_scope(tool, parameters)
         effective = self.tools.effective_risk(tool, parameters=parameters, data_classification="internal") if hasattr(self.tools, "effective_risk") else Risk.READ_ONLY
         if Risk(int(effective)) is not Risk.READ_ONLY:
             raise GeneratedCapabilitySecurityError("delegated tool effective risk is not read-only")
