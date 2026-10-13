@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from urllib.parse import urlparse
-
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtGui import QDesktopServices
 from PyQt6.QtWidgets import (
@@ -77,6 +75,8 @@ class FirstRunWizard(QDialog):
         root.addLayout(footer)
 
         state = self.coordinator.snapshot()
+        self._restore_form_values()
+        self._resume_state(state)
         if state.get('status') == 'restore_failed' and state.get('last_error'):
             QMessageBox.warning(self, 'Restore needs attention', str(state['last_error']))
 
@@ -219,12 +219,12 @@ class FirstRunWizard(QDialog):
         self.model_hint.setWordWrap(True)
         layout.addWidget(self.model_hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Continue', self._save_model))
+        layout.addWidget(self._next_button('Finish setup', self._finish_model_setup))
         self._provider_changed()
         return page
 
     def _recovery_page(self):
-        page, layout = self._page('Save your recovery codes', 'These one-time codes are shown only during this setup step. Store them somewhere separate from this computer.')
+        page, layout = self._page('Save your recovery codes', 'These one-time codes are shown only now. Store them somewhere separate from this computer before continuing.')
         self.recovery_label = QLabel('Recovery codes will appear here after owner security is created.')
         self.recovery_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.recovery_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;font-family:monospace;')
@@ -232,7 +232,7 @@ class FirstRunWizard(QDialog):
         self.saved_codes = QCheckBox('I saved these recovery codes in a safe place')
         layout.addWidget(self.saved_codes)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Finish setup', self._finish_setup))
+        layout.addWidget(self._next_button('Continue', self._confirm_recovery_codes))
         return page
 
     def _restore_page(self):
@@ -266,9 +266,68 @@ class FirstRunWizard(QDialog):
         layout.addWidget(self._next_button('Open existing Vishnu', self._connect_existing))
         return page
 
+    def _restore_form_values(self):
+        preferences = self.runtime.get('preferences')
+        if preferences is None:
+            return
+        self.first_name.setText(str(preferences.get('profile_first_name', '') or ''))
+        self.last_name.setText(str(preferences.get('profile_last_name', '') or ''))
+        self.display_name.setText(str(preferences.get('preferred_name', '') or ''))
+        privacy_index = self.privacy.findData(str(preferences.get('model_privacy_mode', 'local_preferred') or 'local_preferred'))
+        if privacy_index >= 0:
+            self.privacy.setCurrentIndex(privacy_index)
+        autonomy_index = self.autonomy.findData(str(preferences.get('autonomy_mode', 'ask') or 'ask'))
+        if autonomy_index >= 0:
+            self.autonomy.setCurrentIndex(autonomy_index)
+        self.memory_enabled.setChecked(bool(preferences.get('memory_enabled', True)))
+
+    def _resume_state(self, state: dict):
+        status = str(state.get('status') or '')
+        stage = str(state.get('stage') or 'welcome')
+        completed = set(state.get('completed_steps') or [])
+        mode_value = str(state.get('mode') or '')
+
+        if status == 'connect_pending':
+            self.mode = SetupMode.CONNECT
+            self.connect_url.setText(str(state.get('connect_url') or ''))
+            self.stack.setCurrentIndex(7)
+            self.back_button.setVisible(True)
+            self.title.setText('Connect to Vishnu')
+            return
+        if status == 'restore_failed':
+            self.mode = SetupMode.RESTORE
+            self.stack.setCurrentIndex(6)
+            self.back_button.setVisible(True)
+            self.title.setText('Restore Vishnu')
+            return
+        if status != 'setup_in_progress':
+            return
+
+        # A restored installation goes through the same fresh owner/security
+        # sequence, but keeps its durable mode recorded as restore.
+        self.mode = SetupMode.CREATE
+        self.back_button.setVisible(True)
+        self.title.setText('Finish restoring Vishnu' if mode_value == SetupMode.RESTORE.value else 'Continue setting up Vishnu')
+        if stage == 'owner':
+            self.stack.setCurrentIndex(1)
+        elif stage == 'security':
+            self.stack.setCurrentIndex(2)
+        elif stage == 'recovery' and 'recovery_saved' not in completed:
+            # Recovery codes are intentionally never persisted in plaintext.
+            # After a process restart they cannot be redisplayed, so security
+            # is regenerated instead of silently letting the owner lose them.
+            self.stack.setCurrentIndex(2)
+            self.subtitle.setText('Setup was interrupted before recovery codes were confirmed. Re-enter an owner password to generate a fresh recovery-code set.')
+        elif stage == 'privacy' or ('recovery_saved' in completed and 'privacy' not in completed):
+            self.stack.setCurrentIndex(3)
+        else:
+            self.stack.setCurrentIndex(4)
+            if 'model' in completed or 'model_skipped' in completed:
+                self.skip_model.setChecked(True)
+
     def _choose_mode(self, mode: SetupMode):
         self.mode = mode
-        self.coordinator.begin(mode.value)
+        self.coordinator.begin(mode)
         self.back_button.setVisible(True)
         if mode is SetupMode.CREATE:
             self.stack.setCurrentIndex(1)
@@ -287,8 +346,15 @@ class FirstRunWizard(QDialog):
             self.back_button.setVisible(False)
             self.title.setText('Welcome to Vishnu')
             return
-        if self.mode is SetupMode.CREATE and 2 <= index <= 5:
-            self.stack.setCurrentIndex(index - 1)
+        if self.mode is SetupMode.CREATE:
+            if index == 2:
+                self.stack.setCurrentIndex(1)
+            elif index == 5:
+                self.stack.setCurrentIndex(2)
+            elif index == 3:
+                self.stack.setCurrentIndex(2)
+            elif index == 4:
+                self.stack.setCurrentIndex(3)
 
     def _save_owner(self):
         try:
@@ -313,7 +379,21 @@ class FirstRunWizard(QDialog):
             return
         self.password.clear()
         self.password_confirm.clear()
+        self.saved_codes.setChecked(False)
         self.recovery_label.setText('\n'.join(self.recovery_codes))
+        self.stack.setCurrentIndex(5)
+
+    def _confirm_recovery_codes(self):
+        if not self.saved_codes.isChecked():
+            QMessageBox.warning(self, 'Recovery codes', 'Confirm that you saved the recovery codes before continuing.')
+            return
+        try:
+            self.coordinator.confirm_recovery_codes_saved()
+        except Exception as exc:
+            QMessageBox.warning(self, 'Recovery codes', str(exc))
+            return
+        self.recovery_codes = []
+        self.recovery_label.setText('Recovery codes saved and hidden. Regenerate them from Settings → Security if they are ever lost.')
         self.stack.setCurrentIndex(3)
 
     def _save_preferences(self):
@@ -338,7 +418,7 @@ class FirstRunWizard(QDialog):
             'The provider key is passed directly to the canonical model router/vault and is not written to onboarding state.'
         )
 
-    def _save_model(self):
+    def _finish_model_setup(self):
         try:
             if self.skip_model.isChecked():
                 self.coordinator.skip_model_configuration()
@@ -348,21 +428,11 @@ class FirstRunWizard(QDialog):
                     model=self.model.text(),
                     api_key=self.api_key.text(),
                 )
+            self.coordinator.complete()
         except Exception as exc:
             QMessageBox.warning(self, 'AI configuration', str(exc))
             return
         self.api_key.clear()
-        self.stack.setCurrentIndex(5)
-
-    def _finish_setup(self):
-        if not self.saved_codes.isChecked():
-            QMessageBox.warning(self, 'Recovery codes', 'Confirm that you saved the recovery codes before continuing.')
-            return
-        try:
-            self.coordinator.complete()
-        except Exception as exc:
-            QMessageBox.warning(self, 'Setup incomplete', str(exc))
-            return
         QMessageBox.information(self, 'Vishnu is ready', 'Your primary Vishnu owner installation is ready.')
         self.accept()
 
@@ -386,18 +456,15 @@ class FirstRunWizard(QDialog):
         self.accept()
 
     def _connect_existing(self):
-        raw = self.connect_url.text().strip().rstrip('/')
-        parsed = urlparse(raw)
-        local_http = parsed.scheme == 'http' and parsed.hostname in {'127.0.0.1', 'localhost', '::1'}
-        if parsed.scheme != 'https' and not local_http:
-            QMessageBox.warning(self, 'Connect', 'Use an HTTPS Vishnu URL. Plain HTTP is allowed only for localhost development.')
-            return
+        raw = self.connect_url.text().strip()
         try:
-            self.coordinator.mark_connect_pending(raw)
+            state = self.coordinator.mark_connect_pending(raw)
         except Exception as exc:
             QMessageBox.warning(self, 'Connect', str(exc))
             return
+        origin = str(state.get('connect_url') or '').rstrip('/')
+        self.connect_url.setText(origin)
         self.external_connect = True
-        QDesktopServices.openUrl(QUrl(raw + '/iphone/'))
+        QDesktopServices.openUrl(QUrl(origin + '/iphone/'))
         QMessageBox.information(self, 'Existing Vishnu opened', 'Complete owner sign-in/device enrollment in the secure Vishnu page that just opened. This local installation has not created a second owner brain.')
         self.accept()
