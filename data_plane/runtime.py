@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .device_sync import DeviceProgressSyncService
 from .enforced import PolicyEnforcedDataPlane
 from .manager import UnifiedDataPlane
 from .provider_bridge import reconcile_runtime_providers
@@ -24,10 +25,25 @@ def get_data_plane(runtime: dict) -> UnifiedDataPlane:
     return manager
 
 
+def ensure_data_plane_sync(runtime: dict, manager: UnifiedDataPlane | None = None):
+    current = runtime.get('data_plane_sync')
+    if current is not None:
+        return current
+    gateway = runtime.get('device_gateway')
+    events = runtime.get('events')
+    if gateway is None or events is None:
+        return None
+    manager = manager or get_data_plane(runtime)
+    service = DeviceProgressSyncService(manager, gateway, events).start()
+    runtime['data_plane_sync'] = service
+    return service
+
+
 def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane:
     manager = get_data_plane(runtime)
     registry = runtime.get('tools')
     if registry is not None:
         from tools import data_access
         data_access.register(registry, manager)
+    ensure_data_plane_sync(runtime, manager)
     return manager
