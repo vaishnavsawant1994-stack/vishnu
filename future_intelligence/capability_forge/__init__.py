@@ -2,6 +2,7 @@
 
 from .activation import CapabilityActivationService, ForgeActivationDecision
 from .build_service import CapabilityForgeBuildService
+from .evaluator import GeneratedCapabilityEvaluator, GeneratedCapabilityHealth
 from .event_bridge import FORGE_OBSERVED_EVENTS, attach_capability_forge_observers
 from .execution_bridge import CapabilityForgeExecutionBridge, ForgeCandidateResult
 from .gap_detector import CapabilityGapDetector
@@ -49,6 +50,8 @@ __all__ = [
     "ForgeWorkProjection",
     "GapSource",
     "GapStatus",
+    "GeneratedCapabilityEvaluator",
+    "GeneratedCapabilityHealth",
     "PackagedCapability",
     "RiskAssessment",
     "attach_capability_forge_observers",
