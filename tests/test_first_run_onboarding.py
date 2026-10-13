@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+import json
+
+from core.preferences import Preferences
+from onboarding.first_run import FirstRunCoordinator, SetupStatus
+from security.owner_access import OwnerAccessStore
+
+
+class FakeModels:
+    def __init__(self):
+        self.privacy = None
+        self.default = None
+        self.connected = None
+
+    def status(self):
+        return {'state': 'available' if self.default else 'unconfigured'}
+
+    def set_owner_privacy(self, mode):
+        self.privacy = mode
+
+    def set_default_provider(self, provider_id):
+        self.default = provider_id
+        return {'provider': provider_id, 'configured': True}
+
+    def connect_owner_provider(self, provider_id, api_key, model):
+        self.connected = (provider_id, api_key, model)
+        return {'provider': provider_id, 'model': model, 'configured': True}
+
+
+class FakeTools:
+    def __init__(self):
+        self.mode = None
+
+    def set_autonomy_mode(self, mode):
+        self.mode = mode
+
+
+class FakeDevices:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def list(self):
+        return list(self.rows)
+
+
+class FakeBackups:
+    def __init__(self):
+        self.inspected = None
+
+    def inspect(self, path):
+        self.inspected = path
+        return {'encrypted': True, 'created_at': 1234.5, 'files': []}
+
+
+def runtime(tmp_path, *, devices=None):
+    return {
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'models': FakeModels(),
+        'tools': FakeTools(),
+        'device_registry': FakeDevices(devices),
+        'backups': FakeBackups(),
+    }
+
+
+def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+
+    assert coordinator.should_run() is True
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Vishnu', last_name='Owner', display_name='Owner')
+    codes = coordinator.configure_security('correct horse battery staple')
+    coordinator.configure_preferences(
+        privacy_mode='local_preferred',
+        autonomy_mode='ask',
+        memory_enabled=True,
+    )
+    coordinator.configure_model(
+        provider_id='openai',
+        model='gpt-test',
+        api_key='sk-test-secret-value-1234567890',
+    )
+    state = coordinator.complete()
+
+    assert state['status'] == SetupStatus.READY.value
+    assert rt['preferences'].get('onboarding_complete') is True
+    assert rt['models'].privacy == 'local_preferred'
+    assert rt['tools'].mode == 'ask'
+    assert rt['models'].connected[0] == 'openai'
+    assert len(codes) >= 4
+
+    persisted = (tmp_path / FirstRunCoordinator.STATE_FILE).read_text(encoding='utf-8')
+    assert 'correct horse battery staple' not in persisted
+    assert 'sk-test-secret-value-1234567890' not in persisted
+    for code in codes:
+        assert code not in persisted
+
+
+def test_local_provider_needs_no_api_key(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    result = coordinator.configure_model(provider_id='local')
+    assert result['provider'] == 'local'
+    assert rt['models'].default == 'local'
+
+
+def test_existing_trusted_install_is_migrated_without_forcing_wizard(tmp_path):
+    rt = runtime(tmp_path, devices=[{'id': 'existing-device'}])
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+
+    assert coordinator.should_run() is False
+    state = coordinator.snapshot()
+    assert state['status'] == SetupStatus.READY.value
+    assert state['migrated_legacy_install'] is True
+    assert rt['preferences'].get('onboarding_complete') is True
+
+
+def test_restore_is_validated_and_scheduled_for_next_process_start(tmp_path):
+    archive = tmp_path / 'owner.paibackup'
+    archive.write_bytes(b'not-read-by-fake')
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('restore')
+
+    result = coordinator.schedule_restore(archive)
+
+    assert result['archive'] == 'owner.paibackup'
+    assert result['encrypted'] is True
+    state = coordinator.snapshot()
+    assert state['status'] == SetupStatus.RESTORING.value
+    assert state['stage'] == 'restart_required'
+    pending = json.loads((tmp_path / FirstRunCoordinator.PENDING_RESTORE_FILE).read_text(encoding='utf-8'))
+    assert pending['path'] == str(archive.resolve())
+
+
+def test_connect_mode_does_not_mark_local_install_ready(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('connect')
+    coordinator.mark_connect_pending('https://vishnu.example.test')
+
+    assert coordinator.ready is False
+    state = coordinator.snapshot()
+    assert state['status'] == SetupStatus.CONNECT_PENDING.value
+    assert state['connect_url'] == 'https://vishnu.example.test'
