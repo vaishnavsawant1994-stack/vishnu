@@ -11,11 +11,9 @@ from .governed_activation_v2 import GovernedCapabilityActivationServiceV2
 class GovernedCapabilityActivationServiceV3(GovernedCapabilityActivationServiceV2):
     """V3 activation adds provenance and staged-rollout evidence.
 
-    Legacy V1/V2 packages remain operable for compatibility. Any package built
-    with a V3 provenance sidecar must pass signature verification and reach the
-    broad_eligible canary stage before the existing exact activation approval can
-    even be requested. Activation itself is still owned by the V2/canonical
-    approval implementation.
+    Legacy V1/V2 packages remain operable for compatibility. V3 provenance is
+    bound into durable build lineage, so deleting a provenance sidecar cannot
+    downgrade a V3 package into the legacy compatibility path.
     """
 
     def __init__(self, *args, provenance=None, rollout=None, **kwargs):
@@ -30,10 +28,20 @@ class GovernedCapabilityActivationServiceV3(GovernedCapabilityActivationServiceV
         except Exception:
             return False
 
+    def _build_provenance(self, build_id: str) -> dict[str, Any]:
+        if self.lifecycle is None:
+            return {}
+        build = self.lifecycle.get_build(str(build_id))
+        if not build:
+            return {}
+        return dict(build.get("payload") or {})
+
     def _verify_v3_package(self, package, *, require_broad: bool) -> dict[str, Any] | None:
-        if not self._has_provenance(package):
+        build_payload = self._build_provenance(str(package.build_id))
+        required = bool(build_payload.get("provenance_required")) or self._has_provenance(package)
+        if not required:
             # Backward-compatible internal operation for already-qualified V1/V2
-            # packages. Production readiness reports these as not V3-provenanced.
+            # packages that predate durable V3 provenance lineage.
             return None
         if self.provenance is None:
             raise RuntimeError("Capability Forge V3 provenance verifier is unavailable")
@@ -41,6 +49,9 @@ class GovernedCapabilityActivationServiceV3(GovernedCapabilityActivationServiceV
             package.package_path,
             expected_manifest_digest=str(package.manifest_digest),
         )
+        expected_key = str(build_payload.get("provenance_key_id") or "")
+        if expected_key and evidence.get("key_id") != expected_key:
+            raise PermissionError("Forge package provenance key does not match durable build lineage")
         if require_broad:
             if self.rollout is None:
                 raise RuntimeError("Capability Forge V3 canary rollout is unavailable")
@@ -97,16 +108,21 @@ class GovernedCapabilityActivationServiceV3(GovernedCapabilityActivationServiceV
         if self.lifecycle is None:
             raise RuntimeError("Forge lifecycle store is required for rollback")
         target = self.lifecycle.get_activation(str(target_activation_id))
+        target_provenance = None
         if target:
             package_path = self.data_root / str(target.get("package_ref") or "")
-            sidecar = package_path / "provenance.json"
-            if sidecar.is_file():
+            build_payload = self._build_provenance(str(target.get("build_id") or ""))
+            required = bool(build_payload.get("provenance_required")) or (package_path / "provenance.json").is_file()
+            if required:
                 if self.provenance is None:
                     raise RuntimeError("Capability Forge V3 provenance verifier is unavailable")
-                self.provenance.verify(
+                target_provenance = self.provenance.verify(
                     package_path,
                     expected_manifest_digest=str(target.get("manifest_digest") or ""),
                 )
+                expected_key = str(build_payload.get("provenance_key_id") or "")
+                if expected_key and target_provenance.get("key_id") != expected_key:
+                    raise PermissionError("rollback package provenance key does not match durable build lineage")
         result = super().rollback(
             capability_id,
             ticket_id=ticket_id,
@@ -115,18 +131,14 @@ class GovernedCapabilityActivationServiceV3(GovernedCapabilityActivationServiceV
             device_id=device_id,
             session_id=session_id,
         )
-        if target and (self.data_root / str(target.get("package_ref") or "") / "provenance.json").is_file():
+        if target and target_provenance is not None:
             current = self.catalog.get(str(capability_id))
             if current and current.get("type") == "generated_capability":
-                evidence = self.provenance.verify(
-                    self.data_root / str(target.get("package_ref") or ""),
-                    expected_manifest_digest=str(target.get("manifest_digest") or ""),
-                )
                 enriched = {
                     **current,
                     "provenance_required": True,
-                    "provenance_key_id": evidence["key_id"],
-                    "provenance_file_count": evidence["file_count"],
+                    "provenance_key_id": target_provenance["key_id"],
+                    "provenance_file_count": target_provenance["file_count"],
                 }
                 register_generated_capability(self.catalog, enriched)
                 result = {**result, "capability": enriched, "provenance_verified": True}
