@@ -9,7 +9,6 @@ from fastapi import APIRouter, Cookie, HTTPException, Query
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field
 
-from future_intelligence.engineering.canary import CanaryMetrics
 from security.request_context import current_trusted_request
 
 
@@ -37,13 +36,6 @@ class RolloutPromotionBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     target_stage: str = Field(min_length=1, max_length=40)
     ticket_id: str | None = Field(default=None, max_length=240)
-
-
-class ActiveHealthBody(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    sample_count: int = Field(ge=1, le=1_000_000)
-    error_rate: float = Field(ge=0.0, le=1.0)
-    p95_latency_ms: float = Field(ge=0.0, le=3_600_000.0)
 
 
 def _owner_guards(runtime):
@@ -92,6 +84,15 @@ def capability_forge_v3_router(runtime) -> APIRouter:
         authenticate(pa_device, pa_token)
         service = require("capability_forge_production_readiness")
         sessions = runtime.get("pwa_sessions")
+        catalog = runtime.get("capability_catalog")
+        active_generated = []
+        if catalog is not None:
+            active_generated = [
+                item for item in catalog.all()
+                if isinstance(item, dict) and item.get("type") == "generated_capability" and item.get("state") == "active"
+            ]
+        active_provenanced = all(bool(item.get("provenance_required")) for item in active_generated)
+        active_broad = all(str(item.get("rollout_stage") or "") == "broad_eligible" for item in active_generated)
         result = service.evaluate(
             public_base_url=os.getenv("VISHNU_PUBLIC_BASE_URL"),
             oauth_redirect_uri=os.getenv("VISHNU_CAPABILITY_OAUTH_REDIRECT_URI"),
@@ -102,8 +103,11 @@ def capability_forge_v3_router(runtime) -> APIRouter:
             provider_verification_available=runtime.get("capability_forge_provider_verifier") is not None,
             canary_available=runtime.get("capability_forge_rollout") is not None,
             external_oauth_available=runtime.get("capability_forge_oauth") is not None,
+            active_packages_provenanced=active_provenanced,
+            active_packages_broad_eligible=active_broad,
         )
         payload = result.to_dict()
+        payload["active_generated_capabilities"] = len(active_generated)
         payload["production_activation_authority"] = False
         payload["configuration_only"] = True
         return payload
@@ -246,15 +250,16 @@ def capability_forge_v3_router(runtime) -> APIRouter:
             raise HTTPException(409, str(exc)) from exc
 
     @router.post("/health/{capability_id}/{version}")
-    def active_health(capability_id: str, version: str, body: ActiveHealthBody,
+    def active_health(capability_id: str, version: str,
                       pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         device_id = authenticate(pa_device, pa_token)
         fresh(device_id)
-        baseline = CanaryMetrics(body.sample_count, body.error_rate, body.p95_latency_ms)
         try:
-            return require("capability_forge_rollout").active_health(capability_id, version, baseline=baseline)
+            return require("capability_forge_rollout").active_health_from_rollout(capability_id, version)
         except KeyError as exc:
             raise HTTPException(404, "Forge capability health record was not found") from exc
+        except PermissionError as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     return router
 
