@@ -36,8 +36,8 @@ final class NativeForgeV3Store: ObservableObject {
         guard let cap = required(capabilityID, "Capability ID"), let provider = required(providerID, "Provider ID") else { return }
         await freshOwner {
             if let response = await self.call("POST", "/owner/forge/v3/oauth/\(self.path(cap))/\(self.path(provider))/start", [:]) {
-                if let raw = response["url"] as? String ?? response["authorization_url"] as? String,
-                   let url = URL(string: raw), url.scheme == "https" {
+                let raw = (response["url"] as? String) ?? (response["authorization_url"] as? String)
+                if let raw, let url = URL(string: raw), url.scheme == "https" {
                     await UIApplication.shared.open(url)
                 }
             }
@@ -101,7 +101,7 @@ final class NativeForgeV3Store: ObservableObject {
         }
         do {
             let config = URLSessionConfiguration.ephemeral
-            let session = URLSession(configuration: config)
+            let session = URLSession(configuration: config, delegate: ForgeV3RedirectBlocker(), delegateQueue: nil)
             let (data, response) = try await session.data(for: request)
             guard data.count <= 1_048_576, let http = response as? HTTPURLResponse else { throw CompanionError.badResponse("Vishnu returned an invalid or oversized response.") }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? ["raw": String(data: data.prefix(2048), encoding: .utf8) ?? ""]
@@ -133,6 +133,13 @@ final class NativeForgeV3Store: ObservableObject {
     private func pretty(_ value: [String: Any]) -> String {
         guard JSONSerialization.isValidJSONObject(value), let data = try? JSONSerialization.data(withJSONObject: value, options: [.prettyPrinted, .sortedKeys]) else { return String(describing: value) }
         return String(data: data, encoding: .utf8) ?? String(describing: value)
+    }
+}
+
+private final class ForgeV3RedirectBlocker: NSObject, URLSessionTaskDelegate {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+                    newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
     }
 }
 
