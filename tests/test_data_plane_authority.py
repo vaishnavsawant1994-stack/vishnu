@@ -107,7 +107,7 @@ def test_chat_permission_alone_does_not_grant_remote_data_read(tmp_path):
         device_gateway=gateway,
     )
     manager.register_item('file:phone', entity_type='file', primary_device_id='phone', policy='device_only')
-    with pytest.raises(PermissionError, match='device scope denied'):
+    with pytest.raises(PermissionError, match='not permitted for data:read'):
         manager.grant_remote_access('file:phone', requester_device_id='laptop')
 
 
@@ -131,7 +131,7 @@ def test_data_read_allows_transient_view_but_not_persistent_copy(tmp_path):
     )
     lease = manager.grant_remote_access('file:phone', requester_device_id='laptop')
     assert lease['persist_allowed'] is False
-    with pytest.raises(PermissionError, match='device scope denied'):
+    with pytest.raises(PermissionError, match='not permitted for data:admin'):
         manager.grant_remote_access(
             'file:phone',
             requester_device_id='laptop',
