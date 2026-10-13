@@ -5,7 +5,7 @@ from pathlib import Path
 from integrations.discovery.generated_runtime_v3 import rehydrate_generated_capabilities_v3
 
 from .governed_activation_v3 import GovernedCapabilityActivationServiceV3
-from .oauth_lifecycle import CapabilityOAuthLifecycle
+from .oauth_durable import DurableCapabilityOAuthLifecycle
 from .production_build import ProductionReadyCapabilityForgeBuildService
 from .production_canary import ProductionCapabilityCanaryRollout
 from .production_readiness import CapabilityForgeProductionReadiness
@@ -47,11 +47,12 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
     )
     oauth_lifecycle = None
     if runtime.get("oauth") is not None and runtime.get("oauth_providers") is not None:
-        oauth_lifecycle = CapabilityOAuthLifecycle(
+        oauth_lifecycle = DurableCapabilityOAuthLifecycle(
             oauth=runtime["oauth"],
             catalog=catalog,
             providers=dict(runtime.get("oauth_providers") or {}),
             events=runtime.get("events"),
+            path=root / "capability-forge.sqlite3",
         )
     provider_verifier = CapabilityProviderVerifier(
         tools=tools,
