@@ -51,6 +51,7 @@ from memory.vector_store import VectorStore
 from models.governed_router import GovernedModelRouter
 from notifications.apns import APNsProvider
 from notifications.service import NotificationService
+from onboarding.first_run import FirstRunCoordinator
 from proactive.engine import AttentionRelevanceEngine
 from qualification.program import P3QualificationProgram
 from qualification.voice import VoiceQualificationRecorder
@@ -152,16 +153,43 @@ def start_server(runtime):
     uvicorn.run(app,host=settings.control_server_host,port=settings.control_server_port,log_level='warning')
 
 
+def _close_runtime(runtime, *, services_started=False, floating_presence=None):
+    if floating_presence is not None:
+        floating_presence.close()
+    runtime['voice'].stop()
+    runtime['sensorium_live_work'].close()
+    if services_started:
+        stop_e9_services(runtime)
+        runtime['automations'].stop()
+    runtime['notifications'].close()
+    runtime['telemetry'].persist()
+    runtime['apns'].close()
+    runtime['evidence_store'].close()
+    runtime['identity_store'].close()
+
+
 def main():
-    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtWidgets import QApplication, QDialog
     from desktop.floating_presence import FloatingPresence
-    from ui.main_window import MainWindow
     from ui.canonical_main_window import CanonicalMainWindow
-    app=QApplication(sys.argv); app.setApplicationName('Vishnu'); runtime=build_runtime(); runtime['automations'].start(); start_e9_services(runtime)
+    from ui.first_run_wizard import FirstRunWizard
+
+    app=QApplication(sys.argv); app.setApplicationName('Vishnu')
+    FirstRunCoordinator.apply_pending_restore(settings.data_dir)
+    runtime=build_runtime()
+    setup=FirstRunCoordinator(settings.data_dir,runtime=runtime); runtime['first_run_setup']=setup
+    if setup.should_run():
+        wizard=FirstRunWizard(runtime,setup)
+        result=wizard.exec()
+        if result != QDialog.DialogCode.Accepted or wizard.restart_required or wizard.external_connect or not setup.ready:
+            _close_runtime(runtime)
+            return 0
+
+    runtime['automations'].start(); start_e9_services(runtime)
     if settings.control_server_enabled:threading.Thread(target=start_server,args=(runtime,),daemon=True).start()
     window=CanonicalMainWindow(events=runtime['events'],executor=runtime['executor'],memory=runtime['memory'],runtime=runtime); window.show(); floating_presence=FloatingPresence(runtime=runtime); runtime['floating_presence']=floating_presence; floating_presence.show()
     if runtime['preferences'].get('launch_voice_on_start'):window.toggle_voice()
-    code=app.exec(); floating_presence.close(); runtime['voice'].stop(); runtime['sensorium_live_work'].close(); stop_e9_services(runtime); runtime['automations'].stop(); runtime['notifications'].close(); runtime['telemetry'].persist(); runtime['apns'].close(); runtime['evidence_store'].close(); runtime['identity_store'].close(); return code
+    code=app.exec(); _close_runtime(runtime,services_started=True,floating_presence=floating_presence); return code
 
 
 if __name__=='__main__':raise SystemExit(main())
