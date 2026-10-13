@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from core.preferences import Preferences
-from onboarding.first_run import FirstRunCoordinator, SetupStatus
+from onboarding.first_run import FirstRunCoordinator, SetupMode, SetupStatus
 from security.owner_access import OwnerAccessStore
 
 
@@ -69,7 +71,7 @@ def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_
     coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
 
     assert coordinator.should_run() is True
-    coordinator.begin('create')
+    coordinator.begin(SetupMode.CREATE)
     coordinator.configure_owner(first_name='Vishnu', last_name='Owner', display_name='Owner')
     codes = coordinator.configure_security('correct horse battery staple')
     coordinator.configure_preferences(
@@ -118,6 +120,20 @@ def test_existing_trusted_install_is_migrated_without_forcing_wizard(tmp_path):
     assert rt['preferences'].get('onboarding_complete') is True
 
 
+def test_partial_new_setup_is_never_promoted_as_legacy_install(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Owner')
+    coordinator.configure_security('correct horse battery staple')
+
+    restarted = FirstRunCoordinator(tmp_path, runtime=rt)
+    assert restarted.should_run() is True
+    state = restarted.snapshot()
+    assert state['status'] == SetupStatus.SETUP_IN_PROGRESS.value
+    assert state['migrated_legacy_install'] is False
+
+
 def test_restore_is_validated_and_scheduled_for_next_process_start(tmp_path):
     archive = tmp_path / 'owner.paibackup'
     archive.write_bytes(b'not-read-by-fake')
@@ -140,9 +156,23 @@ def test_connect_mode_does_not_mark_local_install_ready(tmp_path):
     rt = runtime(tmp_path)
     coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
     coordinator.begin('connect')
-    coordinator.mark_connect_pending('https://vishnu.example.test')
+    coordinator.mark_connect_pending('https://vishnu.example.test/path?ignored=yes#fragment')
 
     assert coordinator.ready is False
     state = coordinator.snapshot()
     assert state['status'] == SetupStatus.CONNECT_PENDING.value
     assert state['connect_url'] == 'https://vishnu.example.test'
+
+
+def test_connect_url_rejects_embedded_credentials_and_insecure_remote_http(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('connect')
+
+    with pytest.raises(ValueError, match='credentials'):
+        coordinator.mark_connect_pending('https://owner:secret@vishnu.example.test')
+    with pytest.raises(ValueError, match='HTTPS'):
+        coordinator.mark_connect_pending('http://vishnu.example.test')
+
+    state = coordinator.mark_connect_pending('http://localhost:8766')
+    assert state['connect_url'] == 'http://localhost:8766'
