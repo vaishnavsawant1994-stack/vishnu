@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-from .action_runtime import GeneratedActionService
+from .action_runtime import GeneratedActionService, _bounded_names, _host_within, _walk_named_values
 from security.approvals import parameter_hash
+from tools.registry import Risk
 
 
 class GovernedGeneratedActionService(GeneratedActionService):
-    """Adds strict data and exact canonical ticket revalidation before V2 commit."""
+    """Adds strict data, scope aliases and canonical ticket revalidation before V2 commit."""
+
+    @staticmethod
+    def _validate_scope(manifest: dict, parameters: dict, risk: Risk) -> None:
+        GeneratedActionService._validate_scope(manifest, parameters, risk)
+        permissions = dict(manifest.get("permissions") or {})
+        hosts = tuple(x.casefold().strip(".") for x in _bounded_names(permissions.get("network_hosts")))
+        # Common endpoint aliases are intentionally checked in addition to the
+        # V1-compatible url/domain keys. ToolRegistry destination policy remains
+        # authoritative, but Forge also fails early on nested endpoint smuggling.
+        for value in _walk_named_values(
+            parameters,
+            keys={"endpoint", "endpoint_url", "base_url", "uri", "webhook_url", "callback_url", "redirect_uri"},
+        ):
+            if not hosts or not _host_within(value, hosts):
+                raise PermissionError("generated action network destination is outside the Forge host scope")
 
     def stage(self, *args, **kwargs):
         classification = str(kwargs.get("data_classification") or "internal").strip().lower()
