@@ -7,7 +7,7 @@ from devices.pairing_payload import build_pairing_uri, normalize_vishnu_origin, 
 
 
 def test_pairing_uri_round_trip_preserves_existing_pairing_authority():
-    manager = PairingManager(ttl=300)
+    manager = PairingManager(ttl_seconds=300)
     offer = manager.create()
     uri = build_pairing_uri(
         base_url='https://vishnu.example.test/ignored/path?query=ignored',
@@ -21,6 +21,18 @@ def test_pairing_uri_round_trip_preserves_existing_pairing_authority():
     assert payload.code == offer.code
     assert manager.consume(payload.token, payload.code) is True
     assert manager.consume(payload.token, payload.code) is False
+
+
+def test_desktop_and_api_manager_instances_share_one_offer_authority():
+    desktop = PairingManager(ttl_seconds=300)
+    api = PairingManager(ttl_seconds=300)
+    offer = desktop.create()
+    assert api.consume(offer.token, offer.code) is True
+    assert desktop.consume(offer.token, offer.code) is False
+
+    abandoned = desktop.create()
+    assert api.invalidate(abandoned.token) is True
+    assert desktop.consume(abandoned.token, abandoned.code) is False
 
 
 def test_pairing_payload_rejects_expired_or_wrong_shape():
