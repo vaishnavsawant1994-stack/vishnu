@@ -20,6 +20,18 @@ from future_intelligence.work_orchestration.completion_propagation import instal
 from future_intelligence.work_orchestration.event_normalization import WorkEventNormalizer
 from future_intelligence.work_orchestration.notification_bridge import WorkNotificationBridge
 from future_intelligence.work_orchestration.memory_promotion import WorkMemoryPromotionBridge
+from future_intelligence.capability_forge import (
+    CapabilityForgeBuildService,
+    CapabilityForgeExecutionBridge,
+    CapabilityForgeLifecycle,
+    CapabilityForgeWorkBridge,
+    CapabilityPackageBuilder,
+    GeneratedCapabilityEvaluator,
+    build_capability_forge,
+)
+from future_intelligence.capability_forge.governed_activation import GovernedCapabilityActivationService
+from integrations.discovery.catalog_store import CapabilityCatalogStore
+from integrations.discovery.generated_runtime import rehydrate_generated_capabilities
 from core.p10_approval_continuation import install as install_p10_turn_continuation
 
 install_autonomy_runtime(AdvancedAutonomy)
@@ -60,6 +72,86 @@ class FutureIntelligenceProgram:
         runtime['advanced_autonomy']=self.autonomy
         install_completion_propagation(self.autonomy)
 
+        # Capability Forge reuses Universal Capabilities + Canonical Work. This
+        # startup hook is intentionally additive: generated capabilities remain
+        # inert unless they were already owner-approved and persisted active.
+        self.capability_forge=None
+        self.capability_forge_lifecycle=None
+        self.capability_forge_evaluator=None
+        self.capability_forge_work=None
+        self.capability_forge_activation=None
+        self.capability_forge_packages=CapabilityPackageBuilder()
+        self.capability_catalog=None
+        self.rehydrated_generated_capabilities=()
+        data_root=root.parent
+        state=getattr(runtime.get('integrations'),'state_store',None)
+        tools=runtime.get('tools')
+        if state is not None and tools is not None:
+            try:
+                self.capability_catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
+                self.capability_forge=build_capability_forge(data_root,catalog=self.capability_catalog,events=runtime.get('events'))
+                self.capability_forge_lifecycle=CapabilityForgeLifecycle(data_root/'capability-forge.sqlite3')
+                self.capability_forge_evaluator=GeneratedCapabilityEvaluator(self.capability_forge_lifecycle,events=runtime.get('events'))
+                work_runtime=getattr(self.autonomy,'_work_bridge',None)
+                work_store=getattr(work_runtime,'work',None)
+                if work_store is not None:
+                    self.capability_forge_work=CapabilityForgeWorkBridge(work_store,events=runtime.get('events'))
+                if approvals is not None:
+                    self.capability_forge_activation=GovernedCapabilityActivationService(
+                        catalog=self.capability_catalog,
+                        approvals=approvals,
+                        tools=tools,
+                        data_root=data_root,
+                        lifecycle=self.capability_forge_lifecycle,
+                        events=runtime.get('events'),
+                    )
+
+                def forge_invocation_observer(capability, _context):
+                    capability_id=str(capability.get('id') or '')
+                    version=str(capability.get('version') or '')
+                    def observe(*,ok,duration_ms,error_code=None):
+                        self.capability_forge_lifecycle.record_invocation(
+                            capability_id=capability_id,
+                            version=version,
+                            ok=bool(ok),
+                            duration_ms=float(duration_ms),
+                            error_code=error_code,
+                        )
+                    return observe
+
+                self.rehydrated_generated_capabilities=tuple(rehydrate_generated_capabilities(
+                    self.capability_catalog,
+                    tools=tools,
+                    data_root=data_root,
+                    invocation_observer=forge_invocation_observer,
+                ))
+                runtime.update({
+                    'capability_forge':self.capability_forge,
+                    'capability_forge_store':self.capability_forge.store,
+                    'capability_forge_lifecycle':self.capability_forge_lifecycle,
+                    'capability_forge_evaluator':self.capability_forge_evaluator,
+                    'capability_forge_work':self.capability_forge_work,
+                    'capability_forge_packages':self.capability_forge_packages,
+                    'capability_forge_activation':self.capability_forge_activation,
+                    'capability_catalog':self.capability_catalog,
+                    'generated_capabilities_rehydrated':self.rehydrated_generated_capabilities,
+                    'capability_forge_execution_factory':self.forge_execution_bridge,
+                    'capability_forge_build_factory':self.forge_build_service,
+                })
+                if runtime.get('events') is not None:
+                    runtime['events'].emit(
+                        'capability_forge.runtime_ready',
+                        rehydrated=list(self.rehydrated_generated_capabilities),
+                        activation_available=bool(self.capability_forge_activation),
+                        engineering_available=bool(runtime.get('engineering_executor')),
+                        monitoring_available=True,
+                    )
+            except Exception as exc:
+                # Forge startup is fail-closed and cannot break the canonical
+                # assistant runtime. The error type is observable without secrets.
+                if runtime.get('events') is not None:
+                    runtime['events'].emit('capability_forge.runtime_unavailable',error_type=type(exc).__name__)
+
         # One canonical raw->work.* translation layer on the existing EventBus.
         # It is installed before Notifications/Memory so every downstream product
         # surface observes the same taxonomy and Activities audit the same events.
@@ -76,6 +168,38 @@ class FutureIntelligenceProgram:
         if runtime.get('events') is not None and runtime.get('second_brain') is not None:
             self.work_memory_promotion=WorkMemoryPromotionBridge(runtime['events'],self.autonomy,runtime['second_brain']); runtime['work_memory_promotion']=self.work_memory_promotion
         if turn_executor is not None: install_p10_turn_continuation(type(turn_executor))
+
+    def forge_execution_bridge(self):
+        """Return a live Forge->Engineering bridge only after engineering is ready."""
+        executor=self.runtime.get('engineering_executor')
+        work_runtime=getattr(self.autonomy,'_work_bridge',None)
+        work_store=getattr(work_runtime,'work',None)
+        if executor is None or work_store is None:
+            return None
+        return CapabilityForgeExecutionBridge(
+            work_store,
+            executor,
+            events=self.runtime.get('events'),
+            lifecycle=self.capability_forge_lifecycle,
+        )
+
+    def forge_build_service(self):
+        """Return the governed execute->package service after Engineering is ready."""
+        executor=self.runtime.get('engineering_executor')
+        engineering=self.runtime.get('engineering')
+        work_runtime=getattr(self.autonomy,'_work_bridge',None)
+        work_store=getattr(work_runtime,'work',None)
+        if executor is None or engineering is None or work_store is None or self.capability_forge_lifecycle is None:
+            return None
+        return CapabilityForgeBuildService(
+            work_store=work_store,
+            engineering_runtime=engineering,
+            engineering_executor=executor,
+            package_builder=self.capability_forge_packages,
+            output_root=Path(self.runtime.get('settings_data_dir') or engineering.evidence_root.parent)/'generated-capabilities',
+            lifecycle=self.capability_forge_lifecycle,
+            events=self.runtime.get('events'),
+        )
 
     def status(self):
         p5_link=self.second_brain_life_graph.status(); p4_status=self.everyday.safe_status()
