@@ -15,12 +15,15 @@ from sensorium.models import (
     VirtualDevice,
     VirtualScenario,
 )
+from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
 from sensorium.service import SensoriumService
 from sensorium.virtual_device_lab import VirtualDeviceLab
 
 __all__ = [
     "DataClassification",
+    "DesktopPhysicalSensorAdapter",
     "DeviceState",
+    "MobilePhysicalSensorAdapter",
     "SensorEvent",
     "SensorKind",
     "SensoriumLiveWorkProjection",
