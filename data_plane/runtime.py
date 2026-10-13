@@ -56,6 +56,47 @@ def ensure_data_plane_security(runtime: dict, manager: UnifiedDataPlane | None =
     return transport
 
 
+def ensure_data_plane_storage(runtime: dict, manager: UnifiedDataPlane | None = None):
+    """Attach optional provider/relay services without changing data authority."""
+    manager = manager or get_data_plane(runtime)
+    if manager is None:
+        return None
+    settings = runtime.get('settings')
+    if settings is None or getattr(settings, 'data_dir', None) is None:
+        return None
+
+    relay = runtime.get('data_plane_relay')
+    if relay is None:
+        from .relay import OpaqueDataRelay
+        relay = OpaqueDataRelay(
+            settings.data_dir / 'data-relay.sqlite3',
+            device_registry=runtime.get('device_registry'),
+        )
+        runtime['data_plane_relay'] = relay
+        manager.data_relay = relay
+
+    ensure_data_plane_security(runtime, manager)
+    envelopes = runtime.get('data_plane_envelopes')
+    vault = runtime.get('vault')
+    if envelopes is None or vault is None:
+        return relay
+
+    service = runtime.get('data_plane_provider_storage')
+    if service is None:
+        from .storage_adapters import EncryptedProviderService, StorageAdapterManager
+        adapters = StorageAdapterManager(
+            manager,
+            vault,
+            connector_resolver=runtime.get('storage_connector_resolver'),
+        )
+        service = EncryptedProviderService(manager, envelopes, adapters)
+        runtime['data_plane_storage_adapters'] = adapters
+        runtime['data_plane_provider_storage'] = service
+        manager.storage_adapters = adapters
+        manager.provider_storage = service
+    return service
+
+
 def ensure_data_plane_sync(runtime: dict, manager: UnifiedDataPlane | None = None):
     current = runtime.get('data_plane_sync')
     if current is not None:
@@ -77,6 +118,7 @@ def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane | None:
     if manager is None:
         return None
     ensure_data_plane_security(runtime, manager)
+    ensure_data_plane_storage(runtime, manager)
     registry = runtime.get('tools')
     if registry is not None:
         from tools import data_access
