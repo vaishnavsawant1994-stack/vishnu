@@ -4,6 +4,7 @@ from pathlib import Path
 
 from integrations.discovery.generated_runtime_v3 import rehydrate_generated_capabilities_v3
 
+from .canary_runner import CapabilityForgeCanaryRunner
 from .governed_activation_v3 import GovernedCapabilityActivationServiceV3
 from .oauth_durable import DurableCapabilityOAuthLifecycle
 from .production_build import ProductionReadyCapabilityForgeBuildService
@@ -59,6 +60,13 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         rollout=rollout,
         events=runtime.get("events"),
     )
+    canary_runner = CapabilityForgeCanaryRunner(
+        data_root=root,
+        tools=tools,
+        provenance=provenance,
+        rollout=rollout,
+        events=runtime.get("events"),
+    )
     readiness = CapabilityForgeProductionReadiness()
 
     def build_factory():
@@ -108,6 +116,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
     program.capability_forge_rollout = rollout
     program.capability_forge_oauth = oauth_lifecycle
     program.capability_forge_provider_verifier = provider_verifier
+    program.capability_forge_canary_runner = canary_runner
     program.capability_forge_production_readiness = readiness
     runtime.update({
         "capability_forge_activation": activation,
@@ -115,6 +124,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         "capability_forge_rollout": rollout,
         "capability_forge_oauth": oauth_lifecycle,
         "capability_forge_provider_verifier": provider_verifier,
+        "capability_forge_canary_runner": canary_runner,
         "capability_forge_production_readiness": readiness,
         "capability_forge_build_factory": build_factory,
         "generated_capabilities_rehydrated": rehydrated,
