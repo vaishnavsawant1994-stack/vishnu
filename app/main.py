@@ -171,6 +171,7 @@ def _close_runtime(runtime, *, services_started=False, floating_presence=None):
 def main():
     from PyQt6.QtWidgets import QApplication, QDialog
     from desktop.floating_presence import FloatingPresence
+    from ui.main_window import MainWindow
     from ui.canonical_main_window import CanonicalMainWindow
     from ui.first_run_wizard import FirstRunWizard
 
