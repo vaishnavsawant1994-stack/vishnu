@@ -2,14 +2,14 @@ from __future__ import annotations
 from fastapi import APIRouter,HTTPException,Header
 from pydantic import BaseModel,Field
 import uuid
-from data_plane.runtime import get_data_plane
+from data_plane.runtime import ensure_data_plane_tools
 from devices.gateway import DeviceCommand
 class ActionRequest(BaseModel):tool:str;parameters:dict=Field(default_factory=dict)
 class DeviceActionRequest(BaseModel):action:str;parameters:dict=Field(default_factory=dict);timeout:float=15
 
 def dashboard_router(runtime,auth_device):
     r=APIRouter(prefix='/dashboard',tags=['dashboard'])
-    data_plane=get_data_plane(runtime)
+    data_plane=ensure_data_plane_tools(runtime)
     def auth(a,d,scope='ai:chat'):auth_device(a,d,scope)
     @r.get('/status')
     def status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
