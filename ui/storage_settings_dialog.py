@@ -17,6 +17,7 @@ from PyQt6.QtWidgets import (
 )
 
 from data_plane.policy import CloudMode, StoragePolicy
+from data_plane.provider_bridge import connect_runtime_provider, runtime_provider_reference
 from data_plane.runtime import get_data_plane
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
 
@@ -78,8 +79,8 @@ class StorageSettingsDialog(QDialog):
 
         layout.addWidget(QLabel('<h3>Online storage providers</h3>'))
         layout.addWidget(QLabel(
-            'Providers can be combined. A provider is shown as available only after a real connector/native bridge/'
-            'managed service or vault-backed adapter has been configured and verified.'
+            'Providers can be combined. Existing governed Vishnu connections are reused when possible. '
+            'A provider is available only after a real connector/native bridge/managed service or vault-backed adapter verifies.'
         ))
         provider_row = QHBoxLayout()
         self.provider = QComboBox()
@@ -139,7 +140,9 @@ class StorageSettingsDialog(QDialog):
             if item['provider_id'] == 'local':
                 continue
             state = 'available' if item['available'] else ('enabled' if item['enabled'] else 'off')
-            self.provider.addItem(f"{item['label']} — {state}", item['provider_id'])
+            existing = runtime_provider_reference(item['provider_id'], self.runtime)
+            suffix = ' · existing Vishnu connection' if existing else ''
+            self.provider.addItem(f"{item['label']} — {state}{suffix}", item['provider_id'])
         if current_provider:
             self._select_data(self.provider, str(current_provider))
         self.provider.blockSignals(False)
@@ -152,6 +155,7 @@ class StorageSettingsDialog(QDialog):
                 'configured': item['configured'],
                 'enabled': item['enabled'],
                 'available': item['available'],
+                'has_existing_vishnu_connection': bool(runtime_provider_reference(item['provider_id'], self.runtime)),
                 'verified_at': item['verified_at'],
                 'notes': item['notes'],
             }
@@ -190,12 +194,20 @@ class StorageSettingsDialog(QDialog):
         if not self._reauthenticated():
             return
         try:
-            if enabled and not self.cloud.isChecked():
-                raise PermissionError('Turn on online/cloud storage before enabling a provider.')
+            persisted = self.data_plane.settings()
+            if enabled and not persisted['cloud_enabled']:
+                raise PermissionError('Turn on online/cloud storage and save the data policy before enabling a provider.')
+            existing_ref = runtime_provider_reference(provider_id, self.runtime)
+            if enabled and existing_ref:
+                connect_runtime_provider(self.data_plane, self.runtime, provider_id)
+                self.provider_ref.clear()
+                self.refresh()
+                QMessageBox.information(self, 'Provider connected', 'Vishnu reused the existing governed connection. No second provider token was stored.')
+                return
             ref = self.provider_ref.text().strip() or None
             status = self.data_plane.provider_status(provider_id)
             if enabled and status['credential_kind'] not in {'managed', 'native_bridge'} and not ref:
-                raise ValueError('Select a real connector/vault reference first. Raw API keys are not stored here.')
+                raise ValueError('Connect/configure this provider first or select a vault/connector reference. Raw API keys are never stored here.')
             self.data_plane.configure_provider(
                 provider_id,
                 enabled=enabled,
@@ -206,7 +218,7 @@ class StorageSettingsDialog(QDialog):
             self.provider_ref.clear()
             self.refresh()
             if enabled:
-                QMessageBox.information(self, 'Provider configured', 'The provider is enabled but remains unavailable until its real adapter/connector verifies successfully. Vishnu fails closed until then.')
+                QMessageBox.information(self, 'Provider configured', 'The provider remains unavailable until its real adapter/connector verifies successfully. Vishnu fails closed until then.')
             else:
                 QMessageBox.information(self, 'Provider disabled', 'Future online-storage use through this provider is disabled.')
         except Exception as exc:
