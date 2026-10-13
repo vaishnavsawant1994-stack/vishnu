@@ -1,21 +1,33 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 import time
 from urllib.parse import parse_qs, quote, urlencode, urlparse, urlunparse
 
 
 PAIRING_SCHEME = 'vishnu'
 PAIRING_HOST = 'pair'
-PAIRING_VERSION = '1'
+LEGACY_PAIRING_VERSION = '1'
+ZERO_CONFIG_PAIRING_VERSION = '2'
+_SERVICE_RE = re.compile(r'^[a-zA-Z0-9_-]{8,64}$')
+_FINGERPRINT_RE = re.compile(r'^[0-9a-fA-F]{64}$')
 
 
 @dataclass(frozen=True)
 class PairingPayload:
-    base_url: str
     token: str
     code: str
     expires_at: float
+    version: int = 1
+    base_url: str | None = None
+    service_id: str | None = None
+    cert_sha256: str | None = None
+    fallback_url: str | None = None
+
+    @property
+    def zero_config(self) -> bool:
+        return self.version == 2 and bool(self.service_id and self.cert_sha256)
 
 
 def normalize_vishnu_origin(value: str, *, allow_local_http: bool = False) -> str:
@@ -35,15 +47,7 @@ def normalize_vishnu_origin(value: str, *, allow_local_http: bool = False) -> st
     return urlunparse((parsed.scheme, f'{host}{port}', '', '', '', '')).rstrip('/')
 
 
-def build_pairing_uri(
-    *,
-    base_url: str,
-    token: str,
-    code: str,
-    expires_at: float,
-    allow_local_http: bool = False,
-) -> str:
-    origin = normalize_vishnu_origin(base_url, allow_local_http=allow_local_http)
+def _validated_offer(token: str, code: str, expires_at: float) -> tuple[str, str, float]:
     clean_token = str(token or '').strip()
     clean_code = str(code or '').strip()
     expiry = float(expires_at)
@@ -53,13 +57,58 @@ def build_pairing_uri(
         raise ValueError('Pairing code must contain exactly six digits')
     if expiry <= time.time():
         raise ValueError('Pairing offer is expired')
+    return clean_token, clean_code, expiry
+
+
+def build_pairing_uri(
+    *,
+    base_url: str,
+    token: str,
+    code: str,
+    expires_at: float,
+    allow_local_http: bool = False,
+) -> str:
+    """Build the backward-compatible direct-address pairing payload."""
+    origin = normalize_vishnu_origin(base_url, allow_local_http=allow_local_http)
+    clean_token, clean_code, expiry = _validated_offer(token, code, expires_at)
     query = urlencode({
-        'v': PAIRING_VERSION,
+        'v': LEGACY_PAIRING_VERSION,
         'base': origin,
         'token': clean_token,
         'code': clean_code,
         'expires': f'{expiry:.6f}',
     }, quote_via=quote)
+    return f'{PAIRING_SCHEME}://{PAIRING_HOST}?{query}'
+
+
+def build_zero_config_pairing_uri(
+    *,
+    service_id: str,
+    cert_sha256: str,
+    token: str,
+    code: str,
+    expires_at: float,
+    fallback_url: str | None = None,
+) -> str:
+    """Build a discovery payload with a pinned TLS identity and no LAN address."""
+    clean_service = str(service_id or '').strip()
+    fingerprint = str(cert_sha256 or '').strip().lower()
+    if not _SERVICE_RE.fullmatch(clean_service):
+        raise ValueError('Local Vishnu service identity is invalid')
+    if not _FINGERPRINT_RE.fullmatch(fingerprint):
+        raise ValueError('Local Vishnu TLS fingerprint is invalid')
+    clean_token, clean_code, expiry = _validated_offer(token, code, expires_at)
+    values = {
+        'v': ZERO_CONFIG_PAIRING_VERSION,
+        'service': clean_service,
+        'fp': fingerprint,
+        'token': clean_token,
+        'code': clean_code,
+        'expires': f'{expiry:.6f}',
+    }
+    if fallback_url:
+        values['fallback'] = normalize_vishnu_origin(fallback_url)
+    query = urlencode(values, quote_via=quote)
     return f'{PAIRING_SCHEME}://{PAIRING_HOST}?{query}'
 
 
@@ -75,12 +124,21 @@ def parse_pairing_uri(
     if parsed.fragment:
         raise ValueError('Pairing QR code must not contain a fragment')
     values = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
-    allowed = {'v', 'base', 'token', 'code', 'expires'}
-    if set(values) != allowed or any(len(items) != 1 for items in values.values()):
+    if 'v' not in values or len(values['v']) != 1:
         raise ValueError('Pairing QR code fields are invalid')
-    if values['v'][0] != PAIRING_VERSION:
-        raise ValueError('Unsupported Vishnu pairing QR version')
-    origin = normalize_vishnu_origin(values['base'][0], allow_local_http=allow_local_http)
+    version = values['v'][0]
+    allowed = (
+        {'v', 'base', 'token', 'code', 'expires'}
+        if version == LEGACY_PAIRING_VERSION
+        else {'v', 'service', 'fp', 'token', 'code', 'expires', 'fallback'}
+        if version == ZERO_CONFIG_PAIRING_VERSION
+        else set()
+    )
+    required = allowed - {'fallback'}
+    if not allowed or not required.issubset(values) or not set(values).issubset(allowed) or any(len(items) != 1 for items in values.values()):
+        if version not in {LEGACY_PAIRING_VERSION, ZERO_CONFIG_PAIRING_VERSION}:
+            raise ValueError('Unsupported Vishnu pairing QR version')
+        raise ValueError('Pairing QR code fields are invalid')
     token = values['token'][0].strip()
     code = values['code'][0].strip()
     if not 16 <= len(token) <= 256:
@@ -94,4 +152,23 @@ def parse_pairing_uri(
     current = time.time() if now is None else float(now)
     if expiry <= current:
         raise ValueError('This pairing QR code has expired')
-    return PairingPayload(base_url=origin, token=token, code=code, expires_at=expiry)
+    if version == LEGACY_PAIRING_VERSION:
+        origin = normalize_vishnu_origin(values['base'][0], allow_local_http=allow_local_http)
+        return PairingPayload(token=token, code=code, expires_at=expiry, version=1, base_url=origin)
+    service_id = values['service'][0].strip()
+    fingerprint = values['fp'][0].strip().lower()
+    if not _SERVICE_RE.fullmatch(service_id):
+        raise ValueError('Local Vishnu service identity is invalid')
+    if not _FINGERPRINT_RE.fullmatch(fingerprint):
+        raise ValueError('Local Vishnu TLS fingerprint is invalid')
+    fallback = values.get('fallback', [None])[0]
+    fallback_origin = normalize_vishnu_origin(fallback) if fallback else None
+    return PairingPayload(
+        token=token,
+        code=code,
+        expires_at=expiry,
+        version=2,
+        service_id=service_id,
+        cert_sha256=fingerprint,
+        fallback_url=fallback_origin,
+    )
