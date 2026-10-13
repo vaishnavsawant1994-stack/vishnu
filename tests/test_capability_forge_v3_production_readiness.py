@@ -9,6 +9,7 @@ import pytest
 from future_intelligence.capability_forge.oauth_lifecycle import CapabilityOAuthLifecycle
 from future_intelligence.capability_forge.provenance import CapabilityPackageProvenance, CapabilityProvenanceError
 from future_intelligence.capability_forge.canary_rollout import CapabilityCanaryRollout
+from future_intelligence.capability_forge.production_canary import ProductionCapabilityCanaryRollout
 from future_intelligence.capability_forge.provider_verification import CapabilityProviderVerifier
 from future_intelligence.capability_forge.production_readiness import CapabilityForgeProductionReadiness
 from future_intelligence.engineering.canary import CanaryMetrics, CanaryThresholds
@@ -162,6 +163,33 @@ def test_canary_rollout_requires_evidence_and_canonical_approval(tmp_path):
     assert result["stage"] == "limited"
 
 
+def test_v3_broad_rollout_requires_fresh_limited_stage_samples(tmp_path):
+    approvals = FakeApprovals()
+    rollout = ProductionCapabilityCanaryRollout(
+        path=tmp_path / "forge.sqlite3", lifecycle=EmptyLifecycle(), approvals=approvals,
+        catalog=SimpleNamespace(), tools=SimpleNamespace(),
+        thresholds=CanaryThresholds(min_sample_count=3, max_error_rate_absolute=.25),
+    )
+    rollout.start(capability_id="g", version="1", manifest_digest="d",
+                  baseline=CanaryMetrics(3, 0.0, 10.0))
+    for latency in (8, 9, 10): rollout.record_sample("g", "1", ok=True, duration_ms=latency, source="internal")
+    first = rollout.request_promotion("g", "1", target_stage="limited")
+    approvals.approve(first)
+    assert rollout.promote("g", "1", target_stage="limited", ticket_id=first)["stage"] == "limited"
+    second = rollout.request_promotion("g", "1", target_stage="broad_eligible")
+    approvals.approve(second)
+    with pytest.raises(PermissionError, match="limited-stage evidence"):
+        rollout.promote("g", "1", target_stage="broad_eligible", ticket_id=second)
+    # A failed promotion never substitutes internal evidence for limited exposure.
+    assert rollout.get("g", "1")["stage"] == "limited"
+    for latency in (9, 10, 11): rollout.record_sample("g", "1", ok=True, duration_ms=latency, source="limited")
+    third = rollout.request_promotion("g", "1", target_stage="broad_eligible")
+    approvals.approve(third)
+    broad = rollout.promote("g", "1", target_stage="broad_eligible", ticket_id=third)
+    assert broad["stage"] == "broad_eligible"
+    assert broad["baseline"]["sample_count"] == 3
+
+
 class FakeToolRegistry:
     def __init__(self, risk=Risk.READ_ONLY):
         self.tool = SimpleNamespace(name="provider.read", risk=risk, verification_method="provider_probe")
@@ -192,9 +220,18 @@ def test_production_readiness_is_fail_closed_without_real_associations():
         "namespace":"android_app","package_name":"ai.vishnu.app",
         "sha256_cert_fingerprints":[":".join(["AA"]*32)]}}]
     apple = {"applinks":{"apps":[],"details":[{"appID":"TEAM.ai.vishnu.app","paths":["/iphone/native/*"]}]}}
-    ready = service.evaluate(
+    wrong_path = service.evaluate(
         public_base_url="https://vishnu.example.com",
         oauth_redirect_uri="https://vishnu.example.com/connector-oauth/callback",
+        android_asset_links=android, apple_app_site_association=apple,
+        native_client_redirects={"ios":{"vishnu://oauth/callback"}, "android":{"vishnu://oauth/callback"}},
+        provenance_available=True, provider_verification_available=True,
+        canary_available=True, external_oauth_available=True,
+    )
+    assert wrong_path.ready is False and wrong_path.checks["oauth_callback_path"] is False
+    ready = service.evaluate(
+        public_base_url="https://vishnu.example.com",
+        oauth_redirect_uri="https://vishnu.example.com/iphone/capability-oauth/callback",
         android_asset_links=android, apple_app_site_association=apple,
         native_client_redirects={"ios":{"vishnu://oauth/callback"}, "android":{"vishnu://oauth/callback"}},
         provenance_available=True, provider_verification_available=True,
