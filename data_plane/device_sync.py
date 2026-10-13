@@ -185,6 +185,11 @@ class DeviceProgressSyncService:
             return {'device_id': device_id, 'skipped': True, 'reason': 'already_syncing'}
         if device_id not in self.gateway.online():
             return {'device_id': device_id, 'skipped': True, 'reason': 'offline'}
+        try:
+            self.data_plane._assert_active_device(device_id, 'data:sync')
+        except PermissionError:
+            self.events.emit('data_plane.sync_denied', device_id=device_id, reason='data_sync_scope')
+            return {'device_id': device_id, 'skipped': True, 'reason': 'data_sync_not_authorized'}
         self._syncing.add(device_id)
         received = 0
         delivered = 0
