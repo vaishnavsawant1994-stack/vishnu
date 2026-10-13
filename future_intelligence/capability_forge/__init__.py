@@ -1,12 +1,10 @@
-"""Capability Forge intelligence.
+"""Capability Forge intelligence and governed generated-capability lifecycle."""
 
-The F1/F2 package detects and specifies reusable capability gaps, selects the
-narrowest governed implementation route, and can project engineering routes into
-draft Canonical Work. It does not execute or activate code.
-"""
-
+from .activation import CapabilityActivationService, ForgeActivationDecision
 from .event_bridge import FORGE_OBSERVED_EVENTS, attach_capability_forge_observers
+from .execution_bridge import CapabilityForgeExecutionBridge, ForgeCandidateResult
 from .gap_detector import CapabilityGapDetector
+from .lifecycle import CapabilityForgeLifecycle
 from .models import (
     CapabilityGap,
     CapabilityPlan,
@@ -17,6 +15,7 @@ from .models import (
     GapStatus,
     RiskAssessment,
 )
+from .package import CapabilityPackageBuilder, PackagedCapability
 from .planner import CapabilityPlanner
 from .risk_mapper import CapabilityRiskMapper
 from .runtime import build_capability_forge
@@ -26,11 +25,15 @@ from .store import CapabilityForgeStore
 from .work_bridge import CapabilityForgeWorkBridge, ForgeWorkProjection
 
 __all__ = [
+    "CapabilityActivationService",
+    "CapabilityForgeExecutionBridge",
+    "CapabilityForgeLifecycle",
     "CapabilityForgeService",
     "CapabilityForgeStore",
     "CapabilityForgeWorkBridge",
     "CapabilityGap",
     "CapabilityGapDetector",
+    "CapabilityPackageBuilder",
     "CapabilityPlan",
     "CapabilityPlanner",
     "CapabilityRisk",
@@ -39,9 +42,12 @@ __all__ = [
     "CapabilitySpec",
     "CapabilitySpecBuilder",
     "FORGE_OBSERVED_EVENTS",
+    "ForgeActivationDecision",
+    "ForgeCandidateResult",
     "ForgeWorkProjection",
     "GapSource",
     "GapStatus",
+    "PackagedCapability",
     "RiskAssessment",
     "attach_capability_forge_observers",
     "build_capability_forge",
