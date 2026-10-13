@@ -16,6 +16,9 @@ from .provider_verification import CapabilityProviderVerifier
 
 def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path) -> bool:
     """Extend the already-installed Forge V2 runtime without parallel authority."""
+    if runtime.get("capability_forge_v3_installed"):
+        return True
+    runtime["capability_forge_v3_install_attempted"] = True
     catalog = getattr(program, "capability_catalog", None)
     lifecycle = getattr(program, "capability_forge_lifecycle", None)
     actions = getattr(program, "capability_forge_actions", None)
@@ -24,6 +27,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
     vault = runtime.get("vault")
     approvals = getattr(previous_activation, "approvals", None)
     if catalog is None or lifecycle is None or tools is None or approvals is None or vault is None:
+        runtime["capability_forge_v3_installed"] = False
         return False
     root = Path(data_root)
     provenance = CapabilityPackageProvenance(vault)
@@ -100,10 +104,6 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
                 duration_ms=float(duration_ms),
                 error_code=error_code,
             )
-            # V3 packages have a frozen limited-canary baseline. Re-evaluate
-            # health after each active invocation; insufficient evidence is a
-            # no-op, while a sufficiently proven regression can only REMOVE
-            # authority by quarantining the capability.
             current = catalog.get(capability_id)
             if not current or current.get("state") != "active" or not current.get("provenance_required"):
                 return
@@ -149,6 +149,7 @@ def install_capability_forge_v3(program, runtime: dict, *, data_root: str | Path
         "capability_forge_production_readiness": readiness,
         "capability_forge_build_factory": build_factory,
         "generated_capabilities_rehydrated": rehydrated,
+        "capability_forge_v3_installed": True,
     })
     if runtime.get("events") is not None:
         runtime["events"].emit(
