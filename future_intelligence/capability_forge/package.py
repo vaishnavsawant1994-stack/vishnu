@@ -15,6 +15,7 @@ from .models import CapabilityPlan, CapabilityRisk, CapabilityRoute, CapabilityS
 
 _VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][A-Za-z0-9._-]+)?$")
 _SAFE_ID_RE = re.compile(r"[^a-z0-9._-]+")
+_SUPPORTED_RUNTIMES = {"pure_python_v1", "governed_toolchain_v1"}
 
 
 def _canonical_json(data: dict[str, Any]) -> bytes:
@@ -32,6 +33,40 @@ def _safe_capability_id(spec: CapabilitySpec) -> str:
     if not candidate or len(candidate) > 160:
         raise ValueError("invalid generated capability id")
     return candidate
+
+
+def _bounded_names(value: Any, *, limit: int = 32) -> tuple[str, ...]:
+    if value is None:
+        raw = ()
+    elif isinstance(value, str):
+        raw = (value,)
+    else:
+        raw = tuple(value)
+    out: list[str] = []
+    for item in raw:
+        name = str(item or "").strip()
+        if not name:
+            continue
+        if len(name) > 200:
+            raise ValueError("generated capability tool name exceeds limit")
+        if name not in out:
+            out.append(name)
+        if len(out) > limit:
+            raise ValueError("generated capability requests too many delegated tools")
+    return tuple(out)
+
+
+def _entrypoint(value: str, *, label: str, packaged_names: set[str]) -> dict[str, str]:
+    entry = str(value or "").strip()
+    if ":" not in entry:
+        raise ValueError(f"{label} must use relative_file.py:function syntax")
+    entry_file, entry_function = entry.rsplit(":", 1)
+    path = Path(entry_file)
+    if not entry_file or not entry_function or path.is_absolute() or ".." in path.parts:
+        raise ValueError(f"invalid generated capability {label}")
+    if entry_file not in packaged_names:
+        raise ValueError(f"{label} file is not part of the qualified generated candidate")
+    return {"file": entry_file, "function": entry_function}
 
 
 @dataclass(frozen=True)
@@ -53,6 +88,7 @@ class PackagedCapability:
             "version": self.version,
             "runtime": self.manifest["runtime"],
             "entrypoint": self.manifest["entrypoint"],
+            "reducer": self.manifest.get("reducer"),
             "input_schema": self.manifest["input_schema"],
             "output_schema": self.manifest["output_schema"],
             "permissions": self.manifest["permissions"],
@@ -67,7 +103,14 @@ class PackagedCapability:
 
 
 class CapabilityPackageBuilder:
-    """Create immutable versioned packages only from qualified Forge candidates."""
+    """Create immutable versioned packages only from qualified Forge candidates.
+
+    ``pure_python_v1`` receives no external authority. ``governed_toolchain_v1``
+    may request a bounded set of already-registered read-only Vishnu tools, but
+    never receives raw network, filesystem, connector credentials, or secrets.
+    Every delegated tool call remains subject to ToolRegistry policy, contracts,
+    destination rules, verification, and the emergency stop.
+    """
 
     MAX_FILES = 32
     MAX_FILE_BYTES = 500_000
@@ -152,17 +195,27 @@ class CapabilityPackageBuilder:
         if len(files) > self.MAX_FILES:
             raise ValueError("generated capability package contains too many files")
 
-        entry = str(entrypoint or dict(spec.metadata or {}).get("entrypoint") or "capability.py:run").strip()
-        if ":" not in entry:
-            raise ValueError("entrypoint must use relative_file.py:function syntax")
-        entry_file, entry_function = entry.rsplit(":", 1)
-        if not entry_file or not entry_function or entry_file.startswith("/") or ".." in Path(entry_file).parts:
-            raise ValueError("invalid generated capability entrypoint")
-        packaged_names = {name for name, _src, _size in files}
-        if entry_file not in packaged_names:
-            raise ValueError("entrypoint file is not part of the qualified generated candidate")
-
+        metadata = dict(spec.metadata or {})
+        allowed_tools = _bounded_names(metadata.get("allowed_tools"))
+        runtime = str(metadata.get("runtime") or ("governed_toolchain_v1" if allowed_tools else "pure_python_v1")).strip()
+        if runtime not in _SUPPORTED_RUNTIMES:
+            raise ValueError("unsupported generated capability runtime")
         risk = plan.risk.risk.value if plan.risk is not None else CapabilityRisk.WRITE.value
+        if runtime == "governed_toolchain_v1":
+            if risk != CapabilityRisk.READ.value:
+                raise PermissionError("governed generated toolchains are limited to read-only capabilities")
+            if not allowed_tools:
+                raise ValueError("governed generated toolchain requires explicit allowed_tools")
+            if spec.filesystem_write or spec.secret_names or spec.side_effects or spec.background_allowed or spec.ui_required:
+                raise PermissionError("governed generated toolchain cannot request raw secrets, writes, side effects, background work, or UI authority")
+
+        packaged_names = {name for name, _src, _size in files}
+        default_entry = "capability.py:plan" if runtime == "governed_toolchain_v1" else "capability.py:run"
+        entry = _entrypoint(str(entrypoint or metadata.get("entrypoint") or default_entry), label="entrypoint", packaged_names=packaged_names)
+        reducer = None
+        if runtime == "governed_toolchain_v1" and metadata.get("reducer"):
+            reducer = _entrypoint(str(metadata["reducer"]), label="reducer", packaged_names=packaged_names)
+
         qualification = dict(getattr(execution_result, "qualification", {}) or {})
         qualification_digest = hashlib.sha256(_canonical_json(qualification)).hexdigest()
         capability_id = _safe_capability_id(spec)
@@ -173,8 +226,8 @@ class CapabilityPackageBuilder:
             "name": spec.name,
             "version": version,
             "type": "generated_capability",
-            "runtime": "pure_python_v1",
-            "entrypoint": {"file": entry_file, "function": entry_function},
+            "runtime": runtime,
+            "entrypoint": entry,
             "input_schema": dict(spec.inputs or {}),
             "output_schema": dict(spec.outputs or {}),
             "permissions": {
@@ -186,6 +239,7 @@ class CapabilityPackageBuilder:
                 "side_effects": list(spec.side_effects),
                 "background_allowed": bool(spec.background_allowed),
                 "ui_required": bool(spec.ui_required),
+                "allowed_tools": list(allowed_tools),
             },
             "risk": risk,
             "source_files": [name for name, _src, _size in sorted(files)],
@@ -201,6 +255,8 @@ class CapabilityPackageBuilder:
                 "build_id": build_id,
             },
         }
+        if reducer is not None:
+            manifest["reducer"] = reducer
 
         output = Path(output_root)
         output.mkdir(parents=True, exist_ok=True)
