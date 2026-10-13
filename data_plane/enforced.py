@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .manager import UnifiedDataPlane
@@ -86,6 +87,67 @@ class PolicyEnforcedDataPlane(UnifiedDataPlane):
             copy_allowed=copy_allowed,
             remote_access_allowed=remote_access_allowed,
         )
+
+    def pending_progress_events(self, device_id: str, *, limit: int = 100) -> list[dict[str, Any]]:
+        """Return only bounded progress/tombstone events not acked by a device.
+
+        Sync-everywhere domain payloads are intentionally not returned here;
+        their durable bytes require domain/file-specific replication paths.
+        """
+        device_id = str(device_id or '').strip()
+        if not device_id:
+            raise ValueError('device_id is required')
+        if self.device_registry is not None and not self.device_registry.is_active(device_id):
+            raise PermissionError('trusted active device required')
+        limit = max(1, min(int(limit), 500))
+        with self._con() as con:
+            rows = con.execute(
+                '''SELECT e.event_id,e.global_id,e.version,e.origin_device_id,e.event_kind,
+                          e.payload_json,e.payload_hash,e.created_at,i.entity_type,i.storage_policy
+                   FROM data_plane_sync_events e
+                   JOIN data_plane_items i ON i.global_id=e.global_id
+                   LEFT JOIN data_plane_sync_receipts r
+                     ON r.event_id=e.event_id AND r.device_id=?
+                   WHERE r.event_id IS NULL
+                     AND i.storage_policy='progress_only'
+                     AND e.origin_device_id<>?
+                   ORDER BY e.created_at,e.event_id
+                   LIMIT ?''',
+                (device_id, device_id, limit),
+            ).fetchall()
+        return [
+            {
+                'event_id': row['event_id'],
+                'global_id': row['global_id'],
+                'version': int(row['version']),
+                'origin_device_id': row['origin_device_id'],
+                'event_kind': row['event_kind'],
+                'payload': json.loads(row['payload_json'] or '{}'),
+                'payload_hash': row['payload_hash'],
+                'created_at': row['created_at'],
+                'entity_type': row['entity_type'],
+                'storage_policy': row['storage_policy'],
+            }
+            for row in rows
+        ]
+
+    def acknowledge_sync_event(self, device_id: str, event_id: str) -> bool:
+        device_id = str(device_id or '').strip()
+        event_id = str(event_id or '').strip()
+        if not device_id or not event_id:
+            raise ValueError('device_id and event_id are required')
+        if self.device_registry is not None and not self.device_registry.is_active(device_id):
+            raise PermissionError('trusted active device required')
+        with self._con() as con:
+            known = con.execute('SELECT 1 FROM data_plane_sync_events WHERE event_id=?', (event_id,)).fetchone()
+            if not known:
+                raise KeyError('sync event not found')
+            before = con.total_changes
+            con.execute(
+                'INSERT OR IGNORE INTO data_plane_sync_receipts(device_id,event_id,received_at) VALUES(?,?,datetime(\'now\'))',
+                (device_id, event_id),
+            )
+            return con.total_changes > before
 
     def grant_remote_access(
         self,
