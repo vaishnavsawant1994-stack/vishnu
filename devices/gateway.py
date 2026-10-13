@@ -1,13 +1,9 @@
 from __future__ import annotations
-import asyncio
-from dataclasses import dataclass
-from typing import Any
 
-@dataclass
-class DeviceCommand:
-    action:str
-    parameters:dict[str,Any]
-    request_id:str
+import asyncio
+
+from devices.runtime import DeviceCommand
+
 
 class DeviceGateway:
     def __init__(self,registry,events):
@@ -33,7 +29,7 @@ class DeviceGateway:
         session=self._sessions.get(device_id)
         if session is None:
             raise RuntimeError('device is offline')
-        await session.send_json({'type':'command','request_id':command.request_id,'action':command.action,'parameters':command.parameters})
+        await session.send_json({'type':'command','request_id':command.request_id,'action':command.action,'parameters':dict(command.parameters)})
         return {'queued':True,'request_id':command.request_id}
 
     async def request(self,device_id,command:DeviceCommand,timeout=15):
