@@ -108,12 +108,11 @@ class PackagedCapability:
 class CapabilityPackageBuilder:
     """Create immutable versioned packages only from qualified Forge candidates.
 
-    ``pure_python_v1`` receives no external authority. ``governed_toolchain_v1``
-    composes already-registered read-only Vishnu tools. ``governed_action_v2``
-    may plan qualified side-effecting tools, but generated code itself still has
-    no external authority: exact actions are staged and require canonical owner
-    approval before a separate governed commit. Raw credentials are never placed
-    in generated packages. UI contracts are declarative and code-free.
+    V1 pure/toolchain packages retain their already-qualified read-only runtime
+    boundary. V2 action packages may request trusted wrapper features (declarative
+    UI and canonical AutomationEngine scheduling) plus scoped delegated writes.
+    Generated code itself still receives no socket, credential, process-env or
+    arbitrary filesystem authority.
     """
 
     MAX_FILES = 32
@@ -208,6 +207,8 @@ class CapabilityPackageBuilder:
 
         if spec.secret_names:
             raise PermissionError("generated capability packages cannot receive raw secret values")
+        if runtime != "governed_action_v2" and (spec.ui_required or spec.background_allowed):
+            raise PermissionError("generated UI and background wrappers require governed_action_v2 in this qualified milestone")
         if runtime == "pure_python_v1":
             if risk != CapabilityRisk.READ.value:
                 raise PermissionError("pure generated runtime is limited to read-only capabilities")
