@@ -31,10 +31,17 @@ extension Notification.Name {
 }
 
 @main
+@MainActor
 struct PersonalAICompanionApp: App {
     @UIApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
-    @StateObject private var store = CompanionStore()
+    @StateObject private var store: CompanionStore
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let companion=CompanionStore()
+        MobileDataPlaneBridge.shared.install(on:companion.socket)
+        _store=StateObject(wrappedValue:companion)
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -83,6 +90,10 @@ struct PersonalAICompanionApp: App {
                     LabeledContent("Status",value:store.status)
                     LabeledContent("Channel",value:store.connected ? "Connected" : "Offline")
                     HStack { Button("Connect") { store.connect() }; Button("Disconnect",role:.cancel) { store.disconnect() } }
+                }
+                Section("Local data") {
+                    Text("Project/progress continuation metadata can be kept on this iPhone with complete file protection. Device-only files remain on this iPhone; remote view does not grant permanent copy authority.")
+                        .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Voice") {
                     Toggle("Active voice session",isOn:Binding(get:{store.voiceActive},set:{ value in Task { await store.setVoiceActive(value) }}))

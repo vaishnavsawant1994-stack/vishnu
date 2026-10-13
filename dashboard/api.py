@@ -2,22 +2,41 @@ from __future__ import annotations
 from fastapi import APIRouter,HTTPException,Header
 from pydantic import BaseModel,Field
 import uuid
+from data_plane.runtime import ensure_data_plane_tools
 from devices.gateway import DeviceCommand
 class ActionRequest(BaseModel):tool:str;parameters:dict=Field(default_factory=dict)
 class DeviceActionRequest(BaseModel):action:str;parameters:dict=Field(default_factory=dict);timeout:float=15
 
 def dashboard_router(runtime,auth_device):
     r=APIRouter(prefix='/dashboard',tags=['dashboard'])
+    data_plane=ensure_data_plane_tools(runtime)
     def auth(a,d,scope='ai:chat'):auth_device(a,d,scope)
+    def data_plane_projection():
+        if data_plane is None:
+            return {'available':False,'reason':'canonical data directory unavailable'}
+        return {'available':True,**data_plane.settings()}
+    def require_data_plane():
+        if data_plane is None:
+            raise HTTPException(503,'Vishnu data plane is unavailable in this reduced runtime')
+        return data_plane
     @r.get('/status')
     def status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'device:read'); return {'automations':len(runtime['automations'].list()),'devices':len(runtime['device_registry'].list()),'online_devices':runtime['device_gateway'].online(),'integrations':runtime.get('integrations').list() if runtime.get('integrations') else [],'memory_nodes':len(runtime['second_brain'].graph().get('nodes',[])),'voice_state':'active' if getattr(runtime.get('voice'),'thread',None) and runtime['voice'].thread.is_alive() else 'idle','security':{'vault':'keychain-backed' if runtime.get('vault') else 'unavailable','autonomy':runtime['tools'].settings.autonomy_mode}}
+        auth(authorization,x_device_id,'device:read'); return {'automations':len(runtime['automations'].list()),'devices':len(runtime['device_registry'].list()),'online_devices':runtime['device_gateway'].online(),'integrations':runtime.get('integrations').list() if runtime.get('integrations') else [],'memory_nodes':len(runtime['second_brain'].graph().get('nodes',[])),'voice_state':'active' if getattr(runtime.get('voice'),'thread',None) and runtime['voice'].thread.is_alive() else 'idle','security':{'vault':'keychain-backed' if runtime.get('vault') else 'unavailable','autonomy':runtime['tools'].settings.autonomy_mode},'data_plane':data_plane_projection()}
     @r.get('/devices')
     def devices(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'device:read');return runtime['device_registry'].list()
     @r.get('/automations')
     def automations(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'workflow:read');return runtime['automations'].list()
     @r.get('/memory')
     def memory(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'memory:sensitive');return runtime['second_brain'].graph()
+    @r.get('/data-plane')
+    def data_plane_status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        auth(authorization,x_device_id,'data:read')
+        return require_data_plane().diagnostics()
+    @r.get('/data-plane/item/{global_id:path}')
+    def data_plane_item(global_id:str,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
+        auth(authorization,x_device_id,'data:read')
+        try:return require_data_plane().item(global_id)
+        except KeyError:raise HTTPException(404,'data item unavailable')
     @r.post('/tool')
     def tool(req:ActionRequest,authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
         auth(authorization,x_device_id,'ai:chat')
