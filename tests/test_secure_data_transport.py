@@ -94,18 +94,28 @@ def test_key_epoch_rotation_keeps_old_data_decryptable_and_rewraps_without_reenc
 
 def test_remote_transfer_is_no_store_lease_bound_and_chunk_authenticated(tmp_path):
     plane, _, _, _, _, transport = stack(tmp_path)
+    before_locations = list(plane.item('file:private')['locations'])
+    assert len(before_locations) == 1
+    assert before_locations[0]['location_type'] == 'device'
+    assert before_locations[0]['location_id'] == 'phone'
+    assert before_locations[0]['has_bytes'] is True
     session = transport.open_transfer(
         'file:private', requester_device_id='laptop', expected_size=11, chunk_size=1024,
     )
     assert session['persist_allowed'] is False
     assert session['cache_policy'] == 'no_store'
-    assert plane.item('file:private')['locations'] == []
+    after_open = plane.item('file:private')['locations']
+    assert after_open == before_locations
+    assert not any(row['location_id'] == 'laptop' and row['has_bytes'] for row in after_open)
     frame = transport.encrypt_chunk(session['session_id'], 0, b'hello world', eof=True)
     assert transport.decrypt_chunk(frame) == b'hello world'
     status = transport.status(session['session_id'])
     assert status['state'] == 'complete'
     assert status['bytes_transferred'] == 11
     assert status['raw_session_key_exposed'] is False
+    after_complete = plane.item('file:private')['locations']
+    assert after_complete == before_locations
+    assert not any(row['location_id'] == 'laptop' and row['has_bytes'] for row in after_complete)
 
 
 def test_transfer_rejects_replay_or_out_of_order_sequence(tmp_path):
