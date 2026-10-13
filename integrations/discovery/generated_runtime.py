@@ -3,6 +3,7 @@ from __future__ import annotations
 import ast
 import hashlib
 import json
+import os
 import subprocess
 import sys
 import time
@@ -23,6 +24,10 @@ _FORBIDDEN_NAMES = {
 _FORBIDDEN_NODES = (
     ast.Import, ast.ImportFrom, ast.ClassDef, ast.Global, ast.Nonlocal,
 )
+_MAX_INPUT_BYTES = 256_000
+_MAX_OUTPUT_BYTES = 1_000_000
+_MAX_JSON_DEPTH = 32
+_MAX_JSON_NODES = 20_000
 
 _RUNNER = r'''
 import json, sys
@@ -60,6 +65,62 @@ def _manifest_bytes(path: Path) -> bytes:
     return raw
 
 
+def _validate_json_shape(value: Any) -> None:
+    nodes = 0
+    stack: list[tuple[Any, int]] = [(value, 0)]
+    while stack:
+        current, depth = stack.pop()
+        nodes += 1
+        if nodes > _MAX_JSON_NODES:
+            raise ValueError("generated capability JSON exceeds structural limit")
+        if depth > _MAX_JSON_DEPTH:
+            raise ValueError("generated capability JSON exceeds nesting limit")
+        if isinstance(current, dict):
+            if any(not isinstance(key, str) for key in current):
+                raise ValueError("generated capability JSON object keys must be strings")
+            stack.extend((item, depth + 1) for item in current.values())
+        elif isinstance(current, (list, tuple)):
+            stack.extend((item, depth + 1) for item in current)
+        elif current is not None and not isinstance(current, (str, int, float, bool)):
+            raise ValueError("generated capability values must be JSON-compatible")
+
+
+def _posix_resource_limiter(timeout_seconds: int):
+    if os.name != "posix":
+        return None
+    try:
+        import resource
+    except Exception:
+        return None
+
+    def apply_limits():
+        cpu = max(1, min(int(timeout_seconds) + 1, 31))
+        memory = 256 * 1024 * 1024
+        file_size = 2 * 1024 * 1024
+        try:
+            resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_FSIZE, (file_size, file_size))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (16, 16))
+        except Exception:
+            pass
+        try:
+            resource.setrlimit(resource.RLIMIT_NPROC, (1, 1))
+        except Exception:
+            pass
+
+    return apply_limits
+
+
 def load_generated_manifest(package_path: str | Path, *, expected_digest: str | None = None) -> dict[str, Any]:
     root = Path(package_path).resolve()
     manifest_path = root / "manifest.json"
@@ -70,6 +131,7 @@ def load_generated_manifest(package_path: str | Path, *, expected_digest: str | 
     payload = json.loads(raw.decode("utf-8"))
     if not isinstance(payload, dict) or payload.get("type") != "generated_capability":
         raise ValueError("invalid generated capability manifest")
+    _validate_json_shape(payload)
     return payload
 
 
@@ -136,27 +198,38 @@ class PurePythonGeneratedCapability:
     def invoke(self, parameters: dict[str, Any]) -> Any:
         if not isinstance(parameters, dict):
             raise ValueError("generated capability parameters must be an object")
+        _validate_json_shape(parameters)
+        serialized = json.dumps(parameters, separators=(",", ":"), ensure_ascii=False)
+        if len(serialized.encode("utf-8")) > _MAX_INPUT_BYTES:
+            raise ValueError("generated capability input exceeds size limit")
         started = time.perf_counter()
         ok = False
         error_code = None
         try:
+            kwargs = {
+                "input": serialized,
+                "text": True,
+                "capture_output": True,
+                "cwd": str(self.package_path),
+                "env": {"PYTHONIOENCODING": "utf-8"},
+                "timeout": self.timeout_seconds,
+                "check": False,
+            }
+            limiter = _posix_resource_limiter(self.timeout_seconds)
+            if limiter is not None:
+                kwargs["preexec_fn"] = limiter
             completed = subprocess.run(
                 [sys.executable, "-I", "-S", "-c", _RUNNER, str(self.source_path), self.function],
-                input=json.dumps(parameters, separators=(",", ":"), ensure_ascii=False),
-                text=True,
-                capture_output=True,
-                cwd=str(self.package_path),
-                env={"PYTHONIOENCODING": "utf-8"},
-                timeout=self.timeout_seconds,
-                check=False,
+                **kwargs,
             )
             if completed.returncode != 0:
                 error_code = "generated_runtime_failed"
                 raise RuntimeError("generated capability execution failed")
-            if len(completed.stdout.encode("utf-8")) > 1_000_000:
+            if len(completed.stdout.encode("utf-8")) > _MAX_OUTPUT_BYTES:
                 error_code = "generated_output_too_large"
                 raise RuntimeError("generated capability output exceeds size limit")
             result = json.loads(completed.stdout or "null")
+            _validate_json_shape(result)
             ok = True
             return result
         except subprocess.TimeoutExpired as exc:
