@@ -19,9 +19,10 @@ class Registry:
 
 
 class Gateway:
-    def __init__(self, *, online=('laptop',), response=None):
+    def __init__(self, *, online=('laptop',), response=None, pending_events=None):
         self._online = set(online)
         self.response = response or {'ok': True, 'result': {'applied': True}}
+        self.pending_events = list(pending_events or [])
         self.requests = []
 
     def online(self):
@@ -29,11 +30,21 @@ class Gateway:
 
     async def request(self, device_id, command, timeout=15):
         self.requests.append((device_id, command, timeout))
+        if command.action == 'data_plane_progress_pending':
+            return {'ok': True, 'result': {'events': list(self.pending_events)}}
+        if command.action == 'data_plane_progress_ack':
+            source_id = command.parameters.get('source_event_id')
+            self.pending_events = [event for event in self.pending_events if event.get('source_event_id') != source_id]
+            return {'ok': True, 'result': {'acknowledged': True}}
         return dict(self.response)
 
 
 def manager(tmp_path):
     return PolicyEnforcedDataPlane(tmp_path / 'dp.sqlite3', device_registry=Registry())
+
+
+def actions(gateway):
+    return [command.action for _, command, _ in gateway.requests]
 
 
 def test_reconnect_sync_delivers_progress_only_and_records_receipt(tmp_path):
@@ -47,12 +58,12 @@ def test_reconnect_sync_delivers_progress_only_and_records_receipt(tmp_path):
     gateway = Gateway()
     service = DeviceProgressSyncService(data_plane, gateway, EventBus())
     result = asyncio.run(service.sync_device('laptop'))
+    assert result['received'] == 0
     assert result['delivered'] == 1
     assert result['failed'] == 0
     assert result['remaining'] == 0
-    assert len(gateway.requests) == 1
-    _, command, _ = gateway.requests[0]
-    assert command.action == 'data_plane_progress_put'
+    assert actions(gateway) == ['data_plane_progress_pending', 'data_plane_progress_put']
+    command = gateway.requests[-1][1]
     assert command.parameters['global_id'] == 'project:1'
     assert command.parameters['payload']['next_step'] == 'Homepage'
     assert data_plane.pending_progress_events('laptop') == []
@@ -101,7 +112,7 @@ def test_delete_sync_uses_tombstone_command(tmp_path):
     service = DeviceProgressSyncService(data_plane, gateway, EventBus())
     result = asyncio.run(service.sync_device('laptop'))
     assert result['delivered'] == 1
-    assert gateway.requests[0][1].action == 'data_plane_tombstone'
+    assert actions(gateway) == ['data_plane_progress_pending', 'data_plane_tombstone']
 
 
 def test_sync_everywhere_domain_payload_is_not_sent_through_progress_protocol(tmp_path):
@@ -112,4 +123,47 @@ def test_sync_everywhere_domain_payload_is_not_sent_through_progress_protocol(tm
     service = DeviceProgressSyncService(data_plane, gateway, EventBus())
     result = asyncio.run(service.sync_device('laptop'))
     assert result['delivered'] == 0
-    assert gateway.requests == []
+    assert actions(gateway) == ['data_plane_progress_pending']
+
+
+def test_phone_offline_change_is_pulled_applied_and_acked_on_reconnect(tmp_path):
+    data_plane = manager(tmp_path)
+    mobile_event = {
+        'source_event_id': 'mobile-1',
+        'global_id': 'project:mobile-created',
+        'entity_type': 'project',
+        'storage_policy': 'progress_only',
+        'version': 1,
+        'event_kind': 'update',
+        'payload': {'project_name': 'Rudra', 'status': 'active', 'next_step': 'Continue on laptop'},
+    }
+    gateway = Gateway(online=('phone',), pending_events=[mobile_event])
+    service = DeviceProgressSyncService(data_plane, gateway, EventBus())
+    result = asyncio.run(service.sync_device('phone'))
+    assert result['received'] == 1
+    assert result['delivered'] == 0
+    assert result['conflicts'] == 0
+    assert actions(gateway) == ['data_plane_progress_pending', 'data_plane_progress_ack']
+    assert gateway.pending_events == []
+    item = data_plane.item('project:mobile-created')
+    assert item['origin_device_id'] == 'phone'
+    assert item['metadata']['next_step'] == 'Continue on laptop'
+
+
+def test_mobile_event_cannot_spoof_another_origin_device(tmp_path):
+    data_plane = manager(tmp_path)
+    mobile_event = {
+        'source_event_id': 'mobile-2',
+        'global_id': 'project:origin',
+        'entity_type': 'project',
+        'storage_policy': 'progress_only',
+        'origin_device_id': 'laptop',
+        'version': 1,
+        'event_kind': 'update',
+        'payload': {'status': 'active'},
+    }
+    gateway = Gateway(online=('phone',), pending_events=[mobile_event])
+    service = DeviceProgressSyncService(data_plane, gateway, EventBus())
+    result = asyncio.run(service.sync_device('phone'))
+    assert result['received'] == 1
+    assert data_plane.item('project:origin')['origin_device_id'] == 'phone'
