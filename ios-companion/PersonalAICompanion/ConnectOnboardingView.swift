@@ -18,7 +18,9 @@ struct ConnectOnboardingView: View {
     @State private var recoveryCodes: [String] = []
     @State private var recoverySaved = false
     @State private var privacyMode = "local_only"
-    @State private var configureLater = false
+    @State private var modelProvider = "skip"
+    @State private var modelName = ""
+    @State private var providerKey = ""
     @State private var setupWorking = false
     @State private var setupMessage = ""
 
@@ -143,14 +145,33 @@ struct ConnectOnboardingView: View {
                     Text("Local preferred").tag("local_preferred")
                     Text("External providers allowed").tag("external_allowed")
                 }
-                Toggle("Configure AI later", isOn: $configureLater)
+                Picker("AI setup", selection: $modelProvider) {
+                    Text("Configure later").tag("skip")
+                    Text("Use a local model").tag("local")
+                    Text("OpenAI").tag("openai")
+                    Text("Gemini").tag("gemini")
+                    Text("OpenRouter").tag("openrouter")
+                    Text("DeepSeek").tag("deepseek")
+                    Text("xAI").tag("xai")
+                    Text("Groq").tag("groq")
+                    Text("Cerebras").tag("cerebras")
+                    Text("Mistral").tag("mistral")
+                    Text("Custom provider").tag("custom")
+                }
+                .pickerStyle(.menu)
+                if !["skip", "local"].contains(modelProvider) {
+                    TextField("Model name", text: $modelName)
+                        .textInputAutocapitalization(.never).textFieldStyle(.roundedBorder)
+                    SecureField("Provider API key", text: $providerKey)
+                        .textFieldStyle(.roundedBorder)
+                }
                 Button {
                     Task { await finishNativeCreation() }
                 } label: {
                     if setupWorking { ProgressView().frame(maxWidth: .infinity) }
                     else { Text("Finish setup").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent).disabled(setupWorking || !recoverySaved || !configureLater)
+                .buttonStyle(.borderedProminent).disabled(setupWorking || !recoverySaved)
             }
             if !setupMessage.isEmpty {
                 Text(setupMessage).font(.footnote).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently)
@@ -289,7 +310,14 @@ struct ConnectOnboardingView: View {
     @MainActor
     private func finishNativeCreation() async {
         guard recoverySaved else { setupMessage = "Confirm that you saved the recovery codes."; return }
-        guard configureLater else { setupMessage = "Choose an AI provider or select Configure AI later."; return }
+        if !["skip", "local"].contains(modelProvider) {
+            guard !modelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                setupMessage = "Enter the model name for the selected provider."; return
+            }
+            guard providerKey.count >= 16 else {
+                setupMessage = "Enter the provider API key, or choose Configure later."; return
+            }
+        }
         guard let claim = KeychainStore.shared.get("pending_setup_claim"),
               let deviceID = KeychainStore.shared.get("pending_first_device"),
               let token = KeychainStore.shared.get("pending_first_bearer") else {
@@ -297,18 +325,29 @@ struct ConnectOnboardingView: View {
             return
         }
         setupWorking = true
-        setupMessage = "Verifying recovery and privacy choices…"
+        setupMessage = "Saving your AI choice and verifying setup…"
         do {
+            let modelBody: [String: Any] = [
+                "setup_claim": claim, "device_id": deviceID, "device_token": token,
+                "provider_id": modelProvider,
+                "model": modelName.trimmingCharacters(in: .whitespacesAndNewlines),
+                "api_key": providerKey,
+            ]
+            let modelResult = try await postNativeJSON(path: "/iphone/api/first-run/native/model", body: modelBody)
+            guard modelResult["ok"] as? Bool == true else {
+                throw NativeSetupError.message("Vishnu did not confirm the AI setup choice.")
+            }
             let result = try await postNativeJSON(path: "/iphone/api/first-run/native/complete", body: [
                 "setup_claim": claim, "device_id": deviceID, "device_token": token,
                 "recovery_saved": true, "privacy_mode": privacyMode,
-                "model_choice": "configure_later",
+                "model_choice": modelProvider == "skip" ? "configure_later" : "configured",
             ])
             guard result["status"] as? String == "ready" else {
                 throw NativeSetupError.message("The runtime did not confirm setup completion. Retry safely.")
             }
             try activatePendingFirstDevice()
             KeychainStore.shared.remove("pending_first_recovery_codes")
+            providerKey = ""
             setupMessage = "Vishnu is ready on this iPhone."
         } catch {
             setupMessage = error.localizedDescription

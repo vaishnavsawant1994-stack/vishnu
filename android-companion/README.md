@@ -14,6 +14,9 @@ first-device setup surface:
   code, or enroll this phone on an existing runtime with a one-time recovery
   code. Each flow creates an independent Android device credential in encrypted
   preferences. Recovery codes remain encrypted locally while setup is pending.
+  AI setup can select a supported provider or be skipped; API credentials are
+  sent over HTTPS to the canonical encrypted model credential store and are
+  not retained by this app.
 
 This app does not host the Vishnu runtime, create a runtime deployment, perform
 offline owner initialization, or currently register an Android passkey. The

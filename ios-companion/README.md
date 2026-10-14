@@ -31,7 +31,9 @@ stored in Keychain. Native creation requires a reachable HTTPS Vishnu runtime
 and its high-entropy one-time bootstrap code. The app does not host or provision
 the runtime, cannot create an owner offline, and does not yet register a native
 passkey. Creation uses the canonical owner password and one-time recovery-code
-authority. Restore enrolls a new device on an existing runtime; it does not
+authority. AI setup can select a supported provider or be skipped; provider
+credentials are sent over HTTPS to the canonical encrypted model credential
+store and are not retained by the app. Restore enrolls a new device on an existing runtime; it does not
 restore a lost runtime or move data between runtimes. No physical-device Face ID
 qualification is claimed by simulator tests.
 

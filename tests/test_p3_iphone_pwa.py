@@ -944,6 +944,7 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
         'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
         'preferences': Preferences(tmp_path / 'preferences.json'),
         'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
                                   status=lambda: {'state': 'unconfigured'}),
         'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
     }
@@ -996,13 +997,25 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
     assert len(registry.active) == 1
     assert retried.json()['recovery_codes'] != first['recovery_codes']
 
+    model_config = {
+        'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
+        'device_token': request['device_token'], 'provider_id': 'local',
+    }
+    denied_model = client.post('/iphone/api/first-run/native/model', json={
+        **model_config, 'device_token': 'X' * 48,
+    })
+    assert denied_model.status_code == 401
+    configured_model = client.post('/iphone/api/first-run/native/model', json=model_config)
+    assert configured_model.status_code == 200, configured_model.text
+    assert configured_model.json()['provider'] == 'local'
+
     stolen = client.post('/iphone/api/first-run/native/complete', json={
         'setup_claim': request['setup_claim'],
         'device_id': request['device_id'],
         'device_token': 'X' * 48,
         'recovery_saved': True,
         'privacy_mode': 'local_only',
-        'model_choice': 'configure_later',
+        'model_choice': 'configured',
     })
     assert stolen.status_code == 401
     assert setup.ready is False
@@ -1012,7 +1025,7 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
         'device_token': request['device_token'],
         'recovery_saved': True,
         'privacy_mode': 'local_only',
-        'model_choice': 'configure_later',
+        'model_choice': 'configured',
     })
     assert completed.status_code == 200, completed.text
     assert completed.json()['vishnu_id'] == owner['vishnu_id']
@@ -1020,7 +1033,7 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
     retried_completion = client.post('/iphone/api/first-run/native/complete', json={
         'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
         'device_token': request['device_token'], 'recovery_saved': True,
-        'privacy_mode': 'local_only', 'model_choice': 'configure_later',
+        'privacy_mode': 'local_only', 'model_choice': 'configured',
     })
     assert retried_completion.status_code == 200
     duplicate = client.post('/iphone/api/first-run/native/create', json=request)

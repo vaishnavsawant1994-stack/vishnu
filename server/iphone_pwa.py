@@ -111,7 +111,19 @@ class NativeFirstRunCompleteBody(BaseModel):
     device_token: SecretStr = Field(min_length=32, max_length=256)
     recovery_saved: Literal[True]
     privacy_mode: Literal['local_only', 'local_preferred', 'external_allowed'] = 'local_only'
-    model_choice: Literal['configure_later']
+    model_choice: Literal['configure_later', 'configured']
+
+
+class NativeFirstRunModelBody(BaseModel):
+    setup_claim: SecretStr = Field(min_length=32, max_length=256)
+    device_id: str = Field(min_length=36, max_length=36)
+    device_token: SecretStr = Field(min_length=32, max_length=256)
+    provider_id: Literal[
+        'skip', 'local', 'openai', 'gemini', 'openrouter', 'deepseek',
+        'xai', 'groq', 'cerebras', 'mistral', 'custom',
+    ]
+    model: str = Field(default='', max_length=200)
+    api_key: SecretStr = Field(default=SecretStr(''), max_length=2048)
 
 
 class NativeRecoveryBody(BaseModel):
@@ -672,7 +684,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 autonomy_mode='ask',
                 memory_enabled=True,
             )
-            first_run_setup.skip_model_configuration()
+            if body.model_choice == 'configure_later':
+                first_run_setup.skip_model_configuration()
+            elif 'model' not in state.get('completed_steps', []):
+                raise RuntimeError('Configure an AI provider or choose Configure later before finishing')
             result = first_run_setup.complete()
         except (RuntimeError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
@@ -680,6 +695,49 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         emit('owner.first_run.completed', device_id=device_id,
              owner_id=result.get('identity', {}).get('owner_id'))
         return {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+
+    @router.post('/api/first-run/native/model')
+    def native_first_run_model(body: NativeFirstRunModelBody, request: Request):
+        """Configure the shared model router during native first-device setup.
+
+        Provider credentials flow directly into the existing encrypted model
+        credential store and are never persisted by the native onboarding UI.
+        """
+        if first_run_setup is None or first_run_setup.ready:
+            raise HTTPException(409, 'Native first-device setup is not pending')
+        require_https(request)
+        try:
+            claim, created = owner_access.acquire_first_run_claim(
+                body.setup_claim.get_secret_value(), ttl=900,
+                allow_pending_identity=True,
+            )
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        if created:
+            owner_access.release_first_run_claim(claim)
+            raise HTTPException(401, 'The first-device setup session expired')
+        if not registry.authenticate(body.device_id, body.device_token.get_secret_value()):
+            raise HTTPException(401, 'This trusted device credential is invalid or revoked')
+        state = first_run_setup.snapshot()
+        if (state.get('status') != 'setup_in_progress'
+                or state.get('mode') != 'create'
+                or state.get('first_device_id') != body.device_id):
+            raise HTTPException(403, 'This device cannot configure the pending first-device setup')
+        try:
+            if body.provider_id == 'skip':
+                result = first_run_setup.skip_model_configuration()
+            else:
+                result = first_run_setup.configure_model(
+                    provider_id=body.provider_id,
+                    model=body.model,
+                    api_key=body.api_key.get_secret_value(),
+                )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit('owner.first_run.model_configured', device_id=body.device_id,
+             provider_id='skipped' if body.provider_id == 'skip' else body.provider_id)
+        return {'ok': True, 'provider': body.provider_id,
+                'configured': body.provider_id not in {'skip'}}
 
     @router.post('/api/access/native/recovery')
     def native_recovery(body: NativeRecoveryBody, request: Request):

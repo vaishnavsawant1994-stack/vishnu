@@ -59,7 +59,9 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var createStatus: TextView
     private lateinit var recoveryCodes: TextView
     private lateinit var recoverySaved: CheckBox
-    private lateinit var configureLaterChoice: CheckBox
+    private lateinit var modelProvider: Spinner
+    private lateinit var modelName: EditText
+    private lateinit var providerKey: EditText
     private lateinit var privacyChoice: Spinner
     private lateinit var firstName: EditText
     private lateinit var lastName: EditText
@@ -334,10 +336,27 @@ class ConnectActivity : AppCompatActivity() {
                 listOf("Local only", "Local preferred", "External providers allowed"))
             visibility = View.GONE
         }
-        configureLaterChoice = CheckBox(this).apply {
-            text = "Configure AI later"
-            setTextColor(PersonalAITheme.ColorToken.text)
+        modelProvider = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ConnectActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Configure later", "Use a local model", "OpenAI", "Gemini", "OpenRouter", "DeepSeek", "xAI", "Groq", "Cerebras", "Mistral", "Custom provider"))
             visibility = View.GONE
+        }
+        modelName = EditText(this).apply { hint = "Provider model name" }
+        providerKey = EditText(this).apply {
+            hint = "Provider API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        listOf(modelName, providerKey).forEach(::styleField)
+        modelName.visibility = View.GONE
+        providerKey.visibility = View.GONE
+        modelProvider.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val needsCredentials = position >= 2
+                modelName.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+                providerKey.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+            }
         }
         finishButton = Button(this).apply {
             text = "Finish setup"
@@ -359,11 +378,13 @@ class ConnectActivity : AppCompatActivity() {
         form.addView(recoverySaved)
         form.addView(privacyLabel)
         form.addView(privacyChoice)
-        form.addView(configureLaterChoice)
+        form.addView(modelProvider)
+        form.addView(modelName)
+        form.addView(providerKey)
         form.addView(finishButton)
 
-        createButton.setOnClickListener { createNativeFirstRun(configureLaterChoice) }
-        finishButton.setOnClickListener { completeNativeFirstRun(configureLaterChoice) }
+        createButton.setOnClickListener { createNativeFirstRun() }
+        finishButton.setOnClickListener { completeNativeFirstRun() }
         prefs.getString("pending_recovery_codes", null)?.let { saved ->
             runCatching { org.json.JSONArray(saved) }.getOrNull()?.let { codes ->
                 if (codes.length() >= 4) {
@@ -372,7 +393,7 @@ class ConnectActivity : AppCompatActivity() {
                     recoveryCodes.visibility = View.VISIBLE
                     recoverySaved.visibility = View.VISIBLE
                     privacyChoice.visibility = View.VISIBLE
-                    configureLaterChoice.visibility = View.VISIBLE
+                    modelProvider.visibility = View.VISIBLE
                     finishButton.visibility = View.VISIBLE
                     createButton.visibility = View.GONE
                     createStatus.text = "Resume setup by confirming you saved the recovery codes."
@@ -474,7 +495,7 @@ class ConnectActivity : AppCompatActivity() {
         }
     }
 
-    private fun createNativeFirstRun(modelChoice: CheckBox) {
+    private fun createNativeFirstRun() {
         try {
             val origin = PairingPayloadParser.normalizeOrigin(firstRunBase.text.toString(), false)
             if (!origin.startsWith("https://")) throw IllegalArgumentException("Use a secure HTTPS Vishnu runtime URL.")
@@ -540,7 +561,7 @@ class ConnectActivity : AppCompatActivity() {
                             recoveryCodes.visibility = View.VISIBLE
                             recoverySaved.visibility = View.VISIBLE
                             privacyChoice.visibility = View.VISIBLE
-                            modelChoice.visibility = View.VISIBLE
+                            modelProvider.visibility = View.VISIBLE
                             finishButton.visibility = View.VISIBLE
                             createButton.visibility = View.GONE
                             createStatus.text = "Your identity and first trusted device are ready. Save recovery codes before continuing."
@@ -556,24 +577,67 @@ class ConnectActivity : AppCompatActivity() {
         }
     }
 
-    private fun completeNativeFirstRun(modelChoice: CheckBox) {
+    private fun completeNativeFirstRun() {
         if (!recoverySaved.isChecked) {
             createStatus.text = "Confirm that you saved your recovery codes before continuing."
             return
         }
-        if (!modelChoice.isChecked) {
-            createStatus.text = "Choose Configure AI later to finish without an AI provider."
-            return
-        }
         val origin = prefs.getString("pending_base", null) ?: return
+        val providers = listOf("skip", "local", "openai", "gemini", "openrouter", "deepseek", "xai", "groq", "cerebras", "mistral", "custom")
+        val provider = providers.getOrElse(modelProvider.selectedItemPosition) { "skip" }
+        if (provider !in setOf("skip", "local")) {
+            if (modelName.text.toString().trim().isEmpty()) {
+                createStatus.text = "Enter the model name for the selected provider."
+                return
+            }
+            if (providerKey.text.toString().length < 16) {
+                createStatus.text = "Enter the provider API key, or choose Configure later."
+                return
+            }
+        }
+        val credentials = JSONObject()
+            .put("setup_claim", prefs.getString("pending_setup_claim", ""))
+            .put("device_id", prefs.getString("pending_device", ""))
+            .put("device_token", prefs.getString("pending_bearer", ""))
+            .put("provider_id", provider)
+            .put("model", modelName.text.toString().trim())
+            .put("api_key", providerKey.text.toString())
+        finishButton.isEnabled = false
+        createStatus.text = "Saving your AI choice securely…"
+        val modelRequest = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/model")
+            .post(credentials.toString().toRequestBody("application/json".toMediaType()))
+            .header("Accept", "application/json").build()
+        PinnedTls.client(null).newCall(modelRequest).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = runOnUiThread {
+                finishButton.isEnabled = true
+                createStatus.text = "Could not reach Vishnu. Your setup is saved; reconnect and finish again."
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val raw = try { boundedBody(it) } catch (_: Exception) { "" }
+                    runOnUiThread {
+                        val result = try { JSONObject(raw) } catch (_: Exception) { null }
+                        if (!it.isSuccessful || result?.optBoolean("ok") != true) {
+                            finishButton.isEnabled = true
+                            createStatus.text = "Vishnu could not save that AI choice (${it.code}). Check the choice and retry."
+                            return@runOnUiThread
+                        }
+                        providerKey.setText("")
+                        completeNativeSetup(origin, provider != "skip")
+                    }
+                }
+            }
+        })
+    }
+
+    private fun completeNativeSetup(origin: String, modelConfigured: Boolean) {
         val payload = JSONObject()
             .put("setup_claim", prefs.getString("pending_setup_claim", ""))
             .put("device_id", prefs.getString("pending_device", ""))
             .put("device_token", prefs.getString("pending_bearer", ""))
             .put("recovery_saved", true)
             .put("privacy_mode", listOf("local_only", "local_preferred", "external_allowed").getOrElse(privacyChoice.selectedItemPosition) { "local_only" })
-            .put("model_choice", "configure_later")
-        finishButton.isEnabled = false
+            .put("model_choice", if (modelConfigured) "configured" else "configure_later")
         createStatus.text = "Verifying your recovery and privacy choices…"
         val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/complete")
             .post(payload.toString().toRequestBody("application/json".toMediaType()))
