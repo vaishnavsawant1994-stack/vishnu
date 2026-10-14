@@ -168,9 +168,6 @@ class DisasterRecoveryBundleCodec:
             "cipher": "AES-256-GCM",
             "kdf": "HKDF-SHA256",
             "key_id": key_ref,
-            # Stable, non-secret identifier recovers owner binding without
-            # treating a device ID as the identity root.
-            "owner_id": str(owner_id).strip(),
             "owner_binding": _owner_binding(key, owner_id),
             "salt": salt.hex(),
             "nonce": nonce.hex(),
@@ -261,13 +258,6 @@ class DisasterRecoveryBundleCodec:
                     raise DisasterRecoveryError("disaster recovery header is invalid")
                 if expected_key_id is not None and key_id != str(expected_key_id):
                     raise DisasterRecoveryError("disaster recovery key id mismatch")
-                bound_owner_id = str(owner_id or header.get("owner_id") or "").strip()
-                if owner_id and header.get("owner_id") and str(owner_id) != str(header["owner_id"]):
-                    raise PermissionError("disaster recovery bundle owner mismatch")
-                expected_binding = _owner_binding(key, bound_owner_id)
-                if not hmac.compare_digest(binding, expected_binding):
-                    raise PermissionError("disaster recovery bundle owner mismatch")
-
                 ciphertext_start = src.tell()
                 total = source.stat().st_size
                 ciphertext_size = total - ciphertext_start - DISASTER_RECOVERY_TAG_BYTES
@@ -297,10 +287,35 @@ class DisasterRecoveryBundleCodec:
                         raise DisasterRecoveryError("disaster recovery authentication failed") from exc
                     dst.flush()
                     os.fsync(dst.fileno())
+            bound_owner_id = str(owner_id or "").strip() or self._owner_id_from_payload(target)
+            if not bound_owner_id or not hmac.compare_digest(
+                binding, _owner_binding(key, bound_owner_id),
+            ):
+                raise PermissionError("disaster recovery bundle owner mismatch")
+            if owner_id and self._owner_id_from_payload(target) not in {None, bound_owner_id}:
+                raise PermissionError("disaster recovery bundle identity mismatch")
+            header["_verified_owner_id"] = bound_owner_id
             return target, header
         except Exception:
             target.unlink(missing_ok=True)
             raise
+
+    @staticmethod
+    def _owner_id_from_payload(payload: Path) -> str | None:
+        """Read the stable owner ID only from the authenticated encrypted payload."""
+        try:
+            with zipfile.ZipFile(payload) as archive:
+                info = archive.getinfo("manifest.json")
+                if info.file_size > 1024 * 1024:
+                    raise DisasterRecoveryError("recovery manifest is too large")
+                manifest = json.loads(archive.read(info))
+            identity = manifest.get("identity_metadata")
+            owner_id = identity.get("owner_id") if isinstance(identity, dict) else None
+            return str(owner_id).strip() if owner_id else None
+        except DisasterRecoveryError:
+            raise
+        except Exception as exc:
+            raise DisasterRecoveryError("recovery identity manifest is invalid") from exc
 
 
 class DisasterRecoveryService:
@@ -535,13 +550,13 @@ class DisasterRecoveryService:
         try:
             manifest = self.backups._inspect_zip(payload, encrypted=True)
             identity = manifest.get("identity_metadata")
-            bound_owner = str(header.get("owner_id") or owner_id or "")
+            bound_owner = str(header.get("_verified_owner_id") or owner_id or "")
             if identity and str(identity.get("owner_id")) != bound_owner:
                 raise DisasterRecoveryError("recovery identity does not match its owner binding")
             return {
                 "valid": True,
                 "key_id": str(header["key_id"]),
-                "owner_id": str(header.get("owner_id") or owner_id or ""),
+                "owner_id": str(header.get("_verified_owner_id") or owner_id or ""),
                 "file_count": len(manifest.get("files") or ()),
                 "encrypted": True,
             }
@@ -564,6 +579,7 @@ class DisasterRecoveryService:
             owner_id=owner_id,
             expected_key_id=expected_key_id,
         )
+        owner_id = str(header.get("_verified_owner_id") or owner_id or "")
         rewrapped_handle = tempfile.NamedTemporaryFile(
             prefix="vishnu-disaster-recovery-rewrapped-", suffix=".paibackup", delete=False
         )
