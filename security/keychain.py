@@ -4,6 +4,7 @@ import base64
 import os
 import re
 import secrets
+from typing import Protocol, cast
 
 SERVICE = "PersonalAI.RootKey"
 ACCOUNT = "default"
@@ -15,8 +16,16 @@ class KeychainUnavailable(RuntimeError):
     pass
 
 
+class KeyringBackend(Protocol):
+    def get_password(self, service_name: str, username: str) -> str | None: ...
+
+    def set_password(self, service_name: str, username: str, password: str) -> None: ...
+
+    def delete_password(self, service_name: str, username: str) -> None: ...
+
+
 class RootKeyStore:
-    def __init__(self, service: str = SERVICE, account: str = ACCOUNT):
+    def __init__(self, service: str = SERVICE, account: str = ACCOUNT) -> None:
         self.service = service
         self.account = account
 
@@ -32,11 +41,11 @@ class RootKeyStore:
             raise KeychainUnavailable(f"{ENV_ROOT_KEY} must decode to exactly 32 bytes")
         return key
 
-    def _kr(self):
+    def _kr(self) -> KeyringBackend:
         try:
             import keyring
 
-            return keyring
+            return cast(KeyringBackend, keyring)
         except Exception as exc:
             raise KeychainUnavailable("OS keychain backend unavailable") from exc
 
@@ -161,7 +170,7 @@ class RootKeyStore:
             pass
         return key
 
-    def delete(self):
+    def delete(self) -> None:
         if self._env_key():
             return
         try:
