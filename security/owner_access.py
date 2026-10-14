@@ -38,11 +38,80 @@ class OwnerAccessStore:
             con.execute('''CREATE TABLE IF NOT EXISTS auth_challenges(
                 id TEXT PRIMARY KEY,kind TEXT NOT NULL,challenge BLOB NOT NULL,device_id TEXT,
                 rp_id TEXT NOT NULL,origin TEXT NOT NULL,expires_at INTEGER NOT NULL)''')
+            # Owner identity is installation independent metadata owned by the
+            # same canonical security store as passkeys, passwords and recovery.
+            # It intentionally contains no device credentials or provider IDs.
+            con.execute('''CREATE TABLE IF NOT EXISTS owner_identity(
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                owner_id TEXT NOT NULL UNIQUE,
+                vishnu_id TEXT NOT NULL UNIQUE,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                identity_version INTEGER NOT NULL DEFAULT 1)''')
 
     def _con(self):
         con = sqlite3.connect(self.path)
         con.row_factory = sqlite3.Row
         return con
+
+    def identity(self) -> dict | None:
+        """Return the stable owner/Vishnu identity, without device secrets."""
+        with self._con() as con:
+            row = con.execute(
+                '''SELECT owner_id,vishnu_id,first_name,last_name,display_name,
+                          created_at,identity_version
+                   FROM owner_identity WHERE singleton=1'''
+            ).fetchone()
+        return dict(row) if row else None
+
+    def initialize_identity(
+        self,
+        *,
+        first_name: str,
+        last_name: str = '',
+        display_name: str = '',
+    ) -> tuple[dict, bool]:
+        """Atomically create the one owner identity or return the existing one.
+
+        The SQLite write lock makes simultaneous first-run attempts converge on
+        exactly one identity. Retrying after a crash is safe and never creates
+        another owner/Vishnu ID pair.
+        """
+        first = str(first_name or '').strip()[:80]
+        last = str(last_name or '').strip()[:80]
+        display = str(display_name or '').strip()[:120] or ' '.join(
+            part for part in (first, last) if part
+        )
+        if not first:
+            raise ValueError('First name is required')
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute(
+                '''SELECT owner_id,vishnu_id,first_name,last_name,display_name,
+                          created_at,identity_version
+                   FROM owner_identity WHERE singleton=1'''
+            ).fetchone()
+            if row is not None:
+                return dict(row), False
+            identity = {
+                'owner_id': f'OWNER-{uuid.uuid4().hex.upper()}',
+                'vishnu_id': f'VISHNU-{uuid.uuid4().hex.upper()}',
+                'first_name': first,
+                'last_name': last,
+                'display_name': display or first,
+                'created_at': _now(),
+                'identity_version': 1,
+            }
+            con.execute(
+                '''INSERT INTO owner_identity(singleton,owner_id,vishnu_id,first_name,last_name,
+                       display_name,created_at,identity_version) VALUES(1,?,?,?,?,?,?,?)''',
+                (identity['owner_id'], identity['vishnu_id'], identity['first_name'],
+                 identity['last_name'], identity['display_name'], identity['created_at'],
+                 identity['identity_version']),
+            )
+            return identity, True
 
     def password_configured(self) -> bool:
         with self._con() as con:

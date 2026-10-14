@@ -119,12 +119,12 @@ class FirstRunWizard(QDialog):
         return button
 
     def _welcome_page(self):
-        page, layout = self._page('How do you want to use this installation?', 'A primary Vishnu owns the intelligence and data. Mobile and browser surfaces should normally connect to that same Vishnu.')
-        create = QPushButton('Create a new Vishnu\nSet up this computer as the primary owner installation')
+        page, layout = self._page('Welcome to Vishnu', 'Vishnu belongs to you. This device can create your Vishnu, connect to one you already use, or restore it from a backup.')
+        create = QPushButton('Create my Vishnu\nCreate your Vishnu on this device. It will be your first trusted device.')
         create.setObjectName('choice')
         create.clicked.connect(lambda: self._choose_mode(SetupMode.CREATE))
         layout.addWidget(create)
-        connect = QPushButton('Connect to my existing Vishnu\nUse the trusted web/mobile connection flow instead of creating another brain')
+        connect = QPushButton('I already have Vishnu\nConnect this device to your existing Vishnu.')
         connect.setObjectName('choice')
         connect.clicked.connect(lambda: self._choose_mode(SetupMode.CONNECT))
         layout.addWidget(connect)
@@ -136,7 +136,7 @@ class FirstRunWizard(QDialog):
         return page
 
     def _owner_page(self):
-        page, layout = self._page('Create the owner', 'Vishnu is currently a single-owner installation. These details stay in your owner preferences and can be edited later.')
+        page, layout = self._page('Let’s create your Vishnu', 'Your owner identity is independent of this device and any external account. You can edit your profile later.')
         form = QFormLayout()
         self.first_name = QLineEdit()
         self.last_name = QLineEdit()
@@ -429,7 +429,7 @@ class FirstRunWizard(QDialog):
             QMessageBox.warning(self, 'AI configuration', str(exc))
             return
         self.api_key.clear()
-        QMessageBox.information(self, 'Vishnu is ready', 'Your primary Vishnu owner installation is ready.')
+        QMessageBox.information(self, 'Vishnu is ready', 'Your Vishnu identity is ready on this first trusted device.')
         self.accept()
 
     def _choose_backup(self):

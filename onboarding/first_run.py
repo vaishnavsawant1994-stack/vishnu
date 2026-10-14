@@ -119,6 +119,10 @@ class FirstRunCoordinator:
             'passkey_count': len(owner_access.passkeys()) if owner_access else 0,
             'recovery_codes_remaining': owner_access.recovery_codes_remaining() if owner_access else 0,
         }
+        if owner_access is not None:
+            identity = owner_access.identity()
+            if identity is not None:
+                state['identity'] = identity
         if models is not None:
             try:
                 state['model'] = models.status()
@@ -171,6 +175,14 @@ class FirstRunCoordinator:
         # the new state machine. A password/device created during a partially
         # completed setup must never promote that incomplete setup to READY.
         if status == SetupStatus.UNINITIALIZED.value and self._legacy_install_detected():
+            preferences = (self.runtime or {}).get('preferences')
+            owner_access = (self.runtime or {}).get('owner_access')
+            if owner_access is not None:
+                owner_access.initialize_identity(
+                    first_name=str(preferences.get('profile_first_name', '') or 'Owner') if preferences else 'Owner',
+                    last_name=str(preferences.get('profile_last_name', '') or '') if preferences else '',
+                    display_name=str(preferences.get('preferred_name', '') or 'Vishnu Owner') if preferences else 'Vishnu Owner',
+                )
             state.update({
                 'status': SetupStatus.READY.value,
                 'mode': state.get('mode') or SetupMode.CREATE.value,
@@ -179,7 +191,6 @@ class FirstRunCoordinator:
                 'last_error': None,
             })
             self._write_state(state)
-            preferences = (self.runtime or {}).get('preferences')
             if preferences is not None:
                 preferences.set('onboarding_complete', True)
             return False
@@ -191,6 +202,8 @@ class FirstRunCoordinator:
         except ValueError as exc:
             raise ValueError('Unsupported setup mode') from exc
         state = self._read_state()
+        if selected is SetupMode.CREATE and state.get('status') == SetupStatus.READY.value:
+            raise RuntimeError('Vishnu is already initialized. Connect this device instead.')
         state.update({
             'status': SetupStatus.CONNECT_PENDING.value if selected is SetupMode.CONNECT else SetupStatus.SETUP_IN_PROGRESS.value,
             'mode': selected.value,
@@ -352,21 +365,63 @@ class FirstRunCoordinator:
         owner_access = runtime['owner_access']
         state = self._read_state()
         completed = set(state.get('completed_steps', []))
+        mode = state.get('mode')
+        if mode not in {SetupMode.CREATE.value, SetupMode.RESTORE.value}:
+            raise RuntimeError('Only a new or restored Vishnu can complete owner creation')
         if not str(preferences.get('preferred_name', '') or '').strip():
             raise RuntimeError('Owner profile is incomplete')
         if not owner_access.password_configured():
             raise RuntimeError('Owner security is incomplete')
         if 'recovery_saved' not in completed:
             raise RuntimeError('Recovery codes must be saved before setup can complete')
+        if owner_access.recovery_codes_remaining() <= 0:
+            raise RuntimeError('At least one unused recovery code must remain before setup can complete')
         if 'privacy' not in completed:
             raise RuntimeError('Privacy and autonomy preferences are incomplete')
         if not ({'model', 'model_skipped'} & completed):
             raise RuntimeError('AI configuration must be completed or explicitly skipped')
+        identity, created = owner_access.initialize_identity(
+            first_name=str(preferences.get('profile_first_name', '') or ''),
+            last_name=str(preferences.get('profile_last_name', '') or ''),
+            display_name=str(preferences.get('preferred_name', '') or ''),
+        )
+        if created:
+            memory = runtime.get('memory')
+            if memory is not None and hasattr(memory, 'audit'):
+                try:
+                    memory.audit(
+                        'owner',
+                        'identity.created',
+                        {
+                            'owner_id': identity['owner_id'],
+                            'vishnu_id': identity['vishnu_id'],
+                            'identity_version': identity['identity_version'],
+                        },
+                    )
+                except Exception:
+                    # Do not lose a durable identity because an audit sink is
+                    # temporarily unavailable; still publish the lifecycle
+                    # event below for any configured operational listener.
+                    pass
+            events = runtime.get('events')
+            if events is not None:
+                try:
+                    events.emit(
+                        'owner.identity.created',
+                        owner_id=identity['owner_id'],
+                        vishnu_id=identity['vishnu_id'],
+                        identity_version=identity['identity_version'],
+                    )
+                except Exception:
+                    # Audit delivery must not roll back an already durable
+                    # identity; the identity store remains the source of truth.
+                    pass
         preferences.set('onboarding_complete', True)
         state.update({
             'status': SetupStatus.READY.value,
             'mode': state.get('mode') or SetupMode.CREATE.value,
             'stage': 'ready',
+            'identity_version': identity['identity_version'],
             'last_error': None,
         })
         return self._write_state(state)

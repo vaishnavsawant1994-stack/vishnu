@@ -17,7 +17,13 @@
 
 ## Owner sign-in
 
-The enrollment code remains a first-device and emergency bootstrap path. A trusted owner can additionally create a Face ID/passkey, an owner password and one-time recovery codes in **Settings → Security**.
+Vishnu's owner identity is internal and independent of the current computer, phone, browser, hostname, and external sign-in provider. A stable `OWNER-…` identifier and `VISHNU-…` identifier are created in the canonical `OwnerAccessStore` when the desktop first-run ceremony completes. The initial owner remains the single owner; devices are separate trusted participants.
+
+The current desktop wizard is the only complete first-owner creation ceremony. It requires an owner password and explicit recovery-code acknowledgement, then lets the owner choose a local/external model or skip configuration. The first-run language describes this computer as the first trusted device, not the permanent owner authority. Existing installations are migrated in place and retain their current data and security methods.
+
+**Platform boundary:** Android and iOS are currently companion clients and still require an existing Vishnu runtime/pairing ceremony. The PWA supports sign-in and trusted-browser enrollment for an already initialized owner; it does not create the first owner. Mobile-only and browser-only first creation, native passkey enrollment during creation, recovery-based cross-runtime restore, and a shared remote initialization ceremony are not implemented. Do not treat these routes as available until their platform flows, bootstrap protections, device registration, and recovery tests are qualified.
+
+The enrollment code remains a compatibility/bootstrap path, not the Vishnu identity or normal authentication method. A trusted owner can create a passkey, an owner password and one-time recovery codes in **Settings → Security**. Passkeys are authenticators for the same owner; Google remains optional and is bound to the exactly configured owner email.
 
 Google owner sign-in requires both `GOOGLE_SIGNIN_CLIENT_ID` and `PERSONAL_AI_OWNER_GOOGLE_EMAIL`. Create a Google Identity Services Web client whose authorized JavaScript origin is the exact Vishnu HTTPS origin. The server verifies the Google ID-token signature, audience, expiry, subject, verified-email claim and exact configured owner email before issuing the same scoped HttpOnly trusted-device cookies. Other Google accounts fail closed. A Google client secret is not required for this authentication-only ID-token flow.
 
