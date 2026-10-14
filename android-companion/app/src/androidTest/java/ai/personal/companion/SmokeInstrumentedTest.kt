@@ -6,6 +6,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.EditText
 import android.widget.TextView
 import org.json.JSONObject
 import org.junit.Assert.*
@@ -31,6 +32,7 @@ class SmokeInstrumentedTest {
 
     private fun hasText(view: View, expected: String): Boolean =
         view is TextView && view.text.toString() == expected ||
+            view is EditText && view.hint.toString() == expected ||
             view is ViewGroup && (0 until view.childCount).any { hasText(view.getChildAt(it), expected) }
 
     private fun findButton(view: View, expected: String): Button? {
