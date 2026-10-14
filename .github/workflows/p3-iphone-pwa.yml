@@ -83,7 +83,7 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           config=Path('core/config.py').read_text()
-          assert "iphone_pwa_allow_insecure:bool=env_bool('PERSONAL_AI_IPHONE_ALLOW_INSECURE',False)" in config
+          assert "iphone_pwa_allow_insecure: bool = env_bool('PERSONAL_AI_IPHONE_ALLOW_INSECURE', False, strict=True)" in config
           page=Path('pwa/index.html').read_text()
           assert 'localStorage' not in page
           assert 'sessionStorage' not in page
