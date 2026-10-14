@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+import io
+import zipfile
 import time
 from pathlib import Path
 
@@ -263,6 +265,61 @@ def test_owner_knowledge_collections_availability_and_unfetched_links(tmp_path):
     assert client.get(f'/iphone/api/knowledge/{document_id}').status_code == 200
 
 
+def test_owner_markdown_note_editor_links_versions_and_portable_export(tmp_path):
+    client, _, _ = make_client(tmp_path)
+    target = client.post('/iphone/api/knowledge/notes', json={
+        'title': 'Project Decisions', 'content': '# Approved\nLaunch on Friday.', 'tags': ['project', 'launch'],
+    })
+    assert target.status_code == 201, target.text
+    target_id = target.json()['id']
+    source = client.post('/iphone/api/knowledge/notes', json={
+        'title': 'Meeting', 'content': 'See [[Project Decisions|the decision]] and [[Unwritten Note]].',
+    })
+    assert source.status_code == 201, source.text
+    source_id = source.json()['id']
+    assert client.get('/iphone/api/knowledge/notes?q=Meeting').json()['notes'][0]['content'].startswith('See')
+    links = client.get(f'/iphone/api/knowledge/notes/{source_id}/links').json()
+    assert links['outgoing'] == [{'id': target_id, 'title': 'Project Decisions', 'label': 'the decision'}]
+    assert links['unresolved'] == [{'target': 'Unwritten Note', 'label': 'Unwritten Note'}]
+
+    update = client.put(f'/iphone/api/knowledge/notes/{source_id}', json={
+        'title': 'Meeting Notes', 'content': 'Updated [[Project Decisions]].', 'tags': ['meeting'],
+    })
+    assert update.status_code == 200, update.text
+    assert update.json()['version'] == 2
+    assert update.json()['content'] == 'Updated [[Project Decisions]].'
+    archive = client.get('/iphone/api/knowledge/portable-export')
+    assert archive.status_code == 200
+    assert archive.headers['content-type'].startswith('application/zip')
+    with zipfile.ZipFile(io.BytesIO(archive.content)) as bundle:
+        assert 'manifest.json' in bundle.namelist()
+        assert any(path.startswith(f'notes/{target_id}/') for path in bundle.namelist())
+    deleted = client.delete(f'/iphone/api/knowledge/{target_id}?confirm=true')
+    assert deleted.status_code == 200
+    restored = client.post('/iphone/api/knowledge/portable-import', content=archive.content, headers={'Content-Type': 'application/zip'})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['imported_count'] == 1
+    assert {item['title'] for item in client.get('/iphone/api/knowledge/notes').json()['notes']} == {'Project Decisions', 'Meeting Notes'}
+
+
+def test_note_endpoints_preserve_device_access_boundaries(tmp_path):
+    client, runtime, _ = make_client(tmp_path)
+    limited, limited_token = runtime['device_registry'].enroll('Read only browser', 'web')
+    runtime['device_registry'].set_permissions(limited['id'], ['knowledge:read'])
+    limited_client = client.__class__(client.app, base_url='https://testserver')
+    limited_client.cookies.set('pa_device', limited['id'])
+    limited_client.cookies.set('pa_token', limited_token)
+
+    hidden = client.post('/iphone/api/knowledge/notes', json={
+        'title': 'Private Note', 'content': 'owner only', 'access_class': 'private',
+    }).json()
+    assert limited_client.get('/iphone/api/knowledge/notes').json()['notes'] == []
+    assert limited_client.get(f"/iphone/api/knowledge/notes/{hidden['id']}/links").status_code == 404
+    assert limited_client.post('/iphone/api/knowledge/notes', json={'title': 'Blocked'}).status_code == 403
+    archive = client.get('/iphone/api/knowledge/portable-export')
+    assert limited_client.post('/iphone/api/knowledge/portable-import', content=archive.content, headers={'Content-Type': 'application/zip'}).status_code == 403
+
+
 def test_owner_can_manage_other_device_and_revocation_is_immediate(tmp_path):
     client, runtime, owner = make_client(tmp_path)
     other, other_token = runtime['device_registry'].enroll('Desktop browser', 'web')
@@ -375,7 +432,6 @@ def test_ui_preferences_are_scoped_to_the_trusted_device_and_persist(tmp_path):
 
 
 def test_profile_metadata_account_id_and_photo_use_authenticated_owner_services(tmp_path):
-    import base64
     client, runtime, _ = make_client(tmp_path)
     metadata = client.get('/iphone/api/profile/metadata')
     assert metadata.status_code == 200

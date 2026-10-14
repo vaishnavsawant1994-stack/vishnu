@@ -37,6 +37,7 @@ class KnowledgeStore:
     MAX_ARCHIVE_EXPANDED_BYTES = 64 * 1024 * 1024
     MAX_ARCHIVE_MEMBER_BYTES = 32 * 1024 * 1024
     MAX_ARCHIVE_COMPRESSION_RATIO = 250
+    MAX_PORTABLE_ARCHIVE_BYTES = 50 * 1024 * 1024
     TEXT_EXTENSIONS = {'.txt', '.md', '.markdown', '.csv', '.json', '.pdf', '.docx', '.xlsx'}
     IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.tif', '.tiff'}
     ALLOWED_EXTENSIONS = TEXT_EXTENSIONS | IMAGE_EXTENSIONS
@@ -272,9 +273,11 @@ class KnowledgeStore:
             documents = [item for item in documents if item['access_class'] in access_classes]
         return documents
 
-    def ingest(self, *, filename: str, data: bytes, title: str | None = None, media_type: str = 'application/octet-stream', source: str = 'owner-upload', access_class: str = 'owner', metadata: dict | None = None, replace_document_id: str | None = None):
+    def ingest(self, *, filename: str, data: bytes, title: str | None = None, media_type: str = 'application/octet-stream', source: str = 'owner-upload', access_class: str = 'owner', metadata: dict | None = None, replace_document_id: str | None = None, preindexed_segments: list[dict] | None = None):
         filename = self._safe_filename(filename)
-        if not data:
+        metadata_value = dict(metadata or {})
+        is_note = metadata_value.get('knowledge_kind') == 'note'
+        if not data and not is_note:
             raise KnowledgeError('The uploaded file is empty')
         if len(data) > self.MAX_FILE_BYTES:
             raise KnowledgeError('The uploaded file exceeds the 10 MB limit')
@@ -284,13 +287,18 @@ class KnowledgeStore:
         checksum = hashlib.sha256(data).hexdigest()
         source_value = str(source or 'owner-upload')[:500]
         with self._con() as con:
-            existing = con.execute('SELECT id FROM knowledge_documents WHERE checksum=? AND is_current=1 ORDER BY updated_at DESC LIMIT 1', (checksum,)).fetchone()
+            existing = None if is_note or replace_document_id else con.execute('SELECT id FROM knowledge_documents WHERE checksum=? AND is_current=1 ORDER BY updated_at DESC LIMIT 1', (checksum,)).fetchone()
         if existing:
             return self.detail(existing['id'])
 
-        segments, stored_data, stored_suffix = self._segments_for(filename, data, access_class)
+        if preindexed_segments is None:
+            segments, stored_data, stored_suffix = self._segments_for(filename, data, access_class)
+        else:
+            segments, stored_data, stored_suffix = preindexed_segments, data, ('.png' if Path(filename).suffix.lower() in self.IMAGE_EXTENSIONS else Path(filename).suffix.lower())
+            if len(stored_data) > self.MAX_FILE_BYTES:
+                raise KnowledgeError('The imported item exceeds the 10 MB limit after sanitization')
         chunks = self._chunk_segments(segments)
-        if not chunks:
+        if not chunks and not is_note:
             raise KnowledgeError('No readable text was found in the uploaded file')
 
         document_id = str(uuid.uuid4())
@@ -312,7 +320,6 @@ class KnowledgeStore:
             object_name = f'{document_id}{stored_suffix or Path(filename).suffix.lower()}'
             object_path = self.object_dir / object_name
             object_path.write_bytes(stored_data)
-            metadata_value = dict(metadata or {})
             if Path(filename).suffix.lower() in self.IMAGE_EXTENSIONS:
                 metadata_value = {**metadata_value, 'source_format': Path(filename).suffix.lower().lstrip('.'), 'stored_format': 'png', 'metadata_stripped': True, 'ocr_provider': str(getattr(self.ocr_provider, 'name', 'configured-local'))}
             try:
@@ -335,6 +342,94 @@ class KnowledgeStore:
                 object_path.unlink(missing_ok=True)
                 raise
         return self.detail(document_id)
+
+    @staticmethod
+    def _note_filename(title: str, note_id: str) -> str:
+        slug = re.sub(r'[^a-z0-9]+', '-', str(title or '').lower()).strip('-')[:72] or 'untitled'
+        return f'{slug}-{note_id[:8]}.md'
+
+    def create_note(self, *, title: str, content: str = '', access_class: str = 'owner', collection_id: str | None = None, tags: list[str] | None = None):
+        clean_title = str(title or '').strip()
+        if not clean_title or len(clean_title) > 240:
+            raise KnowledgeError('Note title must be 1–240 characters')
+        text = str(content or '')
+        if len(text.encode('utf-8')) > self.MAX_FILE_BYTES:
+            raise KnowledgeError('The note exceeds the 10 MB limit')
+        note_id = str(uuid.uuid4())
+        metadata = {'knowledge_kind': 'note', 'available_to_vishnu': True, 'tags': self._clean_tags(tags), 'collection_id': collection_id or None}
+        return self.ingest(filename=self._note_filename(clean_title, note_id), data=text.encode('utf-8'), title=clean_title,
+                           media_type='text/markdown', source='owner-note', access_class=access_class, metadata=metadata)
+
+    @staticmethod
+    def _clean_tags(tags: list[str] | None) -> list[str]:
+        clean = []
+        for tag in tags or []:
+            value = str(tag or '').strip().lstrip('#')[:48]
+            if value and value.casefold() not in {item.casefold() for item in clean}:
+                clean.append(value)
+            if len(clean) >= 30:
+                break
+        return clean
+
+    def update_note(self, document_id: str, *, title: str, content: str, tags: list[str] | None = None):
+        existing = self.detail(document_id)
+        if not existing or (existing.get('metadata') or {}).get('knowledge_kind') != 'note' or not existing.get('current', True):
+            raise KeyError('Current Knowledge note not found')
+        clean_title = str(title or '').strip()
+        if not clean_title or len(clean_title) > 240:
+            raise KnowledgeError('Note title must be 1–240 characters')
+        text = str(content or '')
+        if len(text.encode('utf-8')) > self.MAX_FILE_BYTES:
+            raise KnowledgeError('The note exceeds the 10 MB limit')
+        metadata = dict(existing.get('metadata') or {})
+        metadata['knowledge_kind'] = 'note'
+        metadata['available_to_vishnu'] = True
+        metadata['tags'] = self._clean_tags(tags if tags is not None else metadata.get('tags'))
+        return self.ingest(filename=existing['filename'], data=text.encode('utf-8'), title=clean_title,
+                           media_type='text/markdown', source=existing['source'], access_class=existing['access_class'],
+                           metadata=metadata, replace_document_id=document_id)
+
+    def notes(self, query: str = '', limit: int = 100, *, access_classes: set[str] | None = None):
+        rows = [item for item in self.list(query, limit, access_classes=access_classes)
+                if (item.get('metadata') or {}).get('knowledge_kind') == 'note']
+        return [self.detail(item['id'], include_history=False) for item in rows]
+
+    def note_links(self, document_id: str, *, access_classes: set[str] | None = None):
+        note = self.detail(document_id)
+        if not note or (note.get('metadata') or {}).get('knowledge_kind') != 'note':
+            raise KeyError('Knowledge note not found')
+        visible = self.notes(limit=500, access_classes=access_classes)
+        visible_by_name = {}
+        for item in visible:
+            for name in (item.get('title'), Path(item.get('filename', '')).stem):
+                if name:
+                    visible_by_name.setdefault(str(name).casefold(), item)
+        content = str(note.get('content') or '')
+        pattern = re.compile(r'\[\[([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]+))?\]\]')
+        outgoing, unresolved = [], []
+        seen = set()
+        for match in pattern.finditer(content):
+            target = match.group(1).strip()
+            label = (match.group(2) or target).strip()
+            resolved = visible_by_name.get(target.casefold())
+            if resolved:
+                if resolved['id'] != document_id and resolved['id'] not in seen:
+                    outgoing.append({'id': resolved['id'], 'title': resolved['title'], 'label': label})
+                    seen.add(resolved['id'])
+            elif target:
+                unresolved.append({'target': target, 'label': label})
+        backlinks = []
+        for candidate in visible:
+            if candidate['id'] == document_id:
+                continue
+            candidate_content = candidate.get('content') or ''
+            for match in pattern.finditer(str(candidate_content)):
+                target = match.group(1).strip()
+                resolved = visible_by_name.get(target.casefold())
+                if resolved and resolved['id'] == document_id:
+                    backlinks.append({'id': candidate['id'], 'title': candidate['title']})
+                    break
+        return {'outgoing': outgoing, 'backlinks': backlinks, 'unresolved': unresolved}
 
     def list(self, query: str = '', limit: int = 100, *, access_classes: set[str] | None = None, include_history: bool = False):
         term = f'%{query.strip()}%'
@@ -413,6 +508,9 @@ class KnowledgeStore:
             history = self._history_rows(con, row['lineage_id']) if include_history else []
         document = self._document(row)
         document['chunks'] = [self._chunk(item) for item in chunks]
+        if (document.get('metadata') or {}).get('knowledge_kind') == 'note':
+            object_path = self.object_dir / row['object_name']
+            document['content'] = object_path.read_text(encoding='utf-8') if object_path.exists() else ''
         document['memory_links'] = [dict(item) for item in links]
         if include_history:
             document['versions'] = [{'id': item['id'], 'lineage_id': item['lineage_id'], 'version': int(item['version_number'] or 1), 'current': bool(item['is_current']), 'checksum': item['checksum'], 'source': item['source'], 'access_class': item['access_class'], 'ingested_at': item['ingested_at'] or item['created_at'], 'superseded_by_id': item['superseded_by_id']} for item in history]
@@ -521,3 +619,168 @@ class KnowledgeStore:
 
     def export(self, *, access_classes: set[str] | None = None):
         return {'version': 2, 'exported_at': now(), 'documents': [self.detail(item['id']) for item in self.list(limit=500, access_classes=access_classes)]}
+
+    def export_portable_archive(self, *, access_classes: set[str] | None = None) -> bytes:
+        documents = self.list(limit=500, access_classes=access_classes)
+        with self._con() as con:
+            object_names = {row['id']: row['object_name'] for row in con.execute('SELECT id,object_name FROM knowledge_documents').fetchall()}
+        buffer = io.BytesIO()
+        manifest = {'format': 'vishnu-knowledge-archive-v1', 'exported_at': now(), 'files': [], 'collections': []}
+        used_paths = set()
+        total_bytes = 0
+        with zipfile.ZipFile(buffer, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+            for item in documents:
+                object_name = object_names.get(item['id'])
+                if not object_name:
+                    continue
+                object_path = self.object_dir / object_name
+                if not object_path.is_file():
+                    continue
+                folder = 'notes' if (item.get('metadata') or {}).get('knowledge_kind') == 'note' else 'files'
+                filename = self._safe_filename(item['filename'])
+                member = f'{folder}/{item["id"]}/{filename}'
+                if member in used_paths:
+                    continue
+                used_paths.add(member)
+                data = object_path.read_bytes()
+                total_bytes += len(data)
+                if total_bytes > self.MAX_PORTABLE_ARCHIVE_BYTES:
+                    raise KnowledgeError('The portable archive exceeds the 50 MB export limit')
+                detail = self.detail(item['id'], include_history=False)
+                archive.writestr(member, data)
+                manifest['files'].append({'path': member, 'id': item['id'], 'title': item['title'], 'filename': filename,
+                                          'media_type': item['media_type'], 'source': item['source'],
+                                          'access_class': item['access_class'], 'metadata': item.get('metadata') or {},
+                                          'checksum': hashlib.sha256(data).hexdigest(), 'source_checksum': item['checksum'],
+                                          'size_bytes': len(data), 'chunks': detail.get('chunks', [])})
+            collection_ids = {str((item.get('metadata') or {}).get('collection_id') or '') for item in documents}
+            manifest['collections'] = [item for item in self.collections() if item['id'] in collection_ids]
+            archive.writestr('manifest.json', json.dumps(manifest, ensure_ascii=False, indent=2))
+        if len(buffer.getvalue()) > self.MAX_PORTABLE_ARCHIVE_BYTES:
+            raise KnowledgeError('The portable archive exceeds the 50 MB export limit')
+        return buffer.getvalue()
+
+    def import_portable_archive(self, data: bytes, *, allowed_access_classes: set[str] | None = None):
+        if not data or len(data) > self.MAX_PORTABLE_ARCHIVE_BYTES:
+            raise KnowledgeError('The Knowledge archive is empty or exceeds the 50 MB limit')
+        try:
+            with zipfile.ZipFile(io.BytesIO(data)) as archive:
+                members = archive.infolist()
+                if len(members) > self.MAX_ARCHIVE_MEMBERS:
+                    raise KnowledgeError('Knowledge archive contains too many files')
+                names, total = set(), 0
+                for member in members:
+                    name = str(member.filename or '').replace('\\', '/')
+                    parts = [part for part in name.split('/') if part not in {'', '.'}]
+                    mode = (int(member.external_attr) >> 16) & 0o170000
+                    if not name or name.startswith('/') or '..' in parts or mode == stat.S_IFLNK:
+                        raise KnowledgeError('Knowledge archive contains an unsafe path')
+                    if name in names:
+                        raise KnowledgeError('Knowledge archive contains a duplicate path')
+                    names.add(name)
+                    total += int(member.file_size or 0)
+                    if member.file_size > self.MAX_FILE_BYTES and name != 'manifest.json':
+                        raise KnowledgeError('A Knowledge archive item exceeds the 10 MB limit')
+                    if total > self.MAX_PORTABLE_ARCHIVE_BYTES:
+                        raise KnowledgeError('Knowledge archive expanded size exceeds the 50 MB limit')
+                    if member.compress_size > 0 and member.file_size / member.compress_size > self.MAX_ARCHIVE_COMPRESSION_RATIO:
+                        raise KnowledgeError('Knowledge archive compression ratio exceeds the configured limit')
+                if 'manifest.json' not in names:
+                    raise KnowledgeError('Knowledge archive manifest is missing')
+                manifest = json.loads(archive.read('manifest.json').decode('utf-8'))
+                if not isinstance(manifest, dict) or manifest.get('format') != 'vishnu-knowledge-archive-v1' or not isinstance(manifest.get('files'), list):
+                    raise KnowledgeError('This is not a supported Vishnu Knowledge archive')
+                entries = manifest['files']
+                collections = manifest.get('collections', [])
+                if not isinstance(collections, list) or any(not isinstance(item, dict) for item in collections):
+                    raise KnowledgeError('Knowledge archive collections are invalid')
+                normalized_collections, collection_ids = [], set()
+                for collection in collections:
+                    old_id = str(collection.get('id') or '').strip()
+                    title = str(collection.get('title') or '').strip()
+                    if not old_id or old_id in collection_ids or not title or len(title) > 120:
+                        raise KnowledgeError('Knowledge archive includes an invalid collection')
+                    collection_ids.add(old_id)
+                    normalized_collections.append({'id': old_id, 'title': title, 'description': str(collection.get('description') or '')[:500]})
+                entry_paths = [str(item.get('path') or '') for item in entries if isinstance(item, dict)]
+                if len(entry_paths) != len(entries) or len(set(entry_paths)) != len(entry_paths):
+                    raise KnowledgeError('Knowledge archive manifest contains invalid file records')
+                if set(entry_paths) != names - {'manifest.json'}:
+                    raise KnowledgeError('Knowledge archive manifest does not match its file list')
+                prepared = []
+                for item in entries:
+                    filename = self._safe_filename(item.get('filename', ''))
+                    suffix = Path(filename).suffix.lower()
+                    if suffix not in self.ALLOWED_EXTENSIONS:
+                        raise KnowledgeError(f'Unsupported Knowledge archive file type: {suffix or "unknown"}')
+                    access_class = str(item.get('access_class') or 'owner')
+                    if access_class not in {'owner', 'trusted-devices', 'private'} or (allowed_access_classes is not None and access_class not in allowed_access_classes):
+                        raise KnowledgeError('Knowledge archive includes content this device cannot import')
+                    file_data = archive.read(item['path'])
+                    if len(file_data) != int(item.get('size_bytes') or -1) or hashlib.sha256(file_data).hexdigest() != item.get('checksum'):
+                        raise KnowledgeError(f'Knowledge archive checksum failed for {filename}')
+                    metadata = item.get('metadata') if isinstance(item.get('metadata'), dict) else {}
+                    is_note = item['path'].startswith('notes/')
+                    if is_note:
+                        metadata = {**metadata, 'knowledge_kind': 'note', 'available_to_vishnu': True}
+                    suffix = Path(filename).suffix.lower()
+                    preindexed_segments = None
+                    if suffix in self.IMAGE_EXTENSIONS:
+                        chunks = item.get('chunks') if isinstance(item.get('chunks'), list) else []
+                        if not chunks:
+                            raise KnowledgeError(f'Knowledge archive has no searchable image text for {filename}')
+                        preindexed_segments = []
+                        for chunk in chunks:
+                            if not isinstance(chunk, dict) or not isinstance(chunk.get('content'), str):
+                                raise KnowledgeError(f'Knowledge archive has an invalid image index for {filename}')
+                            preindexed_segments.append({'text': chunk['content'], 'page': chunk.get('page_start'), 'location': chunk.get('location') or {}})
+                        try:
+                            from PIL import Image
+                            with Image.open(io.BytesIO(file_data)) as image:
+                                width, height = image.size
+                                if width <= 0 or height <= 0 or width > self.MAX_IMAGE_DIMENSION or height > self.MAX_IMAGE_DIMENSION or width * height > self.MAX_IMAGE_PIXELS:
+                                    raise KnowledgeError('Knowledge archive image dimensions exceed the configured safety limit')
+                                image.verify()
+                            with Image.open(io.BytesIO(file_data)) as image:
+                                sanitized = io.BytesIO()
+                                image.convert('RGB').save(sanitized, format='PNG', optimize=True)
+                                file_data = sanitized.getvalue()
+                        except KnowledgeError:
+                            raise
+                        except Exception as exc:
+                            raise KnowledgeError(f'Knowledge archive image is malformed: {filename}') from exc
+                    else:
+                        self._segments_for(filename, file_data, access_class)
+                    metadata = {**metadata, 'imported_source_checksum': item.get('source_checksum')}
+                    prepared.append({'filename': filename, 'data': file_data, 'title': str(item.get('title') or Path(filename).stem)[:240],
+                                     'media_type': str(item.get('media_type') or 'application/octet-stream'),
+                                     'access_class': access_class, 'metadata': metadata, 'source': 'portable-import',
+                                     'preindexed_segments': preindexed_segments})
+        except KnowledgeError:
+            raise
+        except (zipfile.BadZipFile, OSError, ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+            raise KnowledgeError('The Knowledge archive is malformed or unreadable') from exc
+
+        collection_map = {}
+        for collection in normalized_collections:
+            old_id = collection['id']
+            title = collection['title']
+            existing_collection = next((item for item in self.collections() if item['title'].casefold() == title.casefold()), None)
+            collection_map[old_id] = (existing_collection or self.create_collection(title, str(collection.get('description') or '')))['id']
+        imported = []
+        for item in prepared:
+            collection_id = str(item['metadata'].get('collection_id') or '')
+            if collection_id:
+                if collection_id not in collection_map:
+                    item['metadata'].pop('collection_id', None)
+                else:
+                    item['metadata']['collection_id'] = collection_map[collection_id]
+            checksum = hashlib.sha256(item['data']).hexdigest()
+            with self._con() as con:
+                existing = con.execute('SELECT id FROM knowledge_documents WHERE checksum=? AND is_current=1 ORDER BY updated_at DESC LIMIT 1', (checksum,)).fetchone()
+            if existing:
+                imported.append({'id': existing['id'], 'status': 'already_present'})
+                continue
+            document = self.ingest(**item)
+            imported.append({'id': document['id'], 'status': 'imported'})
+        return {'imported_count': sum(item['status'] == 'imported' for item in imported), 'items': imported}

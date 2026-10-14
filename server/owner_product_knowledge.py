@@ -4,13 +4,15 @@ import base64
 import binascii
 from urllib.parse import urlparse
 
-from fastapi import APIRouter, Cookie, HTTPException
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 
 from knowledge.store import KnowledgeError
 from server.owner_product_schemas import (
     KnowledgeAvailabilityBody,
     KnowledgeCollectionBody,
     KnowledgeCollectionUpdateBody,
+    KnowledgeNoteBody,
+    KnowledgeNoteUpdateBody,
     KnowledgeUpdateBody,
     KnowledgeUploadBody,
 )
@@ -85,6 +87,87 @@ def create_owner_knowledge_router(runtime, *, authenticate, audit, knowledge_acc
     ):
         device_id = authenticate(pa_device, pa_token, 'knowledge:read')
         return {'results': knowledge.search(q, limit=min(limit, 50), access_classes=knowledge_access(device_id))}
+
+    @router.get('/knowledge/notes')
+    def knowledge_notes(q: str = '', limit: int = 100, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:read')
+        return {'notes': knowledge.notes(q, limit=min(limit, 100), access_classes=knowledge_access(device_id))}
+
+    @router.post('/knowledge/notes', status_code=201)
+    def knowledge_note_create(body: KnowledgeNoteBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:write')
+        allowed = knowledge_access(device_id)
+        if body.access_class == 'private' and 'private' not in allowed:
+            raise HTTPException(403, 'This device cannot create private knowledge')
+        if body.collection_id and not knowledge.collection(body.collection_id):
+            raise HTTPException(400, 'Knowledge collection not found')
+        try:
+            note = knowledge.create_note(title=body.title, content=body.content, access_class=body.access_class,
+                                         collection_id=body.collection_id, tags=body.tags)
+        except KnowledgeError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        audit('knowledge.note.created', device_id=device_id, document_id=note['id'])
+        return note
+
+    @router.put('/knowledge/notes/{document_id}')
+    def knowledge_note_update(document_id: str, body: KnowledgeNoteUpdateBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:write')
+        existing = knowledge.detail(document_id)
+        if not existing or existing['access_class'] not in knowledge_access(device_id) or (existing.get('metadata') or {}).get('knowledge_kind') != 'note' or not existing.get('current', True):
+            raise HTTPException(404, 'Current Knowledge note not found')
+        try:
+            note = knowledge.update_note(document_id, title=body.title, content=body.content, tags=body.tags)
+        except (KnowledgeError, KeyError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        audit('knowledge.note.updated', device_id=device_id, document_id=document_id)
+        return note
+
+    @router.get('/knowledge/notes/{document_id}/links')
+    def knowledge_note_links(document_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:read')
+        allowed = knowledge_access(device_id)
+        note = knowledge.detail(document_id)
+        if not note or note['access_class'] not in allowed:
+            raise HTTPException(404, 'Knowledge note not found')
+        try:
+            return knowledge.note_links(document_id, access_classes=allowed)
+        except KeyError as exc:
+            raise HTTPException(404, 'Knowledge note not found') from exc
+
+    @router.get('/knowledge/portable-export')
+    def knowledge_portable_export(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:read')
+        try:
+            payload = knowledge.export_portable_archive(access_classes=knowledge_access(device_id))
+        except KnowledgeError as exc:
+            raise HTTPException(413, str(exc)) from exc
+        audit('knowledge.portable_exported', device_id=device_id, bytes=len(payload))
+        return Response(payload, media_type='application/zip', headers={'Content-Disposition': 'attachment; filename="vishnu-knowledge.zip"'})
+
+    @router.post('/knowledge/portable-import')
+    async def knowledge_portable_import(request: Request, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        device_id = authenticate(pa_device, pa_token, 'knowledge:write')
+        declared_size = request.headers.get('content-length')
+        if declared_size:
+            try:
+                if int(declared_size) < 0:
+                    raise ValueError
+            except ValueError as exc:
+                raise HTTPException(400, 'Invalid Content-Length header') from exc
+            if int(declared_size) > knowledge.MAX_PORTABLE_ARCHIVE_BYTES:
+                raise HTTPException(413, 'The Knowledge archive exceeds the 50 MB limit')
+        if request.headers.get('content-type', '').split(';', 1)[0].strip().lower() not in {'application/zip', 'application/octet-stream', 'application/x-zip-compressed'}:
+            raise HTTPException(415, 'Upload a Vishnu Knowledge ZIP archive')
+        payload = await request.body()
+        if len(payload) > knowledge.MAX_PORTABLE_ARCHIVE_BYTES:
+            raise HTTPException(413, 'The Knowledge archive exceeds the 50 MB limit')
+        allowed = knowledge_access(device_id)
+        try:
+            result = knowledge.import_portable_archive(payload, allowed_access_classes=allowed)
+        except KnowledgeError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        audit('knowledge.portable_imported', device_id=device_id, imported_count=result['imported_count'])
+        return result
 
     @router.get('/knowledge/export')
     def knowledge_export(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
