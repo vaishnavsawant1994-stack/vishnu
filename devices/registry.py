@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from core.security import new_bearer_secret, verify_secret
+
+
+logger = logging.getLogger(__name__)
 
 
 def now():
@@ -28,8 +32,9 @@ class DeviceRegistry:
     DEFAULT_SCOPES = LEGACY_DEFAULT_SCOPES | {'data:read', 'data:sync'}
     OWNER_SCOPES = LEGACY_OWNER_SCOPES | {'data:read', 'data:sync', 'data:admin'}
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, events=None):
         self.path = Path(path)
+        self.events = events
         self.path.parent.mkdir(parents=True, exist_ok=True)
         with self._con() as c:
             c.execute('''CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,platform TEXT NOT NULL,salt TEXT NOT NULL,token_hash TEXT NOT NULL,created_at TEXT NOT NULL,last_seen_at TEXT,revoked INTEGER NOT NULL DEFAULT 0)''')
@@ -58,6 +63,7 @@ class DeviceRegistry:
             try:
                 scopes = {str(value) for value in json.loads(row['scopes_json'])}
             except Exception:
+                logger.warning('Unable to decode legacy device permissions for %s', row['device_id'], exc_info=True)
                 continue
             target = None
             if scopes == self.LEGACY_DEFAULT_SCOPES:
@@ -127,15 +133,35 @@ class DeviceRegistry:
                 )
             }
 
+    def _report_revoke_cleanup_failure(self, device_id, exc):
+        logger.error(
+            'Device %s was revoked but connector transaction cleanup failed',
+            device_id,
+            exc_info=(type(exc), exc, exc.__traceback__),
+        )
+        if self.events is None:
+            return
+        try:
+            self.events.emit(
+                'device.revoke_cleanup_failed',
+                device_id=str(device_id),
+                cleanup='connector_transactions',
+                error_type=type(exc).__name__,
+            )
+        except Exception:
+            logger.error('Unable to emit device revocation cleanup failure', exc_info=True)
+
     def revoke(self, device_id):
         with self._con() as c:
             cur = c.execute('UPDATE devices SET revoked=1 WHERE id=?', (device_id,))
         if cur.rowcount:
             try:
-                from integrations.state import invalidate_device_transactions
-                invalidate_device_transactions(self.path.parent / 'connectors.sqlite3', str(device_id))
-            except Exception:
-                pass
+                connector_path = self.path.parent / 'connectors.sqlite3'
+                if connector_path.exists():
+                    from integrations.state import ConnectorStateStore
+                    ConnectorStateStore(connector_path).invalidate_device(str(device_id))
+            except Exception as exc:
+                self._report_revoke_cleanup_failure(device_id, exc)
         return cur.rowcount == 1
 
     def permissions(self, device_id):
@@ -149,6 +175,7 @@ class DeviceRegistry:
         try:
             scopes = sorted({str(value) for value in json.loads(row['scopes_json'])})
         except Exception:
+            logger.warning('Unable to decode device permissions for %s; denying all scopes', device_id, exc_info=True)
             scopes = []
         return {'scopes': scopes, 'updated_at': row['updated_at']}
 
