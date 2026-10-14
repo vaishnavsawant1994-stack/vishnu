@@ -1,0 +1,35 @@
+name: SBOM Evidence
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/install_locked_requirements.py tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: pytest -q tests/test_sbom_evidence.py
+      - name: Generate Python and Node.js CycloneDX SBOMs
+        run: python scripts/generate_sbom.py --output-dir dist/sbom
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: dist/sbom/
+          if-no-files-found: error
+          retention-days: 90
