@@ -9,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
 
 class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onCreate() {
@@ -19,12 +21,29 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
     override fun onActivityResumed(activity: Activity) {
         when (activity) {
             is MainActivity -> {
+                clearConsumedRuntimeBootstrap(activity)
                 attachPasskeyButton(activity)
                 attachForgeButton(activity)
             }
             is ConnectActivity -> {
                 attachRuntimeProvisioningButton(activity)
                 attachPortableRecoveryButton(activity)
+            }
+        }
+    }
+
+    private fun clearConsumedRuntimeBootstrap(activity: Activity) {
+        runCatching {
+            val key = MasterKey.Builder(activity).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build()
+            val prefs = EncryptedSharedPreferences.create(
+                activity,
+                "personal_ai_device",
+                key,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
+            )
+            if (!prefs.getString("device", null).isNullOrBlank() && !prefs.getString("bearer", null).isNullOrBlank()) {
+                prefs.edit().remove(RuntimeProvisioningActivity.PREF_BOOTSTRAP).apply()
             }
         }
     }
