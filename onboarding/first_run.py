@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import base64
 import os
+import platform as host_platform
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -9,6 +11,11 @@ from urllib.parse import urlparse
 
 from core.preferences import Preferences
 from recovery.backup import BackupError, BackupService
+from recovery.disaster_recovery import (
+    DisasterRecoveryError,
+    DisasterRecoveryService,
+    decrypt_recovery_key_file,
+)
 
 
 class SetupStatus(str, Enum):
@@ -119,6 +126,10 @@ class FirstRunCoordinator:
             'passkey_count': len(owner_access.passkeys()) if owner_access else 0,
             'recovery_codes_remaining': owner_access.recovery_codes_remaining() if owner_access else 0,
         }
+        if owner_access is not None:
+            identity = owner_access.identity()
+            if identity is not None:
+                state['identity'] = identity
         if models is not None:
             try:
                 state['model'] = models.status()
@@ -163,6 +174,7 @@ class FirstRunCoordinator:
         return False
 
     def should_run(self) -> bool:
+        runtime = self.runtime or {}
         state = self._read_state()
         status = state.get('status')
         if status == SetupStatus.READY.value:
@@ -171,6 +183,34 @@ class FirstRunCoordinator:
         # the new state machine. A password/device created during a partially
         # completed setup must never promote that incomplete setup to READY.
         if status == SetupStatus.UNINITIALIZED.value and self._legacy_install_detected():
+            preferences = (self.runtime or {}).get('preferences')
+            owner_access = (self.runtime or {}).get('owner_access')
+            devices = runtime.get('device_registry')
+            if owner_access is not None:
+                owner_access.initialize_identity(
+                    first_name=str(preferences.get('profile_first_name', '') or 'Owner') if preferences else 'Owner',
+                    last_name=str(preferences.get('profile_last_name', '') or '') if preferences else '',
+                    display_name=str(preferences.get('preferred_name', '') or 'Vishnu Owner') if preferences else 'Vishnu Owner',
+                )
+                if devices is not None and hasattr(devices, 'is_active'):
+                    active_devices = [item for item in devices.list() if not item.get('revoked')]
+                    existing_device = min(
+                        active_devices,
+                        key=lambda item: str(item.get('created_at') or '9999'),
+                        default=None,
+                    )
+                    if existing_device is not None:
+                        state['status'] = SetupStatus.SETUP_IN_PROGRESS.value
+                        state['mode'] = SetupMode.CREATE.value
+                        self._write_state(state)
+                        self.record_first_device(existing_device['id'])
+                        state = self._read_state()
+                    elif str(runtime.get('setup_surface') or '') == 'desktop':
+                        state['status'] = SetupStatus.SETUP_IN_PROGRESS.value
+                        state['mode'] = SetupMode.CREATE.value
+                        self._write_state(state)
+                        self.ensure_first_device()
+                        state = self._read_state()
             state.update({
                 'status': SetupStatus.READY.value,
                 'mode': state.get('mode') or SetupMode.CREATE.value,
@@ -179,7 +219,6 @@ class FirstRunCoordinator:
                 'last_error': None,
             })
             self._write_state(state)
-            preferences = (self.runtime or {}).get('preferences')
             if preferences is not None:
                 preferences.set('onboarding_complete', True)
             return False
@@ -191,6 +230,8 @@ class FirstRunCoordinator:
         except ValueError as exc:
             raise ValueError('Unsupported setup mode') from exc
         state = self._read_state()
+        if selected is SetupMode.CREATE and state.get('status') == SetupStatus.READY.value:
+            raise RuntimeError('Vishnu is already initialized. Connect this device instead.')
         state.update({
             'status': SetupStatus.CONNECT_PENDING.value if selected is SetupMode.CONNECT else SetupStatus.SETUP_IN_PROGRESS.value,
             'mode': selected.value,
@@ -292,6 +333,127 @@ class FirstRunCoordinator:
     def skip_model_configuration(self) -> dict:
         return self._mark_step('model_skipped', stage='ready')
 
+    def initialize_pending_identity(self) -> dict:
+        """Persist the stable identity before a platform finishes its ceremony.
+
+        The setup state remains SETUP_IN_PROGRESS until recovery acknowledgement,
+        device registration, policy, and security checks pass in complete().
+        This lets WebAuthn and native authenticators bind credentials to the
+        canonical owner ID while preserving safe resume after interruption.
+        """
+        runtime = self._runtime_required()
+        state = self._read_state()
+        if state.get('mode') not in {SetupMode.CREATE.value, SetupMode.RESTORE.value}:
+            raise RuntimeError('Only a new or restored Vishnu can initialize an owner identity')
+        preferences = runtime['preferences']
+        owner_access = runtime['owner_access']
+        if not str(preferences.get('preferred_name', '') or '').strip():
+            raise RuntimeError('Owner profile is incomplete')
+        if not owner_access.password_configured() or owner_access.recovery_codes_remaining() <= 0:
+            raise RuntimeError('Owner security and recovery must be configured first')
+        identity, created = owner_access.initialize_identity(
+            first_name=str(preferences.get('profile_first_name', '') or ''),
+            last_name=str(preferences.get('profile_last_name', '') or ''),
+            display_name=str(preferences.get('preferred_name', '') or ''),
+        )
+        if created:
+            memory = runtime.get('memory')
+            if memory is not None and hasattr(memory, 'audit'):
+                try:
+                    memory.audit('owner', 'identity.created', {
+                        'owner_id': identity['owner_id'],
+                        'vishnu_id': identity['vishnu_id'],
+                        'identity_version': identity['identity_version'],
+                    })
+                except Exception:
+                    pass
+            events = runtime.get('events')
+            if events is not None:
+                try:
+                    events.emit('owner.identity.created', owner_id=identity['owner_id'],
+                                vishnu_id=identity['vishnu_id'],
+                                identity_version=identity['identity_version'])
+                except Exception:
+                    pass
+        return identity
+
+    def record_first_device(self, device_id: str) -> dict:
+        """Bind an already enrolled platform device to the initial owner setup."""
+        runtime = self._runtime_required()
+        registry = runtime.get('device_registry')
+        device_id = str(device_id or '').strip()
+        if not device_id or registry is None or not registry.is_active(device_id):
+            raise RuntimeError('The first trusted device is not active in the device registry')
+        identity = runtime['owner_access'].identity()
+        if identity is None:
+            raise RuntimeError('Create the Vishnu owner identity before registering its first device')
+        if hasattr(registry, 'set_permissions') and hasattr(registry, 'OWNER_SCOPES'):
+            registry.set_permissions(device_id, registry.OWNER_SCOPES)
+        if hasattr(registry, 'set_metadata'):
+            registry.set_metadata(device_id, 'owner_id', identity['owner_id'])
+            registry.set_metadata(device_id, 'role', 'first_device')
+        state = self._read_state()
+        current = str(state.get('first_device_id') or '')
+        if current and current != device_id and registry.is_active(current):
+            raise RuntimeError('A first trusted device is already registered for this Vishnu')
+        state['first_device_id'] = device_id
+        self._write_state(state)
+        if current != device_id:
+            memory = runtime.get('memory')
+            if memory is not None and hasattr(memory, 'audit'):
+                try:
+                    memory.audit('owner', 'device.first_trusted', {
+                        'owner_id': identity['owner_id'], 'device_id': device_id,
+                    })
+                except Exception:
+                    pass
+            events = runtime.get('events')
+            if events is not None:
+                try:
+                    events.emit('owner.first_device.registered',
+                                owner_id=identity['owner_id'], device_id=device_id)
+                except Exception:
+                    pass
+        return {'device_id': device_id, 'owner_id': identity['owner_id']}
+
+    def ensure_first_device(self) -> dict:
+        """Register this platform as Device 1 when creation has no device yet."""
+        runtime = self._runtime_required()
+        state = self._read_state()
+        registry = runtime.get('device_registry')
+        if registry is None:
+            raise RuntimeError('The canonical device registry is unavailable')
+        existing = str(state.get('first_device_id') or '')
+        if existing and registry.is_active(existing):
+            return self.record_first_device(existing)
+        identity = self.initialize_pending_identity()
+        devices = registry.list()
+        marker = next((item for item in devices if not item.get('revoked')
+                       and item.get('metadata', {}).get('owner_id') == identity['owner_id']
+                       and item.get('metadata', {}).get('role') == 'first_device'), None)
+        if marker is not None:
+            return self.record_first_device(marker['id'])
+        if state.get('status') == SetupStatus.READY.value or state.get('migrated_legacy_install'):
+            legacy_device = min(
+                (item for item in devices if not item.get('revoked')),
+                key=lambda item: str(item.get('created_at') or '9999'),
+                default=None,
+            )
+            if legacy_device is not None:
+                return self.record_first_device(legacy_device['id'])
+        platform_name = host_platform.system().lower() or 'desktop'
+        if platform_name == 'darwin':
+            platform_name = 'macos'
+        if platform_name.startswith('win'):
+            platform_name = 'windows'
+        if not hasattr(registry, 'enroll'):
+            raise RuntimeError('The canonical device registry cannot enroll the first device')
+        device, _discarded_device_secret = registry.enroll(
+            f'First trusted {platform_name} device', platform_name,
+        )
+        self.record_first_device(device['id'])
+        return {'device_id': device['id'], 'owner_id': identity['owner_id']}
+
     def schedule_restore(self, archive: str | Path) -> dict:
         runtime = self._runtime_required()
         path = Path(archive).expanduser().resolve()
@@ -319,6 +481,49 @@ class FirstRunCoordinator:
             'last_error': None,
         })
         self._write_state(state)
+        return state['restore']
+
+    def schedule_disaster_recovery(
+        self, archive: str | Path, key_file: str | Path, passphrase: str,
+    ) -> dict:
+        """Validate a portable recovery bundle and stage only a host-encrypted key."""
+        runtime = self._runtime_required()
+        path = Path(archive).expanduser().resolve()
+        key_path = Path(key_file).expanduser().resolve()
+        if path == key_path or not path.is_file() or not key_path.is_file():
+            raise ValueError('Choose an existing recovery package and its separate key file')
+        key = decrypt_recovery_key_file(key_path.read_bytes(), passphrase)
+        backups = runtime['backups']
+        recovery = DisasterRecoveryService(backups)
+        validated = recovery.validate_bundle(path, recovery_key=key)
+        wrapped_key = backups._wrap_memory_key(key)
+        payload = {
+            'kind': 'portable_disaster_recovery',
+            'path': str(path),
+            'key_id': validated['key_id'],
+            'owner_id': validated['owner_id'],
+            # This ciphertext is bound to the target host's canonical root key.
+            # Plain recovery material is never persisted between restarts.
+            'wrapped_recovery_key': base64.b64encode(wrapped_key).decode('ascii'),
+            'scheduled_at': _now(),
+        }
+        temporary = self.pending_restore_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding='utf-8')
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        temporary.replace(self.pending_restore_path)
+        state = self._read_state()
+        state.update({
+            'status': SetupStatus.RESTORING.value,
+            'mode': SetupMode.RESTORE.value,
+            'stage': 'restart_required',
+            'restore': {'archive': path.name, 'key_id': validated['key_id'], 'portable': True},
+            'last_error': None,
+        })
+        self._write_state(state)
+        del key, wrapped_key
         return state['restore']
 
     def mark_connect_pending(self, url: str) -> dict:
@@ -352,21 +557,30 @@ class FirstRunCoordinator:
         owner_access = runtime['owner_access']
         state = self._read_state()
         completed = set(state.get('completed_steps', []))
+        mode = state.get('mode')
+        if mode not in {SetupMode.CREATE.value, SetupMode.RESTORE.value}:
+            raise RuntimeError('Only a new or restored Vishnu can complete owner creation')
         if not str(preferences.get('preferred_name', '') or '').strip():
             raise RuntimeError('Owner profile is incomplete')
         if not owner_access.password_configured():
             raise RuntimeError('Owner security is incomplete')
         if 'recovery_saved' not in completed:
             raise RuntimeError('Recovery codes must be saved before setup can complete')
+        if owner_access.recovery_codes_remaining() <= 0:
+            raise RuntimeError('At least one unused recovery code must remain before setup can complete')
         if 'privacy' not in completed:
             raise RuntimeError('Privacy and autonomy preferences are incomplete')
         if not ({'model', 'model_skipped'} & completed):
             raise RuntimeError('AI configuration must be completed or explicitly skipped')
+        identity = self.initialize_pending_identity()
+        self.ensure_first_device()
+        state = self._read_state()
         preferences.set('onboarding_complete', True)
         state.update({
             'status': SetupStatus.READY.value,
             'mode': state.get('mode') or SetupMode.CREATE.value,
             'stage': 'ready',
+            'identity_version': identity['identity_version'],
             'last_error': None,
         })
         return self._write_state(state)
@@ -381,7 +595,19 @@ class FirstRunCoordinator:
         try:
             payload = json.loads(pending.read_text(encoding='utf-8'))
             archive = Path(str(payload['path'])).expanduser().resolve()
-            result = BackupService(data_dir, vault_password=vault_password).restore(archive)
+            backups = BackupService(data_dir, vault_password=vault_password)
+            if payload.get('kind') == 'portable_disaster_recovery':
+                wrapped_key = base64.b64decode(payload['wrapped_recovery_key'], validate=True)
+                recovery_key = backups._unwrap_memory_key(wrapped_key)
+                result = DisasterRecoveryService(backups, maintenance_mode=True).restore_bundle(
+                    archive,
+                    recovery_key=recovery_key,
+                    owner_id=str(payload['owner_id']),
+                    expected_key_id=str(payload['key_id']),
+                )
+                del recovery_key, wrapped_key
+            else:
+                result = backups.restore(archive)
             # Security authority is intentionally not restored by BackupService.
             # Force the restored installation back through fresh owner security.
             Preferences(data_dir / 'preferences.json').set('onboarding_complete', False)
@@ -405,7 +631,7 @@ class FirstRunCoordinator:
             temporary.write_text(json.dumps(state, sort_keys=True, indent=2), encoding='utf-8')
             temporary.replace(state_path)
             return result
-        except (OSError, ValueError, KeyError, BackupError) as exc:
+        except (OSError, ValueError, KeyError, BackupError, DisasterRecoveryError) as exc:
             failed = {
                 'version': cls.VERSION,
                 'status': SetupStatus.RESTORE_FAILED.value,

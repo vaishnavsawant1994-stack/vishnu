@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMessageBox,
+    QInputDialog,
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
@@ -22,6 +23,13 @@ from PyQt6.QtWidgets import (
 
 from security.policy_targets import application_identity, normalize_origin
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
+from recovery.disaster_recovery import (
+    DisasterRecoveryService,
+    encrypt_recovery_key_file,
+    generate_recovery_key,
+)
+import secrets
+import os
 
 
 class SettingsPanel(QDialog):
@@ -104,10 +112,14 @@ class SettingsPanel(QDialog):
         backup.clicked.connect(self.create_backup)
         restore = QPushButton('Restore backup…')
         restore.clicked.connect(self.restore_backup)
+        recovery = QPushButton('Export recovery package…')
+        recovery.clicked.connect(self.export_recovery_package)
         row.addWidget(save)
         row.addWidget(backup)
         row.addWidget(restore)
+        row.addWidget(recovery)
         lay.addLayout(row)
+        lay.addWidget(QLabel('Recovery packages can restore owner data on a different host. The package and its separately encrypted recovery key are both required.'))
 
         lay.addWidget(QLabel('<h3>Apps & Tools — Effective permissions</h3>'))
         lay.addWidget(QLabel('Default is deny. Permission changes require owner reauthentication and are versioned/audited locally.'))
@@ -522,6 +534,66 @@ class SettingsPanel(QDialog):
             return
         result = self.runtime['backups'].restore(Path(path))
         QMessageBox.information(self, 'Restore complete', f"Restored {result['restored']} files. Restart Vishnu to reload restored state.")
+
+    def export_recovery_package(self):
+        owner = self.runtime.get('owner_access')
+        identity = owner.identity() if owner else None
+        if not identity or not owner.password_configured():
+            QMessageBox.warning(self, 'Recovery export unavailable', 'Create an owner password before exporting a recovery package.')
+            return
+        password, ok = QInputDialog.getText(self, 'Verify owner', 'Enter your owner password to export recovery material:', QLineEdit.EchoMode.Password)
+        if not ok:
+            return
+        if not owner.verify_password(password):
+            QMessageBox.warning(self, 'Verification failed', 'Owner verification failed. Nothing was exported.')
+            return
+        phrase, ok = QInputDialog.getText(self, 'Protect recovery key', 'Create a recovery passphrase (at least 12 characters). You will need it with the key file to restore:', QLineEdit.EchoMode.Password)
+        if not ok:
+            return
+        confirm, ok = QInputDialog.getText(self, 'Confirm recovery passphrase', 'Enter the recovery passphrase again:', QLineEdit.EchoMode.Password)
+        if not ok:
+            return
+        if len(phrase) < 12 or phrase != confirm:
+            QMessageBox.warning(self, 'Recovery passphrase', 'Passphrases must match and contain at least 12 characters. Nothing was exported.')
+            return
+        bundle_name, _ = QFileDialog.getSaveFileName(self, 'Save encrypted Vishnu recovery package', str(Path.home() / 'vishnu-recovery.vdr'), 'Vishnu Recovery Package (*.vdr)')
+        if not bundle_name:
+            return
+        bundle = Path(bundle_name).expanduser().resolve()
+        key_path = bundle.with_suffix(bundle.suffix + '.key')
+        if bundle.exists() or key_path.exists():
+            QMessageBox.warning(self, 'Choose new file names', 'The package or recovery-key file already exists. Choose a new name so existing recovery material is not overwritten.')
+            return
+        recovery_key = generate_recovery_key()
+        key_id = 'recovery-' + secrets.token_hex(12)
+        try:
+            key_envelope = encrypt_recovery_key_file(recovery_key, phrase)
+            result = DisasterRecoveryService(self.runtime['backups']).create_bundle(
+                bundle, recovery_key=recovery_key, owner_id=identity['owner_id'], key_id=key_id,
+            )
+            temporary = key_path.with_name('.' + key_path.name + '.' + secrets.token_hex(6) + '.tmp')
+            try:
+                temporary.write_bytes(key_envelope)
+                try:
+                    os.chmod(temporary, 0o600)
+                except OSError:
+                    pass
+                os.replace(temporary, key_path)
+            finally:
+                temporary.unlink(missing_ok=True)
+            events = self.runtime.get('events')
+            if events:
+                events.emit('owner.recovery.package_exported', key_id=key_id, bundle_size=result['bundle_size'])
+            memory = self.runtime.get('memory')
+            if memory and hasattr(memory, 'audit'):
+                memory.audit('security', 'recovery.package_exported', {
+                    'key_id': key_id, 'bundle_size': result['bundle_size'],
+                })
+            QMessageBox.information(self, 'Recovery package exported', f"Saved the encrypted data package and separately encrypted key file:\n\n{bundle}\n{key_path}\n\nStore them separately. The recovery passphrase is not included. Vishnu cannot recover the key if you lose it.")
+        except Exception as exc:
+            bundle.unlink(missing_ok=True)
+            key_path.unlink(missing_ok=True)
+            QMessageBox.warning(self, 'Recovery export failed', f'Nothing was retained because the export did not complete: {type(exc).__name__}.')
 
     def refresh(self):
         telemetry = self.runtime['telemetry'].snapshot()

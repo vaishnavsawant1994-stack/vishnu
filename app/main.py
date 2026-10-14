@@ -188,13 +188,14 @@ def main():
     app=QApplication(sys.argv); app.setApplicationName('Vishnu')
     FirstRunCoordinator.apply_pending_restore(settings.data_dir, vault_password=settings.vault_password or None)
     runtime=build_runtime()
-    setup=FirstRunCoordinator(settings.data_dir,runtime=runtime); runtime['first_run_setup']=setup
+    setup=FirstRunCoordinator(settings.data_dir,runtime=runtime); runtime['first_run_setup']=setup; runtime['setup_surface']='desktop'
     if setup.should_run():
         wizard=FirstRunWizard(runtime,setup)
         result=wizard.exec()
         if result != QDialog.DialogCode.Accepted or wizard.restart_required or wizard.external_connect or not setup.ready:
             _close_runtime(runtime)
             return 0
+    setup.ensure_first_device()
 
     composition=runtime['composition']
     composition.work.automation_engine.start(); start_e9_services(runtime)

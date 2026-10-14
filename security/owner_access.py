@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import base64
 import secrets
+import re
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +18,10 @@ def _now() -> str:
 
 def _encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode().rstrip('=')
+
+
+class FirstRunClaimBusy(RuntimeError):
+    """Another device currently owns the short-lived setup ceremony."""
 
 
 class OwnerAccessStore:
@@ -38,11 +44,163 @@ class OwnerAccessStore:
             con.execute('''CREATE TABLE IF NOT EXISTS auth_challenges(
                 id TEXT PRIMARY KEY,kind TEXT NOT NULL,challenge BLOB NOT NULL,device_id TEXT,
                 rp_id TEXT NOT NULL,origin TEXT NOT NULL,expires_at INTEGER NOT NULL)''')
+            # Owner identity is installation independent metadata owned by the
+            # same canonical security store as passkeys, passwords and recovery.
+            # It intentionally contains no device credentials or provider IDs.
+            con.execute('''CREATE TABLE IF NOT EXISTS owner_identity(
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                owner_id TEXT NOT NULL UNIQUE,
+                vishnu_id TEXT NOT NULL UNIQUE,
+                first_name TEXT NOT NULL,
+                last_name TEXT NOT NULL,
+                display_name TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                identity_version INTEGER NOT NULL DEFAULT 1)''')
+            con.execute('''CREATE TABLE IF NOT EXISTS first_run_claim(
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                salt TEXT NOT NULL,
+                claim_hash TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at TEXT NOT NULL)''')
 
     def _con(self):
         con = sqlite3.connect(self.path)
         con.row_factory = sqlite3.Row
         return con
+
+    def identity(self) -> dict | None:
+        """Return the stable owner/Vishnu identity, without device secrets."""
+        with self._con() as con:
+            row = con.execute(
+                '''SELECT owner_id,vishnu_id,first_name,last_name,display_name,
+                          created_at,identity_version
+                   FROM owner_identity WHERE singleton=1'''
+            ).fetchone()
+        return dict(row) if row else None
+
+    def restore_identity_metadata(self, identity: dict) -> dict:
+        """Restore stable identity labels without restoring any security authority.
+
+        Backups may carry these non-secret identifiers so a data restore can
+        continue the same Vishnu. Passwords, recovery hashes, passkeys, claims,
+        sessions, and device credentials remain local and are never imported.
+        """
+        required = ('owner_id', 'vishnu_id', 'first_name', 'last_name', 'display_name',
+                    'created_at', 'identity_version')
+        if not isinstance(identity, dict) or any(key not in identity for key in required):
+            raise ValueError('Backup identity metadata is incomplete')
+        owner_id = str(identity['owner_id'])
+        vishnu_id = str(identity['vishnu_id'])
+        if (not re.fullmatch(r'OWNER-[0-9A-F]{32}', owner_id)
+                or not re.fullmatch(r'VISHNU-[0-9A-F]{32}', vishnu_id)):
+            raise ValueError('Backup identity metadata is invalid')
+        values = (owner_id, vishnu_id, str(identity['first_name'])[:80],
+                  str(identity['last_name'])[:80], str(identity['display_name'])[:120],
+                  str(identity['created_at'])[:80], int(identity['identity_version']))
+        if not values[2] or not values[4] or values[6] < 1:
+            raise ValueError('Backup identity metadata is invalid')
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT owner_id,vishnu_id FROM owner_identity WHERE singleton=1').fetchone()
+            if row:
+                if row['owner_id'] != owner_id or row['vishnu_id'] != vishnu_id:
+                    raise ValueError('Backup belongs to a different Vishnu identity')
+                return self.identity()
+            con.execute(
+                '''INSERT INTO owner_identity(singleton,owner_id,vishnu_id,first_name,last_name,
+                   display_name,created_at,identity_version) VALUES(1,?,?,?,?,?,?,?)''', values,
+            )
+        return self.identity()
+
+    def acquire_first_run_claim(
+        self, presented: str | None = None, *, ttl: int = 900,
+        allow_pending_identity: bool = False, allow_proposed: bool = False,
+    ) -> tuple[str, bool]:
+        """Reserve the uninitialized install for one short-lived setup client.
+
+        Only a hash of the setup claim is persisted. Repeated calls from the
+        same browser are retry-safe; a second device cannot race a separate
+        first-owner ceremony while the first claim is live.
+        """
+        now = int(time.time())
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT * FROM first_run_claim WHERE singleton=1').fetchone()
+            if row is not None and int(row['expires_at']) >= now:
+                if presented and verify_secret(str(presented), row['salt'], row['claim_hash']):
+                    return str(presented), False
+                raise FirstRunClaimBusy('First-device setup is already in progress on another device.')
+            if (not allow_pending_identity
+                    and con.execute('SELECT 1 FROM owner_identity WHERE singleton=1').fetchone()):
+                raise RuntimeError('Vishnu is already initialized. Connect this device instead.')
+            if presented and not allow_pending_identity and not allow_proposed:
+                raise FirstRunClaimBusy('The setup session expired. Start the creation ceremony again.')
+            token = str(presented) if presented and allow_proposed else secrets.token_urlsafe(32)
+            salt = secrets.token_hex(16)
+            con.execute(
+                '''INSERT INTO first_run_claim(singleton,salt,claim_hash,expires_at,created_at)
+                   VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET
+                   salt=excluded.salt,claim_hash=excluded.claim_hash,
+                   expires_at=excluded.expires_at,created_at=excluded.created_at''',
+                (salt, hash_secret(token, salt), now + max(60, min(int(ttl), 1800)), _now()),
+            )
+            return token, True
+
+    def release_first_run_claim(self, presented: str) -> bool:
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT * FROM first_run_claim WHERE singleton=1').fetchone()
+            if row is None or not verify_secret(str(presented or ''), row['salt'], row['claim_hash']):
+                return False
+            result = con.execute('DELETE FROM first_run_claim WHERE singleton=1')
+            return result.rowcount == 1
+
+    def initialize_identity(
+        self,
+        *,
+        first_name: str,
+        last_name: str = '',
+        display_name: str = '',
+    ) -> tuple[dict, bool]:
+        """Atomically create the one owner identity or return the existing one.
+
+        The SQLite write lock makes simultaneous first-run attempts converge on
+        exactly one identity. Retrying after a crash is safe and never creates
+        another owner/Vishnu ID pair.
+        """
+        first = str(first_name or '').strip()[:80]
+        last = str(last_name or '').strip()[:80]
+        display = str(display_name or '').strip()[:120] or ' '.join(
+            part for part in (first, last) if part
+        )
+        if not first:
+            raise ValueError('First name is required')
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute(
+                '''SELECT owner_id,vishnu_id,first_name,last_name,display_name,
+                          created_at,identity_version
+                   FROM owner_identity WHERE singleton=1'''
+            ).fetchone()
+            if row is not None:
+                return dict(row), False
+            identity = {
+                'owner_id': f'OWNER-{uuid.uuid4().hex.upper()}',
+                'vishnu_id': f'VISHNU-{uuid.uuid4().hex.upper()}',
+                'first_name': first,
+                'last_name': last,
+                'display_name': display or first,
+                'created_at': _now(),
+                'identity_version': 1,
+            }
+            con.execute(
+                '''INSERT INTO owner_identity(singleton,owner_id,vishnu_id,first_name,last_name,
+                       display_name,created_at,identity_version) VALUES(1,?,?,?,?,?,?,?)''',
+                (identity['owner_id'], identity['vishnu_id'], identity['first_name'],
+                 identity['last_name'], identity['display_name'], identity['created_at'],
+                 identity['identity_version']),
+            )
+            return identity, True
 
     def password_configured(self) -> bool:
         with self._con() as con:

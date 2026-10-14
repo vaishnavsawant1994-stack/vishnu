@@ -509,9 +509,9 @@ cryptography==50.0.2 \
     #   pyopenssl
     #   secretstorage
     #   webauthn
-cx-freeze==8.7.1 \
-    --hash=sha256:05c09b447cab2f3ee4512c2478e745c46323d079c61df6db501e01975ba4d3a5 \
-    --hash=sha256:59626f52b2753f104026cc90fbca0b3af6accba870c772c0f856b38aa2a826c6
+cx-freeze==8.7.2 \
+    --hash=sha256:48afc98b46d791d27eebf4d64881e2e59a0ba7d826986caacc30c043cc91d84c \
+    --hash=sha256:bab6cae3615da1a29223810379db59a2676ae69a7f613bfea01a17dd040926b6
     # via -r requirements-tools.in
 cyclonedx-python-lib==11.12.0 \
     --hash=sha256:0e807521a921a5c3cb8ce1153f8a61d29eedfe76a46aac2796b7c6b573391a54 \
@@ -537,9 +537,9 @@ fastapi==0.143.1 \
     --hash=sha256:4cafaab64df8534758bf0fce61947f5e27e6cd512798ccbbaad5425086c3b664 \
     --hash=sha256:687beb445804e4c4dbe2a76fd83c25e9b973ac48c267defb86f791e099baecc4
     # via -r requirements.txt
-filelock==4.1.1 \
-    --hash=sha256:3f4a557945a7b0f95efeb1f432267affe5d45ac8ddde2aed1b97ebb62382c089 \
-    --hash=sha256:7ba0927482c5a814b0a7f391d029ccdb8010f576f0a74c0dcde1811e8bc4c1b6
+filelock==4.1.2 \
+    --hash=sha256:4d5dc2a1d64d6b48a5f0540814000986fd62ebd3ac9ccbb1d07d669e075db9bb \
+    --hash=sha256:c541dd91878706be3ff20e934a0b913972d4eff7a20ddfc17defd2b7328d006c
     # via
     #   cachecontrol
     #   cx-freeze
@@ -1316,9 +1316,9 @@ mdurl==0.1.2 \
     --hash=sha256:84008a41e51615a49fc9966191ff91509e3c40b939176e643fd50a5c2196b8f8 \
     --hash=sha256:bb413d29f5eea38f31dd4754dd7377d4465116fb207585f97bf925588687c1ba
     # via markdown-it-py
-more-itertools==11.2.0 \
-    --hash=sha256:59960f488835254863a857eb501f69e4ec92fdc8822f098c0f48dba530afd487 \
-    --hash=sha256:e4c522352a24664c974d0be8382944107ae638281a06391a5a538366b5707fe5
+more-itertools==11.2.1 \
+    --hash=sha256:35a7377edd1dd6608dcb2cdf534ded55ea32d49448875ad042cd3f879fb1ded0 \
+    --hash=sha256:cbf08fd0af284dc69718b9b76a8e6203df624d70209ea511e4219d350c856f63
     # via
     #   jaraco-classes
     #   jaraco-functools
@@ -4015,22 +4015,23 @@ python-dotenv==1.2.4 \
     # via
     #   -r requirements.txt
     #   uvicorn
-python-msilib==0.7.1 ; python_full_version >= '3.13' and sys_platform == 'win32' \
-    --hash=sha256:025efa58b686b4a217760bb7009c2593c1ff7b9fc415089f3612fa14fff6f08c \
-    --hash=sha256:062b41a85ff08ff369a30beb7816fc2b418d0cfc000e49ab14ee0138f3cbbe73 \
-    --hash=sha256:0e58dc977e4cdd48a99cf4d7ab33d86e6fb1aad6c03d4f6b22bcff9d829d5d31 \
-    --hash=sha256:425fe9e26dd8c1ab91b0c8c147758d46895c4fbe2f223f17a25d6cb680e3ec9c \
-    --hash=sha256:4b653af48203866dcc724f50fc80e49d33c53587223221853956d46615402165 \
-    --hash=sha256:668a6e1d21a790acb37e22f86bc158b4f6dcf473004297e191622afee588d8ad \
-    --hash=sha256:87ff254f586bd476dcf1504719b7689a54428b9d0e74b1f7f11d712b2892a9e0 \
-    --hash=sha256:9efe7285f34117a4484454f1326973f4ffc9e90e189c2fe9184fe83d4376e19c \
-    --hash=sha256:a33c891faf6d55f50a7dc55d94276dcb8bf6ca61969906002e1f39cd34b250ad \
-    --hash=sha256:b484cc0975766ae7139912b5849d90edf02e48478d5711814282d9cd35ece5f2 \
-    --hash=sha256:be38655a9e900c9718633a61e861b0158093f7ea9db83ce0f2b218a582e9a436 \
-    --hash=sha256:c6cac93edb110f992035f0905d8983d49db1cac4d0737224c22b67ace3a4234a \
-    --hash=sha256:ca473fb55a9a75fc81b8d48d8673295c3b3fdc4519670121a29c9913a76840ce \
-    --hash=sha256:cee33847d1900816857dc3a4e2e3953b08736ecc73b5137a6b8cf1ad8fc0a598 \
-    --hash=sha256:e69782fcb25a5115eb5d8a821fa4d311d8bee751126ca88a5d6c5d815148ac93
+python-msilib==0.7.2 ; python_full_version >= '3.13' and sys_platform == 'win32' \
+    --hash=sha256:008ae394e72ead6ecaa70b7514450e135636eace1ab7166c60a820be6e0545c1 \
+    --hash=sha256:184cce903dddb18320648d0fea722fd37aca3b12a8a8262ed1bd3da1f9e7bee1 \
+    --hash=sha256:2808ab24feb9cb6694b1f2b0b69c8709d1ed6ae4343bbb6f190f44724d1d850d \
+    --hash=sha256:2e4175bbcaa7238b84077f7aa5fc77370e1d182daecca930e726a098f0d8c07e \
+    --hash=sha256:38df15c3a39e27014757ffd88df5ce00f165e9a29ff138515fa5b7f861a5e2d0 \
+    --hash=sha256:3b1d4e2651a51b848c730922d466c84eb8d81bdec2e969378d0dbf491bb5cb35 \
+    --hash=sha256:4c949bd9b4204be654df55fb0d02fb88b5858f72ebd5ad1b0cb3d15b50221c67 \
+    --hash=sha256:565ffc50770d2542497eaa87f1fb8bda487236a4b8a4b29042f75891404b7709 \
+    --hash=sha256:58835fc64a5b54843a129ba917546047547542b115dbd8de8a9cf00a6a6e27ab \
+    --hash=sha256:736b3a9e69b1f3936ceff8483cb99f654a56eb33f100332449268a7211580a66 \
+    --hash=sha256:929edeb0a14b1d28fc6b2b093fc15abbc610358a762ace171151a0d6ea55d3f7 \
+    --hash=sha256:a30dd4e6b502f98087569e1ebd97351775dc995c227e99a48dadc73c66cbad97 \
+    --hash=sha256:a9d730f86b70fafbec35c12bcf97252e495e5bb8439665c62ff3c07a3407ee36 \
+    --hash=sha256:ad0c4103cc1be1155338f3c21c305150ecf738e3b2b939862cef9e9417fd2476 \
+    --hash=sha256:c513aa19c9476b7fb992bc5115cfe6549bd6b00b5955d52d014bc195a0ef10eb \
+    --hash=sha256:fc7572e4ccd9a95d2428b6e632baec704a7e9de02d17309ea702bd3ee868ef1d
     # via cx-freeze
 python-pptx==1.0.2 \
     --hash=sha256:160838e0b8565a8b1f67947675886e9fea18aa5e795db7ae531606d68e785cba \

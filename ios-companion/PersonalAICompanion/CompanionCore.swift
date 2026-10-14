@@ -77,6 +77,18 @@ final class CompanionStore: ObservableObject {
         }catch{status="Pair failed: \(error.localizedDescription)"}
     }
 
+    func activateRecoveredDevice(base: String, deviceID: String, bearer: String) throws {
+        let origin = try PairingPayload.normalizeOrigin(base, allowLocalHTTP: false)
+        try keychain.set(origin, for: "base")
+        try keychain.set(deviceID, for: "device")
+        try keychain.set(bearer, for: "bearer")
+        keychain.remove("tls_pin")
+        keychain.remove("service_id")
+        baseURL = origin
+        status = "Trusted device registered"
+        connect()
+    }
+
     func connect(){
         guard let base=keychain.get("base"),let device=deviceID,let bearer else{status="Pair first";return}
         if let service=serviceID,let pin=tlsPin,!service.isEmpty,!pin.isEmpty {

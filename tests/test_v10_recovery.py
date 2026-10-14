@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from recovery.backup import BACKUP_MAGIC, BackupError, BackupService
+from security.owner_access import OwnerAccessStore
 
 
 class StaticRootKeyStore:
@@ -303,3 +304,45 @@ def test_stage8_restore_to_empty_target_does_not_create_archived_security_author
     assert not (target / 'devices.sqlite3').exists()
     assert not (target / 'owner-access.sqlite3').exists()
     assert set(result['skipped_security_state']) >= {'devices.sqlite3', 'owner-access.sqlite3'}
+
+
+def test_backup_restores_stable_identity_without_restoring_owner_security(tmp_path):
+    source = tmp_path / 'identity-source'
+    source.mkdir()
+    owner = OwnerAccessStore(source / 'owner-access.sqlite3')
+    identity, _ = owner.initialize_identity(first_name='Asha', last_name='Patel')
+    owner.set_password('correct horse battery staple')
+    owner.regenerate_recovery_codes()
+    (source / 'conversation.json').write_text('{"hello":"world"}')
+    archive = service(source).create('identity.paibackup')
+
+    target = tmp_path / 'identity-target'
+    target.mkdir()
+    result = service(target).restore(archive)
+
+    restored = OwnerAccessStore(target / 'owner-access.sqlite3')
+    assert result['identity_preserved'] is True
+    assert restored.identity()['owner_id'] == identity['owner_id']
+    assert restored.identity()['vishnu_id'] == identity['vishnu_id']
+    assert restored.identity()['display_name'] == 'Asha Patel'
+    assert restored.password_configured() is False
+    assert restored.recovery_codes_remaining() == 0
+    assert (target / 'conversation.json').read_text() == '{"hello":"world"}'
+
+
+def test_backup_identity_conflict_fails_closed_and_keeps_existing_data(tmp_path):
+    source = tmp_path / 'identity-source-conflict'
+    source.mkdir()
+    OwnerAccessStore(source / 'owner-access.sqlite3').initialize_identity(first_name='Asha')
+    (source / 'note.txt').write_text('archived')
+    archive = service(source).create('identity-conflict.paibackup')
+
+    target = tmp_path / 'identity-target-conflict'
+    target.mkdir()
+    target_owner = OwnerAccessStore(target / 'owner-access.sqlite3')
+    target_owner.initialize_identity(first_name='Mira')
+    (target / 'note.txt').write_text('current')
+
+    with pytest.raises(BackupError, match='different Vishnu identity'):
+        service(target).restore(archive)
+    assert (target / 'note.txt').read_text() == 'current'

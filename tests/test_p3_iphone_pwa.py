@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+import uuid
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -10,6 +11,8 @@ from agent.executor import ConfirmationRequired
 from devices.continuity import ContinuityService
 from server.iphone_pwa import iphone_pwa_router
 from models.router import ModelTimeout, ModelUnavailable
+from core.preferences import Preferences
+from onboarding.first_run import FirstRunCoordinator
 from security.owner_access import OwnerAccessStore
 from security.pwa_sessions import PwaSessionStore
 from server.pwa_session_middleware import PwaSessionMiddleware
@@ -27,10 +30,27 @@ class Registry:
         self.tokens[device_id] = token
         self.active.add(device_id)
         return {'id': device_id, 'name': name, 'platform': platform}, token
+    def enroll_with_credential(self, device_id, token, name, platform):
+        existing = self.tokens.get(device_id)
+        if existing is not None:
+            if existing != token or device_id not in self.active:
+                raise ValueError('Device ID is already registered')
+            return {'id': device_id, 'name': name, 'platform': platform}, token
+        self.tokens[device_id] = token
+        self.active.add(device_id)
+        return {'id': device_id, 'name': name, 'platform': platform}, token
     def authenticate(self, device_id, token):
-        return self.tokens.get(device_id) == token
+        return device_id in self.active and self.tokens.get(device_id) == token
     def is_active(self, device_id):
         return device_id in self.active
+    def revoke(self, device_id):
+        if device_id not in self.active:
+            return False
+        self.active.remove(device_id)
+        return True
+    def list(self):
+        return [{'id': device_id, 'name': 'Device', 'platform': 'test'}
+                for device_id in sorted(self.active)]
 
 
 class Executor:
@@ -125,10 +145,23 @@ def test_production_router_can_exclude_legacy_canonical_runtime_overlaps(tmp_pat
         ('POST', '/iphone/api/voice/client-event'),
     }
     assert registered.isdisjoint(forbidden)
-
     # Non-overlapping owner-access routes remain available.
     assert client.get('/iphone/api/status').status_code == 200
 
+
+def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
+    client, _ = make_client(tmp_path)
+    page = client.get('/iphone/')
+    assert page.status_code == 200
+    assert '/iphone/first-run.js' in page.text
+    assert '/iphone/first-run-actions.js' in page.text
+    adapter = client.get('/iphone/first-run.js')
+    actions = client.get('/iphone/first-run-actions.js')
+    assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
+    assert 'Restore Vishnu' in adapter.text
+    assert 'accessMethods?.append(restoreChoice)' in adapter.text
+    assert actions.status_code == 200 and '/first-run/create' in actions.text
+    assert "$('recoveryCode').focus()" in actions.text
 
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)
@@ -190,6 +223,9 @@ def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
     client, _ = make_client(tmp_path)
     options = client.get('/iphone/api/access/options').json()
     assert options == {
+        'creation_available': False,
+        'setup_in_progress': False,
+        'model_setup_complete': False,
         'passkey_available': False,
         'password_available': False,
         'recovery_available': False,
@@ -820,6 +856,228 @@ def test_stage8_stale_server_reauth_blocks_owner_credential_changes(tmp_path):
 
     assert runtime['owner_access'].password_configured() is False
     assert runtime['owner_access'].recovery_codes_remaining() == 0
+
+
+def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path):
+    bootstrap = 'B' * 40
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    runtime['pwa_sessions'] = PwaSessionStore(tmp_path / 'pwa-sessions.sqlite3', ttl_seconds=600)
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='',
+        iphone_pwa_allow_insecure=False,
+        owner_bootstrap_secret=bootstrap,
+        google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.add_middleware(PwaSessionMiddleware, sessions=runtime['pwa_sessions'],
+                       device_registry=registry, cookie_max_age=600,
+                       first_run_setup=setup)
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='https://testserver')
+
+    assert client.get('/iphone/api/access/options').json()['creation_available'] is True
+    denied = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': 'wrong' * 8, 'first_name': 'A',
+        'password': 'a sufficiently long password',
+    })
+    assert denied.status_code == 401
+    assert runtime['owner_access'].identity() is None
+
+    created = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': bootstrap, 'first_name': 'Ada', 'last_name': 'Lovelace',
+        'display_name': 'Ada', 'password': 'a sufficiently long password',
+        'device_name': 'Ada phone browser',
+    })
+    assert created.status_code == 200, created.text
+    result = created.json()
+    identity = runtime['owner_access'].identity()
+    assert result['identity']['owner_id'] == identity['owner_id']
+    assert identity['vishnu_id'].startswith('VISHNU-')
+    assert result['device']['id'] == 'iphone-1'
+    assert 'pa_token' not in result
+    assert len(result['recovery_codes']) >= 4
+    assert client.cookies.get('pa_setup_claim')
+    assert client.cookies.get('pa_session')
+    assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
+    assert client.get('/iphone/api/status').status_code == 423
+    model_choice = client.post('/iphone/api/first-run/model', json={
+        'provider_id': 'deepseek', 'model': 'deepseek-chat',
+        'api_key': 'secret-test-provider-key-1234567890',
+    })
+    assert model_choice.status_code == 200, model_choice.text
+
+    completed = client.post('/iphone/api/first-run/complete', json={
+        'recovery_saved': True, 'privacy_mode': 'local_only',
+        'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
+    })
+    assert completed.status_code == 200, completed.text
+    assert setup.ready is True
+    assert client.get('/iphone/api/status').status_code == 200
+    duplicate = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': bootstrap, 'first_name': 'Different',
+        'password': 'another sufficiently long password',
+    })
+    assert duplicate.status_code == 409
+
+
+def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_device(tmp_path):
+    bootstrap = 'B' * 40
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=False,
+        owner_bootstrap_secret=bootstrap, google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='https://testserver')
+    request = {
+        'bootstrap_secret': bootstrap,
+        'setup_claim': 'C' * 48,
+        'first_name': 'Ada',
+        'last_name': 'Lovelace',
+        'display_name': 'Ada',
+        'password': 'a sufficiently long password',
+        'device_id': str(uuid.uuid4()),
+        'device_token': 'D' * 48,
+        'device_name': 'Ada Android',
+        'platform': 'android',
+    }
+    denied = client.post('/iphone/api/first-run/native/create', json={
+        **request, 'bootstrap_secret': 'wrong' * 8,
+    })
+    assert denied.status_code == 401
+    assert runtime['owner_access'].identity() is None
+    assert registry.active == set()
+    created = client.post('/iphone/api/first-run/native/create', json=request)
+    assert created.status_code == 200, created.text
+    first = created.json()
+    owner = runtime['owner_access'].identity()
+    assert first['identity']['owner_id'] == owner['owner_id']
+    assert first['device']['id'] == request['device_id']
+    assert first['device']['platform'] == 'android'
+    assert 'device_token' not in first
+    assert len(first['recovery_codes']) >= 4
+    assert runtime['owner_access'].recovery_codes_remaining() == len(first['recovery_codes'])
+
+    # A retry after a lost response keeps the owner and Device 1 stable. The
+    # previous unacknowledged code set is rotated and the replacement is shown.
+    retried = client.post('/iphone/api/first-run/native/create', json=request)
+    assert retried.status_code == 200, retried.text
+    assert retried.json()['identity']['owner_id'] == owner['owner_id']
+    assert retried.json()['device']['id'] == request['device_id']
+    assert len(registry.active) == 1
+    assert retried.json()['recovery_codes'] != first['recovery_codes']
+
+    model_config = {
+        'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
+        'device_token': request['device_token'], 'provider_id': 'deepseek',
+        'model': 'deepseek-chat', 'api_key': 'secret-test-provider-key-1234567890',
+    }
+    model_audit = []
+    events.subscribe('owner.first_run.model_configured', model_audit.append)
+    denied_model = client.post('/iphone/api/first-run/native/model', json={
+        **model_config, 'device_token': 'X' * 48,
+    })
+    assert denied_model.status_code == 401
+    configured_model = client.post('/iphone/api/first-run/native/model', json=model_config)
+    assert configured_model.status_code == 200, configured_model.text
+    assert configured_model.json()['provider'] == 'deepseek'
+    assert model_audit == [{
+        'event': 'owner.first_run.model_configured',
+        'device_id': request['device_id'], 'provider_id': 'deepseek',
+    }]
+    assert model_config['api_key'] not in repr(model_audit)
+
+    stolen = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'],
+        'device_id': request['device_id'],
+        'device_token': 'X' * 48,
+        'recovery_saved': True,
+        'privacy_mode': 'local_only',
+        'model_choice': 'configured',
+    })
+    assert stolen.status_code == 401
+    assert setup.ready is False
+    completed = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'],
+        'device_id': request['device_id'],
+        'device_token': request['device_token'],
+        'recovery_saved': True,
+        'privacy_mode': 'local_only',
+        'model_choice': 'configured',
+    })
+    assert completed.status_code == 200, completed.text
+    assert completed.json()['vishnu_id'] == owner['vishnu_id']
+    assert setup.ready is True
+    retried_completion = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
+        'device_token': request['device_token'], 'recovery_saved': True,
+        'privacy_mode': 'local_only', 'model_choice': 'configured',
+    })
+    assert retried_completion.status_code == 200
+    duplicate = client.post('/iphone/api/first-run/native/create', json=request)
+    assert duplicate.status_code == 200 and duplicate.json()['status'] == 'ready'
+    recovery_device_id = str(uuid.uuid4())
+    recovery_payload = {
+        'recovery_code': retried.json()['recovery_codes'][0],
+        'device_id': recovery_device_id,
+        'device_token': 'R' * 48,
+        'device_name': 'Replacement iPhone',
+        'platform': 'ios',
+    }
+    restored = client.post('/iphone/api/access/native/recovery', json=recovery_payload)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['status'] == 'ready'
+    assert restored.json()['identity']['vishnu_id'] == owner['vishnu_id']
+    assert registry.authenticate(recovery_device_id, 'R' * 48)
+    # Device 1 is historical metadata, not the identity root. Losing and
+    # revoking it must leave the recovered device and owner identity usable.
+    assert registry.revoke(request['device_id']) is True
+    assert registry.authenticate(request['device_id'], request['device_token']) is False
+    assert registry.authenticate(recovery_device_id, 'R' * 48) is True
+    assert runtime['owner_access'].identity()['vishnu_id'] == owner['vishnu_id']
+    replayed = client.post('/iphone/api/access/native/recovery', json={
+        **recovery_payload, 'device_id': str(uuid.uuid4()), 'device_token': 'S' * 48,
+    })
+    assert replayed.status_code == 401
 
 
 

@@ -215,6 +215,7 @@ class Settings:
     cloud_session_ttl_seconds: int = env_int('CLOUD_SESSION_TTL_SECONDS', 900, strict=True, minimum=1)
     cloud_allowed_origins: tuple[str, ...] = tuple(x.strip().rstrip('/') for x in os.getenv('CLOUD_ALLOWED_ORIGINS', '').split(',') if x.strip())
     iphone_owner_enrollment_code: str = os.getenv('PERSONAL_AI_IPHONE_ENROLLMENT_CODE', '').strip()
+    owner_bootstrap_secret: str = os.getenv('PERSONAL_AI_BOOTSTRAP_SECRET', '').strip()
     iphone_pwa_allow_insecure: bool = env_bool('PERSONAL_AI_IPHONE_ALLOW_INSECURE', False, strict=True)
     iphone_device_cookie_days: int = env_int('PERSONAL_AI_DEVICE_COOKIE_DAYS', 365, strict=True, minimum=1)
     google_signin_client_id: str = os.getenv('GOOGLE_SIGNIN_CLIENT_ID', os.getenv('GOOGLE_CLIENT_ID', '')).strip()

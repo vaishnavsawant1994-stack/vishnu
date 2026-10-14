@@ -6,12 +6,13 @@ import ipaddress
 import json
 import time
 import threading
+import uuid
 from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from webauthn import (
@@ -33,6 +34,7 @@ from webauthn.helpers.structs import (
 from agent.executor import ConfirmationRequired, ExecutionCancelled
 from models.router import ModelError
 from security.owner_access import OwnerAccessStore
+from security.owner_access import FirstRunClaimBusy
 from security.request_context import current_trusted_request
 
 
@@ -64,6 +66,73 @@ class PasskeyCompleteBody(BaseModel):
     challenge_id: str = Field(min_length=10, max_length=80)
     credential: dict
     name: str = Field(default='Owner Face ID', max_length=120)
+
+
+class FirstRunCreateBody(BaseModel):
+    bootstrap_secret: SecretStr = Field(min_length=32, max_length=256)
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(default='', max_length=80)
+    display_name: str = Field(default='', max_length=120)
+    password: SecretStr = Field(min_length=12, max_length=256)
+    device_name: str = Field(default='First trusted browser', max_length=120)
+
+
+class FirstRunCompleteBody(BaseModel):
+    recovery_saved: bool
+    privacy_mode: Literal['local_only', 'local_preferred', 'external_allowed'] = 'local_only'
+    autonomy_mode: Literal['observe', 'suggest', 'ask', 'act'] = 'ask'
+    passkey_unavailable_confirmed: bool = False
+
+
+class FirstRunModelBody(BaseModel):
+    provider_id: Literal[
+        'skip', 'local', 'openai', 'gemini', 'openrouter', 'deepseek',
+        'xai', 'groq', 'cerebras', 'mistral', 'custom',
+    ]
+    model: str = Field(default='', max_length=200)
+    api_key: SecretStr = Field(default=SecretStr(''), max_length=2048)
+
+
+class NativeFirstRunCreateBody(BaseModel):
+    bootstrap_secret: SecretStr = Field(min_length=32, max_length=256)
+    setup_claim: SecretStr = Field(min_length=32, max_length=256)
+    first_name: str = Field(min_length=1, max_length=80)
+    last_name: str = Field(default='', max_length=80)
+    display_name: str = Field(default='', max_length=120)
+    password: SecretStr = Field(min_length=12, max_length=256)
+    device_id: str = Field(min_length=36, max_length=36)
+    device_token: SecretStr = Field(min_length=32, max_length=256)
+    device_name: str = Field(min_length=1, max_length=120)
+    platform: Literal['android', 'ios']
+
+
+class NativeFirstRunCompleteBody(BaseModel):
+    setup_claim: SecretStr = Field(min_length=32, max_length=256)
+    device_id: str = Field(min_length=36, max_length=36)
+    device_token: SecretStr = Field(min_length=32, max_length=256)
+    recovery_saved: Literal[True]
+    privacy_mode: Literal['local_only', 'local_preferred', 'external_allowed'] = 'local_only'
+    model_choice: Literal['configure_later', 'configured']
+
+
+class NativeFirstRunModelBody(BaseModel):
+    setup_claim: SecretStr = Field(min_length=32, max_length=256)
+    device_id: str = Field(min_length=36, max_length=36)
+    device_token: SecretStr = Field(min_length=32, max_length=256)
+    provider_id: Literal[
+        'skip', 'local', 'openai', 'gemini', 'openrouter', 'deepseek',
+        'xai', 'groq', 'cerebras', 'mistral', 'custom',
+    ]
+    model: str = Field(default='', max_length=200)
+    api_key: SecretStr = Field(default=SecretStr(''), max_length=2048)
+
+
+class NativeRecoveryBody(BaseModel):
+    recovery_code: SecretStr = Field(min_length=8, max_length=64)
+    device_id: str = Field(min_length=36, max_length=36)
+    device_token: SecretStr = Field(min_length=32, max_length=256)
+    device_name: str = Field(min_length=1, max_length=120)
+    platform: Literal['android', 'ios']
 
 
 class VoiceTurnBody(BaseModel):
@@ -135,6 +204,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     continuity = runtime.get('continuity')
     recorder = runtime.get('voice_qualification')
     owner_access: OwnerAccessStore = runtime['owner_access']
+    first_run_setup = runtime.get('first_run_setup')
     pending_approvals: dict[str, dict] = {}
     pending_approvals_lock = threading.RLock()
     failed_access_attempts: dict[str, list[float]] = {}
@@ -292,7 +362,25 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('', response_class=HTMLResponse, include_in_schema=False)
     @router.get('/', response_class=HTMLResponse, include_in_schema=False)
     def iphone_home():
-        return HTMLResponse((web_dir / 'index.html').read_text(encoding='utf-8'), headers={'Cache-Control': 'no-store'})
+        page = (web_dir / 'index.html').read_text(encoding='utf-8')
+        page = page.replace(
+            '</body>',
+            '<script src="/iphone/first-run.js" defer></script>'
+            '<script src="/iphone/first-run-actions.js" defer></script></body>',
+        )
+        return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/first-run.js', include_in_schema=False)
+    def first_run_script():
+        return Response((web_dir / 'first-run.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/first-run-actions.js', include_in_schema=False)
+    def first_run_actions_script():
+        return Response((web_dir / 'first-run-actions.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
 
     @router.get('/manifest.webmanifest', include_in_schema=False)
     def manifest():
@@ -387,7 +475,19 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def access_options():
         google_client_id = getattr(settings, 'google_signin_client_id', '').strip()
         owner_google_email = getattr(settings, 'owner_google_email', '').strip().casefold()
+        setup_state = first_run_setup.snapshot() if first_run_setup is not None else {}
+        bootstrap_secret = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        creation_available = bool(
+            first_run_setup is not None
+            and not first_run_setup.ready
+            and len(bootstrap_secret) >= 32
+            and setup_state.get('status') in {'uninitialized', 'setup_in_progress'}
+            and setup_state.get('mode') in {None, 'create'}
+        )
         return {
+            'creation_available': creation_available,
+            'setup_in_progress': setup_state.get('status') == 'setup_in_progress',
+            'model_setup_complete': bool({'model', 'model_skipped'} & set(setup_state.get('completed_steps', []))),
             'passkey_available': bool(owner_access.passkeys()),
             'password_available': owner_access.password_configured(),
             'recovery_available': owner_access.recovery_codes_remaining() > 0,
@@ -395,6 +495,354 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             'google_available': bool(google_client_id and owner_google_email),
             'google_client_id': google_client_id if google_client_id and owner_google_email else '',
         }
+
+    @router.post('/api/first-run/create')
+    def first_run_create(body: FirstRunCreateBody, request: Request, response: Response,
+                         pa_setup_claim: str | None = Cookie(default=None),
+                         pa_device: str | None = Cookie(default=None),
+                         pa_token: str | None = Cookie(default=None)):
+        if first_run_setup is None:
+            raise HTTPException(503, 'First-device creation is unavailable on this Vishnu runtime')
+        require_https(request)
+        key = allow_access_attempt(request, 'first-run-bootstrap')
+        expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        if len(expected) < 32:
+            raise HTTPException(503, 'Secure first-device bootstrap is not configured')
+        if not hmac.compare_digest(body.bootstrap_secret.get_secret_value(), expected):
+            failed_access_attempt(key)
+            raise HTTPException(401, 'The Vishnu setup code is invalid')
+        clear_access_attempts(key)
+        if not first_run_setup.should_run():
+            raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')
+        state = first_run_setup.snapshot()
+        if state.get('status') not in {'uninitialized', 'setup_in_progress'} or state.get('mode') not in {None, 'create'}:
+            raise HTTPException(409, 'This Vishnu setup cannot start a new creation ceremony')
+        try:
+            claim, created_claim = owner_access.acquire_first_run_claim(
+                pa_setup_claim, ttl=900,
+                allow_pending_identity=state.get('status') == 'setup_in_progress',
+            )
+        except FirstRunClaimBusy as exc:
+            raise HTTPException(409, str(exc)) from exc
+        try:
+            if state.get('status') == 'uninitialized':
+                first_run_setup.begin('create')
+            first_run_setup.configure_owner(
+                first_name=body.first_name,
+                last_name=body.last_name,
+                display_name=body.display_name,
+            )
+            codes = first_run_setup.configure_security(body.password.get_secret_value())
+            identity = first_run_setup.initialize_pending_identity()
+        except Exception:
+            if created_claim:
+                owner_access.release_first_run_claim(claim)
+            raise
+
+        device = None
+        if pa_device and pa_token and registry.authenticate(pa_device, pa_token):
+            device = next((item for item in registry.list() if item['id'] == pa_device), None)
+        if device is None:
+            device = trust_browser(response, body.device_name, 'web-first-device')
+        try:
+            first_run_setup.record_first_device(device['id'])
+        except RuntimeError as exc:
+            if created_claim:
+                owner_access.release_first_run_claim(claim)
+            raise HTTPException(409, str(exc)) from exc
+        response.set_cookie(
+            'pa_setup_claim', claim,
+            httponly=True, secure=True, samesite='strict', path='/iphone', max_age=900,
+        )
+        emit('owner.security.configured', device_id=device['id'], method='password')
+        return {
+            'ok': True,
+            'identity': identity,
+            'device': {key: device[key] for key in ('id', 'name', 'platform') if key in device},
+            'recovery_codes': codes,
+            'recovery_codes_shown_once': True,
+            'next': 'save_recovery_and_create_passkey',
+        }
+
+    @router.post('/api/first-run/native/create')
+    def native_first_run_create(body: NativeFirstRunCreateBody, request: Request):
+        """Create the canonical first owner from a native secure-storage client.
+
+        The native client generates and persists its device ID, bearer secret,
+        and setup claim before this request. Only hashes are stored centrally,
+        so a retry after a lost response can safely return the same enrollment.
+        """
+        if first_run_setup is None:
+            raise HTTPException(503, 'First-device creation is unavailable on this Vishnu runtime')
+        require_https(request)
+        try:
+            device_id = str(uuid.UUID(body.device_id))
+        except ValueError as exc:
+            raise HTTPException(422, 'The native device ID is invalid') from exc
+        if device_id != body.device_id.lower():
+            raise HTTPException(422, 'The native device ID must be a canonical UUID')
+        if first_run_setup.ready:
+            state = first_run_setup.snapshot()
+            if state.get('first_device_id') == device_id and registry.authenticate(
+                    device_id, body.device_token.get_secret_value()):
+                identity = owner_access.identity()
+                device = next((item for item in registry.list() if item['id'] == device_id), None)
+                return {'ok': True, 'status': 'ready', 'identity': identity, 'device': device}
+            raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')
+        keys = allow_access_attempt(request, 'native-first-run-bootstrap')
+        expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        if len(expected) < 32:
+            raise HTTPException(503, 'Secure first-device bootstrap is not configured')
+        if not hmac.compare_digest(body.bootstrap_secret.get_secret_value(), expected):
+            failed_access_attempt(keys)
+            raise HTTPException(401, 'The Vishnu setup code is invalid')
+        clear_access_attempts(keys)
+        if not first_run_setup.should_run():
+            raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')
+        state = first_run_setup.snapshot()
+        if state.get('status') not in {'uninitialized', 'setup_in_progress'} or state.get('mode') not in {None, 'create'}:
+            raise HTTPException(409, 'This Vishnu setup cannot start a new creation ceremony')
+        claim = body.setup_claim.get_secret_value()
+        owner_was_initialized = owner_access.identity() is not None
+        security_was_configured = owner_access.password_configured()
+        device_was_registered = registry.is_active(device_id)
+        try:
+            claim, _ = owner_access.acquire_first_run_claim(
+                claim, ttl=900,
+                allow_pending_identity=state.get('status') == 'setup_in_progress',
+                allow_proposed=True,
+            )
+            if state.get('status') == 'uninitialized':
+                first_run_setup.begin('create')
+            first_run_setup.configure_owner(
+                first_name=body.first_name,
+                last_name=body.last_name,
+                display_name=body.display_name,
+            )
+            codes = first_run_setup.configure_security(body.password.get_secret_value())
+            identity = first_run_setup.initialize_pending_identity()
+            device, _ = registry.enroll_with_credential(
+                device_id, body.device_token.get_secret_value(),
+                body.device_name, body.platform,
+            )
+            if continuity:
+                continuity.resume(device['id'])
+            first_run_setup.record_first_device(device['id'])
+        except FirstRunClaimBusy as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if not security_was_configured:
+            emit('owner.security.configured', device_id=device['id'], method='password')
+        if not owner_was_initialized:
+            emit('owner.first_device.registered', device_id=device['id'], platform=body.platform)
+        if not device_was_registered:
+            emit('device.registered', device_id=device['id'], platform=body.platform,
+                 first_device=True, authorization='first_run')
+        return {
+            'ok': True,
+            'identity': identity,
+            'device': {key: device[key] for key in ('id', 'name', 'platform')},
+            'recovery_codes': codes,
+            'recovery_codes_shown_once': True,
+            'next': 'save_recovery_and_finish_native_setup',
+        }
+
+    @router.post('/api/first-run/native/complete')
+    def native_first_run_complete(body: NativeFirstRunCompleteBody, request: Request):
+        if first_run_setup is None:
+            raise HTTPException(503, 'First-device creation is unavailable on this Vishnu runtime')
+        require_https(request)
+        if first_run_setup.ready:
+            state = first_run_setup.snapshot()
+            if (state.get('first_device_id') == body.device_id
+                    and registry.authenticate(body.device_id, body.device_token.get_secret_value())):
+                return {'ok': True, 'status': 'ready',
+                        'vishnu_id': owner_access.identity()['vishnu_id']}
+            raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')
+        try:
+            claim, claim_created = owner_access.acquire_first_run_claim(
+                body.setup_claim.get_secret_value(), ttl=900,
+                allow_pending_identity=True,
+            )
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired. Re-enter the runtime setup code to resume.') from exc
+        if claim_created:
+            owner_access.release_first_run_claim(claim)
+            raise HTTPException(401, 'The first-device setup session expired. Re-enter the runtime setup code to resume.')
+        device_id = body.device_id
+        if not registry.authenticate(device_id, body.device_token.get_secret_value()):
+            raise HTTPException(401, 'This trusted device credential is invalid or revoked')
+        state = first_run_setup.snapshot()
+        if state.get('first_device_id') != device_id:
+            raise HTTPException(403, 'This device is not the first trusted device for the pending setup')
+        try:
+            first_run_setup.confirm_recovery_codes_saved()
+            first_run_setup.configure_preferences(
+                privacy_mode=body.privacy_mode,
+                autonomy_mode='ask',
+                memory_enabled=True,
+            )
+            if body.model_choice == 'configure_later':
+                first_run_setup.skip_model_configuration()
+            elif 'model' not in state.get('completed_steps', []):
+                raise RuntimeError('Configure an AI provider or choose Configure later before finishing')
+            result = first_run_setup.complete()
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        owner_access.release_first_run_claim(body.setup_claim.get_secret_value())
+        emit('owner.first_run.completed', device_id=device_id,
+             owner_id=result.get('identity', {}).get('owner_id'))
+        return {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+
+    @router.post('/api/first-run/native/model')
+    def native_first_run_model(body: NativeFirstRunModelBody, request: Request):
+        """Configure the shared model router during native first-device setup.
+
+        Provider credentials flow directly into the existing encrypted model
+        credential store and are never persisted by the native onboarding UI.
+        """
+        if first_run_setup is None or first_run_setup.ready:
+            raise HTTPException(409, 'Native first-device setup is not pending')
+        require_https(request)
+        try:
+            claim, created = owner_access.acquire_first_run_claim(
+                body.setup_claim.get_secret_value(), ttl=900,
+                allow_pending_identity=True,
+            )
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        if created:
+            owner_access.release_first_run_claim(claim)
+            raise HTTPException(401, 'The first-device setup session expired')
+        if not registry.authenticate(body.device_id, body.device_token.get_secret_value()):
+            raise HTTPException(401, 'This trusted device credential is invalid or revoked')
+        state = first_run_setup.snapshot()
+        if (state.get('status') != 'setup_in_progress'
+                or state.get('mode') != 'create'
+                or state.get('first_device_id') != body.device_id):
+            raise HTTPException(403, 'This device cannot configure the pending first-device setup')
+        try:
+            if body.provider_id == 'skip':
+                result = first_run_setup.skip_model_configuration()
+            else:
+                result = first_run_setup.configure_model(
+                    provider_id=body.provider_id,
+                    model=body.model,
+                    api_key=body.api_key.get_secret_value(),
+                )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit('owner.first_run.model_configured', device_id=body.device_id,
+             provider_id='skipped' if body.provider_id == 'skip' else body.provider_id)
+        return {'ok': True, 'provider': body.provider_id,
+                'configured': body.provider_id not in {'skip'}}
+
+    @router.post('/api/access/native/recovery')
+    def native_recovery(body: NativeRecoveryBody, request: Request):
+        require_https(request)
+        if first_run_setup is not None and not first_run_setup.ready:
+            raise HTTPException(409, 'Finish the pending first-device setup before restoring another device')
+        identity = owner_access.identity()
+        if identity is None:
+            raise HTTPException(409, 'This runtime has no initialized Vishnu identity')
+        try:
+            device_id = str(uuid.UUID(body.device_id))
+        except ValueError as exc:
+            raise HTTPException(422, 'The native device ID is invalid') from exc
+        if device_id != body.device_id.lower():
+            raise HTTPException(422, 'The native device ID must be a canonical UUID')
+        keys = allow_access_attempt(request, 'native-recovery')
+        # A retry after a lost HTTP response is safe because the client already
+        # generated and persisted its device credential before sending it.
+        if registry.authenticate(device_id, body.device_token.get_secret_value()):
+            clear_access_attempts(keys)
+            device = next((item for item in registry.list() if item['id'] == device_id), None)
+            return {'ok': True, 'status': 'ready', 'identity': identity, 'device': device}
+        if not owner_access.consume_recovery_code(body.recovery_code.get_secret_value()):
+            failed_access_attempt(keys)
+            raise HTTPException(401, 'Invalid or already used recovery code')
+        clear_access_attempts(keys)
+        try:
+            device, _ = registry.enroll_with_credential(
+                device_id, body.device_token.get_secret_value(),
+                body.device_name, body.platform,
+            )
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(409, 'This device could not be enrolled. Use another recovery code to retry.') from exc
+        if continuity:
+            continuity.resume(device['id'])
+        emit('device.registered', device_id=device['id'], platform=body.platform,
+             authorization='recovery_code')
+        emit('owner.recovery.used', device_id=device['id'])
+        emit('owner.device.recovered', device_id=device['id'], platform=body.platform)
+        return {'ok': True, 'status': 'ready', 'identity': identity,
+                'device': {key: device[key] for key in ('id', 'name', 'platform')}}
+
+    @router.post('/api/first-run/complete')
+    def first_run_complete(body: FirstRunCompleteBody, response: Response,
+                           pa_setup_claim: str | None = Cookie(default=None),
+                           pa_device: str | None = Cookie(default=None),
+                           pa_token: str | None = Cookie(default=None)):
+        if first_run_setup is None:
+            raise HTTPException(503, 'First-device creation is unavailable on this Vishnu runtime')
+        if not pa_setup_claim:
+            raise HTTPException(401, 'The first-device setup session expired. Restart setup with your bootstrap code.')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired. Restart setup with your bootstrap code.') from exc
+        device_id = auth_device(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        if body.recovery_saved is not True:
+            raise HTTPException(422, 'Confirm that you saved the one-time recovery codes before continuing')
+        if not owner_access.passkeys() and not body.passkey_unavailable_confirmed:
+            raise HTTPException(409, 'Create a passkey before finishing, or confirm that this browser cannot create one')
+        try:
+            first_run_setup.confirm_recovery_codes_saved()
+            first_run_setup.configure_preferences(
+                privacy_mode=body.privacy_mode,
+                autonomy_mode=body.autonomy_mode,
+                memory_enabled=True,
+            )
+            result = first_run_setup.complete()
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        owner_access.release_first_run_claim(pa_setup_claim)
+        response.delete_cookie('pa_setup_claim', path='/iphone')
+        emit('owner.first_run.completed', device_id=device_id,
+             owner_id=result.get('identity', {}).get('owner_id'))
+        return {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+
+    @router.post('/api/first-run/model')
+    def first_run_model(body: FirstRunModelBody, request: Request,
+                        pa_setup_claim: str | None = Cookie(default=None),
+                        pa_device: str | None = Cookie(default=None),
+                        pa_token: str | None = Cookie(default=None)):
+        if first_run_setup is None or not pa_setup_claim:
+            raise HTTPException(401, 'The first-device setup session expired')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        require_fresh_owner_verification(device_id)
+        require_https(request)
+        try:
+            if body.provider_id == 'skip':
+                result = first_run_setup.skip_model_configuration()
+            else:
+                result = first_run_setup.configure_model(
+                    provider_id=body.provider_id, model=body.model,
+                    api_key=body.api_key.get_secret_value(),
+                )
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit('owner.first_run.model_configured', device_id=device_id,
+             provider_id='skipped' if body.provider_id == 'skip' else body.provider_id)
+        return {'ok': True, 'provider': body.provider_id, 'configured': body.provider_id != 'skip'}
 
     @router.get('/api/access/security')
     def access_security(
@@ -505,12 +953,15 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             PublicKeyCredentialDescriptor(id=base64url_to_bytes(item['credential_id']))
             for item in owner_access.passkeys()
         ]
+        identity = owner_access.identity()
+        webauthn_owner_id = (identity or {}).get('owner_id', 'personal-ai-owner')
+        owner_display_name = (identity or {}).get('display_name', 'Vishnu Owner')
         options = generate_registration_options(
             rp_id=rp_id,
             rp_name='Vishnu',
-            user_name='owner',
-            user_id=b'personal-ai-owner',
-            user_display_name='Vishnu Owner',
+            user_name=webauthn_owner_id,
+            user_id=webauthn_owner_id.encode('utf-8'),
+            user_display_name=owner_display_name,
             authenticator_selection=AuthenticatorSelectionCriteria(
                 authenticator_attachment=AuthenticatorAttachment.PLATFORM,
                 resident_key=ResidentKeyRequirement.PREFERRED,

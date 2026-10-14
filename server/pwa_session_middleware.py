@@ -20,12 +20,17 @@ PUBLIC_PATHS = {
     '/iphone/manifest.webmanifest',
     '/iphone/sw.js',
     '/iphone/api/access/options',
+    '/iphone/api/first-run/create',
+    '/iphone/api/first-run/native/create',
+    '/iphone/api/first-run/native/complete',
+    '/iphone/api/access/native/recovery',
     '/iphone/api/access/google/login',
     '/iphone/api/access/password/login',
     '/iphone/api/access/recovery/login',
     '/iphone/api/access/passkey/login/options',
     '/iphone/api/access/passkey/login/complete',
     '/iphone/api/enroll',
+    '/iphone/api/first-run/create',
     '/iphone/api/native/sessions/exchange',
     # External OAuth providers cannot carry Vishnu browser/native sessions back
     # to this callback. Forge validates its own one-time durable state + PKCE +
@@ -35,6 +40,7 @@ PUBLIC_PATHS = {
 }
 
 LOGIN_PATHS = {
+    '/iphone/api/first-run/create',
     '/iphone/api/access/google/login',
     '/iphone/api/access/password/login',
     '/iphone/api/access/recovery/login',
@@ -65,11 +71,12 @@ def _cookie_from_response(response, name: str) -> str | None:
 class PwaSessionMiddleware(BaseHTTPMiddleware):
     """Require a revocable server-side session in addition to the device bearer."""
 
-    def __init__(self, app, *, sessions, device_registry, cookie_max_age: int):
+    def __init__(self, app, *, sessions, device_registry, cookie_max_age: int, first_run_setup=None):
         super().__init__(app)
         self.sessions = sessions
         self.device_registry = device_registry
         self.cookie_max_age = max(300, int(cookie_max_age))
+        self.first_run_setup = first_run_setup
 
     def _set_session_cookie(self, response, token: str):
         response.set_cookie(
@@ -143,6 +150,32 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                     auth_type=session.kind,
                 )
             )
+
+        if self.first_run_setup is not None and not self.first_run_setup.ready:
+            allowed_during_setup = {
+                '/iphone/api/access/options',
+                '/iphone/api/access/reauth/password',
+                '/iphone/api/passkey/register/options',
+                '/iphone/api/passkey/register/complete',
+                '/iphone/api/access/passkey/register/options',
+                '/iphone/api/access/passkey/register/complete',
+                '/iphone/api/access/security',
+                '/iphone/api/first-run/complete',
+                '/iphone/api/first-run/model',
+            }
+            if path.startswith('/iphone/api/') and path not in allowed_during_setup and path not in PUBLIC_PATHS:
+                response = JSONResponse(
+                    status_code=423,
+                    content={
+                        'detail': {
+                            'code': 'first_run_incomplete',
+                            'message': 'Finish Vishnu setup on this device before using its data.',
+                        }
+                    },
+                )
+                if context_token is not None:
+                    reset_trusted_request(context_token)
+                return response
 
         try:
             response = await call_next(request)

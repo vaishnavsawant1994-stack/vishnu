@@ -5,13 +5,16 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
+import android.util.Base64
 import android.view.View
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.Spinner
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -25,6 +28,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.json.JSONObject
 import java.io.IOException
+import java.security.SecureRandom
+import java.util.UUID
 
 class ConnectActivity : AppCompatActivity() {
     companion object {
@@ -50,6 +55,27 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var token: EditText
     private lateinit var code: EditText
     private lateinit var allowLocalDevelopment: CheckBox
+    private lateinit var createBox: LinearLayout
+    private lateinit var createStatus: TextView
+    private lateinit var recoveryCodes: TextView
+    private lateinit var recoverySaved: CheckBox
+    private lateinit var modelProvider: Spinner
+    private lateinit var modelName: EditText
+    private lateinit var providerKey: EditText
+    private lateinit var privacyChoice: Spinner
+    private lateinit var firstName: EditText
+    private lateinit var lastName: EditText
+    private lateinit var displayName: EditText
+    private lateinit var bootstrap: EditText
+    private lateinit var ownerPassword: EditText
+    private lateinit var ownerPasswordAgain: EditText
+    private lateinit var createButton: Button
+    private lateinit var finishButton: Button
+    private lateinit var firstRunBase: EditText
+    private lateinit var restoreBox: LinearLayout
+    private lateinit var restoreBase: EditText
+    private lateinit var recoveryCodeInput: EditText
+    private lateinit var restoreStatus: TextView
 
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         val contents = result.contents
@@ -93,21 +119,28 @@ class ConnectActivity : AppCompatActivity() {
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
         }
         val title = TextView(this).apply {
-            text = "Connect to my Vishnu"
+            text = "Welcome to Vishnu"
             textSize = 30f
             setTextColor(PersonalAITheme.ColorToken.text)
             setPadding(0, dp(18), 0, dp(10))
         }
         val copy = TextView(this).apply {
-            text = "Scan the one-time QR shown by your primary Vishnu. The app finds the computer automatically on your local network and verifies its TLS identity before sending any pairing secret. No IP address or port is required."
+            text = "Create a new Vishnu on this phone, or connect this phone to the Vishnu you already have."
             textSize = 15f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, 0, 0, dp(24))
         }
-        val scan = Button(this).apply {
-            text = "Scan Vishnu QR"
+        val create = Button(this).apply { text = "Create my Vishnu" }
+        styleButton(create, true)
+        val join = Button(this).apply {
+            text = "I already have Vishnu · Scan QR"
             contentDescription = "Scan the one-time Vishnu device connection QR code"
         }
+        styleButton(join, false)
+        val restore = Button(this).apply { text = "Restore Vishnu" }
+        styleButton(restore, false)
+
+        val scan = Button(this).apply { text = "Scan Vishnu QR" }
         styleButton(scan, true)
         scan.setOnClickListener { launchScanner() }
 
@@ -154,8 +187,46 @@ class ConnectActivity : AppCompatActivity() {
             manual.text = if (show) "Hide advanced fallback" else "Advanced manual fallback"
         }
 
+        val joinCopy = TextView(this).apply {
+            text = "Scan the one-time QR shown by your existing Vishnu. It finds the runtime on your local network and verifies its TLS identity before sending any pairing secret."
+            textSize = 14f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, dp(12), 0, dp(12))
+            visibility = View.GONE
+        }
+        scan.visibility = View.GONE
+        manual.visibility = View.GONE
+        manualBox.visibility = View.GONE
+        val joinBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(joinCopy)
+            addView(scan)
+            addView(manual)
+            addView(manualBox)
+        }
+        join.setOnClickListener {
+            joinBox.visibility = if (joinBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            joinCopy.visibility = joinBox.visibility
+            scan.visibility = joinBox.visibility
+            manual.visibility = joinBox.visibility
+        }
+
+        createBox = buildFirstRunForm()
+        createBox.visibility = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) View.GONE else View.VISIBLE
+        create.setOnClickListener {
+            createBox.visibility = if (createBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            joinBox.visibility = View.GONE
+        }
+        restoreBox = buildRestoreForm()
+        restoreBox.visibility = View.GONE
+        restore.setOnClickListener {
+            restoreBox.visibility = if (restoreBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            createBox.visibility = View.GONE
+            joinBox.visibility = View.GONE
+        }
+
         status = TextView(this).apply {
-            text = "Your primary Vishnu only needs to be running. Scan its secure connection QR to continue."
+            text = "Choose how you want to start."
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(20), 0, 0)
@@ -170,9 +241,12 @@ class ConnectActivity : AppCompatActivity() {
         root.addView(brand)
         root.addView(title)
         root.addView(copy)
-        root.addView(scan)
-        root.addView(manual)
-        root.addView(manualBox)
+        root.addView(create)
+        root.addView(join)
+        root.addView(restore)
+        root.addView(createBox)
+        root.addView(restoreBox)
+        root.addView(joinBox)
         root.addView(status)
         root.addView(safety)
         setContentView(ScrollView(this).apply {
@@ -189,6 +263,425 @@ class ConnectActivity : AppCompatActivity() {
             setOrientationLocked(false)
         }
         scanner.launch(options)
+    }
+
+    private fun buildFirstRunForm(): LinearLayout {
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(18), 0, dp(10))
+        }
+        val explanation = TextView(this).apply {
+            text = "This phone will be your first trusted device. Connect to a securely configured Vishnu runtime; the runtime stores the canonical owner identity and data."
+            textSize = 13f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, 0, 0, dp(12))
+        }
+        firstRunBase = EditText(this).apply {
+            hint = "Secure Vishnu runtime URL (https://…)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(prefs.getString("base", "") ?: "")
+        }
+        bootstrap = EditText(this).apply {
+            hint = "One-time runtime setup code"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        firstName = EditText(this).apply { hint = "First name" }
+        lastName = EditText(this).apply { hint = "Last name (optional)" }
+        displayName = EditText(this).apply { hint = "Display name (optional)" }
+        ownerPassword = EditText(this).apply {
+            hint = "Owner password (12 characters minimum)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        ownerPasswordAgain = EditText(this).apply {
+            hint = "Confirm owner password"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        listOf(firstRunBase, bootstrap, firstName, lastName, displayName, ownerPassword, ownerPasswordAgain)
+            .forEach(::styleField)
+        val securityNote = TextView(this).apply {
+            text = "This first-device ceremony starts with your owner password and one-time recovery codes. After setup, use Protect Vishnu with a passkey when this runtime publishes the signed Android app association."
+            textSize = 12f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, dp(4), 0, dp(10))
+        }
+        createButton = Button(this).apply { text = "Create Vishnu on this phone" }
+        styleButton(createButton, true)
+        createStatus = TextView(this).apply {
+            textSize = 13f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, dp(8), 0, dp(10))
+        }
+        recoveryCodes = TextView(this).apply {
+            textSize = 14f
+            setTextIsSelectable(true)
+            setTextColor(PersonalAITheme.ColorToken.text)
+            background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            visibility = View.GONE
+        }
+        recoverySaved = CheckBox(this).apply {
+            text = "I saved these recovery codes somewhere outside this phone."
+            setTextColor(PersonalAITheme.ColorToken.text)
+            visibility = View.GONE
+        }
+        val privacyLabel = TextView(this).apply {
+            text = "Where may Vishnu use your data?"
+            textSize = 13f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, dp(14), 0, dp(5))
+        }
+        privacyChoice = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ConnectActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Local only", "Local preferred", "External providers allowed"))
+            visibility = View.GONE
+        }
+        modelProvider = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ConnectActivity,
+                android.R.layout.simple_spinner_dropdown_item,
+                listOf("Configure later", "Use a local model", "OpenAI", "Gemini", "OpenRouter", "DeepSeek", "xAI", "Groq", "Cerebras", "Mistral", "Custom provider"))
+            visibility = View.GONE
+        }
+        modelName = EditText(this).apply { hint = "Provider model name" }
+        providerKey = EditText(this).apply {
+            hint = "Provider API key"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        listOf(modelName, providerKey).forEach(::styleField)
+        modelName.visibility = View.GONE
+        providerKey.visibility = View.GONE
+        modelProvider.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val needsCredentials = position >= 2
+                modelName.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+                providerKey.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+            }
+        }
+        finishButton = Button(this).apply {
+            text = "Finish setup"
+            visibility = View.GONE
+        }
+        styleButton(finishButton, true)
+        form.addView(explanation)
+        form.addView(firstRunBase)
+        form.addView(bootstrap)
+        form.addView(firstName)
+        form.addView(lastName)
+        form.addView(displayName)
+        form.addView(ownerPassword)
+        form.addView(ownerPasswordAgain)
+        form.addView(securityNote)
+        form.addView(createButton)
+        form.addView(createStatus)
+        form.addView(recoveryCodes)
+        form.addView(recoverySaved)
+        form.addView(privacyLabel)
+        form.addView(privacyChoice)
+        form.addView(modelProvider)
+        form.addView(modelName)
+        form.addView(providerKey)
+        form.addView(finishButton)
+
+        createButton.setOnClickListener { createNativeFirstRun() }
+        finishButton.setOnClickListener { completeNativeFirstRun() }
+        prefs.getString("pending_recovery_codes", null)?.let { saved ->
+            runCatching { org.json.JSONArray(saved) }.getOrNull()?.let { codes ->
+                if (codes.length() >= 4) {
+                    recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown only during setup.\n\n" +
+                        (0 until codes.length()).joinToString("\n") { codes.optString(it) }
+                    recoveryCodes.visibility = View.VISIBLE
+                    recoverySaved.visibility = View.VISIBLE
+                    privacyChoice.visibility = View.VISIBLE
+                    modelProvider.visibility = View.VISIBLE
+                    finishButton.visibility = View.VISIBLE
+                    createButton.visibility = View.GONE
+                    createStatus.text = "Resume setup by confirming you saved the recovery codes."
+                }
+            }
+        }
+        return form
+    }
+
+    private fun buildRestoreForm(): LinearLayout {
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(18), 0, dp(10))
+        }
+        val explanation = TextView(this).apply {
+            text = "Use a recovery code to add this phone to the secure Vishnu runtime that owns your identity. If that runtime was lost, restore its owner-controlled backup first."
+            textSize = 13f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, 0, 0, dp(10))
+        }
+        restoreBase = EditText(this).apply {
+            hint = "Secure Vishnu runtime URL (https://…)"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+            setText(prefs.getString("base", "") ?: "")
+        }
+        recoveryCodeInput = EditText(this).apply {
+            hint = "One-time recovery code"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
+        styleField(restoreBase)
+        styleField(recoveryCodeInput)
+        val restoreButton = Button(this).apply { text = "Restore Vishnu on this phone" }
+        styleButton(restoreButton, true)
+        restoreStatus = TextView(this).apply {
+            textSize = 13f
+            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            setPadding(0, dp(8), 0, dp(10))
+        }
+        form.addView(explanation)
+        form.addView(restoreBase)
+        form.addView(recoveryCodeInput)
+        form.addView(restoreButton)
+        form.addView(restoreStatus)
+        restoreButton.setOnClickListener { restoreNativeDevice(restoreButton) }
+        return form
+    }
+
+    private fun restoreNativeDevice(button: Button) {
+        try {
+            val origin = PairingPayloadParser.normalizeOrigin(restoreBase.text.toString(), false)
+            if (!origin.startsWith("https://")) throw IllegalArgumentException("Use a secure HTTPS Vishnu runtime URL.")
+            val recovery = recoveryCodeInput.text.toString().trim()
+            if (recovery.length < 8) throw IllegalArgumentException("Enter one of your saved recovery codes.")
+            val deviceId = prefs.getString("pending_restore_device", null) ?: UUID.randomUUID().toString()
+            val deviceToken = prefs.getString("pending_restore_bearer", null) ?: secureRandomText()
+            prefs.edit().putString("pending_restore_device", deviceId)
+                .putString("pending_restore_bearer", deviceToken).putString("pending_restore_base", origin).apply()
+            val payload = JSONObject()
+                .put("recovery_code", recovery)
+                .put("device_id", deviceId)
+                .put("device_token", deviceToken)
+                .put("device_name", android.os.Build.MODEL.take(120))
+                .put("platform", "android")
+            button.isEnabled = false
+            restoreStatus.text = "Verifying recovery and trusting this phone…"
+            val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/access/native/recovery")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .header("Accept", "application/json").build()
+            PinnedTls.client(null).newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) = runOnUiThread {
+                    button.isEnabled = true
+                    restoreStatus.text = "Could not reach Vishnu. Check the secure address and retry."
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        val raw = try { boundedBody(it) } catch (_: Exception) { "" }
+                        runOnUiThread {
+                            button.isEnabled = true
+                            if (!it.isSuccessful) {
+                                restoreStatus.text = if (it.code == 401) "That recovery code is invalid or already used." else "Vishnu could not restore this phone (${it.code}). Check the runtime and retry."
+                                return@runOnUiThread
+                            }
+                            val result = try { JSONObject(raw) } catch (_: Exception) { null }
+                            if (result?.optString("status") != "ready") {
+                                restoreStatus.text = "Vishnu did not confirm the device restore. Retry safely."
+                                return@runOnUiThread
+                            }
+                            prefs.edit().putString("base", origin).putString("device", deviceId)
+                                .putString("bearer", deviceToken).remove("pending_restore_device")
+                                .remove("pending_restore_bearer").remove("pending_restore_base").apply()
+                            recoveryCodeInput.setText("")
+                            openVishnu()
+                        }
+                    }
+                }
+            })
+        } catch (exc: IllegalArgumentException) {
+            restoreStatus.text = exc.message ?: "Check the recovery details and try again."
+        }
+    }
+
+    private fun createNativeFirstRun() {
+        try {
+            val origin = PairingPayloadParser.normalizeOrigin(firstRunBase.text.toString(), false)
+            if (!origin.startsWith("https://")) throw IllegalArgumentException("Use a secure HTTPS Vishnu runtime URL.")
+            val first = firstName.text.toString().trim()
+            val password = ownerPassword.text.toString()
+            if (first.isBlank()) throw IllegalArgumentException("Enter your first name.")
+            if (password.length < 12) throw IllegalArgumentException("Use an owner password with at least 12 characters.")
+            if (password != ownerPasswordAgain.text.toString()) throw IllegalArgumentException("The passwords did not match.")
+            if (bootstrap.text.toString().length < 32) throw IllegalArgumentException("Enter the one-time setup code provided for this runtime.")
+            val setupClaim = prefs.getString("pending_setup_claim", null) ?: secureRandomText()
+            val deviceId = prefs.getString("pending_device", null) ?: UUID.randomUUID().toString()
+            val deviceToken = prefs.getString("pending_bearer", null) ?: secureRandomText()
+            prefs.edit().putString("pending_setup_claim", setupClaim).putString("pending_device", deviceId)
+                .putString("pending_bearer", deviceToken).putString("pending_base", origin).apply()
+            createButton.isEnabled = false
+            createStatus.text = "Creating your owner identity and first trusted device…"
+            val payload = JSONObject()
+                .put("bootstrap_secret", bootstrap.text.toString())
+                .put("setup_claim", setupClaim)
+                .put("first_name", first)
+                .put("last_name", lastName.text.toString().trim())
+                .put("display_name", displayName.text.toString().trim())
+                .put("password", password)
+                .put("device_id", deviceId)
+                .put("device_token", deviceToken)
+                .put("device_name", android.os.Build.MODEL.take(120))
+                .put("platform", "android")
+            val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/create")
+                .post(payload.toString().toRequestBody("application/json".toMediaType()))
+                .header("Accept", "application/json").build()
+            PinnedTls.client(null).newCall(request).enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) = runOnUiThread {
+                    createButton.isEnabled = true
+                    createStatus.text = "Could not reach that secure runtime. Check the address and network, then retry."
+                }
+                override fun onResponse(call: Call, response: Response) {
+                    response.use {
+                        val raw = try { boundedBody(it) } catch (_: Exception) { "" }
+                        runOnUiThread {
+                            createButton.isEnabled = true
+                            if (!it.isSuccessful) {
+                                createStatus.text = if (it.code == 409) "Vishnu is already initialized or another setup is in progress. Connect this phone to the existing Vishnu." else "Vishnu setup could not continue (${it.code}). Check the runtime setup code and try again."
+                                return@runOnUiThread
+                            }
+                            val result = try { JSONObject(raw) } catch (_: Exception) { null }
+                            if (result == null) {
+                                createStatus.text = "The runtime returned an invalid setup response. Retry safely to continue."
+                                return@runOnUiThread
+                            }
+                            if (result.optString("status") == "ready") {
+                                activatePendingDevice()
+                                openVishnu()
+                                return@runOnUiThread
+                            }
+                            val codes = result.optJSONArray("recovery_codes")
+                            if (codes == null || codes.length() < 4) {
+                                createStatus.text = "The runtime did not return the recovery codes. Retry setup to generate a fresh set."
+                                return@runOnUiThread
+                            }
+                            val text = (0 until codes.length()).joinToString("\n") { index -> codes.optString(index) }
+                            prefs.edit().putString("pending_recovery_codes", codes.toString()).apply()
+                            recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown here only during setup.\n\n$text"
+                            recoveryCodes.visibility = View.VISIBLE
+                            recoverySaved.visibility = View.VISIBLE
+                            privacyChoice.visibility = View.VISIBLE
+                            modelProvider.visibility = View.VISIBLE
+                            finishButton.visibility = View.VISIBLE
+                            createButton.visibility = View.GONE
+                            createStatus.text = "Your identity and first trusted device are ready. Save recovery codes before continuing."
+                            bootstrap.setText("")
+                            ownerPassword.setText("")
+                            ownerPasswordAgain.setText("")
+                        }
+                    }
+                }
+            })
+        } catch (exc: IllegalArgumentException) {
+            createStatus.text = exc.message ?: "Check the setup details and try again."
+        }
+    }
+
+    private fun completeNativeFirstRun() {
+        if (!recoverySaved.isChecked) {
+            createStatus.text = "Confirm that you saved your recovery codes before continuing."
+            return
+        }
+        val origin = prefs.getString("pending_base", null) ?: return
+        val providers = listOf("skip", "local", "openai", "gemini", "openrouter", "deepseek", "xai", "groq", "cerebras", "mistral", "custom")
+        val provider = providers.getOrElse(modelProvider.selectedItemPosition) { "skip" }
+        if (provider !in setOf("skip", "local")) {
+            if (modelName.text.toString().trim().isEmpty()) {
+                createStatus.text = "Enter the model name for the selected provider."
+                return
+            }
+            if (providerKey.text.toString().length < 16) {
+                createStatus.text = "Enter the provider API key, or choose Configure later."
+                return
+            }
+        }
+        val credentials = JSONObject()
+            .put("setup_claim", prefs.getString("pending_setup_claim", ""))
+            .put("device_id", prefs.getString("pending_device", ""))
+            .put("device_token", prefs.getString("pending_bearer", ""))
+            .put("provider_id", provider)
+            .put("model", modelName.text.toString().trim())
+            .put("api_key", providerKey.text.toString())
+        finishButton.isEnabled = false
+        createStatus.text = "Saving your AI choice securely…"
+        val modelRequest = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/model")
+            .post(credentials.toString().toRequestBody("application/json".toMediaType()))
+            .header("Accept", "application/json").build()
+        PinnedTls.client(null).newCall(modelRequest).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = runOnUiThread {
+                finishButton.isEnabled = true
+                createStatus.text = "Could not reach Vishnu. Your setup is saved; reconnect and finish again."
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val raw = try { boundedBody(it) } catch (_: Exception) { "" }
+                    runOnUiThread {
+                        val result = try { JSONObject(raw) } catch (_: Exception) { null }
+                        if (!it.isSuccessful || result?.optBoolean("ok") != true) {
+                            finishButton.isEnabled = true
+                            createStatus.text = "Vishnu could not save that AI choice (${it.code}). Check the choice and retry."
+                            return@runOnUiThread
+                        }
+                        providerKey.setText("")
+                        completeNativeSetup(origin, provider != "skip")
+                    }
+                }
+            }
+        })
+    }
+
+    private fun completeNativeSetup(origin: String, modelConfigured: Boolean) {
+        val payload = JSONObject()
+            .put("setup_claim", prefs.getString("pending_setup_claim", ""))
+            .put("device_id", prefs.getString("pending_device", ""))
+            .put("device_token", prefs.getString("pending_bearer", ""))
+            .put("recovery_saved", true)
+            .put("privacy_mode", listOf("local_only", "local_preferred", "external_allowed").getOrElse(privacyChoice.selectedItemPosition) { "local_only" })
+            .put("model_choice", if (modelConfigured) "configured" else "configure_later")
+        createStatus.text = "Verifying your recovery and privacy choices…"
+        val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/complete")
+            .post(payload.toString().toRequestBody("application/json".toMediaType()))
+            .header("Accept", "application/json").build()
+        PinnedTls.client(null).newCall(request).enqueue(object : Callback {
+            override fun onFailure(call: Call, e: IOException) = runOnUiThread {
+                finishButton.isEnabled = true
+                createStatus.text = "Could not reach Vishnu. Your setup is saved; reconnect and finish again."
+            }
+            override fun onResponse(call: Call, response: Response) {
+                response.use {
+                    val raw = try { boundedBody(it) } catch (_: Exception) { "" }
+                    runOnUiThread {
+                        finishButton.isEnabled = true
+                        if (!it.isSuccessful) {
+                            createStatus.text = "Vishnu setup could not finish (${it.code}). Reconnect and retry."
+                            return@runOnUiThread
+                        }
+                        val result = try { JSONObject(raw) } catch (_: Exception) { null }
+                        if (result?.optString("status") != "ready") {
+                            createStatus.text = "The runtime did not confirm setup completion. Retry safely."
+                            return@runOnUiThread
+                        }
+                        activatePendingDevice()
+                        prefs.edit().remove("pending_recovery_codes").apply()
+                        openVishnu()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun activatePendingDevice() {
+        prefs.edit()
+            .putString("base", prefs.getString("pending_base", ""))
+            .putString("device", prefs.getString("pending_device", ""))
+            .putString("bearer", prefs.getString("pending_bearer", ""))
+            .remove("pending_base").remove("pending_device").remove("pending_bearer")
+            .remove("pending_setup_claim").remove("pending_recovery_codes").apply()
+    }
+
+    private fun secureRandomText(): String {
+        val bytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        return Base64.encodeToString(bytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
     }
 
     private fun discoverAndPair(payload: PairingPayload) {

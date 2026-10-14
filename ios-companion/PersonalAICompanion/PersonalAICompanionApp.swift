@@ -35,6 +35,8 @@ extension Notification.Name {
 struct PersonalAICompanionApp: App {
     @UIApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
     @StateObject private var store: CompanionStore
+    @State private var showPortableRecovery = false
+    @State private var showRuntimeProvisioning = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -49,12 +51,62 @@ struct PersonalAICompanionApp: App {
             Group {
                 if store.deviceID == nil {
                     ConnectOnboardingView(store: store)
+                        .safeAreaInset(edge: .bottom) {
+                            VStack(spacing: 8) {
+                                Button {
+                                    showRuntimeProvisioning = true
+                                } label: {
+                                    Label("I don't have a Vishnu runtime yet", systemImage: "server.rack")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                                Button {
+                                    showPortableRecovery = true
+                                } label: {
+                                    Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.large)
+                            }
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial)
+                        }
+                        .sheet(isPresented: $showRuntimeProvisioning) {
+                            NavigationStack {
+                                RuntimeProvisioningView()
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Close") { showRuntimeProvisioning = false }
+                                        }
+                                    }
+                            }
+                            .preferredColorScheme(.dark)
+                        }
+                        .sheet(isPresented: $showPortableRecovery) {
+                            NavigationStack {
+                                PortableRecoveryView(store: store)
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Close") { showPortableRecovery = false }
+                                        }
+                                    }
+                            }
+                            .preferredColorScheme(.dark)
+                        }
                 } else {
                     pairedHome
                 }
             }
             .preferredColorScheme(.dark)
-            .onAppear { if store.deviceID != nil { store.connect() } }
+            .onAppear {
+                if store.deviceID != nil {
+                    KeychainStore.shared.remove(RuntimeProvisioningView.secretKey)
+                    store.connect()
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active, store.deviceID != nil { store.connect() }
                 if phase == .background { BackgroundCoordinator.shared.schedule() }
@@ -104,7 +156,13 @@ struct PersonalAICompanionApp: App {
                     Text("The iPhone registers its APNs token and sends it through the authenticated Vishnu device channel. A later APNs provider stage can use this registration for server-initiated background notifications.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Security") {
-                    Text("Device ID and bearer token are stored in the iPhone Keychain with this-device-only protection.").font(PersonalAITheme.Typography.supporting)
+                    NavigationLink {
+                        NativePasskeyView(store: store)
+                    } label: {
+                        Label("Protect Vishnu with a passkey", systemImage: "person.badge.key")
+                    }
+                    Text("Device ID and bearer token are stored in the iPhone Keychain with this-device-only protection. Native passkeys use Apple Authentication Services only when the signed runtime domain is associated with this app.")
+                        .font(PersonalAITheme.Typography.supporting)
                     Button("Forget this iPhone",role:.destructive) { store.forgetDevice() }
                 }
             }

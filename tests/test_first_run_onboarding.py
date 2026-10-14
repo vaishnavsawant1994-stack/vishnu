@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 import json
+import base64
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from core.preferences import Preferences
 from onboarding.first_run import FirstRunCoordinator, SetupMode, SetupStatus
+from recovery.backup import BackupService
+from recovery.disaster_recovery import (
+    DisasterRecoveryService,
+    encrypt_recovery_key_file,
+    generate_recovery_key,
+)
 from security.owner_access import OwnerAccessStore
 
 
@@ -41,6 +49,26 @@ class FakeTools:
 class FakeDevices:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
+        self.sequence = len(self.rows)
+        self.OWNER_SCOPES = {'ai:chat', 'memory:read'}
+
+    def is_active(self, device_id):
+        return any(item.get('id') == device_id and not item.get('revoked') for item in self.rows)
+
+    def enroll(self, name, platform):
+        self.sequence += 1
+        device = {'id': f'device-{self.sequence}', 'name': name, 'platform': platform,
+                  'revoked': False, 'metadata': {}}
+        self.rows.append(device)
+        return device, 'discarded-test-token'
+
+    def set_permissions(self, device_id, scopes):
+        return scopes
+
+    def set_metadata(self, device_id, key, value):
+        item = next(item for item in self.rows if item['id'] == device_id)
+        item.setdefault('metadata', {})[key] = value
+        return True
 
     def list(self):
         return list(self.rows)
@@ -94,6 +122,14 @@ def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_
     assert rt['tools'].mode == 'ask'
     assert rt['models'].connected[0] == 'openai'
     assert len(codes) >= 4
+    identity = rt['owner_access'].identity()
+    assert identity is not None
+    assert identity['owner_id'].startswith('OWNER-')
+    assert identity['vishnu_id'].startswith('VISHNU-')
+    assert identity['display_name'] == 'Owner'
+    assert state['identity_version'] == 1
+    assert state['first_device_id'] == rt['device_registry'].rows[0]['id']
+    assert rt['device_registry'].rows[0]['metadata']['role'] == 'first_device'
 
     persisted = (tmp_path / FirstRunCoordinator.STATE_FILE).read_text(encoding='utf-8')
     assert 'correct horse battery staple' not in persisted
@@ -114,6 +150,22 @@ def test_setup_cannot_complete_before_recovery_codes_are_confirmed(tmp_path):
             privacy_mode='local_preferred', autonomy_mode='ask', memory_enabled=True
         )
     with pytest.raises(RuntimeError, match='Recovery codes'):
+        coordinator.complete()
+
+
+def test_setup_cannot_complete_if_all_recovery_codes_were_consumed(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Owner')
+    codes = coordinator.configure_security('correct horse battery staple')
+    coordinator.confirm_recovery_codes_saved()
+    coordinator.configure_preferences(privacy_mode='local_preferred', autonomy_mode='ask')
+    coordinator.skip_model_configuration()
+    for code in codes:
+        assert rt['owner_access'].consume_recovery_code(code)
+
+    with pytest.raises(RuntimeError, match='unused recovery code'):
         coordinator.complete()
 
 
@@ -150,6 +202,40 @@ def test_existing_trusted_install_is_migrated_without_forcing_wizard(tmp_path):
     assert state['status'] == SetupStatus.READY.value
     assert state['migrated_legacy_install'] is True
     assert rt['preferences'].get('onboarding_complete') is True
+    assert rt['owner_access'].identity() is not None
+    assert state['first_device_id'] == 'existing-device'
+
+
+def test_identity_creation_is_idempotent_and_race_safe(tmp_path):
+    store = OwnerAccessStore(tmp_path / 'owner-access.sqlite3')
+
+    def initialize(_):
+        return store.initialize_identity(
+            first_name='Vaishnav', last_name='Sawant', display_name='Vishnu Owner'
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        results = list(pool.map(initialize, range(16)))
+
+    identities = [identity for identity, _created in results]
+    assert len({item['owner_id'] for item in identities}) == 1
+    assert len({item['vishnu_id'] for item in identities}) == 1
+    assert sum(created for _identity, created in results) == 1
+
+
+def test_initialized_install_cannot_start_create_again(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin('create')
+    coordinator.configure_owner(first_name='Owner')
+    coordinator.configure_security('correct horse battery staple')
+    coordinator.confirm_recovery_codes_saved()
+    coordinator.configure_preferences(privacy_mode='local_preferred', autonomy_mode='ask')
+    coordinator.skip_model_configuration()
+    coordinator.complete()
+
+    with pytest.raises(RuntimeError, match='already initialized'):
+        coordinator.begin('create')
 
 
 def test_partial_new_setup_is_never_promoted_as_legacy_install(tmp_path):
@@ -183,6 +269,43 @@ def test_restore_is_validated_and_scheduled_for_next_process_start(tmp_path):
     assert state['stage'] == 'restart_required'
     pending = json.loads((tmp_path / FirstRunCoordinator.PENDING_RESTORE_FILE).read_text(encoding='utf-8'))
     assert pending['path'] == str(archive.resolve())
+
+
+def test_portable_recovery_schedules_encrypted_key_and_restores_identity_without_security(tmp_path, monkeypatch):
+    monkeypatch.setenv('PERSONAL_AI_ROOT_KEY', base64.b64encode(b't' * 32).decode('ascii'))
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+    source_owner = OwnerAccessStore(source / 'owner-access.sqlite3')
+    identity, _ = source_owner.initialize_identity(first_name='Asha', last_name='Patel')
+    source_owner.set_password('correct horse battery staple')
+    source_owner.regenerate_recovery_codes()
+    (source / 'conversation.json').write_text('{"hello":"world"}')
+    key = generate_recovery_key()
+    archive = tmp_path / 'asha.vdr'
+    DisasterRecoveryService(BackupService(source)).create_bundle(
+        archive, recovery_key=key, owner_id=identity['owner_id'], key_id='recovery-set-1',
+    )
+    key_file = tmp_path / 'asha.vdr.key'
+    key_file.write_bytes(encrypt_recovery_key_file(key, 'correct horse battery staple'))
+
+    target_backups = BackupService(target)
+    coordinator = FirstRunCoordinator(target, runtime={'backups': target_backups})
+    scheduled = coordinator.schedule_disaster_recovery(archive, key_file, 'correct horse battery staple')
+    assert scheduled['portable'] is True
+    pending_path = target / FirstRunCoordinator.PENDING_RESTORE_FILE
+    pending_text = pending_path.read_text(encoding='utf-8')
+    assert key.hex() not in pending_text
+
+    restored = FirstRunCoordinator.apply_pending_restore(target)
+    assert restored['portable_disaster_recovery'] is True
+    target_owner = OwnerAccessStore(target / 'owner-access.sqlite3')
+    assert target_owner.identity()['owner_id'] == identity['owner_id']
+    assert target_owner.identity()['vishnu_id'] == identity['vishnu_id']
+    assert target_owner.password_configured() is False
+    assert target_owner.recovery_codes_remaining() == 0
+    assert (target / 'conversation.json').read_text() == '{"hello":"world"}'
 
 
 def test_connect_mode_does_not_mark_local_install_ready(tmp_path):

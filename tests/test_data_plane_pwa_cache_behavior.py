@@ -54,7 +54,7 @@ assert(bytePlan.remainingBytes===4*1024*1024,'remaining bytes must be within quo
 console.log('pwa-cache-bounds-ok');
 """
     result = subprocess.run(
-        [node, '--experimental-default-type=module', '--eval', script],
+        [node, '--input-type=module', '--eval', script],
         cwd=ROOT,
         capture_output=True,
         text=True,

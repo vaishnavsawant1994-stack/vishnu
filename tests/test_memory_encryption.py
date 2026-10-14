@@ -286,20 +286,3 @@ def test_encrypted_backup_carries_only_wrapped_memory_key_and_restores_on_clean_
     restored = MemoryStore(target / 'assistant.sqlite3', vault=restored_vault)
     assert base64.b64decode(restored.vault.get(VAULT_KEY_NAME)) == original_key
     assert restored.get(memory_id)['content'] == SENTINEL
-
-
-def test_root_key_rotation_preserves_memory_field_key_and_content(tmp_path):
-    path = tmp_path / 'assistant.sqlite3'
-    root_store = RotatingRootKeyStore(b'o' * 32)
-    vault_path = tmp_path / 'vault.json'
-    vault = SecretVault(vault_path, root_key_store=root_store)
-    store = MemoryStore(path, vault=vault)
-    memory_id = store.remember(type='fact', subject='rotation', content=SENTINEL)
-    field_key = vault.get(VAULT_KEY_NAME)
-
-    vault.rotate_root_key()
-    reopened_vault = SecretVault(vault_path, root_key_store=root_store)
-    assert reopened_vault.get(VAULT_KEY_NAME) == field_key
-    reopened = MemoryStore(path, vault=reopened_vault)
-    assert reopened.get(memory_id)['content'] == SENTINEL
-

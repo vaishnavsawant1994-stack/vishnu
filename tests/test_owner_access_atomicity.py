@@ -1,7 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
-from security.owner_access import OwnerAccessStore
+import pytest
+
+from security.owner_access import FirstRunClaimBusy, OwnerAccessStore
 
 
 def _run_concurrently(worker, count: int):
@@ -48,3 +50,28 @@ def test_webauthn_challenge_is_consumed_exactly_once_under_concurrency(tmp_path)
     assert claimed[0]['id'] == challenge_id
     assert claimed[0]['challenge'] == b'one-time-challenge'
     assert store.consume_challenge(challenge_id, 'authentication', device_id='device-1') is None
+
+
+def test_first_run_claim_allows_one_creation_client_and_same_client_retry(tmp_path):
+    store = OwnerAccessStore(tmp_path / 'owner-access.sqlite3')
+    claim, created = store.acquire_first_run_claim()
+    assert created is True
+    assert store.acquire_first_run_claim(claim) == (claim, False)
+    with pytest.raises(FirstRunClaimBusy):
+        store.acquire_first_run_claim()
+    assert store.release_first_run_claim(claim) is True
+    assert store.acquire_first_run_claim()[1] is True
+
+
+def test_first_run_claim_race_has_one_winner(tmp_path):
+    store = OwnerAccessStore(tmp_path / 'owner-access.sqlite3')
+
+    def reserve():
+        try:
+            return store.acquire_first_run_claim()[1]
+        except FirstRunClaimBusy:
+            return False
+
+    outcomes = _run_concurrently(reserve, 8)
+    assert outcomes.count(True) == 1
+    assert outcomes.count(False) == 7
