@@ -216,6 +216,11 @@ class BackupService:
             raise BackupError('memory data-encryption key is invalid') from exc
         if len(dek) != 32:
             raise BackupError('memory data-encryption key is invalid')
+        return self._wrap_memory_key(dek)
+
+    def _wrap_memory_key(self, dek: bytes) -> bytes:
+        if len(dek) != 32:
+            raise BackupError('memory data-encryption key is invalid')
         try:
             root_key = self.root_key_store.get_or_create()
         except (KeychainUnavailable, OSError, RuntimeError) as exc:
