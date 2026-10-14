@@ -99,6 +99,11 @@ jobs:
         run: pytest -q tests/test_continuity_e8_*.py
       - name: Backup and disaster-recovery qualification gate
         run: pytest -q tests/test_disaster_recovery.py tests/test_backup_recovery_qualification.py
+      - name: Endurance and concurrency qualification gate
+        run: >-
+          pytest -q
+          tests/test_endurance_concurrency.py
+          tests/test_p6_approval_security.py::test_concurrent_approval_race_consumes_existing_ticket_at_most_once
       - name: E9 architecture convergence gate
         run: pytest -q tests/test_e9_convergence.py tests/conformance
       - name: Canonical Work release qualification gate
