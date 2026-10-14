@@ -97,9 +97,9 @@ def main():
         db = root / 'soak.sqlite3'
         world_db = root / 'world.sqlite3'
         continuity_db = root / 'continuity.sqlite3'
-        store = MemoryStore(db)
         current_password = 'soak-password'
         vault = SecretVault(root / 'vault.json', current_password)
+        store = MemoryStore(db, vault=vault)
         events = Events()
         gateway = DeviceGateway(Registry(), events)
         realtime = OpenAIRealtimeVoiceSession(realtime_settings(), events)
