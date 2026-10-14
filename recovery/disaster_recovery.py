@@ -73,6 +73,8 @@ def encrypt_recovery_key_file(recovery_key: bytes, passphrase: str) -> bytes:
     phrase = str(passphrase or "")
     if len(phrase) < 12:
         raise ValueError("recovery passphrase must contain at least 12 characters")
+    if len(phrase) > 1024:
+        raise ValueError("recovery passphrase is too long")
     salt = secrets.token_bytes(16)
     nonce = secrets.token_bytes(12)
     header = json.dumps({
@@ -88,6 +90,10 @@ def encrypt_recovery_key_file(recovery_key: bytes, passphrase: str) -> bytes:
 def decrypt_recovery_key_file(envelope: bytes, passphrase: str) -> bytes:
     """Authenticate and decrypt an exported recovery-key file."""
     try:
+        if not isinstance(envelope, bytes) or len(envelope) > 8192:
+            raise ValueError("invalid recovery key file size")
+        if len(str(passphrase or "")) > 1024:
+            raise ValueError("recovery passphrase is too long")
         if not envelope.startswith(RECOVERY_KEY_FILE_MAGIC):
             raise ValueError("unsupported recovery key file")
         offset = len(RECOVERY_KEY_FILE_MAGIC)
@@ -214,7 +220,10 @@ class DisasterRecoveryBundleCodec:
         owner_id: str | None = None,
         expected_key_id: str | None = None,
     ) -> tuple[Path, dict]:
-        source = Path(bundle).expanduser().resolve()
+        source = Path(bundle).expanduser()
+        if source.is_symlink():
+            raise FileNotFoundError(source)
+        source = source.resolve()
         key = _validate_recovery_key(recovery_key)
         if not source.is_file() or source.is_symlink():
             raise FileNotFoundError(source)
