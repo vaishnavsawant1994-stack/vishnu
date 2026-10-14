@@ -55,13 +55,18 @@ def test_mobile_capability_clients_fail_closed_without_production_associations()
     android_manifest = (root / "android-companion/app/src/main/AndroidManifest.xml").read_text()
     android_client = (root / "android-companion/app/src/main/java/ai/personal/companion/MainActivity.kt").read_text()
     ios_entitlements = (root / "ios-companion/PersonalAICompanion/PersonalAICompanion.entitlements").read_text()
+    ios_project = (root / "ios-companion/project.yml").read_text()
     ios_client = (root / "ios-companion/PersonalAICompanion/NativeCapabilities.swift").read_text()
     ios_app = (root / "ios-companion/PersonalAICompanion/PersonalAICompanionApp.swift").read_text()
 
     production_host = "personal-ai-runtime-production.up.railway.app"
-    assert production_host not in android_manifest + android_client + ios_entitlements + ios_client + ios_app
+    assert production_host not in android_manifest + android_client + ios_entitlements + ios_project + ios_client + ios_app
     assert "android:autoVerify" not in android_manifest
     assert 'const val NATIVE_AUTH_URL = ""' in android_client
     assert 'const val API_BASE = ""' in android_client
     assert 'private let host = ""' in ios_client
-    assert "associated-domains" not in ios_entitlements
+    # Native passkeys need Apple's webcredentials entitlement, but the checked-in
+    # build remains fail-closed until release configuration replaces this invalid
+    # sentinel with the explicitly approved runtime domain.
+    assert "webcredentials:$(VISHNU_PASSKEY_DOMAIN)" in ios_entitlements
+    assert "VISHNU_PASSKEY_DOMAIN: passkeys.invalid" in ios_project
