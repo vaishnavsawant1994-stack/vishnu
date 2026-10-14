@@ -20,6 +20,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from integrations.discovery.catalog_store import CapabilityCatalogStore
 from integrations.discovery.mcp import normalize_mcp_server, normalize_mcp_tool
 from integrations.registry import IntegrationRegistry
+from memory.crypto import VAULT_KEY_NAME
 from memory.store import MemoryStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from security.vault import SecretVault
@@ -164,7 +165,7 @@ def test_owner_discovers_attests_executes_and_disconnects_mcp(tmp_path, monkeypa
 
     disconnected = client.post(f"/iphone/api/apps-tools/mcp/servers/{server_id}/disconnect")
     assert disconnected.status_code == 200
-    assert not vault.names()
+    assert vault.names() == [VAULT_KEY_NAME]
     denied_after_revoke = client.post(f"/iphone/api/apps-tools/capabilities/{capability_id}/execute",
                                       json={"parameters": {"city": "Oslo"}})
     assert denied_after_revoke.status_code == 409

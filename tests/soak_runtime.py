@@ -76,6 +76,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--seconds', type=int, default=45)
     args = parser.parse_args()
+    # Runtime soak runs on headless CI runners without an OS keychain. Use a
+    # deterministic test-only root key so the real MemoryStore encryption path
+    # is exercised without weakening production key initialization.
+    os.environ.setdefault(
+        'PERSONAL_AI_ROOT_KEY',
+        base64.b64encode(b'vishnu-runtime-soak-root-key-v1!').decode('ascii'),
+    )
     proc = psutil.Process(os.getpid())
     start = proc.memory_info().rss
     peak = start
@@ -90,9 +97,9 @@ def main():
         db = root / 'soak.sqlite3'
         world_db = root / 'world.sqlite3'
         continuity_db = root / 'continuity.sqlite3'
-        store = MemoryStore(db)
         current_password = 'soak-password'
         vault = SecretVault(root / 'vault.json', current_password)
+        store = MemoryStore(db, vault=vault)
         events = Events()
         gateway = DeviceGateway(Registry(), events)
         realtime = OpenAIRealtimeVoiceSession(realtime_settings(), events)

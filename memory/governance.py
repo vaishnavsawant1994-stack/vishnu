@@ -154,19 +154,22 @@ class GovernedMemory:
         store = self._brain.store
         days = {'6_months': 183, '1_year': 365}.get(retention)
         with store.lock, store.con() as con:
-            rows = con.execute(f"SELECT id,created_at,metadata_json FROM memories WHERE {store.STORABLE_SQL} AND removed_at IS NULL").fetchall()
-            for row in rows:
-                try: metadata = json.loads(row['metadata_json'] or '{}')
-                except (TypeError, ValueError): continue
-                if not metadata.get('ambient'): continue
-                if days:
-                    try: created = datetime.fromisoformat(str(row['created_at']).replace('Z', '+00:00')).timestamp()
-                    except (TypeError, ValueError): created = time.time()
-                    metadata['ambient_expires_at'] = created + days * 86400
-                else:
-                    metadata.pop('ambient_expires_at', None)
-                con.execute('UPDATE memories SET metadata_json=?,updated_at=? WHERE id=?',
-                            (json.dumps(metadata, default=str), datetime.now(timezone.utc).isoformat(), row['id']))
+            rows = con.execute(f"SELECT id FROM memories WHERE {store.STORABLE_SQL} AND removed_at IS NULL").fetchall()
+            ids = [str(row['id']) for row in rows]
+        for memory_id in ids:
+            memory = store.get(memory_id)
+            if memory is None:
+                continue
+            try: metadata = json.loads(memory.get('metadata_json') or '{}')
+            except (TypeError, ValueError): continue
+            if not metadata.get('ambient'): continue
+            if days:
+                try: created = datetime.fromisoformat(str(memory['created_at']).replace('Z', '+00:00')).timestamp()
+                except (TypeError, ValueError): created = time.time()
+                metadata['ambient_expires_at'] = created + days * 86400
+            else:
+                metadata.pop('ambient_expires_at', None)
+            store.update_memory(memory_id, metadata=metadata)
 
     def ambient_can_capture(self, source: str = 'chats', conversation_id: str | None = None, *, owner_id: str = CANONICAL_OWNER):
         settings = self.ambient_settings(owner_id=owner_id)
@@ -210,10 +213,13 @@ class GovernedMemory:
         current = float(now_ts if now_ts is not None else time.time())
         store = self._brain.store
         with store.lock, store.con() as con:
-            rows = con.execute(f"SELECT id,metadata_json FROM memories WHERE {store.STORABLE_SQL} AND removed_at IS NULL").fetchall()
+            rows = con.execute(f"SELECT id FROM memories WHERE {store.STORABLE_SQL} AND removed_at IS NULL").fetchall()
         expired = []
         for row in rows:
-            try: metadata = json.loads(row['metadata_json'] or '{}')
+            memory = store.get(str(row['id']))
+            if memory is None:
+                continue
+            try: metadata = json.loads(memory.get('metadata_json') or '{}')
             except (TypeError, ValueError): continue
             value = metadata.get('ambient_expires_at') if metadata.get('ambient') else None
             if value is not None:
