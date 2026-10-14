@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "allow_spdx_ids": [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "PSF-2.0",
+    "Unlicense",
+    "Zlib"
+  ],
+  "deny_spdx_ids": [
+    "AGPL-3.0-only",
+    "AGPL-3.0-or-later"
+  ],
+  "default_decision": "review",
+  "review_note": "Human/legal review is required for licenses outside the explicit allow/deny lists."
+}
