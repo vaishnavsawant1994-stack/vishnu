@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import difflib
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -32,8 +33,17 @@ def _run(*args: str) -> None:
 
 
 def _verify(source: Path, lock: Path) -> None:
+    """Verify that the committed lock is still a valid resolution of source.
+
+    uv prefers pins in an existing output file unless --upgrade is requested.
+    Seed the temporary output from the committed lock so CI validates that exact
+    reproducible resolution instead of silently asking today's package index for
+    newer transitive versions. Dependency upgrades remain an explicit lockfile
+    maintenance action.
+    """
     with tempfile.TemporaryDirectory(prefix='vishnu-lock-check-') as temporary:
         generated = Path(temporary) / lock.name
+        shutil.copyfile(lock, generated)
         _run(
             'uv', 'pip', 'compile', *LOCK_FLAGS,
             '--output-file', str(generated),
