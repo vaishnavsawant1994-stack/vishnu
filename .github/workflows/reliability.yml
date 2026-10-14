@@ -16,8 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt pip-audit
-      - run: pip-audit -r requirements.txt
+      - run: python scripts/install_locked_requirements.py tools
+      - run: pip-audit -r requirements.lock
       - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products security sensorium server tools training ui updates vision voice packaging
       - name: Sensorium safety boundary
         run: pytest -q tests/test_sensorium_virtual_device_lab.py tests/test_sensorium_virtual_lab_hardening.py tests/test_sensorium_virtual_fleet.py tests/test_sensorium_virtual_fleet_api.py tests/test_sensorium_service.py tests/test_sensorium_security.py tests/test_sensorium_api.py tests/test_sensorium_live_work.py tests/test_sensorium_living_bridge.py tests/test_sensorium_physical.py tests/test_sensorium_physical_api.py tests/test_sensorium_physical_live_work.py tests/test_sensorium_native_lab.py tests/test_sensorium_native_api.py tests/test_sensorium_native_live_work.py tests/test_sensorium_native_router_integration.py
@@ -66,7 +66,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt psutil
+      - run: python scripts/install_locked_requirements.py tools
       - name: Existing runtime soak
         run: python tests/soak_runtime.py --seconds ${{ github.event_name == 'schedule' && '1800' || '45' }}
       - name: P9 Hybrid AI soak

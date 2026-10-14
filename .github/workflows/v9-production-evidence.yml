@@ -32,11 +32,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt psutil pip-audit
+      - run: python scripts/install_locked_requirements.py tools
       - run: pip check
       - run: python -m compileall -q app agent automation browser core dashboard desktop devices future_intelligence integrations knowledge memory models notifications security server tools ui updates vision voice
       - run: pytest -q
-      - run: pip-audit
+      - run: pip-audit -r requirements.lock
 
   soak:
     needs: deterministic-preflight
@@ -46,7 +46,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt psutil
+      - run: python scripts/install_locked_requirements.py tools
       - name: Run selected long-duration integration soak
         run: python tests/soak_runtime.py --seconds "$(( ${{ inputs.soak_hours }} * 3600 ))"
 
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - name: Require APNs production secrets
         run: |
           test -n "$APNS_TEAM_ID"
@@ -87,7 +87,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - name: Physical microphone/speaker Realtime round trip
         run: python tests/realtime_hardware_probe.py --seconds 60
 

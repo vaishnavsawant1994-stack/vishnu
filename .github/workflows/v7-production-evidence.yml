@@ -25,7 +25,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - name: Verify physical microphone and speaker + OpenAI Realtime round trip
         run: python tests/realtime_hardware_probe.py --seconds "${{ inputs.audio_seconds }}"
 
@@ -70,7 +70,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt psutil
+      - run: python scripts/install_locked_requirements.py tools
       - name: Run V7 multi-hour integration soak
         shell: bash
         run: python tests/soak_runtime.py --seconds "$(( ${{ inputs.soak_hours }} * 3600 ))"

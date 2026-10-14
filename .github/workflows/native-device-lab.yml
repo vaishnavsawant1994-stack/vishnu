@@ -23,7 +23,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: python scripts/install_locked_requirements.py runtime
       - name: Compile native Sensorium layer
         run: python -m compileall -q sensorium server scripts/native_device_probe.py
       - name: Run native Sensorium contract tests
@@ -44,7 +44,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: python scripts/install_locked_requirements.py runtime
       - name: Compile desktop Sensorium runtime
         run: python -m compileall -q sensorium desktop app scripts/native_device_probe.py
       - name: Run native Sensorium contract tests

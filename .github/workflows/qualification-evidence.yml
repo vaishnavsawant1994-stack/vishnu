@@ -20,7 +20,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - run: pip check
       - name: Compile evidence qualification surfaces
         run: >-

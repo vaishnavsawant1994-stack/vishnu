@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
 
       - if: inputs.target == 'android'
         uses: actions/setup-java@v5

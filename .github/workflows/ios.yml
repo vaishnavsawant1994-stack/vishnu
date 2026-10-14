@@ -20,7 +20,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: python scripts/install_locked_requirements.py runtime
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project

@@ -17,16 +17,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py --check-all
+      - run: python scripts/install_locked_requirements.py tools
       - run: pip check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=high
       - name: Targeted Python static-quality gate
-        run: |
-          pip install "ruff==0.17.0"
-          ruff check security/owner_access.py tests/test_owner_access_atomicity.py core/sqlite.py devices/registry.py tests/test_sqlite_foundation.py
+        run: ruff check security/owner_access.py tests/test_owner_access_atomicity.py core/sqlite.py devices/registry.py tests/test_sqlite_foundation.py
       - name: Critical boundary typing gate
-        run: |
-          pip install "mypy==2.3.1"
-          mypy --strict --follow-imports=skip --ignore-missing-imports core/sqlite.py security/keychain.py
+        run: mypy --strict --follow-imports=skip --ignore-missing-imports core/sqlite.py security/keychain.py
       - name: Owner product correctness and bugbear gate
         run: >-
           ruff check

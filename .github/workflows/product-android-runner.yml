@@ -31,7 +31,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - name: Create isolated unsigned development build job
         run: |
           python - <<'PY'
