@@ -318,7 +318,25 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('', response_class=HTMLResponse, include_in_schema=False)
     @router.get('/', response_class=HTMLResponse, include_in_schema=False)
     def iphone_home():
-        return HTMLResponse((web_dir / 'index.html').read_text(encoding='utf-8'), headers={'Cache-Control': 'no-store'})
+        page = (web_dir / 'index.html').read_text(encoding='utf-8')
+        page = page.replace(
+            '</body>',
+            '<script src="/iphone/first-run.js" defer></script>'
+            '<script src="/iphone/first-run-actions.js" defer></script></body>',
+        )
+        return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/first-run.js', include_in_schema=False)
+    def first_run_script():
+        return Response((web_dir / 'first-run.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/first-run-actions.js', include_in_schema=False)
+    def first_run_actions_script():
+        return Response((web_dir / 'first-run-actions.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
 
     @router.get('/manifest.webmanifest', include_in_schema=False)
     def manifest():

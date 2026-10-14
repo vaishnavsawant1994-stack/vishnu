@@ -127,10 +127,20 @@ def test_production_router_can_exclude_legacy_canonical_runtime_overlaps(tmp_pat
         ('POST', '/iphone/api/voice/client-event'),
     }
     assert registered.isdisjoint(forbidden)
-
     # Non-overlapping owner-access routes remain available.
     assert client.get('/iphone/api/status').status_code == 200
 
+
+def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
+    client, _ = make_client(tmp_path)
+    page = client.get('/iphone/')
+    assert page.status_code == 200
+    assert '/iphone/first-run.js' in page.text
+    assert '/iphone/first-run-actions.js' in page.text
+    adapter = client.get('/iphone/first-run.js')
+    actions = client.get('/iphone/first-run-actions.js')
+    assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
+    assert actions.status_code == 200 and '/first-run/create' in actions.text
 
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)
