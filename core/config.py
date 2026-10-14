@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import os
 
 from dotenv import load_dotenv
@@ -101,6 +102,8 @@ def env_float(
             raise ConfigurationError(f'{name} must be a number') from exc
         return default
     if strict and STRICT_CONFIGURATION:
+        if not math.isfinite(value):
+            raise ConfigurationError(f'{name} must be a finite number')
         if minimum is not None and value < minimum:
             raise ConfigurationError(f'{name} must be >= {minimum}')
         if maximum is not None and value > maximum:
