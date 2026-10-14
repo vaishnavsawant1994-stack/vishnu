@@ -16,6 +16,7 @@ from core.config import settings
 from core.durable_approval_runtime import DurableApprovalTurnRuntime
 from core.events import EventBus
 from core.preferences import Preferences
+from core.runtime_composition import compose_vishnu_runtime
 from core.telemetry import Telemetry
 from devices.continuity import ContinuityService
 from devices.gateway import DeviceGateway
@@ -142,6 +143,7 @@ def build_runtime():
             events.emit('continuity.append_failed',kind=str(kind),source_device=source_device,error_type=type(exc).__name__)
     events.subscribe('conversation.user',lambda event:append_continuity('user_message',event.get('text'),event.get('device_id'),event.get('conversation_id'),event.get('event_id') or event.get('message_id'))); events.subscribe('conversation.assistant',lambda event:append_continuity('assistant_message',event.get('text'),event.get('device_id'),event.get('conversation_id'),event.get('event_id') or event.get('message_id'))); events.subscribe('proactive.ingest',lambda event:proactive.consider(str(event.get('source','unknown')),dict(event.get('payload') or {}),context={**context_provider(),**dict(event.get('context') or {})})); events.subscribe('automation.failed',lambda event:proactive.consider('automation',{'kind':'failure','id':event.get('automation_id'),'failed':True,'importance':.7,'message':f"An automation failed: {event.get('error','unknown error')}"},context=context_provider())); events.subscribe('workflow.failed',lambda event:proactive.consider('workflow',{'kind':'failure','id':event.get('run_id'),'failed':True,'importance':.75,'message':f"A workflow needs attention: {event.get('error','workflow failed')}"},context=context_provider())); events.subscribe('workflow.approval_required',lambda event:proactive.consider('workflow',{'kind':'approval','id':event.get('run_id'),'needs_approval':True,'urgency':.7,'importance':.8,'message':f"A workflow is waiting for your approval to use {event.get('tool','a tool')}."},context=context_provider()))
     attach_e9_runtime(runtime)
+    runtime['composition']=compose_vishnu_runtime(runtime)
     return runtime
 
 
@@ -155,7 +157,8 @@ def start_server(runtime):
     from server.model_provider_api import model_provider_router
     from server.sensorium_physical_api import sensorium_physical_router
     import uvicorn
-    app=create_app(runtime['executor'],settings,device_registry=runtime['device_registry'],device_gateway=runtime['device_gateway'],second_brain=runtime['second_brain'],automations=runtime['automations'],runtime=runtime)
+    composition=runtime['composition']
+    app=create_app(composition.work.turn_runtime,settings,device_registry=composition.devices.registry,device_gateway=composition.devices.gateway,second_brain=composition.memory.second_brain,automations=composition.work.automation_engine,runtime=runtime)
     app.include_router(evolution_router(runtime)); app.include_router(identity_router(runtime)); app.include_router(evidence_router(runtime)); app.include_router(agent_continuity_router(runtime)); app.include_router(model_provider_router(runtime)); app.include_router(sensorium_physical_router(runtime),prefix='/owner/ai')
     uvicorn.run(app,host=settings.control_server_host,port=settings.control_server_port,log_level='warning')
 
@@ -193,9 +196,10 @@ def main():
             _close_runtime(runtime)
             return 0
 
-    runtime['automations'].start(); start_e9_services(runtime)
+    composition=runtime['composition']
+    composition.work.automation_engine.start(); start_e9_services(runtime)
     if settings.control_server_enabled:threading.Thread(target=start_server,args=(runtime,),daemon=True).start()
-    window=CanonicalMainWindow(events=runtime['events'],executor=runtime['executor'],memory=runtime['memory'],runtime=runtime); window.show(); floating_presence=FloatingPresence(runtime=runtime); runtime['floating_presence']=floating_presence; floating_presence.show()
+    window=CanonicalMainWindow(events=runtime['events'],executor=composition.work.turn_runtime,memory=composition.memory.store,runtime=runtime); window.show(); floating_presence=FloatingPresence(runtime=runtime); runtime['floating_presence']=floating_presence; floating_presence.show()
     if runtime['preferences'].get('launch_voice_on_start'):window.toggle_voice()
     code=app.exec(); _close_runtime(runtime,services_started=True,floating_presence=floating_presence); return code
 
