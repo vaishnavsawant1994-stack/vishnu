@@ -299,7 +299,7 @@ class ConnectActivity : AppCompatActivity() {
         listOf(firstRunBase, bootstrap, firstName, lastName, displayName, ownerPassword, ownerPasswordAgain)
             .forEach(::styleField)
         val securityNote = TextView(this).apply {
-            text = "This setup uses your owner password and one-time recovery codes. The password is sent only over HTTPS and stored as a password hash. Passkey setup from native Android is not available yet."
+            text = "This first-device ceremony starts with your owner password and one-time recovery codes. After setup, use Protect Vishnu with a passkey when this runtime publishes the signed Android app association."
             textSize = 12f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(4), 0, dp(10))
