@@ -8,31 +8,112 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_TRUE_VALUES = {'1', 'true', 'yes', 'on'}
+_FALSE_VALUES = {'0', 'false', 'no', 'off'}
 
-def env_bool(name: str, default: bool = False) -> bool:
+
+class ConfigurationError(ValueError):
+    """Raised when strict runtime configuration is invalid."""
+
+
+def _hosted_runtime() -> bool:
+    return bool(os.getenv('RAILWAY_ENVIRONMENT_ID') or os.getenv('RAILWAY_PROJECT_ID'))
+
+
+def _strict_config_enabled() -> bool:
+    if _hosted_runtime():
+        return True
+    raw = os.getenv('PERSONAL_AI_STRICT_CONFIG')
+    if raw is None:
+        return False
+    normalized = raw.lower().strip()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ConfigurationError(
+        'PERSONAL_AI_STRICT_CONFIG must be a boolean '
+        '(1/0, true/false, yes/no, on/off)'
+    )
+
+
+STRICT_CONFIGURATION = _strict_config_enabled()
+
+
+def env_bool(name: str, default: bool = False, *, strict: bool = False) -> bool:
     raw = os.getenv(name)
-    return default if raw is None else raw.lower().strip() in {'1', 'true', 'yes', 'on'}
-
-
-def env_int(name: str, default: int = 0) -> int:
-    try:
-        return int(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
+    if raw is None:
         return default
+    normalized = raw.lower().strip()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    if strict and STRICT_CONFIGURATION:
+        raise ConfigurationError(
+            f'{name} must be a boolean (1/0, true/false, yes/no, on/off)'
+        )
+    # Preserve the historical local-development behavior: any non-truthy
+    # explicit value is treated as false when strict validation is disabled.
+    return False
 
 
-def env_float(name: str, default: float = 0.0) -> float:
-    try:
-        return float(os.getenv(name, str(default)))
-    except (TypeError, ValueError):
+def env_int(
+    name: str,
+    default: int = 0,
+    *,
+    strict: bool = False,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    raw = os.getenv(name)
+    if raw is None:
         return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError) as exc:
+        if strict and STRICT_CONFIGURATION:
+            raise ConfigurationError(f'{name} must be an integer') from exc
+        return default
+    if strict and STRICT_CONFIGURATION:
+        if minimum is not None and value < minimum:
+            raise ConfigurationError(f'{name} must be >= {minimum}')
+        if maximum is not None and value > maximum:
+            raise ConfigurationError(f'{name} must be <= {maximum}')
+    return value
+
+
+def env_float(
+    name: str,
+    default: float = 0.0,
+    *,
+    strict: bool = False,
+    minimum: float | None = None,
+    maximum: float | None = None,
+) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        if strict and STRICT_CONFIGURATION:
+            raise ConfigurationError(f'{name} must be a number') from exc
+        return default
+    if strict and STRICT_CONFIGURATION:
+        if minimum is not None and value < minimum:
+            raise ConfigurationError(f'{name} must be >= {minimum}')
+        if maximum is not None and value > maximum:
+            raise ConfigurationError(f'{name} must be <= {maximum}')
+    return value
 
 
 @dataclass(frozen=True)
 class Settings:
     base_dir: Path = Path(__file__).resolve().parent.parent
     data_dir: Path = Path(os.getenv('PERSONAL_AI_DATA_DIR', str(Path.home() / '.personal_ai'))).expanduser().resolve()
-    hosted_runtime: bool = bool(os.getenv('RAILWAY_ENVIRONMENT_ID') or os.getenv('RAILWAY_PROJECT_ID'))
+    hosted_runtime: bool = _hosted_runtime()
+    strict_configuration: bool = STRICT_CONFIGURATION
 
     ai_provider: str = os.getenv('AI_PROVIDER', 'local').lower().strip()
     local_ai_url: str = os.getenv('LOCAL_AI_URL', 'http://127.0.0.1:11434/v1').rstrip('/')
@@ -48,11 +129,11 @@ class Settings:
     model_privacy_mode: str = os.getenv('MODEL_PRIVACY_MODE', 'local_preferred').lower().strip()
     model_request_timeout_seconds: float = env_float('MODEL_REQUEST_TIMEOUT_SECONDS', 120.0)
     model_health_timeout_seconds: float = env_float('MODEL_HEALTH_TIMEOUT_SECONDS', 5.0)
-    model_retry_attempts: int = max(0, min(3, env_int('MODEL_RETRY_ATTEMPTS', 1)))
-    model_retry_backoff_seconds: float = max(0.0, min(2.0, env_float('MODEL_RETRY_BACKOFF_SECONDS', 0.05)))
-    model_max_failovers: int = max(0, min(12, env_int('MODEL_MAX_FAILOVERS', 5)))
-    model_local_first: bool = env_bool('MODEL_LOCAL_FIRST', True)
-    allow_external_for_sensitive: bool = env_bool('ALLOW_EXTERNAL_FOR_SENSITIVE', False)
+    model_retry_attempts: int = max(0, min(3, env_int('MODEL_RETRY_ATTEMPTS', 1, strict=True, minimum=0, maximum=3)))
+    model_retry_backoff_seconds: float = max(0.0, min(2.0, env_float('MODEL_RETRY_BACKOFF_SECONDS', 0.05, strict=True, minimum=0.0, maximum=2.0)))
+    model_max_failovers: int = max(0, min(12, env_int('MODEL_MAX_FAILOVERS', 5, strict=True, minimum=0, maximum=12)))
+    model_local_first: bool = env_bool('MODEL_LOCAL_FIRST', True, strict=True)
+    allow_external_for_sensitive: bool = env_bool('ALLOW_EXTERNAL_FOR_SENSITIVE', False, strict=True)
     model_evaluation_on_startup: bool = env_bool('MODEL_EVALUATION_ON_STARTUP', False)
 
     intelligence_fabric_enabled: bool = env_bool('INTELLIGENCE_FABRIC_ENABLED', True)
@@ -60,15 +141,15 @@ class Settings:
     parallel_agents_enabled: bool = env_bool('PARALLEL_AGENTS_ENABLED', False)
     model_handoff_enabled: bool = env_bool('MODEL_HANDOFF_ENABLED', True)
     multi_model_deliberation_enabled: bool = env_bool('MULTI_MODEL_DELIBERATION_ENABLED', False)
-    ai_budgets_enabled: bool = env_bool('AI_BUDGETS_ENABLED', True)
+    ai_budgets_enabled: bool = env_bool('AI_BUDGETS_ENABLED', True, strict=True)
 
-    model_global_max_cost: float = max(0.0, env_float('MODEL_GLOBAL_MAX_COST', 0.0))
-    model_global_max_input_tokens: int = max(0, env_int('MODEL_GLOBAL_MAX_INPUT_TOKENS', 0))
-    model_global_max_output_tokens: int = max(0, env_int('MODEL_GLOBAL_MAX_OUTPUT_TOKENS', 0))
-    model_global_max_requests: int = max(0, env_int('MODEL_GLOBAL_MAX_REQUESTS', 0))
-    model_global_max_retries: int = max(0, env_int('MODEL_GLOBAL_MAX_RETRIES', 0))
-    model_max_parallel_calls: int = max(1, min(32, env_int('MODEL_MAX_PARALLEL_CALLS', 4)))
-    model_max_parallel_agents: int = max(1, min(32, env_int('MODEL_MAX_PARALLEL_AGENTS', 4)))
+    model_global_max_cost: float = max(0.0, env_float('MODEL_GLOBAL_MAX_COST', 0.0, strict=True, minimum=0.0))
+    model_global_max_input_tokens: int = max(0, env_int('MODEL_GLOBAL_MAX_INPUT_TOKENS', 0, strict=True, minimum=0))
+    model_global_max_output_tokens: int = max(0, env_int('MODEL_GLOBAL_MAX_OUTPUT_TOKENS', 0, strict=True, minimum=0))
+    model_global_max_requests: int = max(0, env_int('MODEL_GLOBAL_MAX_REQUESTS', 0, strict=True, minimum=0))
+    model_global_max_retries: int = max(0, env_int('MODEL_GLOBAL_MAX_RETRIES', 0, strict=True, minimum=0))
+    model_max_parallel_calls: int = max(1, min(32, env_int('MODEL_MAX_PARALLEL_CALLS', 4, strict=True, minimum=1, maximum=32)))
+    model_max_parallel_agents: int = max(1, min(32, env_int('MODEL_MAX_PARALLEL_AGENTS', 4, strict=True, minimum=1, maximum=32)))
 
     openrouter_api_key: str = os.getenv('OPENROUTER_API_KEY', '')
     openrouter_model: str = os.getenv('OPENROUTER_MODEL', 'meta-llama/llama-3.3-70b-instruct')
@@ -97,7 +178,7 @@ class Settings:
     custom_ai_api_key: str = os.getenv('CUSTOM_AI_API_KEY', '')
     custom_ai_base_url: str = os.getenv('CUSTOM_AI_BASE_URL', '').rstrip('/')
     custom_ai_model: str = os.getenv('CUSTOM_AI_MODEL', '')
-    custom_ai_private: bool = env_bool('CUSTOM_AI_PRIVATE', False)
+    custom_ai_private: bool = env_bool('CUSTOM_AI_PRIVATE', False, strict=True)
 
     realtime_provider: str = os.getenv('REALTIME_PROVIDER', 'auto').lower().strip()
     realtime_model: str = os.getenv('REALTIME_MODEL', 'gpt-realtime-2.1')
@@ -122,17 +203,17 @@ class Settings:
     tts_voice: str = os.getenv('TTS_VOICE', 'alloy')
 
     autonomy_mode: str = os.getenv('AUTONOMY_MODE', 'ask').lower().strip()
-    control_server_enabled: bool = env_bool('CONTROL_SERVER_ENABLED', False)
+    control_server_enabled: bool = env_bool('CONTROL_SERVER_ENABLED', False, strict=True)
     control_server_host: str = os.getenv('CONTROL_SERVER_HOST', '127.0.0.1')
-    control_server_port: int = env_int('CONTROL_SERVER_PORT', 8766)
-    pairing_ttl_seconds: int = env_int('PAIRING_TTL_SECONDS', 300)
-    cloud_runtime_enabled: bool = env_bool('CLOUD_RUNTIME_ENABLED', False)
+    control_server_port: int = env_int('CONTROL_SERVER_PORT', 8766, strict=True, minimum=1, maximum=65535)
+    pairing_ttl_seconds: int = env_int('PAIRING_TTL_SECONDS', 300, strict=True, minimum=1)
+    cloud_runtime_enabled: bool = env_bool('CLOUD_RUNTIME_ENABLED', False, strict=True)
     cloud_owner_secret: str = os.getenv('PERSONAL_AI_CLOUD_OWNER_SECRET', '')
-    cloud_session_ttl_seconds: int = env_int('CLOUD_SESSION_TTL_SECONDS', 900)
+    cloud_session_ttl_seconds: int = env_int('CLOUD_SESSION_TTL_SECONDS', 900, strict=True, minimum=1)
     cloud_allowed_origins: tuple[str, ...] = tuple(x.strip().rstrip('/') for x in os.getenv('CLOUD_ALLOWED_ORIGINS', '').split(',') if x.strip())
     iphone_owner_enrollment_code: str = os.getenv('PERSONAL_AI_IPHONE_ENROLLMENT_CODE', '').strip()
-    iphone_pwa_allow_insecure:bool=env_bool('PERSONAL_AI_IPHONE_ALLOW_INSECURE',False)
-    iphone_device_cookie_days: int = env_int('PERSONAL_AI_DEVICE_COOKIE_DAYS', 365)
+    iphone_pwa_allow_insecure: bool = env_bool('PERSONAL_AI_IPHONE_ALLOW_INSECURE', False, strict=True)
+    iphone_device_cookie_days: int = env_int('PERSONAL_AI_DEVICE_COOKIE_DAYS', 365, strict=True, minimum=1)
     google_signin_client_id: str = os.getenv('GOOGLE_SIGNIN_CLIENT_ID', os.getenv('GOOGLE_CLIENT_ID', '')).strip()
     owner_google_email: str = os.getenv('PERSONAL_AI_OWNER_GOOGLE_EMAIL', '').strip().casefold()
 
@@ -169,8 +250,8 @@ class Settings:
     proactive_enabled: bool = env_bool('PROACTIVE_ENABLED', True)
     proactive_interruptions_per_hour: int = env_int('PROACTIVE_INTERRUPTION_BUDGET_PER_HOUR', 3)
     proactive_default_cooldown_seconds: int = env_int('PROACTIVE_DEFAULT_COOLDOWN_SECONDS', 1800)
-    workflow_default_timeout_seconds: int = env_int('WORKFLOW_DEFAULT_TIMEOUT_SECONDS', 120)
-    workflow_default_retries: int = env_int('WORKFLOW_DEFAULT_RETRIES', 2)
+    workflow_default_timeout_seconds: int = env_int('WORKFLOW_DEFAULT_TIMEOUT_SECONDS', 120, strict=True, minimum=1)
+    workflow_default_retries: int = env_int('WORKFLOW_DEFAULT_RETRIES', 2, strict=True, minimum=0)
 
 
 settings = Settings()
