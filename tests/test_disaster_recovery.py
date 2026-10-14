@@ -10,6 +10,7 @@ from recovery.disaster_recovery import (
     DisasterRecoveryService,
     generate_recovery_key,
 )
+from security.owner_access import OwnerAccessStore
 
 
 class _FixedRootKeyStore:
@@ -39,6 +40,10 @@ def test_disaster_recovery_restores_on_new_host_with_different_root_key(tmp_path
     target = tmp_path / "target"
     source.mkdir()
     target.mkdir()
+    source_owner = OwnerAccessStore(source / 'owner-access.sqlite3')
+    owner_identity, _ = source_owner.initialize_identity(first_name='Asha', last_name='Patel')
+    source_owner.set_password('correct horse battery staple')
+    source_owner.regenerate_recovery_codes()
     _sqlite(source / "memory.sqlite3", "same-vishnu-memory")
     _sqlite(source / "devices.sqlite3", "old-security-authority")
     (source / "notes.txt").write_text("portable owner state", encoding="utf-8")
@@ -52,7 +57,7 @@ def test_disaster_recovery_restores_on_new_host_with_different_root_key(tmp_path
     created = source_service.create_bundle(
         bundle,
         recovery_key=recovery_key,
-        owner_id="owner-1",
+        owner_id=owner_identity['owner_id'],
         key_id="recovery-set-1",
     )
     assert created["portable"] is True
@@ -66,7 +71,7 @@ def test_disaster_recovery_restores_on_new_host_with_different_root_key(tmp_path
     restored = target_service.restore_bundle(
         bundle,
         recovery_key=recovery_key,
-        owner_id="owner-1",
+        owner_id=owner_identity['owner_id'],
         expected_key_id="recovery-set-1",
     )
 
@@ -79,6 +84,11 @@ def test_disaster_recovery_restores_on_new_host_with_different_root_key(tmp_path
     # Security authority is intentionally recreated/rebound on the new host.
     assert not (target / "devices.sqlite3").exists()
     assert "devices.sqlite3" in restored["skipped_security_state"]
+    restored_owner = OwnerAccessStore(target / 'owner-access.sqlite3')
+    assert restored_owner.identity()['owner_id'] == owner_identity['owner_id']
+    assert restored_owner.identity()['vishnu_id'] == owner_identity['vishnu_id']
+    assert restored_owner.password_configured() is False
+    assert restored_owner.recovery_codes_remaining() == 0
 
 
 def test_recovery_bundle_does_not_embed_recovery_key(tmp_path):

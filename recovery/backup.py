@@ -20,7 +20,6 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
-from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from security.keychain import KeychainUnavailable, RootKeyStore
 from security.vault import SecretVault
@@ -47,7 +46,6 @@ SQLITE_SUFFIXES = {'.sqlite3', '.sqlite', '.db'}
 SQLITE_SIDECARS = ('-wal', '-shm', '-journal')
 
 BACKUP_MAGIC = b'PAIBACKUP2\n'
-RECOVERY_MAGIC = b'VISHNURCV1\n'
 BACKUP_VERSION = 2
 BACKUP_TAG_BYTES = 16
 BACKUP_HEADER_MAX = 64 * 1024
@@ -55,11 +53,6 @@ BACKUP_INFO = b'personal-ai-backup-v2'
 MEMORY_KEY_ENVELOPE = 'system-key-envelopes/memory-field-key.v1.json'
 MEMORY_KEY_AAD = b'vishnu-backup-memory-field-key-v1'
 MEMORY_KEY_INFO = b'vishnu-backup-memory-field-key-wrap-v1'
-RECOVERY_MEMORY_KEY_AAD = b'vishnu-recovery-memory-field-key-v1'
-RECOVERY_MEMORY_KEY_INFO = b'vishnu-recovery-memory-field-key-wrap-v1'
-RECOVERY_KDF_N = 2 ** 15
-RECOVERY_KDF_R = 8
-RECOVERY_KDF_P = 1
 COPY_CHUNK = 1024 * 1024
 
 
@@ -174,7 +167,7 @@ class BackupService:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
 
-    def _memory_key_envelope(self, recovery_key: bytes | None = None) -> bytes | None:
+    def _memory_key_envelope(self) -> bytes | None:
         vault_path = self.data_dir / 'vault.json'
         vault = self.vault or SecretVault.live(vault_path)
         encrypted_memory_data = False
@@ -224,7 +217,7 @@ class BackupService:
             raise BackupError('memory data-encryption key is invalid') from exc
         if len(dek) != 32:
             raise BackupError('memory data-encryption key is invalid')
-        return self._wrap_memory_key(dek, recovery_key=recovery_key)
+        return self._wrap_memory_key(dek)
 
     def _identity_metadata(self) -> dict | None:
         """Read only stable owner identifiers; never include auth/device state."""
@@ -250,38 +243,27 @@ class BackupService:
         except sqlite3.DatabaseError as exc:
             raise BackupError('cannot read stable identity metadata for backup') from exc
 
-    def _wrap_memory_key(self, dek: bytes, *, recovery_key: bytes | None = None) -> bytes:
+    def _wrap_memory_key(self, dek: bytes) -> bytes:
         if len(dek) != 32:
             raise BackupError('memory data-encryption key is invalid')
-        if recovery_key is not None:
-            wrap_key = HKDF(
-                algorithm=hashes.SHA256(), length=32,
-                salt=b'vishnu-recovery-memory-field-key-v1', info=RECOVERY_MEMORY_KEY_INFO,
-            ).derive(bytes(recovery_key))
-            aad = RECOVERY_MEMORY_KEY_AAD
-            wrapper = 'recovery-passphrase'
-        else:
-            try:
-                root_key = self.root_key_store.get_or_create()
-            except (KeychainUnavailable, OSError, RuntimeError) as exc:
-                raise BackupError('backup key authority is unavailable') from exc
-            wrap_key = HKDF(
-                algorithm=hashes.SHA256(), length=32,
-                salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
-            ).derive(bytes(root_key))
-            aad = MEMORY_KEY_AAD
-            wrapper = 'runtime-root-key'
+        try:
+            root_key = self.root_key_store.get_or_create()
+        except (KeychainUnavailable, OSError, RuntimeError) as exc:
+            raise BackupError('backup key authority is unavailable') from exc
+        wrap_key = HKDF(
+            algorithm=hashes.SHA256(), length=32,
+            salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
+        ).derive(bytes(root_key))
         nonce = secrets.token_bytes(12)
-        wrapped = AESGCM(wrap_key).encrypt(nonce, dek, aad)
+        wrapped = AESGCM(wrap_key).encrypt(nonce, dek, MEMORY_KEY_AAD)
         return json.dumps({
             'version': 1,
             'cipher': 'AES-256-GCM',
-            'wrapper': wrapper,
             'nonce': base64.b64encode(nonce).decode('ascii'),
             'wrapped_key': base64.b64encode(wrapped).decode('ascii'),
         }, sort_keys=True, separators=(',', ':')).encode('utf-8')
 
-    def _unwrap_memory_key(self, envelope: bytes, *, recovery_key: bytes | None = None) -> bytes:
+    def _unwrap_memory_key(self, envelope: bytes) -> bytes:
         try:
             obj = json.loads(envelope)
             if obj.get('version') != 1 or obj.get('cipher') != 'AES-256-GCM':
@@ -290,22 +272,12 @@ class BackupService:
             wrapped = base64.b64decode(obj['wrapped_key'], validate=True)
             if len(nonce) != 12 or len(wrapped) != 48:
                 raise ValueError('invalid key envelope size')
-            if obj.get('wrapper') == 'recovery-passphrase':
-                if recovery_key is None:
-                    raise ValueError('recovery passphrase is required')
-                wrap_key = HKDF(
-                    algorithm=hashes.SHA256(), length=32,
-                    salt=b'vishnu-recovery-memory-field-key-v1', info=RECOVERY_MEMORY_KEY_INFO,
-                ).derive(bytes(recovery_key))
-                aad = RECOVERY_MEMORY_KEY_AAD
-            else:
-                root_key = self.root_key_store.get_or_create()
-                wrap_key = HKDF(
-                    algorithm=hashes.SHA256(), length=32,
-                    salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
-                ).derive(bytes(root_key))
-                aad = MEMORY_KEY_AAD
-            dek = AESGCM(wrap_key).decrypt(nonce, wrapped, aad)
+            root_key = self.root_key_store.get_or_create()
+            wrap_key = HKDF(
+                algorithm=hashes.SHA256(), length=32,
+                salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
+            ).derive(bytes(root_key))
+            dek = AESGCM(wrap_key).decrypt(nonce, wrapped, MEMORY_KEY_AAD)
             if len(dek) != 32:
                 raise ValueError('invalid data-encryption key size')
             return dek
@@ -337,19 +309,6 @@ class BackupService:
             salt=salt,
             info=BACKUP_INFO,
         ).derive(bytes(root_key))
-
-    @staticmethod
-    def _derive_recovery_key(passphrase: str, salt: bytes) -> bytes:
-        value = str(passphrase or '')
-        if len(value) < 14:
-            raise BackupError('recovery passphrase must contain at least 14 characters')
-        try:
-            return Scrypt(
-                salt=salt, length=32, n=RECOVERY_KDF_N,
-                r=RECOVERY_KDF_R, p=RECOVERY_KDF_P,
-            ).derive(value.encode('utf-8'))
-        except Exception as exc:
-            raise BackupError('recovery package key derivation failed') from exc
 
     @staticmethod
     def _canonical_header(header: dict) -> bytes:
@@ -394,107 +353,6 @@ class BackupService:
                 pass
         finally:
             temp_target.unlink(missing_ok=True)
-
-    def _encrypt_recovery_payload(self, payload: Path, target: Path, *, salt: bytes, key: bytes) -> None:
-        nonce = secrets.token_bytes(12)
-        header = {
-            'version': 1, 'cipher': 'AES-256-GCM', 'kdf': 'scrypt',
-            'n': RECOVERY_KDF_N, 'r': RECOVERY_KDF_R, 'p': RECOVERY_KDF_P,
-            'salt': base64.b64encode(salt).decode('ascii'),
-            'nonce': base64.b64encode(nonce).decode('ascii'),
-        }
-        header_bytes = self._canonical_header(header)
-        header_len = struct.pack('>I', len(header_bytes))
-        aad = RECOVERY_MAGIC + header_len + header_bytes
-        encryptor = Cipher(algorithms.AES(key), modes.GCM(nonce)).encryptor()
-        encryptor.authenticate_additional_data(aad)
-        target.parent.mkdir(parents=True, exist_ok=True)
-        temp_target = target.with_name(f'.{target.name}.{secrets.token_hex(6)}.tmp')
-        try:
-            with payload.open('rb') as src, temp_target.open('wb') as dst:
-                try:
-                    os.chmod(temp_target, 0o600)
-                except OSError:
-                    pass
-                dst.write(aad)
-                for chunk in iter(lambda: src.read(COPY_CHUNK), b''):
-                    dst.write(encryptor.update(chunk))
-                dst.write(encryptor.finalize())
-                dst.write(encryptor.tag)
-                dst.flush()
-                os.fsync(dst.fileno())
-            os.replace(temp_target, target)
-            try:
-                os.chmod(target, 0o600)
-            except OSError:
-                pass
-        finally:
-            temp_target.unlink(missing_ok=True)
-
-    def _decrypt_recovery_payload(self, archive: Path, passphrase: str) -> tuple[Path, bytes]:
-        handle = tempfile.NamedTemporaryFile(
-            prefix='vishnu-recovery-decrypted-', suffix='.zip', delete=False
-        )
-        temp_path = Path(handle.name)
-        handle.close()
-        try:
-            try:
-                os.chmod(temp_path, 0o600)
-            except OSError:
-                pass
-            with Path(archive).open('rb') as src:
-                if src.read(len(RECOVERY_MAGIC)) != RECOVERY_MAGIC:
-                    raise BackupError('unsupported recovery package format')
-                raw_len = src.read(4)
-                if len(raw_len) != 4:
-                    raise BackupError('recovery package header is truncated')
-                header_size = struct.unpack('>I', raw_len)[0]
-                if header_size <= 0 or header_size > BACKUP_HEADER_MAX:
-                    raise BackupError('recovery package header is invalid')
-                header_bytes = src.read(header_size)
-                if len(header_bytes) != header_size:
-                    raise BackupError('recovery package header is truncated')
-                try:
-                    header = json.loads(header_bytes)
-                    if (header.get('version') != 1 or header.get('cipher') != 'AES-256-GCM'
-                            or header.get('kdf') != 'scrypt' or header.get('n') != RECOVERY_KDF_N
-                            or header.get('r') != RECOVERY_KDF_R or header.get('p') != RECOVERY_KDF_P):
-                        raise ValueError('unsupported parameters')
-                    salt = base64.b64decode(header['salt'], validate=True)
-                    nonce = base64.b64decode(header['nonce'], validate=True)
-                except Exception as exc:
-                    raise BackupError('recovery package header is invalid') from exc
-                if len(salt) != 16 or len(nonce) != 12:
-                    raise BackupError('recovery package header is invalid')
-                ciphertext_start = src.tell()
-                ciphertext_size = Path(archive).stat().st_size - ciphertext_start - BACKUP_TAG_BYTES
-                if ciphertext_size < 0:
-                    raise BackupError('recovery package ciphertext is truncated')
-                src.seek(-BACKUP_TAG_BYTES, os.SEEK_END)
-                tag = src.read(BACKUP_TAG_BYTES)
-                src.seek(ciphertext_start)
-                aad = RECOVERY_MAGIC + raw_len + header_bytes
-                key = self._derive_recovery_key(passphrase, salt)
-                decryptor = Cipher(algorithms.AES(key), modes.GCM(nonce, tag)).decryptor()
-                decryptor.authenticate_additional_data(aad)
-                remaining = ciphertext_size
-                with temp_path.open('wb') as dst:
-                    while remaining:
-                        chunk = src.read(min(COPY_CHUNK, remaining))
-                        if not chunk:
-                            raise BackupError('recovery package ciphertext is truncated')
-                        remaining -= len(chunk)
-                        dst.write(decryptor.update(chunk))
-                    try:
-                        dst.write(decryptor.finalize())
-                    except InvalidTag as exc:
-                        raise BackupError('recovery package authentication failed') from exc
-                    dst.flush()
-                    os.fsync(dst.fileno())
-            return temp_path, key
-        except Exception:
-            temp_path.unlink(missing_ok=True)
-            raise
 
     def _decrypt_payload(self, archive: Path) -> Path:
         archive = Path(archive)
@@ -569,7 +427,7 @@ class BackupService:
             temp_path.unlink(missing_ok=True)
             raise
 
-    def _build_payload(self, payload: Path, *, recovery_key: bytes | None = None) -> dict:
+    def _build_payload(self, payload: Path) -> dict:
         stage = Path(tempfile.mkdtemp(prefix='personal-ai-backup-stage-'))
         try:
             manifest = {
@@ -594,7 +452,7 @@ class BackupService:
                     'size': snapshot.stat().st_size,
                 })
 
-            key_envelope = self._memory_key_envelope(recovery_key=recovery_key)
+            key_envelope = self._memory_key_envelope()
             if key_envelope is not None:
                 envelope_path = stage / MEMORY_KEY_ENVELOPE
                 envelope_path.parent.mkdir(parents=True, exist_ok=True)
@@ -635,41 +493,6 @@ class BackupService:
                 pass
             self._build_payload(payload)
             self._encrypt_payload(payload, target)
-            return target
-        finally:
-            payload.unlink(missing_ok=True)
-
-    def create_recovery_package(self, passphrase: str, name: str | None = None) -> Path:
-        """Create a portable, passphrase-encrypted recovery archive.
-
-        Unlike routine local backups, this archive is decryptable on another
-        device. It contains owner data and stable identity metadata, but never
-        active sessions, device credentials, passwords, or recovery-code hashes.
-        """
-        passphrase = str(passphrase or '')
-        if len(passphrase) < 14:
-            raise BackupError('recovery passphrase must contain at least 14 characters')
-        stamp = time.strftime('%Y%m%d-%H%M%S')
-        safe_name = Path(name).name if name else f'vishnu-recovery-{stamp}.vishnurecovery'
-        target = self.backup_dir / safe_name
-        if target.suffix != '.vishnurecovery':
-            target = target.with_suffix('.vishnurecovery')
-        handle = tempfile.NamedTemporaryFile(
-            prefix='vishnu-recovery-payload-', suffix='.zip', delete=False
-        )
-        payload = Path(handle.name)
-        handle.close()
-        try:
-            try:
-                os.chmod(payload, 0o600)
-            except OSError:
-                pass
-            salt = secrets.token_bytes(16)
-            recovery_key = self._derive_recovery_key(passphrase, salt)
-            # Build the memory-key envelope with the same recovery key that the
-            # outer package uses (the wrapping derivation is domain separated).
-            self._build_payload(payload, recovery_key=recovery_key)
-            self._encrypt_recovery_payload(payload, target, salt=salt, key=recovery_key)
             return target
         finally:
             payload.unlink(missing_ok=True)
@@ -753,9 +576,8 @@ class BackupService:
             raise BackupError('backup payload is not a valid archive') from exc
 
     def _payload_for_read(
-        self, archive: Path, *, recovery_passphrase: str | None = None,
-        include_recovery_key: bool = False,
-    ):
+        self, archive: Path,
+    ) -> tuple[Path, bool, bool]:
         archive = Path(archive)
         try:
             with archive.open('rb') as handle:
@@ -763,23 +585,13 @@ class BackupService:
         except OSError as exc:
             raise BackupError('backup cannot be opened') from exc
         if prefix == BACKUP_MAGIC:
-            result = (self._decrypt_payload(archive), True, True)
-            return (*result, None) if include_recovery_key else result
-        if prefix == RECOVERY_MAGIC:
-            if not recovery_passphrase:
-                raise BackupError('recovery passphrase is required')
-            payload, key = self._decrypt_recovery_payload(archive, recovery_passphrase)
-            result = (payload, True, True)
-            return (*result, key) if include_recovery_key else result
+            return self._decrypt_payload(archive), True, True
         if zipfile.is_zipfile(archive):
-            result = (archive, False, False)
-            return (*result, None) if include_recovery_key else result
+            return archive, False, False
         raise BackupError('unsupported backup format')
 
-    def inspect(self, archive: Path, *, recovery_passphrase: str | None = None) -> dict:
-        payload, encrypted, cleanup = self._payload_for_read(
-            Path(archive), recovery_passphrase=recovery_passphrase,
-        )
+    def inspect(self, archive: Path) -> dict:
+        payload, encrypted, cleanup = self._payload_for_read(Path(archive))
         try:
             return self._inspect_zip(payload, encrypted=encrypted)
         finally:
@@ -798,11 +610,8 @@ class BackupService:
         except OSError:
             pass
 
-    def restore(self, archive: Path, *, recovery_passphrase: str | None = None) -> dict:
-        payload, encrypted, cleanup_payload, recovery_key = self._payload_for_read(
-            Path(archive), recovery_passphrase=recovery_passphrase,
-            include_recovery_key=True,
-        )
+    def restore(self, archive: Path) -> dict:
+        payload, encrypted, cleanup_payload = self._payload_for_read(Path(archive))
         stage = Path(tempfile.mkdtemp(prefix='personal-ai-restore-'))
         rollback = Path(tempfile.mkdtemp(prefix='personal-ai-restore-rollback-'))
         touched: list[tuple[Path, Path | None]] = []
@@ -830,9 +639,7 @@ class BackupService:
             memory_key = None
             memory_key_path = stage / MEMORY_KEY_ENVELOPE
             if memory_key_path.exists():
-                memory_key = self._unwrap_memory_key(
-                    memory_key_path.read_bytes(), recovery_key=recovery_key,
-                )
+                memory_key = self._unwrap_memory_key(memory_key_path.read_bytes())
 
             destinations: list[tuple[Path, Path, Path]] = []
             skipped_security_state: list[str] = []

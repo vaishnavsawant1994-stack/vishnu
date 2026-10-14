@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
@@ -11,7 +10,6 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QFrame,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -104,13 +102,10 @@ class SettingsPanel(QDialog):
         save.clicked.connect(self.save)
         backup = QPushButton('Create backup')
         backup.clicked.connect(self.create_backup)
-        recovery = QPushButton('Export recovery package…')
-        recovery.clicked.connect(self.create_recovery_package)
         restore = QPushButton('Restore backup…')
         restore.clicked.connect(self.restore_backup)
         row.addWidget(save)
         row.addWidget(backup)
-        row.addWidget(recovery)
         row.addWidget(restore)
         lay.addLayout(row)
 
@@ -518,75 +513,14 @@ class SettingsPanel(QDialog):
         path = self.runtime['backups'].create()
         QMessageBox.information(self, 'Backup created', str(path))
 
-    def create_recovery_package(self):
-        passphrase, accepted = QInputDialog.getText(
-            self, 'Protect recovery package',
-            'Choose a passphrase with at least 14 characters. You will need it to restore Vishnu on another device:',
-            QLineEdit.EchoMode.Password,
-        )
-        if not accepted:
-            return
-        if len(passphrase) < 14:
-            QMessageBox.warning(self, 'Passphrase too short', 'Use at least 14 characters.')
-            return
-        destination, _ = QFileDialog.getSaveFileName(
-            self, 'Save Vishnu recovery package', str(Path.home() / 'vishnu-recovery.vishnurecovery'),
-            'Vishnu Recovery Package (*.vishnurecovery)',
-        )
-        if not destination:
-            return
-        try:
-            package = self.runtime['backups'].create_recovery_package(
-                passphrase, Path(destination).name,
-            )
-            if package.resolve() != Path(destination).resolve():
-                shutil.copyfile(package, destination)
-            try:
-                Path(destination).chmod(0o600)
-            except OSError:
-                pass
-            QMessageBox.information(
-                self, 'Recovery package saved',
-                'The encrypted package is saved at the location you chose. Store it somewhere you control and keep the passphrase separately. Vishnu never uploaded it.',
-            )
-        except Exception as exc:
-            QMessageBox.warning(self, 'Recovery package not created', str(exc))
-        finally:
-            passphrase = ''
-
     def restore_backup(self):
-        path, _ = QFileDialog.getOpenFileName(
-            self, 'Restore Vishnu data or recovery package', str(Path.home()),
-            'Vishnu Files (*.paibackup *.vishnurecovery)',
-        )
+        path, _ = QFileDialog.getOpenFileName(self, 'Restore Vishnu backup', str(Path.home()), 'Vishnu Backup (*.paibackup)')
         if not path:
             return
         answer = QMessageBox.question(self, 'Restore backup', 'This will replace matching Vishnu data files. Continue?')
         if answer != QMessageBox.StandardButton.Yes:
             return
-        recovery_passphrase = None
-        try:
-            with Path(path).open('rb') as source:
-                is_recovery_package = source.read(11) == b'VISHNURCV1\n'
-        except OSError as exc:
-            QMessageBox.warning(self, 'Restore unavailable', str(exc))
-            return
-        if is_recovery_package:
-            recovery_passphrase, accepted = QInputDialog.getText(
-                self, 'Unlock recovery package', 'Enter the recovery passphrase:',
-                QLineEdit.EchoMode.Password,
-            )
-            if not accepted:
-                return
-        try:
-            result = self.runtime['backups'].restore(
-                Path(path), recovery_passphrase=recovery_passphrase,
-            )
-        except Exception as exc:
-            QMessageBox.warning(self, 'Restore failed', str(exc))
-            return
-        finally:
-            recovery_passphrase = None
+        result = self.runtime['backups'].restore(Path(path))
         QMessageBox.information(self, 'Restore complete', f"Restored {result['restored']} files. Restart Vishnu to reload restored state.")
 
     def refresh(self):
