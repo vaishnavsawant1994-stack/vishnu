@@ -17,14 +17,29 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
     }
 
     override fun onActivityResumed(activity: Activity) {
-        if (activity is MainActivity) {
-            attachPasskeyButton(activity)
-            attachForgeButton(activity)
+        when (activity) {
+            is MainActivity -> {
+                attachPasskeyButton(activity)
+                attachForgeButton(activity)
+            }
+            is ConnectActivity -> attachPortableRecoveryButton(activity)
         }
     }
 
+    private fun attachPortableRecoveryButton(activity: ConnectActivity) {
+        val root = activityRoot(activity) ?: return
+        if ((0 until root.childCount).any { root.getChildAt(it).tag == RECOVERY_TAG }) return
+        val button = surfaceButton(activity).apply {
+            tag = RECOVERY_TAG
+            text = "Restore from encrypted recovery package"
+            contentDescription = "Restore Vishnu from a portable encrypted recovery package"
+            setOnClickListener { activity.startActivity(Intent(activity, PortableRecoveryActivity::class.java)) }
+        }
+        root.addView(button, root.childCount.coerceAtMost(5))
+    }
+
     private fun attachPasskeyButton(activity: MainActivity) {
-        val root = mainRoot(activity) ?: return
+        val root = activityRoot(activity) ?: return
         if ((0 until root.childCount).any { root.getChildAt(it).tag == PASSKEY_TAG }) return
         val button = surfaceButton(activity).apply {
             tag = PASSKEY_TAG
@@ -32,12 +47,11 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
             contentDescription = "Create an Android passkey for the Vishnu owner"
             setOnClickListener { activity.startActivity(Intent(activity, PasskeySetupActivity::class.java)) }
         }
-        val index = root.childCount.coerceAtMost(4)
-        root.addView(button, index)
+        root.addView(button, root.childCount.coerceAtMost(4))
     }
 
     private fun attachForgeButton(activity: MainActivity) {
-        val root = mainRoot(activity) ?: return
+        val root = activityRoot(activity) ?: return
         if ((0 until root.childCount).any { root.getChildAt(it).tag == FORGE_TAG }) return
         val button = surfaceButton(activity).apply {
             tag = FORGE_TAG
@@ -45,11 +59,10 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
             contentDescription = "Open Capability Forge V3 production-readiness controls"
             setOnClickListener { activity.startActivity(Intent(activity, ForgeV3Activity::class.java)) }
         }
-        val index = root.childCount.coerceAtMost(5)
-        root.addView(button, index)
+        root.addView(button, root.childCount.coerceAtMost(5))
     }
 
-    private fun mainRoot(activity: MainActivity): LinearLayout? {
+    private fun activityRoot(activity: Activity): LinearLayout? {
         val content = activity.findViewById<ViewGroup>(android.R.id.content) ?: return null
         val scroll = (0 until content.childCount)
             .map { content.getChildAt(it) }
@@ -58,7 +71,7 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
         return scroll.getChildAt(0) as? LinearLayout
     }
 
-    private fun surfaceButton(activity: MainActivity): Button {
+    private fun surfaceButton(activity: Activity): Button {
         val density = activity.resources.displayMetrics.density
         fun dp(value: Int) = (value * density).toInt()
         return Button(activity).apply {
@@ -83,6 +96,7 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
     override fun onActivityDestroyed(activity: Activity) = Unit
 
     companion object {
+        private const val RECOVERY_TAG = "vishnu-portable-recovery"
         private const val PASSKEY_TAG = "vishnu-native-passkey"
         private const val FORGE_TAG = "vishnu-capability-forge-v3"
     }
