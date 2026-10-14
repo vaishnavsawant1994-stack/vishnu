@@ -40,9 +40,14 @@ class Registry:
         self.active.add(device_id)
         return {'id': device_id, 'name': name, 'platform': platform}, token
     def authenticate(self, device_id, token):
-        return self.tokens.get(device_id) == token
+        return device_id in self.active and self.tokens.get(device_id) == token
     def is_active(self, device_id):
         return device_id in self.active
+    def revoke(self, device_id):
+        if device_id not in self.active:
+            return False
+        self.active.remove(device_id)
+        return True
     def list(self):
         return [{'id': device_id, 'name': 'Device', 'platform': 'test'}
                 for device_id in sorted(self.active)]
