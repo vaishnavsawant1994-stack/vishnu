@@ -62,13 +62,15 @@ def test_mobile_runtime_bootstrap_secret_is_device_generated_and_never_in_deploy
     assert "PERSONAL_AI_OWNER_BOOTSTRAP_SECRET" in ios
 
 
-def test_no_laptop_runtime_provisioning_is_reachable_from_android_and_ios_onboarding() -> None:
+def test_no_laptop_runtime_provisioning_is_reachable_and_bootstrap_is_erased_after_trust() -> None:
     android_app = (ROOT / "android-companion" / "app" / "src" / "main" / "java" / "ai" / "personal" / "companion" / "VishnuApplication.kt").read_text(encoding="utf-8")
     android_manifest = (ROOT / "android-companion" / "app" / "src" / "main" / "AndroidManifest.xml").read_text(encoding="utf-8")
     ios_app = (ROOT / "ios-companion" / "PersonalAICompanion" / "PersonalAICompanionApp.swift").read_text(encoding="utf-8")
 
     assert "attachRuntimeProvisioningButton(activity)" in android_app
     assert "RuntimeProvisioningActivity::class.java" in android_app
+    assert ".remove(RuntimeProvisioningActivity.PREF_BOOTSTRAP)" in android_app
     assert '.RuntimeProvisioningActivity' in android_manifest
     assert "showRuntimeProvisioning = true" in ios_app
     assert "RuntimeProvisioningView()" in ios_app
+    assert "KeychainStore.shared.remove(RuntimeProvisioningView.secretKey)" in ios_app
