@@ -97,6 +97,8 @@ jobs:
         run: pytest -q tests/test_evolution_e7_code_body.py tests/test_evolution_e7_policy.py tests/test_evolution_e7_review.py
       - name: E8 cross-host continuity qualification gate
         run: pytest -q tests/test_continuity_e8_*.py
+      - name: Backup and disaster-recovery qualification gate
+        run: pytest -q tests/test_disaster_recovery.py tests/test_backup_recovery_qualification.py
       - name: E9 architecture convergence gate
         run: pytest -q tests/test_e9_convergence.py tests/conformance
       - name: Canonical Work release qualification gate

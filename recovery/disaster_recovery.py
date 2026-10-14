@@ -1,22 +1,26 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
 import os
+import shutil
 from pathlib import Path
 import secrets
 import struct
 import tempfile
 import time
-from typing import Protocol
+import zipfile
+from typing import Callable, Protocol
 
 from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
-from recovery.backup import BackupService
+from recovery.backup import BackupError, BackupService, MEMORY_KEY_ENVELOPE
 
 
 DISASTER_RECOVERY_MAGIC = b"VISHNUDR1\n"
@@ -26,6 +30,8 @@ DISASTER_RECOVERY_HEADER_MAX = 64 * 1024
 DISASTER_RECOVERY_CHUNK = 1024 * 1024
 DISASTER_RECOVERY_INFO = b"vishnu-disaster-recovery-v1"
 RECOVERY_KEY_BYTES = 32
+DR_MEMORY_KEY_KIND = "vishnu-disaster-recovery-memory-dek"
+DR_MEMORY_KEY_INFO = b"vishnu-disaster-recovery-memory-dek-wrap-v1"
 
 
 class DisasterRecoveryError(RuntimeError):
@@ -263,6 +269,148 @@ class DisasterRecoveryService:
         self.codec = codec or DisasterRecoveryBundleCodec()
         self.maintenance_mode = bool(maintenance_mode)
 
+    @staticmethod
+    def _rewrite_memory_key_envelope(payload: Path, transform: Callable[[bytes], bytes]) -> bool:
+        payload = Path(payload)
+        temporary = payload.with_name(f".{payload.name}.{secrets.token_hex(6)}.rewrite")
+        try:
+            with zipfile.ZipFile(payload, "r") as source:
+                names = {item.filename for item in source.infolist() if not item.is_dir()}
+                if MEMORY_KEY_ENVELOPE not in names:
+                    return False
+                try:
+                    manifest = json.loads(source.read("manifest.json"))
+                    envelope = source.read(MEMORY_KEY_ENVELOPE)
+                except Exception as exc:
+                    raise DisasterRecoveryError("recovery payload key envelope is invalid") from exc
+                replacement = transform(envelope)
+                records = manifest.get("files")
+                if not isinstance(records, list):
+                    raise DisasterRecoveryError("recovery payload manifest is invalid")
+                record = next(
+                    (item for item in records if item.get("path") == MEMORY_KEY_ENVELOPE),
+                    None,
+                )
+                if record is None:
+                    raise DisasterRecoveryError("recovery payload key envelope is unlisted")
+                record["sha256"] = hashlib.sha256(replacement).hexdigest()
+                record["size"] = len(replacement)
+                with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as target:
+                    for info in source.infolist():
+                        if info.is_dir() or info.filename == "manifest.json":
+                            continue
+                        if info.filename == MEMORY_KEY_ENVELOPE:
+                            target.writestr(info.filename, replacement)
+                            continue
+                        with source.open(info, "r") as reader, target.open(info.filename, "w") as writer:
+                            shutil.copyfileobj(reader, writer, DISASTER_RECOVERY_CHUNK)
+                    target.writestr(
+                        "manifest.json",
+                        json.dumps(manifest, sort_keys=True, indent=2),
+                    )
+            os.replace(temporary, payload)
+            return True
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+
+    def _wrap_memory_key_portably(
+        self,
+        envelope: bytes,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        key_id: str,
+    ) -> bytes:
+        try:
+            dek = self.backups._unwrap_memory_key(envelope)
+            key = _validate_recovery_key(recovery_key)
+            salt = secrets.token_bytes(16)
+            nonce = secrets.token_bytes(12)
+            header = {
+                "version": 1,
+                "kind": DR_MEMORY_KEY_KIND,
+                "cipher": "AES-256-GCM",
+                "kdf": "HKDF-SHA256",
+                "key_id": key_id,
+                "owner_binding": _owner_binding(key, owner_id),
+                "salt": base64.b64encode(salt).decode("ascii"),
+                "nonce": base64.b64encode(nonce).decode("ascii"),
+            }
+            wrapping_key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                info=DR_MEMORY_KEY_INFO,
+            ).derive(key)
+            aad = json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            wrapped_key = AESGCM(wrapping_key).encrypt(nonce, dek, aad)
+            return json.dumps(
+                {
+                    **header,
+                    "wrapped_key": base64.b64encode(wrapped_key).decode("ascii"),
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        except BackupError:
+            raise
+        except Exception as exc:
+            raise DisasterRecoveryError("MemoryStore key could not be wrapped for recovery") from exc
+
+    def _unwrap_portable_memory_key(
+        self,
+        envelope: bytes,
+        *,
+        recovery_key: bytes,
+        owner_id: str,
+        key_id: str,
+    ) -> bytes:
+        try:
+            obj = json.loads(envelope)
+            if not isinstance(obj, dict) or obj.get("kind") != DR_MEMORY_KEY_KIND:
+                # Older bundles contain the original host-wrapped envelope.
+                return envelope
+            header = {name: obj[name] for name in (
+                "version", "kind", "cipher", "kdf", "key_id",
+                "owner_binding", "salt", "nonce",
+            )}
+            if set(obj) != {*header, "wrapped_key"}:
+                raise ValueError("invalid portable key envelope fields")
+            if (
+                header["version"] != 1
+                or header["cipher"] != "AES-256-GCM"
+                or header["kdf"] != "HKDF-SHA256"
+                or header["key_id"] != key_id
+            ):
+                raise ValueError("unsupported portable key envelope")
+            key = _validate_recovery_key(recovery_key)
+            if not hmac.compare_digest(
+                str(header["owner_binding"]),
+                _owner_binding(key, owner_id),
+            ):
+                raise ValueError("portable key envelope owner mismatch")
+            salt = base64.b64decode(header["salt"], validate=True)
+            nonce = base64.b64decode(header["nonce"], validate=True)
+            wrapped_key = base64.b64decode(obj["wrapped_key"], validate=True)
+            if len(salt) != 16 or len(nonce) != 12 or len(wrapped_key) != 48:
+                raise ValueError("invalid portable key envelope size")
+            wrapping_key = HKDF(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                info=DR_MEMORY_KEY_INFO,
+            ).derive(key)
+            aad = json.dumps(header, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            dek = AESGCM(wrapping_key).decrypt(nonce, wrapped_key, aad)
+            if len(dek) != 32:
+                raise ValueError("invalid MemoryStore key size")
+            return self.backups._wrap_memory_key(dek)
+        except (BackupError, DisasterRecoveryError):
+            raise
+        except Exception as exc:
+            raise DisasterRecoveryError("portable MemoryStore key envelope is invalid") from exc
+
     def create_bundle(
         self,
         target: str | Path,
@@ -282,7 +430,18 @@ class DisasterRecoveryService:
             except OSError:
                 pass
             manifest = self.backups._build_payload(payload)
-            # Validate the exact portable payload before encrypting it.
+            # Validate and rewrap a MemoryStore DEK for portable recovery. The
+            # recovery key, never the source host key, protects this envelope.
+            self.backups._inspect_zip(payload, encrypted=True)
+            self._rewrite_memory_key_envelope(
+                payload,
+                lambda envelope: self._wrap_memory_key_portably(
+                    envelope,
+                    recovery_key=recovery_key,
+                    owner_id=owner_id,
+                    key_id=str(key_id),
+                ),
+            )
             self.backups._inspect_zip(payload, encrypted=True)
             destination = self.codec.encrypt_payload(
                 payload,
@@ -351,10 +510,20 @@ class DisasterRecoveryService:
         rewrapped = Path(rewrapped_handle.name)
         rewrapped_handle.close()
         try:
-            # Verify before crossing the restore boundary.
+            # Verify before crossing the restore boundary, then rewrap the
+            # portable DEK under the target host's canonical root authority.
             self.backups._inspect_zip(payload, encrypted=True)
-            # Rewrap using the target/new host's root key. The old host key is
-            # intentionally not required at any point in this path.
+            self._rewrite_memory_key_envelope(
+                payload,
+                lambda envelope: self._unwrap_portable_memory_key(
+                    envelope,
+                    recovery_key=recovery_key,
+                    owner_id=owner_id,
+                    key_id=str(header["key_id"]),
+                ),
+            )
+            self.backups._inspect_zip(payload, encrypted=True)
+            # The old host key is intentionally not required in this path.
             self.backups._encrypt_payload(payload, rewrapped)
             result = self.backups.restore(rewrapped)
             return {
