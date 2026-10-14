@@ -8,6 +8,8 @@ from recovery.backup import BackupService
 from recovery.disaster_recovery import (
     DisasterRecoveryError,
     DisasterRecoveryService,
+    decrypt_recovery_key_file,
+    encrypt_recovery_key_file,
     generate_recovery_key,
 )
 from security.owner_access import OwnerAccessStore
@@ -236,3 +238,20 @@ def test_recovery_key_must_be_high_entropy_key_material(tmp_path):
             owner_id="owner-1",
             key_id="recovery-set-1",
         )
+
+
+def test_recovery_key_file_is_passphrase_encrypted_and_authenticated():
+    key = generate_recovery_key()
+    passphrase = "correct horse battery staple"
+    envelope = encrypt_recovery_key_file(key, passphrase)
+
+    assert key not in envelope
+    assert decrypt_recovery_key_file(envelope, passphrase) == key
+    with pytest.raises(DisasterRecoveryError, match="could not be authenticated"):
+        decrypt_recovery_key_file(envelope, "wrong recovery passphrase")
+    tampered = bytearray(envelope)
+    tampered[-1] ^= 1
+    with pytest.raises(DisasterRecoveryError, match="could not be authenticated"):
+        decrypt_recovery_key_file(bytes(tampered), passphrase)
+    with pytest.raises(ValueError, match="at least 12"):
+        encrypt_recovery_key_file(key, "short")

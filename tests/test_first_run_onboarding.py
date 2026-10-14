@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import json
+import base64
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from core.preferences import Preferences
 from onboarding.first_run import FirstRunCoordinator, SetupMode, SetupStatus
+from recovery.backup import BackupService
+from recovery.disaster_recovery import (
+    DisasterRecoveryService,
+    encrypt_recovery_key_file,
+    generate_recovery_key,
+)
 from security.owner_access import OwnerAccessStore
 
 
@@ -262,6 +269,43 @@ def test_restore_is_validated_and_scheduled_for_next_process_start(tmp_path):
     assert state['stage'] == 'restart_required'
     pending = json.loads((tmp_path / FirstRunCoordinator.PENDING_RESTORE_FILE).read_text(encoding='utf-8'))
     assert pending['path'] == str(archive.resolve())
+
+
+def test_portable_recovery_schedules_encrypted_key_and_restores_identity_without_security(tmp_path, monkeypatch):
+    monkeypatch.setenv('PERSONAL_AI_ROOT_KEY', base64.b64encode(b't' * 32).decode('ascii'))
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+    source_owner = OwnerAccessStore(source / 'owner-access.sqlite3')
+    identity, _ = source_owner.initialize_identity(first_name='Asha', last_name='Patel')
+    source_owner.set_password('correct horse battery staple')
+    source_owner.regenerate_recovery_codes()
+    (source / 'conversation.json').write_text('{"hello":"world"}')
+    key = generate_recovery_key()
+    archive = tmp_path / 'asha.vdr'
+    DisasterRecoveryService(BackupService(source)).create_bundle(
+        archive, recovery_key=key, owner_id=identity['owner_id'], key_id='recovery-set-1',
+    )
+    key_file = tmp_path / 'asha.vdr.key'
+    key_file.write_bytes(encrypt_recovery_key_file(key, 'correct horse battery staple'))
+
+    target_backups = BackupService(target)
+    coordinator = FirstRunCoordinator(target, runtime={'backups': target_backups})
+    scheduled = coordinator.schedule_disaster_recovery(archive, key_file, 'correct horse battery staple')
+    assert scheduled['portable'] is True
+    pending_path = target / FirstRunCoordinator.PENDING_RESTORE_FILE
+    pending_text = pending_path.read_text(encoding='utf-8')
+    assert key.hex() not in pending_text
+
+    restored = FirstRunCoordinator.apply_pending_restore(target)
+    assert restored['portable_disaster_recovery'] is True
+    target_owner = OwnerAccessStore(target / 'owner-access.sqlite3')
+    assert target_owner.identity()['owner_id'] == identity['owner_id']
+    assert target_owner.identity()['vishnu_id'] == identity['vishnu_id']
+    assert target_owner.password_configured() is False
+    assert target_owner.recovery_codes_remaining() == 0
+    assert (target / 'conversation.json').read_text() == '{"hello":"world"}'
 
 
 def test_connect_mode_does_not_mark_local_install_ready(tmp_path):

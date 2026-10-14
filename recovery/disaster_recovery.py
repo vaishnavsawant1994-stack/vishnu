@@ -19,6 +19,7 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+from cryptography.hazmat.primitives.kdf.scrypt import Scrypt
 
 from recovery.backup import BackupError, BackupService, MEMORY_KEY_ENVELOPE
 
@@ -32,6 +33,8 @@ DISASTER_RECOVERY_INFO = b"vishnu-disaster-recovery-v1"
 RECOVERY_KEY_BYTES = 32
 DR_MEMORY_KEY_KIND = "vishnu-disaster-recovery-memory-dek"
 DR_MEMORY_KEY_INFO = b"vishnu-disaster-recovery-memory-dek-wrap-v1"
+RECOVERY_KEY_FILE_MAGIC = b"VISHNU-RECOVERY-KEY-1\n"
+RECOVERY_KEY_FILE_KDF_N = 2**15
 
 
 class DisasterRecoveryError(RuntimeError):
@@ -62,6 +65,52 @@ def _validate_recovery_key(value: bytes | bytearray) -> bytes:
     if not isinstance(value, (bytes, bytearray)) or len(value) != RECOVERY_KEY_BYTES:
         raise DisasterRecoveryError("recovery key must be exactly 32 bytes")
     return bytes(value)
+
+
+def encrypt_recovery_key_file(recovery_key: bytes, passphrase: str) -> bytes:
+    """Return an authenticated, passphrase-encrypted recovery-key file."""
+    key = _validate_recovery_key(recovery_key)
+    phrase = str(passphrase or "")
+    if len(phrase) < 12:
+        raise ValueError("recovery passphrase must contain at least 12 characters")
+    salt = secrets.token_bytes(16)
+    nonce = secrets.token_bytes(12)
+    header = json.dumps({
+        "version": 1, "kdf": "scrypt", "n": RECOVERY_KEY_FILE_KDF_N,
+        "r": 8, "p": 1, "cipher": "AES-256-GCM",
+        "salt": base64.b64encode(salt).decode("ascii"),
+        "nonce": base64.b64encode(nonce).decode("ascii"),
+    }, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    derived = Scrypt(salt=salt, length=32, n=RECOVERY_KEY_FILE_KDF_N, r=8, p=1).derive(phrase.encode("utf-8"))
+    return RECOVERY_KEY_FILE_MAGIC + struct.pack(">I", len(header)) + header + AESGCM(derived).encrypt(nonce, key, RECOVERY_KEY_FILE_MAGIC + header)
+
+
+def decrypt_recovery_key_file(envelope: bytes, passphrase: str) -> bytes:
+    """Authenticate and decrypt an exported recovery-key file."""
+    try:
+        if not envelope.startswith(RECOVERY_KEY_FILE_MAGIC):
+            raise ValueError("unsupported recovery key file")
+        offset = len(RECOVERY_KEY_FILE_MAGIC)
+        size = struct.unpack(">I", envelope[offset:offset + 4])[0]
+        if size <= 0 or size > 4096:
+            raise ValueError("invalid recovery key header")
+        start = offset + 4
+        header_bytes = envelope[start:start + size]
+        header = json.loads(header_bytes)
+        if (set(header) != {"version", "kdf", "n", "r", "p", "cipher", "salt", "nonce"}
+                or header["version"] != 1 or header["kdf"] != "scrypt"
+                or header["n"] != RECOVERY_KEY_FILE_KDF_N or header["r"] != 8
+                or header["p"] != 1 or header["cipher"] != "AES-256-GCM"):
+            raise ValueError("unsupported recovery key parameters")
+        salt = base64.b64decode(header["salt"], validate=True)
+        nonce = base64.b64decode(header["nonce"], validate=True)
+        if len(salt) != 16 or len(nonce) != 12:
+            raise ValueError("invalid recovery key parameters")
+        derived = Scrypt(salt=salt, length=32, n=RECOVERY_KEY_FILE_KDF_N, r=8, p=1).derive(str(passphrase or "").encode("utf-8"))
+        key = AESGCM(derived).decrypt(nonce, envelope[start + size:], RECOVERY_KEY_FILE_MAGIC + header_bytes)
+        return _validate_recovery_key(key)
+    except Exception as exc:
+        raise DisasterRecoveryError("recovery key file could not be authenticated") from exc
 
 
 def _owner_binding(recovery_key: bytes, owner_id: str) -> str:
@@ -119,6 +168,9 @@ class DisasterRecoveryBundleCodec:
             "cipher": "AES-256-GCM",
             "kdf": "HKDF-SHA256",
             "key_id": key_ref,
+            # Stable, non-secret identifier recovers owner binding without
+            # treating a device ID as the identity root.
+            "owner_id": str(owner_id).strip(),
             "owner_binding": _owner_binding(key, owner_id),
             "salt": salt.hex(),
             "nonce": nonce.hex(),
@@ -162,7 +214,7 @@ class DisasterRecoveryBundleCodec:
         bundle: str | Path,
         *,
         recovery_key: bytes,
-        owner_id: str,
+        owner_id: str | None = None,
         expected_key_id: str | None = None,
     ) -> tuple[Path, dict]:
         source = Path(bundle).expanduser().resolve()
@@ -209,7 +261,10 @@ class DisasterRecoveryBundleCodec:
                     raise DisasterRecoveryError("disaster recovery header is invalid")
                 if expected_key_id is not None and key_id != str(expected_key_id):
                     raise DisasterRecoveryError("disaster recovery key id mismatch")
-                expected_binding = _owner_binding(key, owner_id)
+                bound_owner_id = str(owner_id or header.get("owner_id") or "").strip()
+                if owner_id and header.get("owner_id") and str(owner_id) != str(header["owner_id"]):
+                    raise PermissionError("disaster recovery bundle owner mismatch")
+                expected_binding = _owner_binding(key, bound_owner_id)
                 if not hmac.compare_digest(binding, expected_binding):
                     raise PermissionError("disaster recovery bundle owner mismatch")
 
@@ -468,7 +523,7 @@ class DisasterRecoveryService:
         bundle: str | Path,
         *,
         recovery_key: bytes,
-        owner_id: str,
+        owner_id: str | None = None,
         expected_key_id: str | None = None,
     ) -> dict:
         payload, header = self.codec.decrypt_payload(
@@ -479,9 +534,14 @@ class DisasterRecoveryService:
         )
         try:
             manifest = self.backups._inspect_zip(payload, encrypted=True)
+            identity = manifest.get("identity_metadata")
+            bound_owner = str(header.get("owner_id") or owner_id or "")
+            if identity and str(identity.get("owner_id")) != bound_owner:
+                raise DisasterRecoveryError("recovery identity does not match its owner binding")
             return {
                 "valid": True,
                 "key_id": str(header["key_id"]),
+                "owner_id": str(header.get("owner_id") or owner_id or ""),
                 "file_count": len(manifest.get("files") or ()),
                 "encrypted": True,
             }
@@ -493,7 +553,7 @@ class DisasterRecoveryService:
         bundle: str | Path,
         *,
         recovery_key: bytes,
-        owner_id: str,
+        owner_id: str | None = None,
         expected_key_id: str | None = None,
     ) -> dict:
         if not self.maintenance_mode:

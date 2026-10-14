@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import base64
 import os
 import platform as host_platform
 from datetime import datetime, timezone
@@ -10,6 +11,11 @@ from urllib.parse import urlparse
 
 from core.preferences import Preferences
 from recovery.backup import BackupError, BackupService
+from recovery.disaster_recovery import (
+    DisasterRecoveryError,
+    DisasterRecoveryService,
+    decrypt_recovery_key_file,
+)
 
 
 class SetupStatus(str, Enum):
@@ -477,6 +483,49 @@ class FirstRunCoordinator:
         self._write_state(state)
         return state['restore']
 
+    def schedule_disaster_recovery(
+        self, archive: str | Path, key_file: str | Path, passphrase: str,
+    ) -> dict:
+        """Validate a portable recovery bundle and stage only a host-encrypted key."""
+        runtime = self._runtime_required()
+        path = Path(archive).expanduser().resolve()
+        key_path = Path(key_file).expanduser().resolve()
+        if path == key_path or not path.is_file() or not key_path.is_file():
+            raise ValueError('Choose an existing recovery package and its separate key file')
+        key = decrypt_recovery_key_file(key_path.read_bytes(), passphrase)
+        backups = runtime['backups']
+        recovery = DisasterRecoveryService(backups)
+        validated = recovery.validate_bundle(path, recovery_key=key)
+        wrapped_key = backups._wrap_memory_key(key)
+        payload = {
+            'kind': 'portable_disaster_recovery',
+            'path': str(path),
+            'key_id': validated['key_id'],
+            'owner_id': validated['owner_id'],
+            # This ciphertext is bound to the target host's canonical root key.
+            # Plain recovery material is never persisted between restarts.
+            'wrapped_recovery_key': base64.b64encode(wrapped_key).decode('ascii'),
+            'scheduled_at': _now(),
+        }
+        temporary = self.pending_restore_path.with_suffix('.tmp')
+        temporary.write_text(json.dumps(payload, sort_keys=True, indent=2), encoding='utf-8')
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        temporary.replace(self.pending_restore_path)
+        state = self._read_state()
+        state.update({
+            'status': SetupStatus.RESTORING.value,
+            'mode': SetupMode.RESTORE.value,
+            'stage': 'restart_required',
+            'restore': {'archive': path.name, 'key_id': validated['key_id'], 'portable': True},
+            'last_error': None,
+        })
+        self._write_state(state)
+        del key, wrapped_key
+        return state['restore']
+
     def mark_connect_pending(self, url: str) -> dict:
         value = str(url or '').strip()
         if not value:
@@ -546,7 +595,19 @@ class FirstRunCoordinator:
         try:
             payload = json.loads(pending.read_text(encoding='utf-8'))
             archive = Path(str(payload['path'])).expanduser().resolve()
-            result = BackupService(data_dir, vault_password=vault_password).restore(archive)
+            backups = BackupService(data_dir, vault_password=vault_password)
+            if payload.get('kind') == 'portable_disaster_recovery':
+                wrapped_key = base64.b64decode(payload['wrapped_recovery_key'], validate=True)
+                recovery_key = backups._unwrap_memory_key(wrapped_key)
+                result = DisasterRecoveryService(backups, maintenance_mode=True).restore_bundle(
+                    archive,
+                    recovery_key=recovery_key,
+                    owner_id=str(payload['owner_id']),
+                    expected_key_id=str(payload['key_id']),
+                )
+                del recovery_key, wrapped_key
+            else:
+                result = backups.restore(archive)
             # Security authority is intentionally not restored by BackupService.
             # Force the restored installation back through fresh owner security.
             Preferences(data_dir / 'preferences.json').set('onboarding_complete', False)
@@ -570,7 +631,7 @@ class FirstRunCoordinator:
             temporary.write_text(json.dumps(state, sort_keys=True, indent=2), encoding='utf-8')
             temporary.replace(state_path)
             return result
-        except (OSError, ValueError, KeyError, BackupError) as exc:
+        except (OSError, ValueError, KeyError, BackupError, DisasterRecoveryError) as exc:
             failed = {
                 'version': cls.VERSION,
                 'status': SetupStatus.RESTORE_FAILED.value,

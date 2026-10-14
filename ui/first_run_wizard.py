@@ -246,7 +246,19 @@ class FirstRunWizard(QDialog):
         row.addWidget(self.restore_path, 1)
         row.addWidget(browse)
         layout.addLayout(row)
-        hint = QLabel('Encrypted .paibackup files require access to the owner recovery/root key used to encrypt them. If the key is unavailable on this machine, Vishnu will fail closed rather than restore unauthenticated data.')
+        key_row = QHBoxLayout()
+        self.restore_key_path = QLineEdit()
+        self.restore_key_path.setReadOnly(True)
+        key_browse = QPushButton('Choose encrypted recovery key…')
+        key_browse.clicked.connect(self._choose_recovery_key)
+        key_row.addWidget(self.restore_key_path, 1)
+        key_row.addWidget(key_browse)
+        layout.addLayout(key_row)
+        self.restore_passphrase = QLineEdit()
+        self.restore_passphrase.setEchoMode(QLineEdit.EchoMode.Password)
+        self.restore_passphrase.setPlaceholderText('Recovery passphrase for .vdr key file')
+        layout.addWidget(self.restore_passphrase)
+        hint = QLabel('For a .vdr portable recovery package, select its separate encrypted .key file and enter the recovery passphrase. The recovery key is decrypted only to validate the package, then saved encrypted to this device for the next-start restore. Old .paibackup files still use the existing root-key restore path.')
         hint.setObjectName('hint')
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -433,13 +445,24 @@ class FirstRunWizard(QDialog):
         self.accept()
 
     def _choose_backup(self):
-        path, _ = QFileDialog.getOpenFileName(self, 'Choose Vishnu backup', '', 'Vishnu Backup (*.paibackup);;All files (*)')
+        path, _ = QFileDialog.getOpenFileName(self, 'Choose Vishnu backup', '', 'Vishnu Backup (*.paibackup *.vdr);;All files (*)')
         if path:
             self.restore_path.setText(path)
 
+    def _choose_recovery_key(self):
+        path, _ = QFileDialog.getOpenFileName(self, 'Choose encrypted recovery key', '', 'Vishnu Recovery Key (*.vdr.key *.key);;All files (*)')
+        if path:
+            self.restore_key_path.setText(path)
+
     def _schedule_restore(self):
         try:
-            restore = self.coordinator.schedule_restore(self.restore_path.text())
+            if str(self.restore_path.text()).lower().endswith('.vdr'):
+                restore = self.coordinator.schedule_disaster_recovery(
+                    self.restore_path.text(), self.restore_key_path.text(), self.restore_passphrase.text(),
+                )
+                self.restore_passphrase.clear()
+            else:
+                restore = self.coordinator.schedule_restore(self.restore_path.text())
         except Exception as exc:
             QMessageBox.warning(self, 'Restore', str(exc))
             return
