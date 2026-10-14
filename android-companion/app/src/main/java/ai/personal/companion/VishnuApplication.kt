@@ -22,8 +22,23 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
                 attachPasskeyButton(activity)
                 attachForgeButton(activity)
             }
-            is ConnectActivity -> attachPortableRecoveryButton(activity)
+            is ConnectActivity -> {
+                attachRuntimeProvisioningButton(activity)
+                attachPortableRecoveryButton(activity)
+            }
         }
+    }
+
+    private fun attachRuntimeProvisioningButton(activity: ConnectActivity) {
+        val root = activityRoot(activity) ?: return
+        if ((0 until root.childCount).any { root.getChildAt(it).tag == RUNTIME_TAG }) return
+        val button = surfaceButton(activity).apply {
+            tag = RUNTIME_TAG
+            text = "I don't have a Vishnu runtime yet"
+            contentDescription = "Create an owner-controlled secure Vishnu runtime without a laptop"
+            setOnClickListener { activity.startActivity(Intent(activity, RuntimeProvisioningActivity::class.java)) }
+        }
+        root.addView(button, root.childCount.coerceAtMost(5))
     }
 
     private fun attachPortableRecoveryButton(activity: ConnectActivity) {
@@ -35,7 +50,7 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
             contentDescription = "Restore Vishnu from a portable encrypted recovery package"
             setOnClickListener { activity.startActivity(Intent(activity, PortableRecoveryActivity::class.java)) }
         }
-        root.addView(button, root.childCount.coerceAtMost(5))
+        root.addView(button, root.childCount.coerceAtMost(6))
     }
 
     private fun attachPasskeyButton(activity: MainActivity) {
@@ -96,6 +111,7 @@ class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks 
     override fun onActivityDestroyed(activity: Activity) = Unit
 
     companion object {
+        private const val RUNTIME_TAG = "vishnu-runtime-provisioning"
         private const val RECOVERY_TAG = "vishnu-portable-recovery"
         private const val PASSKEY_TAG = "vishnu-native-passkey"
         private const val FORGE_TAG = "vishnu-capability-forge-v3"
