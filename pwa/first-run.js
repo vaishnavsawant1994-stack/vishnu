@@ -24,8 +24,12 @@
   const createForm = document.createElement('div');
   createForm.id = 'firstRunForm';
   createForm.className = 'access-form hidden';
-  choices.append(createChoice, joinChoice, restoreChoice, createForm);
-  document.querySelector('#enrollPanel .access-methods')?.prepend(choices);
+  choices.append(createChoice, joinChoice, createForm);
+  const accessMethods = document.querySelector('#enrollPanel .access-methods');
+  accessMethods?.prepend(choices);
+  // Recovery is also an entry path for initialized Vishnu instances, so keep
+  // Restore visible after creation is disabled as well.
+  accessMethods?.append(restoreChoice);
 
   const field = (id, placeholder, type = 'text', autocomplete = 'off') => {
     const input = document.createElement('input');
