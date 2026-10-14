@@ -77,6 +77,40 @@ class OwnerAccessStore:
             ).fetchone()
         return dict(row) if row else None
 
+    def restore_identity_metadata(self, identity: dict) -> dict:
+        """Restore stable identity labels without restoring any security authority.
+
+        Backups may carry these non-secret identifiers so a data restore can
+        continue the same Vishnu. Passwords, recovery hashes, passkeys, claims,
+        sessions, and device credentials remain local and are never imported.
+        """
+        required = ('owner_id', 'vishnu_id', 'first_name', 'last_name', 'display_name',
+                    'created_at', 'identity_version')
+        if not isinstance(identity, dict) or any(key not in identity for key in required):
+            raise ValueError('Backup identity metadata is incomplete')
+        owner_id = str(identity['owner_id'])
+        vishnu_id = str(identity['vishnu_id'])
+        if (not owner_id.startswith('OWNER-') or len(owner_id) > 64
+                or not vishnu_id.startswith('VISHNU-') or len(vishnu_id) > 72):
+            raise ValueError('Backup identity metadata is invalid')
+        values = (owner_id, vishnu_id, str(identity['first_name'])[:80],
+                  str(identity['last_name'])[:80], str(identity['display_name'])[:120],
+                  str(identity['created_at'])[:80], int(identity['identity_version']))
+        if not values[2] or not values[4] or values[6] < 1:
+            raise ValueError('Backup identity metadata is invalid')
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT owner_id,vishnu_id FROM owner_identity WHERE singleton=1').fetchone()
+            if row:
+                if row['owner_id'] != owner_id or row['vishnu_id'] != vishnu_id:
+                    raise ValueError('Backup belongs to a different Vishnu identity')
+                return self.identity()
+            con.execute(
+                '''INSERT INTO owner_identity(singleton,owner_id,vishnu_id,first_name,last_name,
+                   display_name,created_at,identity_version) VALUES(1,?,?,?,?,?,?,?)''', values,
+            )
+        return self.identity()
+
     def acquire_first_run_claim(
         self, presented: str | None = None, *, ttl: int = 900,
         allow_pending_identity: bool = False, allow_proposed: bool = False,

@@ -218,6 +218,28 @@ class BackupService:
             raise BackupError('memory data-encryption key is invalid')
         return self._wrap_memory_key(dek)
 
+    def _identity_metadata(self) -> dict | None:
+        """Read only stable owner identifiers; never include auth/device state."""
+        path = self.data_dir / 'owner-access.sqlite3'
+        if not path.is_file():
+            return None
+        try:
+            with sqlite3.connect(path.resolve().as_uri() + '?mode=ro', uri=True) as con:
+                table = con.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='owner_identity'"
+                ).fetchone()
+                if not table:
+                    return None
+                con.row_factory = sqlite3.Row
+                row = con.execute(
+                    '''SELECT owner_id,vishnu_id,first_name,last_name,display_name,
+                              created_at,identity_version
+                       FROM owner_identity WHERE singleton=1'''
+                ).fetchone()
+                return dict(row) if row else None
+        except sqlite3.DatabaseError as exc:
+            raise BackupError('cannot read stable identity metadata for backup') from exc
+
     def _wrap_memory_key(self, dek: bytes) -> bytes:
         if len(dek) != 32:
             raise BackupError('memory data-encryption key is invalid')
@@ -413,6 +435,9 @@ class BackupService:
                 'files': [],
                 'excludes': sorted(EXCLUDED_NAMES),
                 'database_snapshot': 'sqlite-online-backup',
+                # This is identity continuity metadata, not an authentication
+                # database. The whole manifest is inside the encrypted archive.
+                'identity_metadata': self._identity_metadata(),
             }
             for source in self._eligible():
                 rel = source.relative_to(self.data_dir)
@@ -494,6 +519,15 @@ class BackupService:
                     raise BackupError('unsupported backup manifest')
                 if version >= BACKUP_VERSION and not encrypted:
                     raise BackupError('encrypted backup manifest is not inside an encrypted envelope')
+                identity = manifest.get('identity_metadata')
+                if identity is not None and (
+                    not isinstance(identity, dict)
+                    or not str(identity.get('owner_id', '')).startswith('OWNER-')
+                    or not str(identity.get('vishnu_id', '')).startswith('VISHNU-')
+                    or not str(identity.get('first_name', '')).strip()
+                    or int(identity.get('identity_version', 0)) < 1
+                ):
+                    raise BackupError('backup identity metadata is invalid')
 
                 listed: dict[str, dict] = {}
                 for item in manifest['files']:
@@ -627,6 +661,10 @@ class BackupService:
                         temp_destination.unlink(missing_ok=True)
                 if memory_key is not None:
                     self._restore_memory_key(memory_key)
+                identity = manifest.get('identity_metadata')
+                if identity is not None:
+                    from security.owner_access import OwnerAccessStore
+                    OwnerAccessStore(self.data_dir / 'owner-access.sqlite3').restore_identity_metadata(identity)
             except Exception as exc:
                 rollback_errors = []
                 for destination, rollback_copy in reversed(touched[:restored]):
@@ -656,6 +694,7 @@ class BackupService:
                 'created_at': manifest['created_at'],
                 'encrypted': bool(encrypted),
                 'skipped_security_state': sorted(skipped_security_state),
+                'identity_preserved': bool(manifest.get('identity_metadata')),
             }
         finally:
             shutil.rmtree(stage, ignore_errors=True)
