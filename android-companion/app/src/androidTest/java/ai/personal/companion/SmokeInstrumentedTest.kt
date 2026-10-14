@@ -1,7 +1,12 @@
 package ai.personal.companion
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Button
+import android.widget.TextView
 import org.json.JSONObject
 import org.junit.Assert.*
 import org.junit.Test
@@ -9,6 +14,33 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SmokeInstrumentedTest {
+    @Test
+    fun nativeWelcomeOffersCreateJoinAndRestoreChoices() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        ActivityScenario.launch(ConnectActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                assertTrue(hasText(activity.window.decorView, "Welcome to Vishnu"))
+                assertTrue(hasText(activity.window.decorView, "Create my Vishnu"))
+                assertTrue(hasText(activity.window.decorView, "I already have Vishnu · Scan QR"))
+                assertTrue(hasText(activity.window.decorView, "Restore Vishnu"))
+                findButton(activity.window.decorView, "Create my Vishnu")?.performClick()
+                assertTrue(hasText(activity.window.decorView, "One-time runtime setup code"))
+            }
+        }
+    }
+
+    private fun hasText(view: View, expected: String): Boolean =
+        view is TextView && view.text.toString() == expected ||
+            view is ViewGroup && (0 until view.childCount).any { hasText(view.getChildAt(it), expected) }
+
+    private fun findButton(view: View, expected: String): Button? {
+        if (view is Button && view.text.toString() == expected) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) findButton(view.getChildAt(index), expected)?.let { return it }
+        }
+        return null
+    }
+
     @Test
     fun appContextAndOnboardingActivitiesExist() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
