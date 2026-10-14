@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import secrets
+import re
 import sqlite3
 import time
 import uuid
@@ -90,8 +91,8 @@ class OwnerAccessStore:
             raise ValueError('Backup identity metadata is incomplete')
         owner_id = str(identity['owner_id'])
         vishnu_id = str(identity['vishnu_id'])
-        if (not owner_id.startswith('OWNER-') or len(owner_id) > 64
-                or not vishnu_id.startswith('VISHNU-') or len(vishnu_id) > 72):
+        if (not re.fullmatch(r'OWNER-[0-9A-F]{32}', owner_id)
+                or not re.fullmatch(r'VISHNU-[0-9A-F]{32}', vishnu_id)):
             raise ValueError('Backup identity metadata is invalid')
         values = (owner_id, vishnu_id, str(identity['first_name'])[:80],
                   str(identity['last_name'])[:80], str(identity['display_name'])[:120],

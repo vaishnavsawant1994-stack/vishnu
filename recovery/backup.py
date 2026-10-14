@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -221,6 +222,8 @@ class BackupService:
     def _identity_metadata(self) -> dict | None:
         """Read only stable owner identifiers; never include auth/device state."""
         path = self.data_dir / 'owner-access.sqlite3'
+        if path.is_symlink():
+            raise BackupError('owner identity metadata path is unsafe')
         if not path.is_file():
             return None
         try:
@@ -520,14 +523,20 @@ class BackupService:
                 if version >= BACKUP_VERSION and not encrypted:
                     raise BackupError('encrypted backup manifest is not inside an encrypted envelope')
                 identity = manifest.get('identity_metadata')
-                if identity is not None and (
-                    not isinstance(identity, dict)
-                    or not str(identity.get('owner_id', '')).startswith('OWNER-')
-                    or not str(identity.get('vishnu_id', '')).startswith('VISHNU-')
-                    or not str(identity.get('first_name', '')).strip()
-                    or int(identity.get('identity_version', 0)) < 1
-                ):
-                    raise BackupError('backup identity metadata is invalid')
+                if identity is not None:
+                    try:
+                        valid_identity = (
+                            isinstance(identity, dict)
+                            and re.fullmatch(r'OWNER-[0-9A-F]{32}', str(identity['owner_id']))
+                            and re.fullmatch(r'VISHNU-[0-9A-F]{32}', str(identity['vishnu_id']))
+                            and bool(str(identity['first_name']).strip())
+                            and bool(str(identity['display_name']).strip())
+                            and int(identity['identity_version']) >= 1
+                        )
+                    except (KeyError, TypeError, ValueError):
+                        valid_identity = False
+                    if not valid_identity:
+                        raise BackupError('backup identity metadata is invalid')
 
                 listed: dict[str, dict] = {}
                 for item in manifest['files']:
