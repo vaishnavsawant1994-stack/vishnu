@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 from core.security import new_bearer_secret, verify_secret
+from core.sqlite import Migration, connect_sqlite, run_migrations
 
 
 logger = logging.getLogger(__name__)
@@ -36,23 +36,46 @@ class DeviceRegistry:
         self.path = Path(path)
         self.events = events
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._con() as c:
-            c.execute('''CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,platform TEXT NOT NULL,salt TEXT NOT NULL,token_hash TEXT NOT NULL,created_at TEXT NOT NULL,last_seen_at TEXT,revoked INTEGER NOT NULL DEFAULT 0)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS device_metadata(device_id TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(device_id,key),FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE)''')
-            c.execute('''CREATE TABLE IF NOT EXISTS device_permissions(device_id TEXT PRIMARY KEY,scopes_json TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE)''')
-            c.execute(
-                '''INSERT INTO device_permissions(device_id,scopes_json,updated_at)
-                   SELECT d.id,?,? FROM devices d LEFT JOIN device_permissions p ON p.device_id=d.id
-                   WHERE d.platform='ios-pwa' AND p.device_id IS NULL''',
-                (json.dumps(sorted(self.OWNER_SCOPES)), now()),
+        con = self._con()
+        try:
+            run_migrations(
+                con,
+                component='device_registry',
+                migrations=(
+                    Migration(1, 'initial-device-registry', self._migration_001_initial),
+                    Migration(2, 'canonical-data-permissions', self._migration_002_permissions),
+                ),
             )
-            c.execute(
-                '''INSERT INTO device_permissions(device_id,scopes_json,updated_at)
-                   SELECT d.id,?,? FROM devices d LEFT JOIN device_permissions p ON p.device_id=d.id
-                   WHERE d.platform!='ios-pwa' AND p.device_id IS NULL''',
-                (json.dumps(sorted(self.DEFAULT_SCOPES)), now()),
-            )
-            self._upgrade_untouched_legacy_scopes(c)
+            # Permission-row reconstruction is an integrity repair, not a schema
+            # migration. Preserve the historical restart behavior independently
+            # from one-time migration bookkeeping.
+            with con:
+                self._repair_permission_invariants(con)
+        finally:
+            con.close()
+
+    def _migration_001_initial(self, con):
+        con.execute('''CREATE TABLE IF NOT EXISTS devices(id TEXT PRIMARY KEY,name TEXT NOT NULL,platform TEXT NOT NULL,salt TEXT NOT NULL,token_hash TEXT NOT NULL,created_at TEXT NOT NULL,last_seen_at TEXT,revoked INTEGER NOT NULL DEFAULT 0)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS device_metadata(device_id TEXT NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,updated_at TEXT NOT NULL,PRIMARY KEY(device_id,key),FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE)''')
+        con.execute('''CREATE TABLE IF NOT EXISTS device_permissions(device_id TEXT PRIMARY KEY,scopes_json TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE)''')
+
+    def _migration_002_permissions(self, con):
+        self._repair_permission_invariants(con)
+
+    def _repair_permission_invariants(self, con):
+        con.execute(
+            '''INSERT INTO device_permissions(device_id,scopes_json,updated_at)
+               SELECT d.id,?,? FROM devices d LEFT JOIN device_permissions p ON p.device_id=d.id
+               WHERE d.platform='ios-pwa' AND p.device_id IS NULL''',
+            (json.dumps(sorted(self.OWNER_SCOPES)), now()),
+        )
+        con.execute(
+            '''INSERT INTO device_permissions(device_id,scopes_json,updated_at)
+               SELECT d.id,?,? FROM devices d LEFT JOIN device_permissions p ON p.device_id=d.id
+               WHERE d.platform!='ios-pwa' AND p.device_id IS NULL''',
+            (json.dumps(sorted(self.DEFAULT_SCOPES)), now()),
+        )
+        self._upgrade_untouched_legacy_scopes(con)
 
     def _upgrade_untouched_legacy_scopes(self, con):
         rows = con.execute(
@@ -77,9 +100,7 @@ class DeviceRegistry:
                 )
 
     def _con(self):
-        con = sqlite3.connect(self.path)
-        con.row_factory = sqlite3.Row
-        return con
+        return connect_sqlite(self.path)
 
     def enroll(self, name, platform):
         did = str(uuid.uuid4())
