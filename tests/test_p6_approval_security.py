@@ -116,25 +116,28 @@ def test_concurrent_approval_race_consumes_existing_ticket_at_most_once(tmp_path
         _, operation, counter = waiting_operation(h)
         results = []
         errors = []
+        contenders = 16
+        barrier = threading.Barrier(contenders)
 
         def approve():
             try:
+                barrier.wait(timeout=10)
                 results.append(h.operations.approve(operation['operation_id'], **h.authority()))
             except Exception as exc:
                 errors.append(type(exc).__name__)
 
-        threads = [threading.Thread(target=approve) for _ in range(2)]
+        threads = [threading.Thread(target=approve) for _ in range(contenders)]
         for thread in threads:
             thread.start()
         for thread in threads:
-            thread.join(timeout=5)
+            thread.join(timeout=15)
+        assert all(not thread.is_alive() for thread in threads)
         assert counter.value == 1
         assert h.operations.operation(operation['operation_id'])['status'] == 'verified'
         assert len(results) == 1
-        assert errors == ['PermissionError']
+        assert errors == ['PermissionError'] * (contenders - 1)
     finally:
         h.close()
-
 
 def test_changed_parameters_cannot_reuse_existing_approval(tmp_path):
     h = Harness(tmp_path)
