@@ -346,3 +346,24 @@ def test_backup_identity_conflict_fails_closed_and_keeps_existing_data(tmp_path)
     with pytest.raises(BackupError, match='different Vishnu identity'):
         service(target).restore(archive)
     assert (target / 'note.txt').read_text() == 'current'
+
+
+def test_portable_recovery_package_restores_identity_on_different_root_key(tmp_path):
+    source = tmp_path / 'portable-source'
+    source.mkdir()
+    identity, _ = OwnerAccessStore(source / 'owner-access.sqlite3').initialize_identity(first_name='Asha')
+    (source / 'note.txt').write_text('portable owner data')
+    archive = service(source, b's' * 32).create_recovery_package(
+        'a long owner chosen recovery phrase', 'portable.vishnurecovery'
+    )
+
+    target = tmp_path / 'portable-target'
+    target.mkdir()
+    backups = service(target, b't' * 32)
+    with pytest.raises(BackupError, match='authentication failed'):
+        backups.inspect(archive, recovery_passphrase='a different long recovery phrase')
+    result = backups.restore(archive, recovery_passphrase='a long owner chosen recovery phrase')
+
+    assert result['identity_preserved'] is True
+    assert OwnerAccessStore(target / 'owner-access.sqlite3').identity()['vishnu_id'] == identity['vishnu_id']
+    assert (target / 'note.txt').read_text() == 'portable owner data'

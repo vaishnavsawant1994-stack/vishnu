@@ -288,6 +288,36 @@ def test_encrypted_backup_carries_only_wrapped_memory_key_and_restores_on_clean_
     assert restored.get(memory_id)['content'] == SENTINEL
 
 
+def test_portable_recovery_package_restores_encrypted_memory_across_root_keys(tmp_path):
+    from recovery.backup import BackupService
+
+    source = tmp_path / 'portable-memory-source'
+    source.mkdir()
+    source_root = b'a' * 32
+    source_vault = SecretVault(source / 'vault.json', password='vault-password',
+                               root_key_store=FixedRootKeyStore(source_root))
+    source_store = MemoryStore(source / 'assistant.sqlite3', vault=source_vault)
+    memory_id = source_store.remember(type='private', subject='portable subject', content=SENTINEL)
+    original_key = base64.b64decode(source_vault.get(VAULT_KEY_NAME))
+    archive = BackupService(
+        source, root_key_store=FixedRootKeyStore(source_root), vault=source_vault,
+        vault_password='vault-password',
+    ).create_recovery_package('a long owner chosen recovery phrase')
+    assert SENTINEL.encode() not in archive.read_bytes()
+
+    target = tmp_path / 'portable-memory-target'
+    target.mkdir()
+    target_root = b'b' * 32
+    target_backups = BackupService(target, root_key_store=FixedRootKeyStore(target_root),
+                                   vault_password='vault-password')
+    target_backups.restore(archive, recovery_passphrase='a long owner chosen recovery phrase')
+    target_vault = SecretVault(target / 'vault.json', password='vault-password',
+                               root_key_store=FixedRootKeyStore(target_root))
+    restored = MemoryStore(target / 'assistant.sqlite3', vault=target_vault)
+    assert base64.b64decode(target_vault.get(VAULT_KEY_NAME)) == original_key
+    assert restored.get(memory_id)['content'] == SENTINEL
+
+
 def test_root_key_rotation_preserves_memory_field_key_and_content(tmp_path):
     path = tmp_path / 'assistant.sqlite3'
     root_store = RotatingRootKeyStore(b'o' * 32)
