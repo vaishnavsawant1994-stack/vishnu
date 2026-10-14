@@ -37,7 +37,7 @@ def _verify(source: Path, lock: Path) -> None:
             '--output-file', str(generated),
             str(source),
         )
-        if generated.read_bytes() != lock.read_bytes():
+        if generated.read_text() != lock.read_text():
             raise SystemExit(f'{lock.name} is stale; regenerate it with uv 0.12.23.')
 
 
