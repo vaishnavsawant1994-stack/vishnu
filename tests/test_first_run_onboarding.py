@@ -42,6 +42,26 @@ class FakeTools:
 class FakeDevices:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
+        self.sequence = len(self.rows)
+        self.OWNER_SCOPES = {'ai:chat', 'memory:read'}
+
+    def is_active(self, device_id):
+        return any(item.get('id') == device_id and not item.get('revoked') for item in self.rows)
+
+    def enroll(self, name, platform):
+        self.sequence += 1
+        device = {'id': f'device-{self.sequence}', 'name': name, 'platform': platform,
+                  'revoked': False, 'metadata': {}}
+        self.rows.append(device)
+        return device, 'discarded-test-token'
+
+    def set_permissions(self, device_id, scopes):
+        return scopes
+
+    def set_metadata(self, device_id, key, value):
+        item = next(item for item in self.rows if item['id'] == device_id)
+        item.setdefault('metadata', {})[key] = value
+        return True
 
     def list(self):
         return list(self.rows)
@@ -101,6 +121,8 @@ def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_
     assert identity['vishnu_id'].startswith('VISHNU-')
     assert identity['display_name'] == 'Owner'
     assert state['identity_version'] == 1
+    assert state['first_device_id'] == rt['device_registry'].rows[0]['id']
+    assert rt['device_registry'].rows[0]['metadata']['role'] == 'first_device'
 
     persisted = (tmp_path / FirstRunCoordinator.STATE_FILE).read_text(encoding='utf-8')
     assert 'correct horse battery staple' not in persisted
@@ -174,6 +196,7 @@ def test_existing_trusted_install_is_migrated_without_forcing_wizard(tmp_path):
     assert state['migrated_legacy_install'] is True
     assert rt['preferences'].get('onboarding_complete') is True
     assert rt['owner_access'].identity() is not None
+    assert state['first_device_id'] == 'existing-device'
 
 
 def test_identity_creation_is_idempotent_and_race_safe(tmp_path):

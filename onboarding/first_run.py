@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import platform as host_platform
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
@@ -167,6 +168,7 @@ class FirstRunCoordinator:
         return False
 
     def should_run(self) -> bool:
+        runtime = self.runtime or {}
         state = self._read_state()
         status = state.get('status')
         if status == SetupStatus.READY.value:
@@ -177,12 +179,32 @@ class FirstRunCoordinator:
         if status == SetupStatus.UNINITIALIZED.value and self._legacy_install_detected():
             preferences = (self.runtime or {}).get('preferences')
             owner_access = (self.runtime or {}).get('owner_access')
+            devices = runtime.get('device_registry')
             if owner_access is not None:
                 owner_access.initialize_identity(
                     first_name=str(preferences.get('profile_first_name', '') or 'Owner') if preferences else 'Owner',
                     last_name=str(preferences.get('profile_last_name', '') or '') if preferences else '',
                     display_name=str(preferences.get('preferred_name', '') or 'Vishnu Owner') if preferences else 'Vishnu Owner',
                 )
+                if devices is not None and hasattr(devices, 'is_active'):
+                    active_devices = [item for item in devices.list() if not item.get('revoked')]
+                    existing_device = min(
+                        active_devices,
+                        key=lambda item: str(item.get('created_at') or '9999'),
+                        default=None,
+                    )
+                    if existing_device is not None:
+                        state['status'] = SetupStatus.SETUP_IN_PROGRESS.value
+                        state['mode'] = SetupMode.CREATE.value
+                        self._write_state(state)
+                        self.record_first_device(existing_device['id'])
+                        state = self._read_state()
+                    elif str(runtime.get('setup_surface') or '') == 'desktop':
+                        state['status'] = SetupStatus.SETUP_IN_PROGRESS.value
+                        state['mode'] = SetupMode.CREATE.value
+                        self._write_state(state)
+                        self.ensure_first_device()
+                        state = self._read_state()
             state.update({
                 'status': SetupStatus.READY.value,
                 'mode': state.get('mode') or SetupMode.CREATE.value,
@@ -305,6 +327,127 @@ class FirstRunCoordinator:
     def skip_model_configuration(self) -> dict:
         return self._mark_step('model_skipped', stage='ready')
 
+    def initialize_pending_identity(self) -> dict:
+        """Persist the stable identity before a platform finishes its ceremony.
+
+        The setup state remains SETUP_IN_PROGRESS until recovery acknowledgement,
+        device registration, policy, and security checks pass in complete().
+        This lets WebAuthn and native authenticators bind credentials to the
+        canonical owner ID while preserving safe resume after interruption.
+        """
+        runtime = self._runtime_required()
+        state = self._read_state()
+        if state.get('mode') not in {SetupMode.CREATE.value, SetupMode.RESTORE.value}:
+            raise RuntimeError('Only a new or restored Vishnu can initialize an owner identity')
+        preferences = runtime['preferences']
+        owner_access = runtime['owner_access']
+        if not str(preferences.get('preferred_name', '') or '').strip():
+            raise RuntimeError('Owner profile is incomplete')
+        if not owner_access.password_configured() or owner_access.recovery_codes_remaining() <= 0:
+            raise RuntimeError('Owner security and recovery must be configured first')
+        identity, created = owner_access.initialize_identity(
+            first_name=str(preferences.get('profile_first_name', '') or ''),
+            last_name=str(preferences.get('profile_last_name', '') or ''),
+            display_name=str(preferences.get('preferred_name', '') or ''),
+        )
+        if created:
+            memory = runtime.get('memory')
+            if memory is not None and hasattr(memory, 'audit'):
+                try:
+                    memory.audit('owner', 'identity.created', {
+                        'owner_id': identity['owner_id'],
+                        'vishnu_id': identity['vishnu_id'],
+                        'identity_version': identity['identity_version'],
+                    })
+                except Exception:
+                    pass
+            events = runtime.get('events')
+            if events is not None:
+                try:
+                    events.emit('owner.identity.created', owner_id=identity['owner_id'],
+                                vishnu_id=identity['vishnu_id'],
+                                identity_version=identity['identity_version'])
+                except Exception:
+                    pass
+        return identity
+
+    def record_first_device(self, device_id: str) -> dict:
+        """Bind an already enrolled platform device to the initial owner setup."""
+        runtime = self._runtime_required()
+        registry = runtime.get('device_registry')
+        device_id = str(device_id or '').strip()
+        if not device_id or registry is None or not registry.is_active(device_id):
+            raise RuntimeError('The first trusted device is not active in the device registry')
+        identity = runtime['owner_access'].identity()
+        if identity is None:
+            raise RuntimeError('Create the Vishnu owner identity before registering its first device')
+        if hasattr(registry, 'set_permissions') and hasattr(registry, 'OWNER_SCOPES'):
+            registry.set_permissions(device_id, registry.OWNER_SCOPES)
+        if hasattr(registry, 'set_metadata'):
+            registry.set_metadata(device_id, 'owner_id', identity['owner_id'])
+            registry.set_metadata(device_id, 'role', 'first_device')
+        state = self._read_state()
+        current = str(state.get('first_device_id') or '')
+        if current and current != device_id and registry.is_active(current):
+            raise RuntimeError('A first trusted device is already registered for this Vishnu')
+        state['first_device_id'] = device_id
+        self._write_state(state)
+        if current != device_id:
+            memory = runtime.get('memory')
+            if memory is not None and hasattr(memory, 'audit'):
+                try:
+                    memory.audit('owner', 'device.first_trusted', {
+                        'owner_id': identity['owner_id'], 'device_id': device_id,
+                    })
+                except Exception:
+                    pass
+            events = runtime.get('events')
+            if events is not None:
+                try:
+                    events.emit('owner.first_device.registered',
+                                owner_id=identity['owner_id'], device_id=device_id)
+                except Exception:
+                    pass
+        return {'device_id': device_id, 'owner_id': identity['owner_id']}
+
+    def ensure_first_device(self) -> dict:
+        """Register this platform as Device 1 when creation has no device yet."""
+        runtime = self._runtime_required()
+        state = self._read_state()
+        registry = runtime.get('device_registry')
+        if registry is None:
+            raise RuntimeError('The canonical device registry is unavailable')
+        existing = str(state.get('first_device_id') or '')
+        if existing and registry.is_active(existing):
+            return self.record_first_device(existing)
+        identity = self.initialize_pending_identity()
+        devices = registry.list()
+        marker = next((item for item in devices if not item.get('revoked')
+                       and item.get('metadata', {}).get('owner_id') == identity['owner_id']
+                       and item.get('metadata', {}).get('role') == 'first_device'), None)
+        if marker is not None:
+            return self.record_first_device(marker['id'])
+        if state.get('status') == SetupStatus.READY.value or state.get('migrated_legacy_install'):
+            legacy_device = min(
+                (item for item in devices if not item.get('revoked')),
+                key=lambda item: str(item.get('created_at') or '9999'),
+                default=None,
+            )
+            if legacy_device is not None:
+                return self.record_first_device(legacy_device['id'])
+        platform_name = host_platform.system().lower() or 'desktop'
+        if platform_name == 'darwin':
+            platform_name = 'macos'
+        if platform_name.startswith('win'):
+            platform_name = 'windows'
+        if not hasattr(registry, 'enroll'):
+            raise RuntimeError('The canonical device registry cannot enroll the first device')
+        device, _discarded_device_secret = registry.enroll(
+            f'First trusted {platform_name} device', platform_name,
+        )
+        self.record_first_device(device['id'])
+        return {'device_id': device['id'], 'owner_id': identity['owner_id']}
+
     def schedule_restore(self, archive: str | Path) -> dict:
         runtime = self._runtime_required()
         path = Path(archive).expanduser().resolve()
@@ -380,42 +523,9 @@ class FirstRunCoordinator:
             raise RuntimeError('Privacy and autonomy preferences are incomplete')
         if not ({'model', 'model_skipped'} & completed):
             raise RuntimeError('AI configuration must be completed or explicitly skipped')
-        identity, created = owner_access.initialize_identity(
-            first_name=str(preferences.get('profile_first_name', '') or ''),
-            last_name=str(preferences.get('profile_last_name', '') or ''),
-            display_name=str(preferences.get('preferred_name', '') or ''),
-        )
-        if created:
-            memory = runtime.get('memory')
-            if memory is not None and hasattr(memory, 'audit'):
-                try:
-                    memory.audit(
-                        'owner',
-                        'identity.created',
-                        {
-                            'owner_id': identity['owner_id'],
-                            'vishnu_id': identity['vishnu_id'],
-                            'identity_version': identity['identity_version'],
-                        },
-                    )
-                except Exception:
-                    # Do not lose a durable identity because an audit sink is
-                    # temporarily unavailable; still publish the lifecycle
-                    # event below for any configured operational listener.
-                    pass
-            events = runtime.get('events')
-            if events is not None:
-                try:
-                    events.emit(
-                        'owner.identity.created',
-                        owner_id=identity['owner_id'],
-                        vishnu_id=identity['vishnu_id'],
-                        identity_version=identity['identity_version'],
-                    )
-                except Exception:
-                    # Audit delivery must not roll back an already durable
-                    # identity; the identity store remains the source of truth.
-                    pass
+        identity = self.initialize_pending_identity()
+        self.ensure_first_device()
+        state = self._read_state()
         preferences.set('onboarding_complete', True)
         state.update({
             'status': SetupStatus.READY.value,

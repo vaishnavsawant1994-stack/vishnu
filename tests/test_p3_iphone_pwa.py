@@ -10,6 +10,8 @@ from agent.executor import ConfirmationRequired
 from devices.continuity import ContinuityService
 from server.iphone_pwa import iphone_pwa_router
 from models.router import ModelTimeout, ModelUnavailable
+from core.preferences import Preferences
+from onboarding.first_run import FirstRunCoordinator
 from security.owner_access import OwnerAccessStore
 from security.pwa_sessions import PwaSessionStore
 from server.pwa_session_middleware import PwaSessionMiddleware
@@ -190,6 +192,9 @@ def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
     client, _ = make_client(tmp_path)
     options = client.get('/iphone/api/access/options').json()
     assert options == {
+        'creation_available': False,
+        'setup_in_progress': False,
+        'model_setup_complete': False,
         'passkey_available': False,
         'password_available': False,
         'recovery_available': False,
@@ -820,6 +825,82 @@ def test_stage8_stale_server_reauth_blocks_owner_credential_changes(tmp_path):
 
     assert runtime['owner_access'].password_configured() is False
     assert runtime['owner_access'].recovery_codes_remaining() == 0
+
+
+def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path):
+    bootstrap = 'B' * 40
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    runtime['pwa_sessions'] = PwaSessionStore(tmp_path / 'pwa-sessions.sqlite3', ttl_seconds=600)
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='',
+        iphone_pwa_allow_insecure=False,
+        owner_bootstrap_secret=bootstrap,
+        google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.add_middleware(PwaSessionMiddleware, sessions=runtime['pwa_sessions'],
+                       device_registry=registry, cookie_max_age=600,
+                       first_run_setup=setup)
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='https://testserver')
+
+    assert client.get('/iphone/api/access/options').json()['creation_available'] is True
+    denied = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': 'wrong' * 8, 'first_name': 'A',
+        'password': 'a sufficiently long password',
+    })
+    assert denied.status_code == 401
+    assert runtime['owner_access'].identity() is None
+
+    created = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': bootstrap, 'first_name': 'Ada', 'last_name': 'Lovelace',
+        'display_name': 'Ada', 'password': 'a sufficiently long password',
+        'device_name': 'Ada phone browser',
+    })
+    assert created.status_code == 200, created.text
+    result = created.json()
+    identity = runtime['owner_access'].identity()
+    assert result['identity']['owner_id'] == identity['owner_id']
+    assert identity['vishnu_id'].startswith('VISHNU-')
+    assert result['device']['id'] == 'iphone-1'
+    assert 'pa_token' not in result
+    assert len(result['recovery_codes']) >= 4
+    assert client.cookies.get('pa_setup_claim')
+    assert client.cookies.get('pa_session')
+    assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
+    assert client.get('/iphone/api/status').status_code == 423
+    model_choice = client.post('/iphone/api/first-run/model', json={'provider_id': 'skip'})
+    assert model_choice.status_code == 200, model_choice.text
+
+    completed = client.post('/iphone/api/first-run/complete', json={
+        'recovery_saved': True, 'privacy_mode': 'local_only',
+        'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
+    })
+    assert completed.status_code == 200, completed.text
+    assert setup.ready is True
+    assert client.get('/iphone/api/status').status_code == 200
+    duplicate = client.post('/iphone/api/first-run/create', json={
+        'bootstrap_secret': bootstrap, 'first_name': 'Different',
+        'password': 'another sufficiently long password',
+    })
+    assert duplicate.status_code == 409
 
 
 

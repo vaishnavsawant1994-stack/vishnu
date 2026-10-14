@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import secrets
 import sqlite3
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,10 @@ def _now() -> str:
 
 def _encode(value: bytes) -> str:
     return base64.urlsafe_b64encode(value).decode().rstrip('=')
+
+
+class FirstRunClaimBusy(RuntimeError):
+    """Another device currently owns the short-lived setup ceremony."""
 
 
 class OwnerAccessStore:
@@ -50,6 +55,12 @@ class OwnerAccessStore:
                 display_name TEXT NOT NULL,
                 created_at TEXT NOT NULL,
                 identity_version INTEGER NOT NULL DEFAULT 1)''')
+            con.execute('''CREATE TABLE IF NOT EXISTS first_run_claim(
+                singleton INTEGER PRIMARY KEY CHECK(singleton=1),
+                salt TEXT NOT NULL,
+                claim_hash TEXT NOT NULL,
+                expires_at INTEGER NOT NULL,
+                created_at TEXT NOT NULL)''')
 
     def _con(self):
         con = sqlite3.connect(self.path)
@@ -65,6 +76,49 @@ class OwnerAccessStore:
                    FROM owner_identity WHERE singleton=1'''
             ).fetchone()
         return dict(row) if row else None
+
+    def acquire_first_run_claim(
+        self, presented: str | None = None, *, ttl: int = 900,
+        allow_pending_identity: bool = False,
+    ) -> tuple[str, bool]:
+        """Reserve the uninitialized install for one short-lived setup client.
+
+        Only a hash of the setup claim is persisted. Repeated calls from the
+        same browser are retry-safe; a second device cannot race a separate
+        first-owner ceremony while the first claim is live.
+        """
+        now = int(time.time())
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT * FROM first_run_claim WHERE singleton=1').fetchone()
+            if row is not None and int(row['expires_at']) >= now:
+                if presented and verify_secret(str(presented), row['salt'], row['claim_hash']):
+                    return str(presented), False
+                raise FirstRunClaimBusy('First-device setup is already in progress on another device.')
+            if (not allow_pending_identity
+                    and con.execute('SELECT 1 FROM owner_identity WHERE singleton=1').fetchone()):
+                raise RuntimeError('Vishnu is already initialized. Connect this device instead.')
+            if presented and not allow_pending_identity:
+                raise FirstRunClaimBusy('The setup session expired. Start the creation ceremony again.')
+            token = secrets.token_urlsafe(32)
+            salt = secrets.token_hex(16)
+            con.execute(
+                '''INSERT INTO first_run_claim(singleton,salt,claim_hash,expires_at,created_at)
+                   VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET
+                   salt=excluded.salt,claim_hash=excluded.claim_hash,
+                   expires_at=excluded.expires_at,created_at=excluded.created_at''',
+                (salt, hash_secret(token, salt), now + max(60, min(int(ttl), 1800)), _now()),
+            )
+            return token, True
+
+    def release_first_run_claim(self, presented: str) -> bool:
+        with self._con() as con:
+            con.execute('BEGIN IMMEDIATE')
+            row = con.execute('SELECT * FROM first_run_claim WHERE singleton=1').fetchone()
+            if row is None or not verify_secret(str(presented or ''), row['salt'], row['claim_hash']):
+                return False
+            result = con.execute('DELETE FROM first_run_claim WHERE singleton=1')
+            return result.rowcount == 1
 
     def initialize_identity(
         self,

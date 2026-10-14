@@ -6,6 +6,7 @@ import os
 from app.main import build_runtime
 from app.e9_runtime import start_e9_services, stop_e9_services
 from core.config import settings
+from onboarding.first_run import FirstRunCoordinator
 from core.storage import validate_runtime_storage
 from future_intelligence.release_control.automation import ReleaseAutomationService
 from future_intelligence.release_control.handoff import ReleaseAwareEngineeringFinalizer
@@ -110,7 +111,11 @@ def _native_client_redirects():
         raise RuntimeError('VISHNU_NATIVE_CLIENT_REDIRECTS must map client IDs to redirect URI arrays')
     return value
 
-runtime=build_runtime();runtime['storage_status']=storage_status;runtime['pwa_sessions']=PwaSessionStore(settings.data_dir/'pwa-sessions.sqlite3',native_client_redirects=_native_client_redirects())
+runtime=build_runtime();runtime['storage_status']=storage_status
+runtime['setup_surface']='web-runtime'
+runtime['first_run_setup']=FirstRunCoordinator(settings.data_dir,runtime=runtime)
+runtime['first_run_setup'].should_run()
+runtime['pwa_sessions']=PwaSessionStore(settings.data_dir/'pwa-sessions.sqlite3',native_client_redirects=_native_client_redirects())
 def _json_env(name, default):
     raw=os.getenv(name, '')
     if not raw:
@@ -221,7 +226,7 @@ async def lifespan(app):
 
 app=create_app(runtime['executor'],settings,device_registry=runtime['device_registry'],device_gateway=runtime['device_gateway'],second_brain=runtime['second_brain'],automations=runtime['automations'],runtime=runtime)
 app.add_middleware(LogicalRequestMiddleware)
-app.add_middleware(PwaSessionMiddleware,sessions=runtime['pwa_sessions'],device_registry=runtime['device_registry'],cookie_max_age=60*60*24*max(1,min(int(getattr(settings,'iphone_device_cookie_days',365)),3650)))
+app.add_middleware(PwaSessionMiddleware,sessions=runtime['pwa_sessions'],device_registry=runtime['device_registry'],cookie_max_age=60*60*24*max(1,min(int(getattr(settings,'iphone_device_cookie_days',365)),3650)),first_run_setup=runtime['first_run_setup'])
 app.add_middleware(WorkflowBudgetUiMiddleware);app.add_middleware(ConnectorUiMiddleware);app.add_middleware(VisualizeUiMiddleware);app.add_middleware(OwnerIntelligenceUiMiddleware);app.add_middleware(OwnerEngineeringUiMiddleware);app.add_middleware(OwnerReleaseUiMiddleware);app.add_middleware(PortableIntelligenceUiMiddleware);app.add_middleware(SelfImprovementUiMiddleware);app.add_middleware(CapabilityForgeUiMiddleware)
 pwa_runtime=dict(runtime);pwa_runtime['executor']=SessionBoundExecutor(runtime['executor'],continuity=runtime['continuity'],surface='iphone-pwa');pwa_runtime['continuity']=CanonicalConversationProjection(runtime['continuity'])
 app.include_router(approval_router(runtime,pwa_runtime['executor']))
