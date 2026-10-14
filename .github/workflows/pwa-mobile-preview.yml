@@ -76,10 +76,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install Playwright and accessibility qualification
-        run: |
-          npm install --no-save playwright @axe-core/playwright
-          npx playwright install --with-deps chromium firefox webkit
+          cache: npm
+      - name: Install locked browser dependencies
+        run: npm ci
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox webkit
       - name: Serve and qualify the PWA at its deployed /iphone/ route
         run: |
           mkdir -p /tmp/pwa-preview

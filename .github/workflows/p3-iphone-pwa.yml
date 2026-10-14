@@ -60,7 +60,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: pip
-      - run: pip install -r requirements.txt
+      - run: python scripts/install_locked_requirements.py runtime
       - run: pip check
       - name: Compile changed Python surfaces
         run: python -m compileall -q server core tests
