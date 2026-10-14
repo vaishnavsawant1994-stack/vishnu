@@ -27,7 +27,7 @@ def create_owner_knowledge_router(runtime, *, authenticate, audit, knowledge_acc
 
     @router.get('/knowledge/sources')
     def knowledge_sources(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        device_id = authenticate(pa_device, pa_token, 'knowledge:read')
+        authenticate(pa_device, pa_token, 'knowledge:read')
         sources = knowledge.sources(limit=100)
         return {'sources': [{key: item.get(key) for key in ('id', 'source_type', 'display_name', 'status', 'sync_status', 'last_sync_at', 'last_error_code', 'project_id')} for item in sources]}
 

@@ -23,6 +23,14 @@ jobs:
         run: |
           pip install "ruff==0.17.0"
           ruff check security/owner_access.py tests/test_owner_access_atomicity.py core/sqlite.py devices/registry.py tests/test_sqlite_foundation.py
+      - name: Owner product correctness and bugbear gate
+        run: >-
+          ruff check
+          server/owner_product.py
+          server/owner_product_memory.py
+          server/owner_product_knowledge.py
+          server/owner_product_schemas.py
+          --extend-select B
       - run: python -m compileall -q app agent automation browser capabilities continuity core dashboard desktop devices evidence evolution future_intelligence identity integrations knowledge memory models proactive products qualification security sensorium server tools training ui updates vision voice visual_intelligence
       - name: Our Products productization qualification gate
         run: |
