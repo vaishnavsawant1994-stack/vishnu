@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 
+from core.sqlite import connect_sqlite, run_migrations
+from memory.migrations import MEMORY_STORE_COMPONENT, MEMORY_STORE_MIGRATIONS
 from memory.policy import require_storable
 
 
@@ -24,70 +25,26 @@ class MemoryStore:
         self._init()
 
     def con(self):
-        con = sqlite3.connect(self.path)
-        con.row_factory = sqlite3.Row
-        return con
+        return connect_sqlite(self.path)
 
     def _init(self):
-        with self.con() as con:
-            con.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS messages(
-                  id TEXT PRIMARY KEY, role TEXT, content TEXT, created_at TEXT);
-                CREATE TABLE IF NOT EXISTS memories(
-                  id TEXT PRIMARY KEY, type TEXT, subject TEXT, content TEXT, source TEXT,
-                  confidence REAL, verified INTEGER, sensitivity TEXT, parent_id TEXT,
-                  tags_json TEXT, created_at TEXT, updated_at TEXT);
-                CREATE TABLE IF NOT EXISTS relations(
-                  id TEXT PRIMARY KEY, source_id TEXT, relation TEXT, target_id TEXT, created_at TEXT);
-                CREATE TABLE IF NOT EXISTS tasks(
-                  id TEXT PRIMARY KEY, title TEXT, status TEXT, due_at TEXT, payload_json TEXT, created_at TEXT);
-                CREATE TABLE IF NOT EXISTS audit(
-                  id TEXT PRIMARY KEY, category TEXT, action TEXT, payload_json TEXT, created_at TEXT);
-                CREATE TABLE IF NOT EXISTS memory_usage(
-                  id TEXT PRIMARY KEY, memory_id TEXT NOT NULL, query TEXT, score REAL,
-                  used_at TEXT NOT NULL, FOREIGN KEY(memory_id) REFERENCES memories(id));
-                CREATE TABLE IF NOT EXISTS memory_conflicts(
-                  id TEXT PRIMARY KEY, older_id TEXT NOT NULL, newer_id TEXT NOT NULL,
-                  resolution TEXT NOT NULL, reason TEXT, created_at TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS memory_preferences(
-                  key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);
-                """
+        con = self.con()
+        try:
+            run_migrations(
+                con,
+                component=MEMORY_STORE_COMPONENT,
+                migrations=MEMORY_STORE_MIGRATIONS,
             )
-            columns = {row['name'] for row in con.execute('PRAGMA table_info(memories)')}
-            additions = {
-                'importance': 'REAL NOT NULL DEFAULT 0.5',
-                'occurred_at': 'TEXT',
-                'last_used_at': 'TEXT',
-                'use_count': 'INTEGER NOT NULL DEFAULT 0',
-                'valid_from': 'TEXT',
-                'valid_to': 'TEXT',
-                'superseded_by': 'TEXT',
-                'evidence_json': "TEXT NOT NULL DEFAULT '[]'",
-                'metadata_json': "TEXT NOT NULL DEFAULT '{}'",
-                'removed_at': 'TEXT',
-            }
-            for name, definition in additions.items():
-                if name not in columns:
-                    con.execute(f'ALTER TABLE memories ADD COLUMN {name} {definition}')
-            message_columns = {row['name'] for row in con.execute('PRAGMA table_info(messages)')}
-            message_additions = {
-                'conversation_id': 'TEXT',
-                'device_id': 'TEXT',
-                'metadata_json': "TEXT NOT NULL DEFAULT '{}'",
-            }
-            for name, definition in message_additions.items():
-                if name not in message_columns:
-                    con.execute(f'ALTER TABLE messages ADD COLUMN {name} {definition}')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_memories_subject_type ON memories(type,subject)')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_memories_temporal ON memories(occurred_at,created_at)')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_memory_usage_memory ON memory_usage(memory_id,used_at)')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_memories_removed_updated ON memories(removed_at,updated_at)')
-            con.executemany(
-                'INSERT OR IGNORE INTO memory_preferences(key,value,updated_at) VALUES(?,?,?)',
-                [('memory_enabled', 'true', now()), ('review_before_saving', 'true', now())],
-            )
-            con.execute('CREATE INDEX IF NOT EXISTS idx_messages_conversation_created ON messages(conversation_id,created_at)')
+            # These preferences are runtime integrity defaults, not schema history.
+            # Reconcile them on every startup so a missing row is repaired without
+            # overwriting an owner's existing choice.
+            with con:
+                con.executemany(
+                    'INSERT OR IGNORE INTO memory_preferences(key,value,updated_at) VALUES(?,?,?)',
+                    [('memory_enabled', 'true', now()), ('review_before_saving', 'true', now())],
+                )
+        finally:
+            con.close()
 
     def add_message(self, role, content, *, conversation_id=None, device_id=None, metadata=None):
         message_id = str(uuid.uuid4())
