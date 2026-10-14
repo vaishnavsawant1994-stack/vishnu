@@ -24,10 +24,13 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci --ignore-scripts
-      - run: pytest -q tests/test_sbom_evidence.py
+      - run: pytest -q tests/test_sbom_evidence.py tests/test_license_compliance.py
       - name: Generate Python and Node.js CycloneDX SBOMs
         run: python scripts/generate_sbom.py --output-dir dist/sbom
+      - name: Check dependency license policy
+        run: python scripts/license_compliance.py --sbom-dir dist/sbom --output dist/sbom/license-report.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: sbom-${{ github.sha }}
           path: dist/sbom/
