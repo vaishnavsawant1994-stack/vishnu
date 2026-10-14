@@ -162,6 +162,16 @@ def test_stage14_neural_ctc_ocr_is_sequence_native_open_vocabulary_and_owner_gat
         text="ΩAB",
     )
 
+    # Review timestamps remain in the feedback audit table but must not make
+    # the training snapshot hash or seeded model training vary per run.
+    approved_samples = feedback.approved_samples(
+        ContentModelTask.OCR,
+        subtask="neural_line_ocr",
+        languages=("multi",),
+    )
+    assert approved_samples
+    assert all("reviewed_at" not in row["provenance"] for row in approved_samples)
+
     candidate = stage.train_candidate(
         task=ContentModelTask.OCR,
         subtask="neural_line_ocr",

@@ -6,12 +6,11 @@ import io
 import json
 import sqlite3
 import time
-from collections import Counter, defaultdict
+from collections import Counter
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable, Protocol
-from uuid import uuid4
 
 from PIL import Image, ImageOps
 
@@ -297,7 +296,6 @@ class GovernedContentFeedbackStore:
                         "feedback_id": item["feedback_id"],
                         "approved_for_training": True,
                         "reviewed_by": item["reviewed_by"],
-                        "reviewed_at": item["reviewed_at"],
                         "language": item["language"],
                         "subtask": item["subtask"],
                     },
