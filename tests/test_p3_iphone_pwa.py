@@ -1033,6 +1033,12 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
     assert restored.json()['status'] == 'ready'
     assert restored.json()['identity']['vishnu_id'] == owner['vishnu_id']
     assert registry.authenticate(recovery_device_id, 'R' * 48)
+    # Device 1 is historical metadata, not the identity root. Losing and
+    # revoking it must leave the recovered device and owner identity usable.
+    assert registry.revoke(request['device_id']) is True
+    assert registry.authenticate(request['device_id'], request['device_token']) is False
+    assert registry.authenticate(recovery_device_id, 'R' * 48) is True
+    assert runtime['owner_access'].identity()['vishnu_id'] == owner['vishnu_id']
     replayed = client.post('/iphone/api/access/native/recovery', json={
         **recovery_payload, 'device_id': str(uuid.uuid4()), 'device_token': 'S' * 48,
     })
