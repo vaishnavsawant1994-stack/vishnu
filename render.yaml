@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: vishnu-personal-runtime
+    runtime: python
+    plan: 0.5c-512mb
+    autoDeployTrigger: off
+    buildCommand: python scripts/install_locked_requirements.py runtime
+    startCommand: python -m server.hosted_runtime
+    healthCheckPath: /hosted-health
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: PERSONAL_AI_DATA_DIR
+        value: /var/data/vishnu
+      - key: PERSONAL_AI_STRICT_CONFIG
+        value: "true"
+      - key: PERSONAL_AI_TRUST_PROXY_HEADERS
+        value: "true"
+      - key: PERSONAL_AI_OWNER_BOOTSTRAP_SECRET
+        sync: false
+      - key: PERSONAL_AI_VAULT_PASSWORD
+        generateValue: true
+    disk:
+      name: vishnu-owner-data
+      mountPath: /var/data
+      sizeGB: 5
