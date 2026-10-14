@@ -1,13 +1,19 @@
 (() => {
   const s = window.vishnuFirstRun;
   if (!s) return;
-  const {$,createChoice,joinChoice,createForm,firstName,lastName,displayName,bootstrap,
+  const {$,createChoice,joinChoice,restoreChoice,createForm,firstName,lastName,displayName,bootstrap,
     password,passwordAgain,begin,codes,recovery,saved,privacy,provider,model,apiKey,
     saveModel,modelStatus,fallback,finish,showError} = s;
   createChoice.onclick = () => { createForm.classList.remove('hidden'); firstName.focus(); };
   joinChoice.onclick = () => {
     $('enrollStatus').textContent = 'Connect with a passkey, owner password, or one-time recovery code below.';
     ($('passkeyLogin').disabled ? $('passwordChoice') : $('passkeyLogin'))?.focus();
+  };
+  restoreChoice.onclick = () => {
+    $('troubleOptions').classList.remove('hidden');
+    $('passwordForm').classList.add('hidden');
+    $('enrollStatus').textContent = 'Enter a saved one-time recovery code to trust this browser with your existing Vishnu. If its runtime was lost, restore the runtime backup first.';
+    $('recoveryCode').focus();
   };
   begin.onclick = async () => {
     const first=firstName.value.trim(), secret=bootstrap.value, pass=password.value;

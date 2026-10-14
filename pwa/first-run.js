@@ -17,10 +17,14 @@
   joinChoice.type = 'button';
   joinChoice.className = 'secondary';
   joinChoice.textContent = 'I already have Vishnu';
+  const restoreChoice = document.createElement('button');
+  restoreChoice.type = 'button';
+  restoreChoice.className = 'secondary';
+  restoreChoice.textContent = 'Restore Vishnu';
   const createForm = document.createElement('div');
   createForm.id = 'firstRunForm';
   createForm.className = 'access-form hidden';
-  choices.append(createChoice, joinChoice, createForm);
+  choices.append(createChoice, joinChoice, restoreChoice, createForm);
   document.querySelector('#enrollPanel .access-methods')?.prepend(choices);
 
   const field = (id, placeholder, type = 'text', autocomplete = 'off') => {
@@ -135,7 +139,7 @@
     return result;
   };
   window.vishnuFirstRun = {
-    $, createChoice, joinChoice, createForm, firstName, lastName, displayName, bootstrap,
+    $, createChoice, joinChoice, restoreChoice, createForm, firstName, lastName, displayName, bootstrap,
     password, passwordAgain, begin, codes, recovery, saved, privacy, provider, model,
     apiKey, saveModel, modelStatus, fallback, finish, showError,
     get modelSaved() { return modelSaved; }, set modelSaved(value) { modelSaved = Boolean(value); },
