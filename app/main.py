@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import sys
 import threading
 import time
@@ -73,11 +74,14 @@ from voice.realtime import RealtimeVoiceSession
 from voice.wake_phrase import WakePhraseGate
 
 
+logger = logging.getLogger(__name__)
+
+
 def build_runtime():
-    events=EventBus(); telemetry=Telemetry(settings.data_dir/'telemetry.json'); preferences=Preferences(settings.data_dir/'preferences.json'); backups=BackupService(settings.data_dir)
+    telemetry=Telemetry(settings.data_dir/'telemetry.json'); events=EventBus(listener_failure_handler=lambda _event,_exc:telemetry.increment('events.listener_failures')); preferences=Preferences(settings.data_dir/'preferences.json'); backups=BackupService(settings.data_dir)
     vault=SecretVault(settings.data_dir/'vault.json',settings.vault_password or None)
     memory=MemoryStore(settings.data_dir/'assistant.sqlite3'); models=GovernedModelRouter(settings,events=events,audit=memory.audit,vault=vault); models.set_owner_privacy(str(preferences.get('model_privacy_mode',settings.model_privacy_mode))); vector=VectorStore(settings.data_dir/'vectors.sqlite3',lambda text:models.embed(text,sensitivity='sensitive')); memory_engine=SecondBrain(memory,models,vector); second_brain=GovernedMemory(memory_engine,settings.data_dir/'memory-candidates.sqlite3',events=events,is_enabled=lambda: bool(preferences.get('memory_enabled',True)))
-    knowledge_store=UniversalKnowledgeStore(settings.data_dir/'knowledge.sqlite3',settings.data_dir/'knowledge'/'objects'); knowledge=KnowledgeAuthority(knowledge_store,events=events); device_registry=DeviceRegistry(settings.data_dir/'devices.sqlite3'); owner_access=OwnerAccessStore(settings.data_dir/'owner-access.sqlite3'); device_gateway=DeviceGateway(device_registry,events); continuity=ContinuityService(settings.data_dir/'continuity.sqlite3',events=events,second_brain=second_brain)
+    knowledge_store=UniversalKnowledgeStore(settings.data_dir/'knowledge.sqlite3',settings.data_dir/'knowledge'/'objects'); knowledge=KnowledgeAuthority(knowledge_store,events=events); device_registry=DeviceRegistry(settings.data_dir/'devices.sqlite3',events=events); owner_access=OwnerAccessStore(settings.data_dir/'owner-access.sqlite3'); device_gateway=DeviceGateway(device_registry,events); continuity=ContinuityService(settings.data_dir/'continuity.sqlite3',events=events,second_brain=second_brain)
     primary_thread=continuity.latest_thread()
     if primary_thread is None: primary_thread_id=continuity.create_thread('Primary Vishnu Context',device_id='desktop',context={'surface':'desktop','topic':'current work'})
     else: primary_thread_id=primary_thread['id']; continuity.set_active('desktop',primary_thread_id)
@@ -132,7 +136,10 @@ def build_runtime():
             thread=continuity.active_for_device(source_device)
             if thread is None:thread=continuity.resume(source_device)['thread']
             continuity.append(thread['id'],device_id=source_device,kind=kind,payload={'text':str(text)},event_id=str(event_id) if event_id else None)
-        except Exception:pass
+        except Exception as exc:
+            telemetry.increment('continuity.append_failures')
+            logger.error('Conversation continuity append failed for %s from %s',kind,source_device,exc_info=(type(exc),exc,exc.__traceback__))
+            events.emit('continuity.append_failed',kind=str(kind),source_device=source_device,error_type=type(exc).__name__)
     events.subscribe('conversation.user',lambda event:append_continuity('user_message',event.get('text'),event.get('device_id'),event.get('conversation_id'),event.get('event_id') or event.get('message_id'))); events.subscribe('conversation.assistant',lambda event:append_continuity('assistant_message',event.get('text'),event.get('device_id'),event.get('conversation_id'),event.get('event_id') or event.get('message_id'))); events.subscribe('proactive.ingest',lambda event:proactive.consider(str(event.get('source','unknown')),dict(event.get('payload') or {}),context={**context_provider(),**dict(event.get('context') or {})})); events.subscribe('automation.failed',lambda event:proactive.consider('automation',{'kind':'failure','id':event.get('automation_id'),'failed':True,'importance':.7,'message':f"An automation failed: {event.get('error','unknown error')}"},context=context_provider())); events.subscribe('workflow.failed',lambda event:proactive.consider('workflow',{'kind':'failure','id':event.get('run_id'),'failed':True,'importance':.75,'message':f"A workflow needs attention: {event.get('error','workflow failed')}"},context=context_provider())); events.subscribe('workflow.approval_required',lambda event:proactive.consider('workflow',{'kind':'approval','id':event.get('run_id'),'needs_approval':True,'urgency':.7,'importance':.8,'message':f"A workflow is waiting for your approval to use {event.get('tool','a tool')}."},context=context_provider()))
     attach_e9_runtime(runtime)
     return runtime
