@@ -14,6 +14,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from integrations.registry import IntegrationRegistry
 from integrations.discovery.execution import _resolve_public_addresses
 from integrations.state import ConnectorStateStore
+from memory.crypto import VAULT_KEY_NAME
 from memory.store import MemoryStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from security.approvals import ApprovalManager
@@ -162,7 +163,7 @@ def test_owner_discovers_approves_connects_executes_and_revokes_get(tmp_path, mo
     assert "credential_ref" not in detail["connection"]
     revoked = client.post(f"/iphone/api/apps-tools/capabilities/{capability_id}/disconnect")
     assert revoked.status_code == 200
-    assert not vault.names()
+    assert vault.names() == [VAULT_KEY_NAME]
     assert client.post(f"/iphone/api/apps-tools/capabilities/{capability_id}/execute", json={"parameters": {"city": "Oslo"}}).status_code == 409
 
 

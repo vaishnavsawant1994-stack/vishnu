@@ -37,14 +37,14 @@ def bulk_insert(store, count, *, marker_index=None):
         rows.append((
             memory_id,
             'fact',
-            f'Bulk subject {index}',
-            f'Deterministic corpus row {index}.{marker}',
-            'qualification-fixture',
+            store._encrypt('memories', memory_id, 'subject', f'Bulk subject {index}'),
+            store._encrypt('memories', memory_id, 'content', f'Deterministic corpus row {index}.{marker}'),
+            store._encrypt('memories', memory_id, 'source', 'qualification-fixture'),
             .8,
             1,
             'normal',
             None,
-            '[]',
+            store._encrypt('memories', memory_id, 'tags_json', '[]'),
             stamp,
             stamp,
             .5,
@@ -54,16 +54,17 @@ def bulk_insert(store, count, *, marker_index=None):
             stamp,
             None,
             None,
-            '[]',
-            '{}',
+            store._encrypt('memories', memory_id, 'evidence_json', '[]'),
+            store._encrypt('memories', memory_id, 'metadata_json', '{}'),
+            store.cipher.blind_index(f'Bulk subject {index}'),
         ))
     with store.con() as con:
         con.executemany(
             '''INSERT INTO memories(
                 id,type,subject,content,source,confidence,verified,sensitivity,parent_id,tags_json,
                 created_at,updated_at,importance,occurred_at,last_used_at,use_count,valid_from,valid_to,
-                superseded_by,evidence_json,metadata_json)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
+                superseded_by,evidence_json,metadata_json,subject_hash)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             rows,
         )
 

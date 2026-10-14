@@ -7,8 +7,10 @@ from pathlib import Path
 from threading import RLock
 
 from core.sqlite import connect_sqlite, run_migrations
-from memory.migrations import MEMORY_STORE_COMPONENT, MEMORY_STORE_MIGRATIONS
+from memory.crypto import MemoryEncryptionError, MemoryFieldCipher, SENSITIVE_FIELDS
+from memory.migrations import MEMORY_STORE_COMPONENT, memory_store_migrations
 from memory.policy import require_storable
+from security.vault import SecretVault
 
 
 def now():
@@ -17,15 +19,23 @@ def now():
 
 class MemoryStore:
     STORABLE_SQL = "lower(replace(replace(trim(COALESCE(sensitivity,'')),'-','_'),' ','_')) != 'never_store'"
+    SEARCH_SCAN_LIMIT = 5000
 
-    def __init__(self, path: Path):
+    def __init__(self, path: Path, *, vault: SecretVault | None = None):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.lock = RLock()
+        vault_path = self.path.parent / 'vault.json'
+        self.vault = vault or SecretVault.get_or_create_live(vault_path)
+        self.cipher = MemoryFieldCipher(self.vault)
         self._init()
 
     def con(self):
-        return connect_sqlite(self.path)
+        con = connect_sqlite(self.path)
+        # The one-time plaintext-to-ciphertext migration must not leave old
+        # field values in freed SQLite pages.
+        con.execute('PRAGMA secure_delete=ON')
+        return con
 
     def _init(self):
         con = self.con()
@@ -33,9 +43,10 @@ class MemoryStore:
             run_migrations(
                 con,
                 component=MEMORY_STORE_COMPONENT,
-                migrations=MEMORY_STORE_MIGRATIONS,
+                migrations=memory_store_migrations(self.cipher),
             )
-            # These preferences are runtime integrity defaults, not schema history.
+            self._validate_encryption(con)
+            # These preferences are operational toggles, not owner-authored content.
             # Reconcile them on every startup so a missing row is repaired without
             # overwriting an owner's existing choice.
             with con:
@@ -46,13 +57,54 @@ class MemoryStore:
         finally:
             con.close()
 
+    def _validate_encryption(self, con):
+        self.cipher.ensure_key(allow_create=False)
+        for table, fields in SENSITIVE_FIELDS.items():
+            columns = {row['name'] for row in con.execute(f'PRAGMA table_info({table})')}
+            for field in fields:
+                if field not in columns:
+                    continue
+                plaintext = con.execute(
+                    f"SELECT id FROM {table} WHERE {field} IS NOT NULL AND {field} NOT LIKE 'v1:%' LIMIT 1"
+                ).fetchone()
+                if plaintext is not None:
+                    raise MemoryEncryptionError(
+                        f'MemoryStore encryption migration incomplete for {table}.{field}'
+                    )
+                sample = con.execute(
+                    f"SELECT id,{field} FROM {table} WHERE {field} LIKE 'v1:%' LIMIT 1"
+                ).fetchone()
+                if sample is not None:
+                    self.cipher.decrypt(table, str(sample['id']), field, sample[field])
+        missing_hash = con.execute(
+            "SELECT id FROM memories WHERE subject IS NOT NULL AND subject_hash IS NULL LIMIT 1"
+        ).fetchone()
+        if missing_hash is not None:
+            raise MemoryEncryptionError('MemoryStore subject blind index is incomplete')
+
+    def _encrypt(self, table, row_id, field, value):
+        return self.cipher.encrypt(table, str(row_id), field, value)
+
+    def _decrypt_row(self, table, row):
+        item = dict(row)
+        for field in SENSITIVE_FIELDS.get(table, ()):
+            if field in item and item[field] is not None:
+                item[field] = self.cipher.decrypt(table, str(item['id']), field, item[field])
+        if table == 'memories':
+            item.pop('subject_hash', None)
+        return item
+
     def add_message(self, role, content, *, conversation_id=None, device_id=None, metadata=None):
         message_id = str(uuid.uuid4())
+        encrypted_content = self._encrypt('messages', message_id, 'content', content)
+        encrypted_metadata = self._encrypt(
+            'messages', message_id, 'metadata_json', json.dumps(metadata or {}, default=str)
+        )
         with self.lock, self.con() as con:
             con.execute(
                 '''INSERT INTO messages(id,role,content,created_at,conversation_id,device_id,metadata_json)
                    VALUES(?,?,?,?,?,?,?)''',
-                (message_id, role, content, now(), conversation_id, device_id, json.dumps(metadata or {}, default=str)),
+                (message_id, role, encrypted_content, now(), conversation_id, device_id, encrypted_metadata),
             )
         return message_id
 
@@ -67,15 +119,20 @@ class MemoryStore:
         with self.con() as con:
             if conversation_id:
                 rows = con.execute(
-                    'SELECT role,content FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT ?',
+                    'SELECT id,role,content FROM messages WHERE conversation_id=? ORDER BY created_at DESC LIMIT ?',
                     (conversation_id, limit),
                 ).fetchall()
             else:
                 rows = con.execute(
-                    'SELECT role,content FROM messages ORDER BY created_at DESC LIMIT ?',
+                    'SELECT id,role,content FROM messages ORDER BY created_at DESC LIMIT ?',
                     (limit,),
                 ).fetchall()
-        return [dict(row) for row in reversed(rows)]
+        output = []
+        for row in reversed(rows):
+            item = self._decrypt_row('messages', row)
+            item.pop('id', None)
+            output.append(item)
+        return output
 
     def remember(
         self,
@@ -98,24 +155,25 @@ class MemoryStore:
         require_storable(sensitivity=sensitivity, metadata=metadata)
         memory_id = str(uuid.uuid4())
         stamp = now()
+        subject_text = str(subject)
         with self.lock, self.con() as con:
             con.execute(
                 '''INSERT INTO memories(
                     id,type,subject,content,source,confidence,verified,sensitivity,parent_id,tags_json,
                     created_at,updated_at,importance,occurred_at,last_used_at,use_count,valid_from,valid_to,
-                    superseded_by,evidence_json,metadata_json)
-                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?)''',
+                    superseded_by,evidence_json,metadata_json,subject_hash)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,?,?,?)''',
                 (
                     memory_id,
                     type,
-                    subject,
-                    content,
-                    source,
+                    self._encrypt('memories', memory_id, 'subject', subject_text),
+                    self._encrypt('memories', memory_id, 'content', content),
+                    self._encrypt('memories', memory_id, 'source', source),
                     float(confidence),
                     int(verified),
                     sensitivity,
                     parent_id,
-                    json.dumps(tags or []),
+                    self._encrypt('memories', memory_id, 'tags_json', json.dumps(tags or [])),
                     stamp,
                     stamp,
                     max(0.0, min(1.0, float(importance))),
@@ -123,8 +181,9 @@ class MemoryStore:
                     None,
                     0,
                     valid_from or occurred_at or stamp,
-                    json.dumps(evidence or [], default=str),
-                    json.dumps(metadata or {}, default=str),
+                    self._encrypt('memories', memory_id, 'evidence_json', json.dumps(evidence or [], default=str)),
+                    self._encrypt('memories', memory_id, 'metadata_json', json.dumps(metadata or {}, default=str)),
+                    self.cipher.blind_index(subject_text),
                 ),
             )
         return memory_id
@@ -136,7 +195,7 @@ class MemoryStore:
                 f'SELECT * FROM memories WHERE id=? AND {self.STORABLE_SQL}{removed_clause}',
                 (memory_id,),
             ).fetchone()
-        return dict(row) if row else None
+        return self._decrypt_row('memories', row) if row else None
 
     def preferences(self):
         with self.con() as con:
@@ -149,23 +208,36 @@ class MemoryStore:
         with self.lock, self.con() as con:
             for key, value in values.items():
                 if value is not None:
-                    con.execute('INSERT INTO memory_preferences(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at', (key, 'true' if value else 'false', stamp))
+                    con.execute(
+                        'INSERT INTO memory_preferences(key,value,updated_at) VALUES(?,?,?) '
+                        'ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at',
+                        (key, 'true' if value else 'false', stamp),
+                    )
         return self.preferences()
 
     def soft_delete(self, memory_id: str):
         with self.lock, self.con() as con:
-            cur = con.execute('UPDATE memories SET removed_at=?,updated_at=? WHERE id=? AND removed_at IS NULL AND ' + self.STORABLE_SQL, (now(), now(), memory_id))
+            cur = con.execute(
+                'UPDATE memories SET removed_at=?,updated_at=? WHERE id=? AND removed_at IS NULL AND ' + self.STORABLE_SQL,
+                (now(), now(), memory_id),
+            )
         return cur.rowcount == 1
 
     def restore(self, memory_id: str):
         with self.lock, self.con() as con:
-            cur = con.execute('UPDATE memories SET removed_at=NULL,updated_at=? WHERE id=? AND removed_at IS NOT NULL AND ' + self.STORABLE_SQL, (now(), memory_id))
+            cur = con.execute(
+                'UPDATE memories SET removed_at=NULL,updated_at=? WHERE id=? AND removed_at IS NOT NULL AND ' + self.STORABLE_SQL,
+                (now(), memory_id),
+            )
         return cur.rowcount == 1
 
     def recently_removed(self, limit=100):
         with self.con() as con:
-            rows = con.execute(f'SELECT * FROM memories WHERE removed_at IS NOT NULL AND {self.STORABLE_SQL} ORDER BY removed_at DESC LIMIT ?', (max(1, min(int(limit), 500)),)).fetchall()
-        return [dict(row) for row in rows]
+            rows = con.execute(
+                f'SELECT * FROM memories WHERE removed_at IS NOT NULL AND {self.STORABLE_SQL} ORDER BY removed_at DESC LIMIT ?',
+                (max(1, min(int(limit), 500)),),
+            ).fetchall()
+        return [self._decrypt_row('memories', row) for row in rows]
 
     def update_memory(self, memory_id: str, **changes):
         require_storable(
@@ -185,6 +257,11 @@ class MemoryStore:
             fields['metadata_json'] = json.dumps(changes['metadata'] or {}, default=str)
         if not fields:
             return False
+        for field in SENSITIVE_FIELDS['memories']:
+            if field in fields:
+                fields[field] = self._encrypt('memories', memory_id, field, fields[field])
+        if 'subject' in changes:
+            fields['subject_hash'] = self.cipher.blind_index(changes['subject'])
         fields['updated_at'] = now()
         query = ','.join(f'{key}=?' for key in fields)
         with self.lock, self.con() as con:
@@ -202,30 +279,45 @@ class MemoryStore:
             con.execute('INSERT INTO relations VALUES(?,?,?,?,?)', (relation_id, source_id, relation, target_id, now()))
         return relation_id
 
+    @staticmethod
+    def _contains(item, query):
+        needle = str(query).casefold()
+        return needle in str(item.get('subject') or '').casefold() or needle in str(item.get('content') or '').casefold()
+
     def search(self, q, limit=20, *, active_only=False):
-        term = f'%{q}%'
+        limit = max(1, min(int(limit), 1000))
         active_clause = ' AND valid_to IS NULL' if active_only else ''
         with self.con() as con:
             rows = con.execute(
-                f'''SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL AND (subject LIKE ? OR content LIKE ?){active_clause}
+                f'''SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL{active_clause}
                     ORDER BY updated_at DESC LIMIT ?''',
-                (term, term, limit),
+                (self.SEARCH_SCAN_LIMIT,),
             ).fetchall()
-        return [dict(row) for row in rows]
+        output = []
+        for row in rows:
+            item = self._decrypt_row('memories', row)
+            if self._contains(item, q):
+                output.append(item)
+                if len(output) >= limit:
+                    break
+        return output
 
     def active_subject(self, type: str, subject: str, limit=20):
+        subject_hash = self.cipher.blind_index(subject)
         with self.con() as con:
             rows = con.execute(
-                f'''SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL AND lower(type)=lower(?) AND lower(subject)=lower(?) AND valid_to IS NULL
+                f'''SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL
+                   AND lower(type)=lower(?) AND subject_hash=? AND valid_to IS NULL
                    ORDER BY updated_at DESC LIMIT ?''',
-                (type, subject, limit),
+                (type, subject_hash, limit),
             ).fetchall()
-        return [dict(row) for row in rows]
+        return [self._decrypt_row('memories', row) for row in rows]
 
     def supersede(self, older_id: str, newer_id: str, *, reason='newer supported memory'):
         if not self.get(older_id) or not self.get(newer_id):
             raise KeyError('memory not found')
         stamp = now()
+        conflict_id = str(uuid.uuid4())
         with self.lock, self.con() as con:
             older = con.execute('SELECT id FROM memories WHERE id=?', (older_id,)).fetchone()
             newer = con.execute('SELECT id FROM memories WHERE id=?', (newer_id,)).fetchone()
@@ -235,10 +327,9 @@ class MemoryStore:
                 'UPDATE memories SET valid_to=?,superseded_by=?,updated_at=? WHERE id=? AND valid_to IS NULL',
                 (stamp, newer_id, stamp, older_id),
             )
-            conflict_id = str(uuid.uuid4())
             con.execute(
                 'INSERT INTO memory_conflicts VALUES(?,?,?,?,?,?)',
-                (conflict_id, older_id, newer_id, 'superseded', reason, stamp),
+                (conflict_id, older_id, newer_id, 'superseded', self._encrypt('memory_conflicts', conflict_id, 'reason', reason), stamp),
             )
         return conflict_id
 
@@ -249,14 +340,14 @@ class MemoryStore:
         with self.lock, self.con() as con:
             con.execute(
                 'INSERT INTO memory_conflicts VALUES(?,?,?,?,?,?)',
-                (conflict_id, older_id, newer_id, resolution, reason, now()),
+                (conflict_id, older_id, newer_id, resolution, self._encrypt('memory_conflicts', conflict_id, 'reason', reason), now()),
             )
         return conflict_id
 
     def conflicts(self, limit=100):
         with self.con() as con:
             rows = [
-                dict(row)
+                self._decrypt_row('memory_conflicts', row)
                 for row in con.execute(
                     'SELECT * FROM memory_conflicts ORDER BY created_at DESC LIMIT ?',
                     (limit,),
@@ -275,7 +366,7 @@ class MemoryStore:
                 return None
             con.execute(
                 'INSERT INTO memory_usage VALUES(?,?,?,?,?)',
-                (usage_id, memory_id, query, score, stamp),
+                (usage_id, memory_id, self._encrypt('memory_usage', usage_id, 'query', query), score, stamp),
             )
             con.execute(
                 'UPDATE memories SET last_used_at=?,use_count=use_count+1,updated_at=updated_at WHERE id=?',
@@ -287,14 +378,15 @@ class MemoryStore:
         if not self.get(memory_id):
             return []
         with self.con() as con:
-            return [dict(row) for row in con.execute('SELECT * FROM memory_usage WHERE memory_id=? ORDER BY used_at DESC LIMIT ?', (memory_id, limit))]
+            rows = con.execute(
+                'SELECT * FROM memory_usage WHERE memory_id=? ORDER BY used_at DESC LIMIT ?',
+                (memory_id, limit),
+            ).fetchall()
+        return [self._decrypt_row('memory_usage', row) for row in rows]
 
     def temporal_search(self, q='', *, start=None, end=None, memory_type=None, limit=100):
         clauses = [self.STORABLE_SQL, 'removed_at IS NULL']
         params = []
-        if q:
-            clauses.append('(subject LIKE ? OR content LIKE ?)')
-            params.extend([f'%{q}%', f'%{q}%'])
         if start:
             clauses.append('COALESCE(occurred_at,created_at)>=?')
             params.append(start)
@@ -304,20 +396,30 @@ class MemoryStore:
         if memory_type:
             clauses.append('lower(type)=lower(?)')
             params.append(memory_type)
-        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
-        params.append(max(1, min(int(limit), 1000)))
+        where = ' WHERE ' + ' AND '.join(clauses)
+        requested = max(1, min(int(limit), 1000))
+        params.append(self.SEARCH_SCAN_LIMIT if q else requested)
         with self.con() as con:
             rows = con.execute(
                 f'SELECT * FROM memories{where} ORDER BY COALESCE(occurred_at,created_at) DESC LIMIT ?',
                 params,
             ).fetchall()
-        return [dict(row) for row in rows]
+        output = []
+        for row in rows:
+            item = self._decrypt_row('memories', row)
+            if not q or self._contains(item, q):
+                output.append(item)
+                if len(output) >= requested:
+                    break
+        return output
 
     def graph(self):
         with self.con() as con:
             nodes = [
-                dict(row)
-                for row in con.execute(f'SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL').fetchall()
+                self._decrypt_row('memories', row)
+                for row in con.execute(
+                    f'SELECT * FROM memories WHERE {self.STORABLE_SQL} AND removed_at IS NULL'
+                ).fetchall()
             ]
             allowed = {row['id'] for row in nodes}
             edges = [
@@ -338,11 +440,14 @@ class MemoryStore:
                 parent['children'].append(item)
             else:
                 roots.append(item)
-        key = lambda item: (str(item.get('type') or ''), str(item.get('subject') or '').lower())
+        def key(item):
+            return (str(item.get('type') or ''), str(item.get('subject') or '').lower())
+
         def sort_branch(branch):
             branch.sort(key=key)
             for child in branch:
                 sort_branch(child['children'])
+
         sort_branch(roots)
         return roots
 
@@ -381,7 +486,10 @@ class MemoryStore:
             if not include_sensitive:
                 clauses.append("sensitivity NOT IN ('sensitive','secret')")
             where = ' WHERE ' + ' AND '.join(clauses)
-            memories = [dict(row) for row in con.execute(f'SELECT * FROM memories{where} ORDER BY created_at')]
+            memories = [
+                self._decrypt_row('memories', row)
+                for row in con.execute(f'SELECT * FROM memories{where} ORDER BY created_at')
+            ]
             allowed = {row['id'] for row in memories}
             relations = [
                 dict(row) for row in con.execute('SELECT * FROM relations ORDER BY created_at')
@@ -403,16 +511,19 @@ class MemoryStore:
                 ).fetchall()
         output = []
         for row in rows:
-            item = dict(row)
+            item = self._decrypt_row('audit', row)
             item['payload'] = json.loads(item.pop('payload_json') or '{}')
             output.append(item)
         return output
 
     def audit(self, category, action, payload=None):
         audit_id = str(uuid.uuid4())
+        encrypted_payload = self._encrypt(
+            'audit', audit_id, 'payload_json', json.dumps(payload or {}, default=str)
+        )
         with self.lock, self.con() as con:
             con.execute(
                 'INSERT INTO audit VALUES(?,?,?,?,?)',
-                (audit_id, category, action, json.dumps(payload or {}, default=str), now()),
+                (audit_id, category, action, encrypted_payload, now()),
             )
         return audit_id

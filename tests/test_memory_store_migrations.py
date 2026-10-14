@@ -78,7 +78,7 @@ def test_fresh_memory_store_uses_shared_sqlite_and_latest_schema(tmp_path):
     try:
         assert con.execute('PRAGMA foreign_keys').fetchone()[0] == 1
         assert con.execute('PRAGMA busy_timeout').fetchone()[0] == 30000
-        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS)
+        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS) + 1
         assert {
             'importance',
             'occurred_at',
@@ -97,7 +97,7 @@ def test_fresh_memory_store_uses_shared_sqlite_and_latest_schema(tmp_path):
             for row in con.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
         }
         assert {
-            'idx_memories_subject_type',
+            'idx_memories_subject_hash_type',
             'idx_memories_temporal',
             'idx_memory_usage_memory',
             'idx_memories_removed_updated',
@@ -121,16 +121,16 @@ def test_legacy_unversioned_store_upgrades_without_losing_data(tmp_path):
     store = MemoryStore(path)
     con = store.con()
     try:
-        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS)
+        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS) + 1
         row = con.execute('SELECT * FROM memories WHERE id=?', ('legacy-memory',)).fetchone()
-        assert row['content'] == 'Legacy content'
+        assert row['content'].startswith('v1:')
         assert row['importance'] == pytest.approx(0.5)
         assert row['use_count'] == 0
-        assert row['evidence_json'] == '[]'
-        assert row['metadata_json'] == '{}'
+        assert row['evidence_json'].startswith('v1:')
+        assert row['metadata_json'].startswith('v1:')
         message = con.execute('SELECT * FROM messages WHERE id=?', ('legacy-message',)).fetchone()
-        assert message['content'] == 'hello'
-        assert message['metadata_json'] == '{}'
+        assert message['content'].startswith('v1:')
+        assert message['metadata_json'].startswith('v1:')
     finally:
         con.close()
 
@@ -152,7 +152,7 @@ def test_partially_upgraded_unversioned_store_is_idempotently_completed(tmp_path
     MemoryStore(path)
     con = connect_sqlite(path)
     try:
-        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS)
+        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS) + 1
         assert len([row for row in con.execute('PRAGMA table_info(memories)') if row['name'] == 'importance']) == 1
         assert len([row for row in con.execute('PRAGMA table_info(messages)') if row['name'] == 'conversation_id']) == 1
     finally:
@@ -185,8 +185,8 @@ def test_failed_memory_migration_rolls_back_and_restart_recovers(tmp_path):
     store = MemoryStore(path)
     con = store.con()
     try:
-        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS)
-        assert con.execute('SELECT content FROM memories WHERE id=?', ('legacy-memory',)).fetchone()[0] == 'Legacy content'
+        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS) + 1
+        assert con.execute('SELECT content FROM memories WHERE id=?', ('legacy-memory',)).fetchone()[0].startswith('v1:')
     finally:
         con.close()
 
@@ -205,7 +205,7 @@ def test_concurrent_memory_store_initializers_serialize_migrations(tmp_path):
     assert all(result == {'memory_enabled': False, 'review_before_saving': True} for result in results)
     con = connect_sqlite(path)
     try:
-        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS)
+        assert schema_version(con, MEMORY_STORE_COMPONENT) == len(MEMORY_STORE_MIGRATIONS) + 1
         assert con.execute(
             f'SELECT COUNT(*) FROM {MIGRATION_TABLE} WHERE component=?',
             (MEMORY_STORE_COMPONENT,),

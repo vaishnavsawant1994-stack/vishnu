@@ -183,7 +183,7 @@ def main():
     from ui.first_run_wizard import FirstRunWizard
 
     app=QApplication(sys.argv); app.setApplicationName('Vishnu')
-    FirstRunCoordinator.apply_pending_restore(settings.data_dir)
+    FirstRunCoordinator.apply_pending_restore(settings.data_dir, vault_password=settings.vault_password or None)
     runtime=build_runtime()
     setup=FirstRunCoordinator(settings.data_dir,runtime=runtime); runtime['first_run_setup']=setup
     if setup.should_run():

@@ -372,7 +372,7 @@ class FirstRunCoordinator:
         return self._write_state(state)
 
     @classmethod
-    def apply_pending_restore(cls, data_dir: Path) -> dict | None:
+    def apply_pending_restore(cls, data_dir: Path, *, vault_password: str | None = None) -> dict | None:
         data_dir = Path(data_dir)
         pending = data_dir / cls.PENDING_RESTORE_FILE
         if not pending.exists():
@@ -381,7 +381,7 @@ class FirstRunCoordinator:
         try:
             payload = json.loads(pending.read_text(encoding='utf-8'))
             archive = Path(str(payload['path'])).expanduser().resolve()
-            result = BackupService(data_dir).restore(archive)
+            result = BackupService(data_dir, vault_password=vault_password).restore(archive)
             # Security authority is intentionally not restored by BackupService.
             # Force the restored installation back through fresh owner security.
             Preferences(data_dir / 'preferences.json').set('onboarding_complete', False)

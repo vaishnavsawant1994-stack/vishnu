@@ -15,11 +15,14 @@ import zipfile
 from pathlib import Path
 
 from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from security.keychain import KeychainUnavailable, RootKeyStore
+from security.vault import SecretVault
+from memory.crypto import SENSITIVE_FIELDS, VAULT_KEY_NAME
 
 
 EXCLUDED_NAMES = {'vault.json', '.env', 'secrets.json'}
@@ -46,6 +49,9 @@ BACKUP_VERSION = 2
 BACKUP_TAG_BYTES = 16
 BACKUP_HEADER_MAX = 64 * 1024
 BACKUP_INFO = b'personal-ai-backup-v2'
+MEMORY_KEY_ENVELOPE = 'system-key-envelopes/memory-field-key.v1.json'
+MEMORY_KEY_AAD = b'vishnu-backup-memory-field-key-v1'
+MEMORY_KEY_INFO = b'vishnu-backup-memory-field-key-wrap-v1'
 COPY_CHUNK = 1024 * 1024
 
 
@@ -65,11 +71,20 @@ class BackupService:
     backups.
     """
 
-    def __init__(self, data_dir: Path, root_key_store: RootKeyStore | None = None):
+    def __init__(
+        self,
+        data_dir: Path,
+        root_key_store: RootKeyStore | None = None,
+        *,
+        vault: SecretVault | None = None,
+        vault_password: str | None = None,
+    ):
         self.data_dir = Path(data_dir).resolve()
         self.backup_dir = self.data_dir / 'backups'
         self.backup_dir.mkdir(parents=True, exist_ok=True)
         self.root_key_store = root_key_store or RootKeyStore()
+        self.vault = vault
+        self.vault_password = vault_password
 
     @staticmethod
     def _sha(path: Path) -> str:
@@ -150,6 +165,106 @@ class BackupService:
             return
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+
+    def _memory_key_envelope(self) -> bytes | None:
+        vault_path = self.data_dir / 'vault.json'
+        vault = self.vault or SecretVault.live(vault_path)
+        encrypted_memory_data = False
+        database = self.data_dir / 'assistant.sqlite3'
+        if database.is_file():
+            try:
+                with sqlite3.connect(database) as con:
+                    for table, fields in SENSITIVE_FIELDS.items():
+                        present = con.execute(
+                            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+                        ).fetchone()
+                        if not present:
+                            continue
+                        columns = {row[1] for row in con.execute(f'PRAGMA table_info({table})')}
+                        for field in fields:
+                            if field in columns and con.execute(
+                                f"SELECT 1 FROM {table} WHERE {field} LIKE 'v1:%' LIMIT 1"
+                            ).fetchone():
+                                encrypted_memory_data = True
+                                break
+                        if encrypted_memory_data:
+                            break
+            except sqlite3.DatabaseError as exc:
+                raise BackupError('cannot inspect MemoryStore key availability') from exc
+        if vault is None and not encrypted_memory_data:
+            return None
+        if vault is None and vault_path.exists():
+            try:
+                vault = SecretVault.get_or_create_live(
+                    vault_path, password=self.vault_password,
+                    root_key_store=self.root_key_store,
+                )
+            except Exception as exc:
+                raise BackupError('canonical SecretVault is unavailable for encrypted data backup') from exc
+        if vault is None:
+            if encrypted_memory_data:
+                raise BackupError(
+                    'encrypted MemoryStore data has no available canonical SecretVault'
+                )
+            return None
+        encoded = vault.get(VAULT_KEY_NAME)
+        if encoded is None:
+            return None
+        try:
+            dek = base64.b64decode(str(encoded), validate=True)
+        except Exception as exc:
+            raise BackupError('memory data-encryption key is invalid') from exc
+        if len(dek) != 32:
+            raise BackupError('memory data-encryption key is invalid')
+        try:
+            root_key = self.root_key_store.get_or_create()
+        except (KeychainUnavailable, OSError, RuntimeError) as exc:
+            raise BackupError('backup key authority is unavailable') from exc
+        wrap_key = HKDF(
+            algorithm=hashes.SHA256(), length=32,
+            salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
+        ).derive(bytes(root_key))
+        nonce = secrets.token_bytes(12)
+        wrapped = AESGCM(wrap_key).encrypt(nonce, dek, MEMORY_KEY_AAD)
+        return json.dumps({
+            'version': 1,
+            'cipher': 'AES-256-GCM',
+            'nonce': base64.b64encode(nonce).decode('ascii'),
+            'wrapped_key': base64.b64encode(wrapped).decode('ascii'),
+        }, sort_keys=True, separators=(',', ':')).encode('utf-8')
+
+    def _unwrap_memory_key(self, envelope: bytes) -> bytes:
+        try:
+            obj = json.loads(envelope)
+            if obj.get('version') != 1 or obj.get('cipher') != 'AES-256-GCM':
+                raise ValueError('unsupported key envelope')
+            nonce = base64.b64decode(obj['nonce'], validate=True)
+            wrapped = base64.b64decode(obj['wrapped_key'], validate=True)
+            if len(nonce) != 12 or len(wrapped) != 48:
+                raise ValueError('invalid key envelope size')
+            root_key = self.root_key_store.get_or_create()
+            wrap_key = HKDF(
+                algorithm=hashes.SHA256(), length=32,
+                salt=b'vishnu-backup-memory-field-key-v1', info=MEMORY_KEY_INFO,
+            ).derive(bytes(root_key))
+            dek = AESGCM(wrap_key).decrypt(nonce, wrapped, MEMORY_KEY_AAD)
+            if len(dek) != 32:
+                raise ValueError('invalid data-encryption key size')
+            return dek
+        except (KeychainUnavailable, OSError, RuntimeError) as exc:
+            raise BackupError('backup key authority is unavailable') from exc
+        except Exception as exc:
+            raise BackupError('memory data-encryption key envelope is invalid') from exc
+
+    def _restore_memory_key(self, dek: bytes) -> None:
+        try:
+            vault = self.vault or SecretVault.get_or_create_live(
+                self.data_dir / 'vault.json', password=self.vault_password,
+                root_key_store=self.root_key_store,
+            )
+            vault.set(VAULT_KEY_NAME, base64.b64encode(dek).decode('ascii'))
+        except Exception as exc:
+            raise BackupError('memory data-encryption key restore failed') from exc
 
     def _derive_key(self, salt: bytes) -> bytes:
         try:
@@ -304,6 +419,18 @@ class BackupService:
                     'size': snapshot.stat().st_size,
                 })
 
+            key_envelope = self._memory_key_envelope()
+            if key_envelope is not None:
+                envelope_path = stage / MEMORY_KEY_ENVELOPE
+                envelope_path.parent.mkdir(parents=True, exist_ok=True)
+                envelope_path.write_bytes(key_envelope)
+                manifest['files'].append({
+                    'path': MEMORY_KEY_ENVELOPE,
+                    'sha256': hashlib.sha256(key_envelope).hexdigest(),
+                    'size': len(key_envelope),
+                    'purpose': 'restore encrypted MemoryStore fields',
+                })
+
             with zipfile.ZipFile(payload, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
                 for item in manifest['files']:
                     archive.write(stage / item['path'], item['path'])
@@ -449,10 +576,17 @@ class BackupService:
                     staged.parent.mkdir(parents=True, exist_ok=True)
                     staged.write_bytes(zipped.read(item['path']))
 
+            memory_key = None
+            memory_key_path = stage / MEMORY_KEY_ENVELOPE
+            if memory_key_path.exists():
+                memory_key = self._unwrap_memory_key(memory_key_path.read_bytes())
+
             destinations: list[tuple[Path, Path, Path]] = []
             skipped_security_state: list[str] = []
             for item in manifest['files']:
                 rel = self._safe_rel(item['path'])
+                if rel.as_posix() == MEMORY_KEY_ENVELOPE:
+                    continue
                 staged = stage / rel
                 if staged.suffix.lower() in SQLITE_SUFFIXES:
                     self._sqlite_integrity(staged)
@@ -486,6 +620,8 @@ class BackupService:
                         restored += 1
                     finally:
                         temp_destination.unlink(missing_ok=True)
+                if memory_key is not None:
+                    self._restore_memory_key(memory_key)
             except Exception as exc:
                 rollback_errors = []
                 for destination, rollback_copy in reversed(touched[:restored]):

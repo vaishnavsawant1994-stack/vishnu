@@ -65,13 +65,19 @@ def test_legacy_never_store_rows_are_suppressed_from_every_retrieval_path(tmp_pa
             '''INSERT INTO memories(
                 id,type,subject,content,source,confidence,verified,sensitivity,parent_id,tags_json,
                 created_at,updated_at,importance,occurred_at,last_used_at,use_count,valid_from,valid_to,
-                superseded_by,evidence_json,metadata_json)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL,'[]','{}')''',
+                superseded_by,evidence_json,metadata_json,subject_hash)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)''',
             (
-                hidden_id, 'fact', 'hidden', 'must not surface', 'legacy', 1, 1,
-                'never-store', None, '[]', '2026-01-01T00:00:00+00:00',
-                '2026-01-01T00:00:00+00:00', .5, None, None, 0,
+                hidden_id, 'fact', store._encrypt('memories', hidden_id, 'subject', 'hidden'),
+                store._encrypt('memories', hidden_id, 'content', 'must not surface'),
+                store._encrypt('memories', hidden_id, 'source', 'legacy'), 1, 1,
+                'never-store', None, store._encrypt('memories', hidden_id, 'tags_json', '[]'),
                 '2026-01-01T00:00:00+00:00',
+                '2026-01-01T00:00:00+00:00', .5, None, None, 0,
+                '2026-01-01T00:00:00+00:00', None, None,
+                store._encrypt('memories', hidden_id, 'evidence_json', '[]'),
+                store._encrypt('memories', hidden_id, 'metadata_json', '{}'),
+                store.cipher.blind_index('hidden'),
             ),
         )
         con.execute(
