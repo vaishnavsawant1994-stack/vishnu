@@ -4,13 +4,15 @@ import hashlib
 import io
 import json
 import re
-import sqlite3
 import stat
 import zipfile
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
+
+from core.sqlite import connect_sqlite, run_migrations
+from knowledge.migrations import KNOWLEDGE_COMPONENT, KNOWLEDGE_MIGRATIONS
 
 
 def now() -> str:
@@ -50,80 +52,14 @@ class KnowledgeStore:
         self._init()
 
     def _con(self):
-        con = sqlite3.connect(self.path)
-        con.row_factory = sqlite3.Row
-        con.execute('PRAGMA foreign_keys=ON')
-        return con
-
-    @staticmethod
-    def _ensure_column(con, table: str, name: str, definition: str):
-        columns = {row['name'] for row in con.execute(f'PRAGMA table_info({table})')}
-        if name not in columns:
-            con.execute(f'ALTER TABLE {table} ADD COLUMN {name} {definition}')
+        return connect_sqlite(self.path)
 
     def _init(self):
-        with self._con() as con:
-            con.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS knowledge_documents(
-                    id TEXT PRIMARY KEY,
-                    title TEXT NOT NULL,
-                    filename TEXT NOT NULL,
-                    media_type TEXT NOT NULL,
-                    source TEXT NOT NULL,
-                    checksum TEXT NOT NULL,
-                    size_bytes INTEGER NOT NULL,
-                    access_class TEXT NOT NULL DEFAULT 'owner',
-                    metadata_json TEXT NOT NULL DEFAULT '{}',
-                    object_name TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_knowledge_checksum ON knowledge_documents(checksum);
-                CREATE INDEX IF NOT EXISTS idx_knowledge_updated ON knowledge_documents(updated_at);
-                CREATE TABLE IF NOT EXISTS knowledge_chunks(
-                    id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL,
-                    position INTEGER NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(document_id) REFERENCES knowledge_documents(id) ON DELETE CASCADE
-                );
-                CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_document ON knowledge_chunks(document_id,position);
-                CREATE TABLE IF NOT EXISTS knowledge_memory_links(
-                    id TEXT PRIMARY KEY,
-                    document_id TEXT NOT NULL,
-                    memory_id TEXT NOT NULL,
-                    relationship TEXT NOT NULL,
-                    rationale TEXT NOT NULL,
-                    created_at TEXT NOT NULL,
-                    FOREIGN KEY(document_id) REFERENCES knowledge_documents(id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS knowledge_collections(
-                    id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL DEFAULT '',
-                    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-                );
-                """
-            )
-            self._ensure_column(con, 'knowledge_documents', 'lineage_id', 'TEXT')
-            self._ensure_column(con, 'knowledge_documents', 'version_number', 'INTEGER NOT NULL DEFAULT 1')
-            self._ensure_column(con, 'knowledge_documents', 'is_current', 'INTEGER NOT NULL DEFAULT 1')
-            self._ensure_column(con, 'knowledge_documents', 'superseded_by_id', 'TEXT')
-            self._ensure_column(con, 'knowledge_documents', 'ingested_at', 'TEXT')
-            self._ensure_column(con, 'knowledge_chunks', 'page_start', 'INTEGER')
-            self._ensure_column(con, 'knowledge_chunks', 'page_end', 'INTEGER')
-            self._ensure_column(con, 'knowledge_chunks', 'location_json', "TEXT NOT NULL DEFAULT '{}'")
-            con.execute(
-                """UPDATE knowledge_documents
-                   SET lineage_id=COALESCE(lineage_id,id),
-                       version_number=COALESCE(version_number,1),
-                       is_current=COALESCE(is_current,1),
-                       ingested_at=COALESCE(ingested_at,created_at)"""
-            )
-            con.execute('DROP INDEX IF EXISTS idx_knowledge_checksum')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_knowledge_checksum ON knowledge_documents(checksum)')
-            con.execute('CREATE UNIQUE INDEX IF NOT EXISTS idx_knowledge_lineage_version ON knowledge_documents(lineage_id,version_number)')
-            con.execute('CREATE INDEX IF NOT EXISTS idx_knowledge_lineage_current ON knowledge_documents(lineage_id,is_current,version_number)')
+        con = self._con()
+        try:
+            run_migrations(con, component=KNOWLEDGE_COMPONENT, migrations=KNOWLEDGE_MIGRATIONS)
+        finally:
+            con.close()
 
     @staticmethod
     def _safe_filename(filename: str) -> str:
