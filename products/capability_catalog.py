@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
+
+from core.sqlite import connect_sqlite, run_script_migration
 
 
 CAPABILITY_TYPES = (
@@ -64,14 +65,11 @@ class CapabilityCatalog:
         self._init()
 
     def con(self):
-        con = sqlite3.connect(self.path, timeout=15)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys=ON")
-        return con
+        return connect_sqlite(self.path, timeout_seconds=15)
 
     def _init(self):
         with self.con() as con:
-            con.executescript(
+            run_script_migration(con, component="products.capability_catalog", script=
                 """
                 CREATE TABLE IF NOT EXISTS product_capabilities(
                     id TEXT PRIMARY KEY,

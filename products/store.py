@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
 
+from core.sqlite import connect_sqlite, run_script_migration
+
 from .models import AI_MODES, PLATFORM_TARGETS, PRODUCT_STATUSES, PRODUCT_TYPES, ensure_choice
 
 
@@ -60,14 +62,11 @@ class ProductStore:
         self._init()
 
     def con(self):
-        con = sqlite3.connect(self.path, timeout=10)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys=ON")
-        return con
+        return connect_sqlite(self.path, timeout_seconds=10)
 
     def _init(self):
         with self.con() as con:
-            con.executescript("""
+            run_script_migration(con, component="products.store", script="""
             CREATE TABLE IF NOT EXISTS products(
                 id TEXT PRIMARY KEY,
                 name TEXT NOT NULL,

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import json
 import re
-import sqlite3
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
+
+from core.sqlite import connect_sqlite, run_script_migration
 
 from .capability_catalog import CapabilityCatalog, COMMERCIAL_STATES
 from .models import AI_MODES, PLATFORM_TARGETS, PRODUCT_TYPES
@@ -179,14 +180,11 @@ class ProductComposer:
         self._init()
 
     def con(self):
-        con = sqlite3.connect(self.path, timeout=15)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys=ON")
-        return con
+        return connect_sqlite(self.path, timeout_seconds=15)
 
     def _init(self):
         with self.con() as con:
-            con.executescript(
+            run_script_migration(con, component="products.composer", script=
                 """
                 CREATE TABLE IF NOT EXISTS product_requests(
                     id TEXT PRIMARY KEY,

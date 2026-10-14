@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import RLock
+
+from core.sqlite import connect_sqlite, run_script_migration
 
 
 BUILD_STATUSES = ("requested", "queued", "running", "succeeded", "failed", "cancelled")
@@ -53,14 +54,11 @@ class ProductBuildLifecycle:
         self._init()
 
     def con(self):
-        con = sqlite3.connect(self.path, timeout=10)
-        con.row_factory = sqlite3.Row
-        con.execute("PRAGMA foreign_keys=ON")
-        return con
+        return connect_sqlite(self.path, timeout_seconds=10)
 
     def _init(self):
         with self.con() as con:
-            con.executescript(
+            run_script_migration(con, component="products.build_lifecycle", script=
                 """
                 CREATE TABLE IF NOT EXISTS product_build_lifecycle(
                     build_id TEXT PRIMARY KEY REFERENCES product_builds(id) ON DELETE CASCADE,
