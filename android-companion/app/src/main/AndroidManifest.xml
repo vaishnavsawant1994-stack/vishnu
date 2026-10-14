@@ -8,6 +8,7 @@
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <application android:name=".VishnuApplication" android:theme="@style/AppTheme" android:label="Vishnu" android:usesCleartextTraffic="true">
     <service android:name=".DeviceCommandService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
+    <activity android:name=".PortableRecoveryActivity" android:exported="false"/>
     <activity android:name=".PasskeySetupActivity" android:exported="false"/>
     <activity android:name=".ForgeV3Activity" android:exported="false"/>
     <activity android:name=".MainActivity" android:exported="false"/>
