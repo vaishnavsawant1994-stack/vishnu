@@ -121,7 +121,7 @@ struct ConnectOnboardingView: View {
                 .textFieldStyle(.roundedBorder).textContentType(.newPassword)
             SecureField("Confirm owner password", text: $confirmPassword)
                 .textFieldStyle(.roundedBorder).textContentType(.newPassword)
-            Text("Native passkey registration is not available in this build. This flow uses the owner password and recovery codes; add a passkey later from Vishnu Security.")
+            Text("This first-device ceremony starts with your owner password and recovery codes. After setup, add a native passkey from Vishnu Security when the signed runtime domain is associated with this app.")
                 .font(.caption).foregroundStyle(.secondary)
 
             if recoveryCodes.isEmpty {
