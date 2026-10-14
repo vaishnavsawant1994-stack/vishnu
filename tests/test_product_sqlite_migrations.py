@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import sqlite3
-
 import pytest
 
-from core.sqlite import connect_sqlite, run_script_migration, schema_version
+from core.sqlite import MigrationError, connect_sqlite, run_script_migration, schema_version
 from products.build_lifecycle import ProductBuildLifecycle
 from products.capability_catalog import CapabilityCatalog
 from products.composer import ProductComposer
@@ -64,7 +62,7 @@ def test_legacy_product_tables_are_preserved_when_schema_version_is_recorded(tmp
 def test_script_migration_rolls_back_and_can_retry(tmp_path):
     path = tmp_path / "migration.sqlite3"
     with connect_sqlite(path) as con:
-        with pytest.raises(sqlite3.OperationalError):
+        with pytest.raises(MigrationError, match="migration 1"):
             run_script_migration(
                 con,
                 component="tests.script_migration",
