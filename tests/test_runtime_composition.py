@@ -14,6 +14,8 @@ def test_runtime_composition_reuses_existing_authorities_and_keeps_domains_separ
     memory_audit = object()
     memory = SimpleNamespace(audit=memory_audit)
     tools = object()
+    device_registry = object()
+    device_gateway = object()
     memory_brain = object()
     knowledge_store = object()
     knowledge_authority = object()
@@ -28,6 +30,8 @@ def test_runtime_composition_reuses_existing_authorities_and_keeps_domains_separ
         'knowledge_store': knowledge_store,
         'knowledge': knowledge_authority,
         'intelligence': intelligence,
+        'device_registry': device_registry,
+        'device_gateway': device_gateway,
     })
 
     assert runtime.security.root_key_store is root_key_store
@@ -41,6 +45,8 @@ def test_runtime_composition_reuses_existing_authorities_and_keeps_domains_separ
     assert runtime.knowledge.store is knowledge_store
     assert runtime.knowledge.authority is knowledge_authority
     assert runtime.intelligence.engine is intelligence
+    assert runtime.devices.registry is device_registry
+    assert runtime.devices.gateway is device_gateway
     assert runtime.memory is not runtime.knowledge
 
 
