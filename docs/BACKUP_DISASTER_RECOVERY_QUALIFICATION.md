@@ -11,3 +11,10 @@ Run the focused qualification with:
 ```sh
 pytest -q tests/test_disaster_recovery.py tests/test_backup_recovery_qualification.py
 ```
+
+
+## Error-injection evidence
+
+The focused suite also injects a failure at the backup's final atomic replace and verifies the prior archive remains readable with no temporary payload left behind. It creates valid outer recovery bundles containing deliberately modified portable MemoryStore key envelopes (wrapped key, owner binding, and key identifier) and verifies restore refuses before changing the target.
+
+The repository-wide qualification also runs SQLite migration fault/rollback/retry coverage from `tests/test_sqlite_foundation.py` and `tests/test_memory_store_migrations.py`, approval expiry/replay checks, and simulated device disconnect/timeout checks.
