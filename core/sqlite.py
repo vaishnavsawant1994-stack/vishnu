@@ -183,3 +183,34 @@ def run_migrations(
             ) from exc
 
     return current
+
+
+def run_script_migration(
+    con: sqlite3.Connection,
+    *,
+    component: str,
+    script: str,
+    name: str = 'initial schema',
+) -> int:
+    """Apply a static SQL script as one versioned, atomic component migration.
+
+    Statements execute individually inside run_migrations' transaction. This
+    avoids executescript's implicit commit behavior and partial schema creation.
+    """
+    def apply(connection: sqlite3.Connection) -> None:
+        pending = ''
+        for line in str(script).splitlines(keepends=True):
+            pending += line
+            if sqlite3.complete_statement(pending):
+                statement = pending.strip()
+                pending = ''
+                if statement:
+                    connection.execute(statement)
+        if pending.strip():
+            raise MigrationError(f'{component} migration contains an incomplete SQL statement')
+
+    return run_migrations(
+        con,
+        component=component,
+        migrations=(Migration(1, name, apply),),
+    )

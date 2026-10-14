@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 
 from .build_lifecycle import ProductBuildLifecycle
 from .platform_jobs import REMOTE_PLATFORM_TARGETS
+from core.sqlite import run_script_migration
 
 
 RUNNER_LEASE_SECONDS_ENV = "VISHNU_PRODUCT_RUNNER_LEASE_SECONDS"
@@ -78,7 +79,7 @@ class ProductRunnerLeases:
 
     def _init_schema(self) -> None:
         with self.store.lock, self.store.con() as con:
-            con.executescript(
+            run_script_migration(con, component="products.runner_leases", script=
                 """
                 CREATE TABLE IF NOT EXISTS product_runner_leases(
                     build_id TEXT PRIMARY KEY,
