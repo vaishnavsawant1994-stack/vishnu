@@ -35,6 +35,7 @@ extension Notification.Name {
 struct PersonalAICompanionApp: App {
     @UIApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
     @StateObject private var store: CompanionStore
+    @State private var showPortableRecovery = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -49,6 +50,30 @@ struct PersonalAICompanionApp: App {
             Group {
                 if store.deviceID == nil {
                     ConnectOnboardingView(store: store)
+                        .safeAreaInset(edge: .bottom) {
+                            Button {
+                                showPortableRecovery = true
+                            } label: {
+                                Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.large)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 10)
+                            .background(.ultraThinMaterial)
+                        }
+                        .sheet(isPresented: $showPortableRecovery) {
+                            NavigationStack {
+                                PortableRecoveryView(store: store)
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Close") { showPortableRecovery = false }
+                                        }
+                                    }
+                            }
+                            .preferredColorScheme(.dark)
+                        }
                 } else {
                     pairedHome
                 }
