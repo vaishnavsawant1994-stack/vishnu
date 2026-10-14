@@ -74,7 +74,7 @@
   }
   const provider = document.createElement('select');
   provider.id = 'firstRunProvider';
-  for (const [value, text] of [['skip','Configure later'],['local','Local model'],['openai','OpenAI'],['gemini','Gemini'],['openrouter','OpenRouter']]) {
+  for (const [value, text] of [['skip','Configure later'],['local','Local model'],['openai','OpenAI'],['gemini','Gemini'],['openrouter','OpenRouter'],['deepseek','DeepSeek'],['xai','xAI'],['groq','Groq'],['cerebras','Cerebras'],['mistral','Mistral'],['custom','Custom provider']]) {
     const option = document.createElement('option'); option.value = value; option.textContent = text; provider.append(option);
   }
   const model = field('firstRunModel','Model name (required for provider setup)');

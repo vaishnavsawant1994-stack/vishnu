@@ -86,7 +86,8 @@ class FirstRunCompleteBody(BaseModel):
 
 class FirstRunModelBody(BaseModel):
     provider_id: Literal[
-        'skip', 'local', 'openai', 'gemini', 'openrouter',
+        'skip', 'local', 'openai', 'gemini', 'openrouter', 'deepseek',
+        'xai', 'groq', 'cerebras', 'mistral', 'custom',
     ]
     model: str = Field(default='', max_length=200)
     api_key: SecretStr = Field(default=SecretStr(''), max_length=2048)

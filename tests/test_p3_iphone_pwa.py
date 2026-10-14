@@ -868,6 +868,8 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
         'preferences': Preferences(tmp_path / 'preferences.json'),
         'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
                                   status=lambda: {'state': 'unconfigured'}),
         'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
     }
@@ -914,7 +916,10 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     assert client.cookies.get('pa_session')
     assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
     assert client.get('/iphone/api/status').status_code == 423
-    model_choice = client.post('/iphone/api/first-run/model', json={'provider_id': 'skip'})
+    model_choice = client.post('/iphone/api/first-run/model', json={
+        'provider_id': 'deepseek', 'model': 'deepseek-chat',
+        'api_key': 'secret-test-provider-key-1234567890',
+    })
     assert model_choice.status_code == 200, model_choice.text
 
     completed = client.post('/iphone/api/first-run/complete', json={
@@ -945,6 +950,7 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
         'preferences': Preferences(tmp_path / 'preferences.json'),
         'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
                                   set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
                                   status=lambda: {'state': 'unconfigured'}),
         'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
     }
@@ -999,15 +1005,23 @@ def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_
 
     model_config = {
         'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
-        'device_token': request['device_token'], 'provider_id': 'local',
+        'device_token': request['device_token'], 'provider_id': 'deepseek',
+        'model': 'deepseek-chat', 'api_key': 'secret-test-provider-key-1234567890',
     }
+    model_audit = []
+    events.subscribe('owner.first_run.model_configured', model_audit.append)
     denied_model = client.post('/iphone/api/first-run/native/model', json={
         **model_config, 'device_token': 'X' * 48,
     })
     assert denied_model.status_code == 401
     configured_model = client.post('/iphone/api/first-run/native/model', json=model_config)
     assert configured_model.status_code == 200, configured_model.text
-    assert configured_model.json()['provider'] == 'local'
+    assert configured_model.json()['provider'] == 'deepseek'
+    assert model_audit == [{
+        'event': 'owner.first_run.model_configured',
+        'device_id': request['device_id'], 'provider_id': 'deepseek',
+    }]
+    assert model_config['api_key'] not in repr(model_audit)
 
     stolen = client.post('/iphone/api/first-run/native/complete', json={
         'setup_claim': request['setup_claim'],
