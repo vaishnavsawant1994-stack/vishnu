@@ -108,30 +108,48 @@ class DeviceRegistry:
         return self._insert_enrollment(did, token, salt, token_hash, name, platform)
 
     def enroll_with_credential(self, device_id, token, name, platform):
-        """Enroll a client-generated device ID and secret without storing plaintext.
+        """Enroll a client-generated native owner credential without plaintext storage.
 
-        Native first-run clients generate and retain the bearer secret in their
-        platform secure storage before sending it over TLS. Replaying the same
-        enrollment request is idempotent; a device ID can never be rebound to a
-        different credential or to a revoked record.
+        This entry point is used by the native first-owner and owner-recovery
+        ceremonies. Android/iOS devices enrolled here therefore receive owner
+        scopes, while ordinary pairing continues to use ``enroll`` and keeps the
+        default device scope set. Replaying the same request is idempotent and
+        can also repair a pre-fix recovered native owner device that still has
+        default scopes.
         """
         did = str(device_id or '').strip()
         secret = str(token or '')
+        native_platform = str(platform or '').strip()[:40]
         if len(did) < 16 or len(did) > 80:
             raise ValueError('Invalid device ID')
         if len(secret) < 32 or len(secret) > 256:
             raise ValueError('Device credential must contain at least 32 characters')
         salt = uuid.uuid4().hex
         token_hash = hash_secret(secret, salt)
+        owner_scoped = native_platform in {'android', 'ios'}
+        requested_scopes = self.OWNER_SCOPES if owner_scoped else self.DEFAULT_SCOPES
         with self._con() as c:
             row = c.execute('SELECT * FROM devices WHERE id=?', (did,)).fetchone()
             if row is not None:
                 if row['revoked'] or not verify_secret(secret, row['salt'], row['token_hash']):
                     raise ValueError('Device ID is already registered')
+                if str(row['platform']) in {'android', 'ios'}:
+                    c.execute(
+                        '''INSERT INTO device_permissions(device_id,scopes_json,updated_at) VALUES(?,?,?)
+                           ON CONFLICT(device_id) DO UPDATE SET scopes_json=excluded.scopes_json,
+                           updated_at=excluded.updated_at''',
+                        (did, json.dumps(sorted(self.OWNER_SCOPES)), now()),
+                    )
                 return {'id': did, 'name': row['name'], 'platform': row['platform']}, secret
-            return self._insert_enrollment(did, secret, salt, token_hash, name, platform)
+            return self._insert_enrollment(
+                did, secret, salt, token_hash, name, native_platform,
+                scopes=requested_scopes,
+            )
 
-    def _insert_enrollment(self, did, token, salt, token_hash, name, platform):
+    def _insert_enrollment(self, did, token, salt, token_hash, name, platform, *, scopes=None):
+        enrollment_scopes = set(scopes or self.DEFAULT_SCOPES)
+        if not enrollment_scopes.issubset(self.OWNER_SCOPES):
+            raise ValueError('Unsupported device permission scope')
         with self._con() as c:
             inserted = c.execute(
                 'INSERT OR IGNORE INTO devices VALUES(?,?,?,?,?,?,?,0)',
@@ -140,7 +158,7 @@ class DeviceRegistry:
             if inserted:
                 c.execute(
                     'INSERT INTO device_permissions VALUES(?,?,?)',
-                    (did, json.dumps(sorted(self.DEFAULT_SCOPES)), now()),
+                    (did, json.dumps(sorted(enrollment_scopes)), now()),
                 )
             else:
                 row = c.execute('SELECT * FROM devices WHERE id=?', (did,)).fetchone()
