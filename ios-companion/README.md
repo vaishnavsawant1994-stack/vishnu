@@ -23,16 +23,28 @@ an Apple Developer team and Apple-issued signing assets.
 - URL/universal-link/custom-scheme handoff; arbitrary app launch is not claimed because iOS restricts it
 - active `AVAudioSession` voice/microphone foundation using voice-chat mode
 - native owner passkey registration through Apple Authentication Services
+- phone-only owner-controlled runtime provisioning through the checked-in hosted Blueprint
 - portable `.vdr` disaster-recovery import into a fresh Vishnu runtime
 - simulator CI workflow
 - separate physical-iPhone validation workflow
 
 Native **Create my Vishnu** and recovery screens use the canonical server
 first-run, owner-security, device-registry and disaster-recovery APIs. Device
-credentials and pending recovery material are stored in Keychain. Native
-creation requires a reachable HTTPS Vishnu runtime and its high-entropy one-time
-bootstrap code. The app does not host or silently provision the Python/runtime
-services and therefore cannot create a complete Vishnu runtime offline.
+credentials and pending recovery material are stored in Keychain.
+
+If no Vishnu runtime exists yet, **I don't have a Vishnu runtime yet** generates
+a high-entropy one-time bootstrap secret locally in Keychain and opens the
+owner-approved Render deployment in Safari. The secret is copied only on an
+explicit owner action and is never placed in the deployment URL. After the
+provider creates the HTTPS runtime, the owner returns to **Create my Vishnu**
+and uses that runtime address and the same one-time code. The temporary code is
+removed from Keychain after this iPhone has a trusted device credential.
+
+The iPhone app does not embed the full Python runtime inside the iOS application.
+Instead, a phone-only owner can explicitly provision the canonical headless
+Vishnu runtime from the app, or use another compatible self-hosted HTTPS runtime.
+The hosting provider is optional infrastructure; it does not become the Vishnu
+identity, owner authority, or mandatory data provider.
 
 After this iPhone becomes a trusted owner device, **Protect Vishnu with a
 passkey** uses Apple Authentication Services against the same canonical
@@ -68,8 +80,8 @@ delivery for server-initiated mobile events.
 
 ## Pairing
 
-1. Start Vishnu on the trusted computer and create the one-time pairing offer locally.
-2. On iPhone, enter the computer's secure HTTPS address, pairing token, and six-digit code.
+1. Start or provision Vishnu on an owner-controlled HTTPS runtime and create the one-time pairing offer.
+2. On iPhone, enter or scan the runtime's secure address, pairing token, and six-digit code.
 3. Pairing returns a device ID and bearer credential. The bearer is written to Keychain and is never placed in a URL.
 
 For development on a trusted LAN only, the UI has an explicit insecure HTTP/WS
