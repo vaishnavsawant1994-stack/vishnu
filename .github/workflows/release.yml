@@ -139,12 +139,28 @@ jobs:
     env:
       PERSONAL_AI_RELEASE_PRIVATE_KEY_B64: ${{ secrets.PERSONAL_AI_RELEASE_PRIVATE_KEY_B64 }}
       RELEASE_PUBLIC_KEY_B64: ${{ secrets.RELEASE_PUBLIC_KEY_B64 }}
+      QUALIFICATION_RESULTS_JSON: ${{ toJson(needs) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
+      - run: python scripts/install_locked_requirements.py tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
       - uses: actions/download-artifact@v4
         with: {path: release-artifacts, merge-multiple: true}
+      - name: Generate dependency and release evidence
+        run: |
+          python scripts/generate_sbom.py --output-dir release-evidence/sbom
+          python scripts/license_compliance.py --sbom-dir release-evidence/sbom --output release-evidence/sbom/license-report.json
+          python updates/build_reproducibility_evidence.py \
+            --source-sha "$GITHUB_SHA" \
+            --artifact-dir release-artifacts \
+            --sbom-dir release-evidence/sbom \
+            --output release-evidence/provenance.json
       - name: Require release signing keys
         run: |
           test -n "$PERSONAL_AI_RELEASE_PRIVATE_KEY_B64"
@@ -164,6 +180,7 @@ jobs:
               '--source-commit',source_commit,
               '--channel','stable',
               '--output','release-artifacts/manifest.json',
+              '--provenance-json','release-evidence/provenance.json',
               *[str(p) for p in artifacts],
           ])
           subprocess.check_call([

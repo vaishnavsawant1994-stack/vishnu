@@ -9,6 +9,11 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
+if __package__:
+    from .build_reproducibility_evidence import validate_evidence
+else:
+    from build_reproducibility_evidence import validate_evidence
+
 _ALLOWED_CHANNELS = {"stable", "beta", "dev"}
 _ALLOWED_PLATFORMS = {"windows", "macos", "linux"}
 _ALLOWED_ARCHITECTURES = {"x86_64", "arm64"}
@@ -82,6 +87,12 @@ def validate_manifest(manifest: object) -> dict:
         if identity in identities:
             raise ValueError(f"duplicate release artifact identity: {identity}")
         identities.add(identity)
+    if "reproducibility" in manifest:
+        validate_evidence(
+            manifest["reproducibility"],
+            expected_source_sha=source_commit.lower(),
+            expected_artifacts=artifacts,
+        )
     return manifest
 
 

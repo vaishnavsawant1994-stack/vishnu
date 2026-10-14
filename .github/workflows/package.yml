@@ -31,3 +31,46 @@ jobs:
             dist/*.deb
             dist/*.msi
           if-no-files-found: error
+
+  reproducibility:
+    needs: [package]
+    runs-on: ubuntu-latest
+    env:
+      QUALIFICATION_RESULTS_JSON: ${{ toJson(needs) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/install_locked_requirements.py tools
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: personal-ai-*
+          path: downloaded-installers
+          merge-multiple: true
+      - name: Generate SBOM and license evidence
+        run: |
+          python scripts/generate_sbom.py --output-dir dist/sbom
+          python scripts/license_compliance.py --sbom-dir dist/sbom --output dist/sbom/license-report.json
+      - name: Build source and package provenance
+        run: |
+          python updates/build_reproducibility_evidence.py \
+            --source-sha "$GITHUB_SHA" \
+            --artifact-dir downloaded-installers \
+            --sbom-dir dist/sbom \
+            --output dist/reproducibility.json
+      - name: Verify provenance behavior
+        run: pytest -q tests/test_release_provenance.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-reproducibility-${{ github.sha }}
+          path: |
+            dist/reproducibility.json
+            dist/sbom/
+          if-no-files-found: error
+          retention-days: 90
