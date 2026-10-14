@@ -4,6 +4,7 @@ import base64
 import json
 import os
 import secrets
+import weakref
 from pathlib import Path
 from threading import RLock
 
@@ -17,6 +18,8 @@ from .keychain import KeychainUnavailable, RootKeyStore
 class SecretVault:
     VERSION = 2
     ROTATION_JOURNAL_VERSION = 1
+    _instances_lock = RLock()
+    _live_instances: weakref.WeakValueDictionary[str, "SecretVault"] = weakref.WeakValueDictionary()
 
     def __init__(
         self,
@@ -38,6 +41,18 @@ class SecretVault:
         else:
             self._salt = secrets.token_bytes(16)
             self._save()
+        with self._instances_lock:
+            self._live_instances[str(self.path.resolve())] = self
+
+    @classmethod
+    def live(cls, path: Path) -> "SecretVault | None":
+        """Return the current in-process canonical instance for a vault path, if any.
+
+        This does not create or unlock a vault. It lets components share the already
+        authenticated SecretVault rather than opening a stale second writer.
+        """
+        with cls._instances_lock:
+            return cls._live_instances.get(str(Path(path).resolve()))
 
     def _master(self) -> bytes:
         if self._password:
@@ -114,8 +129,6 @@ class SecretVault:
             except InvalidTag:
                 pass
             else:
-                # Active key and ciphertext agree. Any journal/staged key is now
-                # either an abandoned pre-commit rotation or post-promotion debris.
                 cleanup_ids = {rid for rid in (file_rotation, journal_rotation) if rid}
                 for rotation_id in cleanup_ids:
                     try:
@@ -141,8 +154,6 @@ class SecretVault:
                 data = self._decrypt(obj, staged_key)
             except InvalidTag:
                 continue
-            # Ciphertext was durably committed under the staged key but promotion
-            # did not finish. Complete promotion before allowing further writes.
             self.root_key_store.promote_staged(rotation_id)
             self._root_key_rotation = None
             try:
@@ -231,8 +242,6 @@ class SecretVault:
             self._salt = secrets.token_bytes(16)
             self._save(master_key=new_key)
             self.root_key_store.promote_staged(rotation_id)
-            # Promotion is durable before the recovery marker is removed. Rewriting
-            # once under the promoted key leaves the steady-state envelope clean.
             self._root_key_rotation = None
             self._save(master_key=new_key)
             try:
