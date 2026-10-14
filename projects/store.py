@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 12640)
-Total output lines: 686
-
 from __future__ import annotations
 
 import sqlite3
@@ -328,7 +325,34 @@ class ProjectStore:
             if not row: return None
             if row['status'] != 'changes_requested': raise ValueError('Only proposals with requested changes can be resubmitted')
             self._validate_project_relations(con, project_id, task_ids or [], file_ids or [])
-            con.execute("UPDATE project_approvals SET title=?,summary=?,impact_summary=?,scope_summary=?,status='pending',reviewer=NULL,reviewed_at=NULL,decision=NULL,reviewer_comments=…640 tokens truncated…letion_criteria,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
+            con.execute("UPDATE project_approvals SET title=?,summary=?,impact_summary=?,scope_summary=?,status='pending',reviewer=NULL,reviewed_at=NULL,decision=NULL,reviewer_comments='',updated_at=? WHERE id=?", (title.strip(), summary.strip(), impact_summary.strip(), scope_summary.strip(), stamp, approval_id))
+            con.execute('DELETE FROM project_approval_tasks WHERE approval_id=?', (approval_id,)); con.execute('DELETE FROM project_approval_files WHERE approval_id=?', (approval_id,))
+            for task_id in task_ids or []: con.execute('INSERT INTO project_approval_tasks VALUES(?,?)', (approval_id, task_id))
+            for file_id in file_ids or []: con.execute('INSERT INTO project_approval_files VALUES(?,?)', (approval_id, file_id))
+            con.execute('INSERT INTO project_approval_history VALUES(?,?,?,?,?,?)', (str(uuid.uuid4()), approval_id, 'owner', 'resubmitted', '', stamp))
+            self._activity(con, project_id, 'resubmitted proposal', 'proposal', approval_id, title.strip())
+        return self.get(project_id)
+
+    def decide_approval(self, project_id, approval_id, *, decision, comments=''):
+        if decision not in {'approved', 'changes_requested'}: raise ValueError('Choose approve or request changes')
+        if decision == 'changes_requested' and not comments.strip(): raise ValueError('Add reviewer comments when requesting changes')
+        stamp = _now()
+        with self.lock, self.con() as con:
+            row = con.execute("SELECT status,title FROM project_approvals WHERE id=? AND project_id=?", (approval_id, project_id)).fetchone()
+            if not row: return None
+            if row['status'] != 'pending': raise ValueError('This proposal has already been reviewed')
+            con.execute('UPDATE project_approvals SET status=?,reviewer=?,reviewed_at=?,decision=?,reviewer_comments=?,updated_at=? WHERE id=?',
+                        (decision, 'owner', stamp, decision, comments.strip(), stamp, approval_id))
+            con.execute('INSERT INTO project_approval_history VALUES(?,?,?,?,?,?)', (str(uuid.uuid4()), approval_id, 'owner', decision, comments.strip(), stamp))
+            self._activity(con, project_id, 'reviewed proposal', 'proposal', approval_id, decision)
+        return self.get(project_id)
+
+    def add_milestone(self, project_id, *, title, outcome='', target_date=None, completion_criteria='', task_ids=None):
+        item_id, stamp = str(uuid.uuid4()), _now()
+        with self.lock, self.con() as con:
+            if not con.execute('SELECT 1 FROM projects WHERE id=? AND status!=\'archived\'', (project_id,)).fetchone():
+                return None
+            con.execute('INSERT INTO project_milestones(id,project_id,title,outcome,target_date,completion_criteria,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)',
                         (item_id, project_id, title.strip(), outcome.strip(), target_date, completion_criteria.strip(), stamp, stamp))
             for task_id in task_ids or []:
                 if not con.execute('SELECT 1 FROM project_tasks WHERE id=? AND project_id=?', (task_id, project_id)).fetchone():
