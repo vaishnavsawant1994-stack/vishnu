@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import os
 import sqlite3
 import zipfile
 from pathlib import Path
@@ -13,6 +14,7 @@ from memory.crypto import MemoryFieldCipher, VAULT_KEY_NAME
 from recovery.backup import BACKUP_MAGIC, BackupError, BackupService, MEMORY_KEY_ENVELOPE
 from recovery.disaster_recovery import (
     DR_MEMORY_KEY_KIND,
+    DisasterRecoveryError,
     DisasterRecoveryService,
     generate_recovery_key,
 )
@@ -209,3 +211,129 @@ def test_disaster_restore_rewraps_memory_key_after_root_rotation_on_clean_host(t
         assert dek not in payload.read_bytes()
     finally:
         payload.unlink(missing_ok=True)
+
+
+
+def test_failed_backup_commit_keeps_previous_archive_and_cleans_temp_files(tmp_path: Path, monkeypatch) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "owner.txt").write_text("initial owner data", encoding="utf-8")
+    service = BackupService(source, root_key_store=_RootKeyStore(b"k" * 32))
+    archive = service.create("stable")
+    previous = archive.read_bytes()
+    (source / "owner.txt").write_text("updated owner data", encoding="utf-8")
+
+    original_replace = os.replace
+
+    def fail_final_commit(source_path, destination_path):
+        if Path(destination_path) == archive:
+            raise OSError("injected backup commit failure")
+        original_replace(source_path, destination_path)
+
+    monkeypatch.setattr("recovery.backup.os.replace", fail_final_commit)
+    with pytest.raises(OSError, match="injected backup commit failure"):
+        service.create("stable")
+
+    assert archive.read_bytes() == previous
+    assert service.inspect(archive)["encrypted"] is True
+    assert list(service.backup_dir.iterdir()) == [archive]
+
+
+def _encrypted_memory_recovery_bundle(tmp_path: Path):
+    source = tmp_path / "source"
+    source.mkdir()
+    root_keys = _RootKeyStore(b"s" * 32)
+    vault = SecretVault(source / "vault.json", root_key_store=root_keys)
+    encrypted = MemoryFieldCipher(vault).encrypt(
+        "messages",
+        "message-1",
+        "content",
+        "private-recovery-fixture",
+    )
+    with sqlite3.connect(source / "assistant.sqlite3") as connection:
+        connection.execute("CREATE TABLE messages(content TEXT NOT NULL)")
+        connection.execute("INSERT INTO messages(content) VALUES(?)", (encrypted,))
+        connection.commit()
+
+    service = DisasterRecoveryService(
+        BackupService(source, root_key_store=root_keys, vault=vault)
+    )
+    recovery_key = generate_recovery_key()
+    bundle = tmp_path / "portable.vdr"
+    service.create_bundle(
+        bundle,
+        recovery_key=recovery_key,
+        owner_id="owner-fault-test",
+        key_id="recovery-set-fault-test",
+    )
+    return service, recovery_key, bundle
+
+
+@pytest.mark.parametrize("tampered_field", ["wrapped_key", "owner_binding", "key_id"])
+def test_tampered_portable_memory_key_envelope_is_rejected_before_restore(
+    tmp_path: Path,
+    tampered_field: str,
+) -> None:
+    source_service, recovery_key, bundle = _encrypted_memory_recovery_bundle(tmp_path)
+    payload, _header = source_service.codec.decrypt_payload(
+        bundle,
+        recovery_key=recovery_key,
+        owner_id="owner-fault-test",
+        expected_key_id="recovery-set-fault-test",
+    )
+    tampered_payload = tmp_path / "tampered-payload.zip"
+    tampered_bundle = tmp_path / "tampered-portable.vdr"
+    try:
+        with zipfile.ZipFile(payload, "r") as source_archive:
+            members = {
+                item.filename: source_archive.read(item.filename)
+                for item in source_archive.infolist()
+                if not item.is_dir()
+            }
+        manifest = json.loads(members["manifest.json"])
+        envelope = json.loads(members[MEMORY_KEY_ENVELOPE])
+        if tampered_field == "wrapped_key":
+            wrapped = bytearray(base64.b64decode(envelope["wrapped_key"], validate=True))
+            wrapped[0] ^= 0x01
+            envelope["wrapped_key"] = base64.b64encode(wrapped).decode("ascii")
+        elif tampered_field == "owner_binding":
+            envelope["owner_binding"] = "0" * 64
+        else:
+            envelope["key_id"] = "different-recovery-set"
+        replacement = json.dumps(envelope, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        members[MEMORY_KEY_ENVELOPE] = replacement
+        record = next(item for item in manifest["files"] if item["path"] == MEMORY_KEY_ENVELOPE)
+        record["sha256"] = hashlib.sha256(replacement).hexdigest()
+        record["size"] = len(replacement)
+        members["manifest.json"] = json.dumps(manifest, sort_keys=True, indent=2).encode("utf-8")
+        with zipfile.ZipFile(tampered_payload, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
+            for name, content in members.items():
+                archive_file.writestr(name, content)
+
+        source_service.codec.encrypt_payload(
+            tampered_payload,
+            tampered_bundle,
+            recovery_key=recovery_key,
+            owner_id="owner-fault-test",
+            key_id="recovery-set-fault-test",
+        )
+    finally:
+        payload.unlink(missing_ok=True)
+
+    target = tmp_path / "clean-target"
+    target.mkdir()
+    (target / "healthy.txt").write_text("healthy target", encoding="utf-8")
+    target_service = DisasterRecoveryService(
+        BackupService(target, root_key_store=_RootKeyStore(b"t" * 32)),
+        maintenance_mode=True,
+    )
+    with pytest.raises(DisasterRecoveryError, match="portable MemoryStore key envelope is invalid"):
+        target_service.restore_bundle(
+            tampered_bundle,
+            recovery_key=recovery_key,
+            owner_id="owner-fault-test",
+            expected_key_id="recovery-set-fault-test",
+        )
+    assert (target / "healthy.txt").read_text(encoding="utf-8") == "healthy target"
+    assert not (target / "assistant.sqlite3").exists()
+    assert not (target / "vault.json").exists()
