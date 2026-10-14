@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 
 from core.sqlite import Migration, add_column_if_missing
+from memory.crypto import SENSITIVE_FIELDS
 
 
 MEMORY_STORE_COMPONENT = 'memory_store'
@@ -75,3 +76,73 @@ MEMORY_STORE_MIGRATIONS = (
     Migration(2, 'memory-lifecycle-fields-and-indexes', _add_memory_lifecycle_fields),
     Migration(3, 'message-context-fields-and-index', _add_message_context_fields),
 )
+
+
+def _encryption_migration(cipher):
+    def apply(con: sqlite3.Connection) -> None:
+        add_column_if_missing(con, 'memories', 'subject_hash', 'TEXT')
+
+        encrypted_exists = False
+        for table, fields in SENSITIVE_FIELDS.items():
+            columns = {row['name'] for row in con.execute(f'PRAGMA table_info({table})')}
+            available = [field for field in fields if field in columns]
+            if not available:
+                continue
+            predicate = ' OR '.join(f'{field} LIKE ?' for field in available)
+            params = tuple('v1:%' for _ in available)
+            if con.execute(f'SELECT 1 FROM {table} WHERE {predicate} LIMIT 1', params).fetchone():
+                encrypted_exists = True
+                break
+        cipher.ensure_key(allow_create=not encrypted_exists)
+
+        for table, fields in SENSITIVE_FIELDS.items():
+            columns = {row['name'] for row in con.execute(f'PRAGMA table_info({table})')}
+            available = [field for field in fields if field in columns]
+            if not available:
+                continue
+            rows = con.execute(
+                f"SELECT id,{','.join(available)} FROM {table}"
+            ).fetchall()
+            for row in rows:
+                row_id = str(row['id'])
+                assignments = []
+                values = []
+                subject_plain = None
+                for field in available:
+                    value = row[field]
+                    if value is None:
+                        continue
+                    if cipher.is_encrypted(value):
+                        plain = cipher.decrypt(table, row_id, field, value)
+                        encrypted = value
+                    else:
+                        plain = str(value)
+                        encrypted = cipher.encrypt(table, row_id, field, plain)
+                    assignments.append(f'{field}=?')
+                    values.append(encrypted)
+                    if table == 'memories' and field == 'subject':
+                        subject_plain = plain
+                if table == 'memories' and subject_plain is not None:
+                    assignments.append('subject_hash=?')
+                    values.append(cipher.blind_index(subject_plain))
+                if assignments:
+                    values.append(row_id)
+                    con.execute(
+                        f"UPDATE {table} SET {','.join(assignments)} WHERE id=?",
+                        values,
+                    )
+
+        con.execute('DROP INDEX IF EXISTS idx_memories_subject_type')
+        con.execute(
+            'CREATE INDEX IF NOT EXISTS idx_memories_subject_hash_type '
+            'ON memories(type,subject_hash)'
+        )
+
+    return apply
+
+
+def memory_store_migrations(cipher):
+    """Return the schema history including the key-bound at-rest migration."""
+    return MEMORY_STORE_MIGRATIONS + (
+        Migration(4, 'encrypt-sensitive-memory-store-fields', _encryption_migration(cipher)),
+    )
