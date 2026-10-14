@@ -36,6 +36,7 @@ struct PersonalAICompanionApp: App {
     @UIApplicationDelegateAdaptor(CompanionAppDelegate.self) private var appDelegate
     @StateObject private var store: CompanionStore
     @State private var showPortableRecovery = false
+    @State private var showRuntimeProvisioning = false
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -51,17 +52,38 @@ struct PersonalAICompanionApp: App {
                 if store.deviceID == nil {
                     ConnectOnboardingView(store: store)
                         .safeAreaInset(edge: .bottom) {
-                            Button {
-                                showPortableRecovery = true
-                            } label: {
-                                Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine")
-                                    .frame(maxWidth: .infinity)
+                            VStack(spacing: 8) {
+                                Button {
+                                    showRuntimeProvisioning = true
+                                } label: {
+                                    Label("I don't have a Vishnu runtime yet", systemImage: "server.rack")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                                Button {
+                                    showPortableRecovery = true
+                                } label: {
+                                    Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.large)
                             }
-                            .buttonStyle(.bordered)
-                            .controlSize(.large)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 10)
                             .background(.ultraThinMaterial)
+                        }
+                        .sheet(isPresented: $showRuntimeProvisioning) {
+                            NavigationStack {
+                                RuntimeProvisioningView()
+                                    .toolbar {
+                                        ToolbarItem(placement: .cancellationAction) {
+                                            Button("Close") { showRuntimeProvisioning = false }
+                                        }
+                                    }
+                            }
+                            .preferredColorScheme(.dark)
                         }
                         .sheet(isPresented: $showPortableRecovery) {
                             NavigationStack {
