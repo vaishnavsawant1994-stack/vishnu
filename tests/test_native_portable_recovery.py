@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -27,6 +29,37 @@ class _Setup:
         assert passphrase == 'correct horse battery staple'
         self.scheduled = (archive, key_file)
         return {'archive': archive.name, 'portable': True}
+
+
+class _RestoredSetup:
+    ready = False
+
+    def __init__(self, owner_access, registry):
+        self.owner_access = owner_access
+        self.registry = registry
+        self.recorded = None
+
+    def snapshot(self):
+        return {'status': 'setup_in_progress', 'mode': 'restore', 'stage': 'owner'}
+
+    def configure_owner(self, *, first_name, last_name='', display_name=''):
+        identity = self.owner_access.identity()
+        assert identity['first_name'] == first_name
+        assert identity['last_name'] == last_name
+        assert identity['display_name'] == display_name
+        return identity
+
+    def configure_security(self, password):
+        self.owner_access.set_password(password)
+        return self.owner_access.regenerate_recovery_codes()
+
+    def initialize_pending_identity(self):
+        return self.owner_access.identity()
+
+    def record_first_device(self, device_id):
+        assert self.registry.is_active(device_id)
+        self.recorded = device_id
+        return {'device_id': device_id, 'owner_id': self.owner_access.identity()['owner_id']}
 
 
 class _Events:
@@ -92,6 +125,48 @@ def test_native_portable_recovery_stages_streams_and_schedules_without_persistin
     assert not key_file.exists()
     assert 'correct horse battery staple' not in archive.read_bytes().decode('latin1')
     assert not (tmp_path / '.native-recovery-staging' / session).exists()
+
+
+def test_restored_runtime_can_recreate_owner_security_and_first_native_device(tmp_path, monkeypatch):
+    monkeypatch.setenv('PERSONAL_AI_BOOTSTRAP_SECRET', 'B' * 48)
+    owner_access = OwnerAccessStore(tmp_path / 'owner-access.sqlite3')
+    identity, _ = owner_access.initialize_identity(
+        first_name='Restored', last_name='Owner', display_name='Restored Owner',
+    )
+    registry = DeviceRegistry(tmp_path / 'devices.sqlite3')
+    setup = _RestoredSetup(owner_access, registry)
+    runtime = {
+        'pwa_sessions': _Sessions(),
+        'owner_access': owner_access,
+        'device_registry': registry,
+        'first_run_setup': setup,
+        'events': _Events(),
+        'android_asset_links': [],
+        'apple_app_site_association': {},
+    }
+    device_id = str(uuid.uuid4())
+    response = _client(runtime).post(
+        '/iphone/api/native/recovery-package/owner',
+        json={
+            'bootstrap_secret': 'B' * 48,
+            'setup_claim': 'C' * 48,
+            'password': 'a fresh restored owner password',
+            'device_id': device_id,
+            'device_token': 'D' * 48,
+            'device_name': 'Replacement phone',
+            'platform': 'android',
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload['identity']['owner_id'] == identity['owner_id']
+    assert payload['identity']['vishnu_id'] == identity['vishnu_id']
+    assert len(payload['recovery_codes']) >= 4
+    assert owner_access.password_configured()
+    assert owner_access.recovery_codes_remaining() == len(payload['recovery_codes'])
+    assert registry.authenticate(device_id, 'D' * 48)
+    assert registry.authorize(device_id, 'device:admin')
+    assert setup.recorded == device_id
 
 
 def test_native_portable_recovery_rejects_wrong_bootstrap_and_bad_formats(tmp_path, monkeypatch):
