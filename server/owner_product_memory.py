@@ -34,7 +34,7 @@ def create_owner_memory_router(
 
     @router.get('/memory/preferences')
     def memory_preferences_get(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        device_id = authenticate(pa_device, pa_token, 'memory:read')
+        authenticate(pa_device, pa_token, 'memory:read')
         return memory.preferences()
 
     @router.patch('/memory/preferences')

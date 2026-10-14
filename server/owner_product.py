@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import binascii
 import json
 import os
 import re
@@ -52,6 +53,20 @@ from server.owner_product_schemas import (
 )
 from server.owner_product_knowledge import create_owner_knowledge_router
 from server.owner_product_memory import create_owner_memory_router
+
+__all__ = [
+    'MemoryCreateBody', 'MemoryUpdateBody', 'RetentionBody', 'MemoryPreferencesBody',
+    'KnowledgeAvailabilityBody', 'KnowledgeCollectionBody', 'KnowledgeCollectionUpdateBody',
+    'KnowledgeUploadBody', 'KnowledgeUpdateBody', 'DevicePermissionsBody', 'ConfirmBody',
+    'DeleteAccountBody', 'QualificationSessionBody', 'QualificationTrialBody',
+    'QualificationFinishBody', 'WorkflowCreateBody', 'WorkflowPauseBody', 'WorkflowRunBody',
+    'EmergencyStopBody', 'OwnerPermissionsBody', 'OwnerDefaultProviderBody',
+    'OwnerProviderConnectBody', 'OwnerProviderTestBody', 'OwnerProviderModelBody',
+    'UiPreferencesBody', 'ProfileAvatarBody', 'ProfileUpdateBody',
+    'NotificationEventPreference', 'NotificationQuietHours', 'NotificationSummaryPreference',
+    'WeeklySummaryPreference', 'NotificationPreferencesBody', 'owner_product_router',
+    'stage_owner_data_deletion',
+]
 
 
 def stage_owner_data_deletion(data_dir: Path) -> Path:
@@ -107,7 +122,6 @@ def owner_product_router(runtime):
     router = APIRouter(prefix='/iphone/api', tags=['owner-product'])
     registry = runtime['device_registry']
     memory = runtime['memory']
-    second_brain = runtime['second_brain']
     knowledge = runtime['knowledge']
     backup_lock = runtime.setdefault('owner_backup_lock', threading.RLock())
     provider_attempt_lock = threading.Lock()
@@ -298,7 +312,7 @@ def owner_product_router(runtime):
 
     @router.get('/profile/metadata')
     def profile_metadata(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        device_id = authenticate(pa_device, pa_token, 'ai:chat')
+        authenticate(pa_device, pa_token, 'ai:chat')
         preferences = runtime.get('preferences')
         if preferences is None:
             raise HTTPException(503, 'Owner profile metadata is unavailable')
@@ -665,7 +679,7 @@ def owner_product_router(runtime):
 
     @router.delete('/privacy/account')
     def delete_owner_account(body: DeleteAccountBody, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        device_id = authenticate(pa_device, pa_token, 'ai:chat')
+        authenticate(pa_device, pa_token, 'ai:chat')
         require_fresh_reauthentication()
         settings = runtime.get('settings')
         data_dir = getattr(settings, 'data_dir', None) if settings is not None else None
@@ -784,18 +798,24 @@ def owner_product_router(runtime):
     @router.post('/workflows/runs/{run_id}/recovery/link')
     def workflow_recovery_link(run_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         device_id = authenticate(pa_device, pa_token, 'workflow:approve')
-        try: result = runtime['automations'].link_recovery(run_id, **workflow_authority(device_id))
-        except KeyError as exc: raise HTTPException(404, 'Workflow run not found') from exc
-        except (RuntimeError, PermissionError) as exc: raise HTTPException(409, str(exc)) from exc
+        try:
+            result = runtime['automations'].link_recovery(run_id, **workflow_authority(device_id))
+        except KeyError as exc:
+            raise HTTPException(404, 'Workflow run not found') from exc
+        except (RuntimeError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
         audit('workflow.recovery_linked', device_id=device_id, run_id=run_id, recovery_transaction_id=result['recovery_transaction_id'])
         return result
 
     @router.post('/workflows/runs/{run_id}/recovery/refresh')
     def workflow_recovery_refresh(run_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
         device_id = authenticate(pa_device, pa_token, 'workflow:approve')
-        try: return runtime['automations'].refresh_recovery(run_id, **workflow_authority(device_id))
-        except KeyError as exc: raise HTTPException(404, 'Workflow run not found') from exc
-        except (RuntimeError, PermissionError) as exc: raise HTTPException(409, str(exc)) from exc
+        try:
+            return runtime['automations'].refresh_recovery(run_id, **workflow_authority(device_id))
+        except KeyError as exc:
+            raise HTTPException(404, 'Workflow run not found') from exc
+        except (RuntimeError, PermissionError) as exc:
+            raise HTTPException(409, str(exc)) from exc
 
     @router.post('/workflows/runs/{run_id}/resume')
     def workflow_resume(run_id: str, pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
@@ -962,7 +982,7 @@ def owner_product_router(runtime):
 
     @router.get('/owner/permissions')
     def owner_permissions_get(pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
-        device_id = authenticate(pa_device, pa_token, 'device:admin')
+        authenticate(pa_device, pa_token, 'device:admin')
         tools = runtime.get('tools')
         if tools is None or not callable(getattr(tools, 'owner_permissions', None)):
             raise HTTPException(503, 'Owner permission policy is unavailable')
