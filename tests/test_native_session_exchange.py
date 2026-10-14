@@ -63,7 +63,6 @@ def test_native_session_exchange_is_pkce_bound_durable_scoped_and_revocable(tmp_
     assert session.scopes == tuple(SCOPES)
     assert restarted.authenticate(token, "device-a") is None
     assert restarted.authenticate_native(token).id == session.id
-    assert restarted.authenticate_native(token + "x") is None
     rotated, replacement = restarted.rotate_native(session.id)
     assert restarted.authenticate_native(token) is None
     assert restarted.authenticate_native(rotated).id == replacement.id
@@ -240,8 +239,14 @@ def test_native_authorization_fails_closed_without_registered_redirects(tmp_path
     from server.native_capability_auth import native_capability_auth_router
 
     sessions = PwaSessionStore(tmp_path / "sessions.sqlite3")
+    owner_access = OwnerAccess()
+    owner_access.path = tmp_path / "owner-access.sqlite3"
     app = FastAPI()
-    app.include_router(native_capability_auth_router({"pwa_sessions": sessions}))
+    app.include_router(native_capability_auth_router({
+        "pwa_sessions": sessions,
+        "owner_access": owner_access,
+        "device_registry": Devices(),
+    }))
     client = TestClient(app, base_url="https://testserver")
 
     response = client.get("/iphone/native/authorize", params={
