@@ -121,6 +121,17 @@ def test_hosted_runtime_rejects_malformed_budget_limit(tmp_path):
     assert 'MODEL_GLOBAL_MAX_REQUESTS must be an integer' in result.stderr
 
 
+def test_hosted_runtime_rejects_non_finite_budget_limit(tmp_path):
+    result = _run_config(
+        tmp_path,
+        RAILWAY_PROJECT_ID='test-project',
+        MODEL_GLOBAL_MAX_COST='nan',
+    )
+
+    assert result.returncode != 0
+    assert 'MODEL_GLOBAL_MAX_COST must be a finite number' in result.stderr
+
+
 def test_hosted_runtime_rejects_nonpositive_session_ttl(tmp_path):
     result = _run_config(
         tmp_path,
