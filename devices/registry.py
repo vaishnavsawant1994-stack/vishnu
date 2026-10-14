@@ -46,6 +46,11 @@ class DeviceRegistry:
                     Migration(2, 'canonical-data-permissions', self._migration_002_permissions),
                 ),
             )
+            # Permission-row reconstruction is an integrity repair, not a schema
+            # migration. Preserve the historical restart behavior independently
+            # from one-time migration bookkeeping.
+            with con:
+                self._repair_permission_invariants(con)
         finally:
             con.close()
 
@@ -55,6 +60,9 @@ class DeviceRegistry:
         con.execute('''CREATE TABLE IF NOT EXISTS device_permissions(device_id TEXT PRIMARY KEY,scopes_json TEXT NOT NULL,updated_at TEXT NOT NULL,FOREIGN KEY(device_id) REFERENCES devices(id) ON DELETE CASCADE)''')
 
     def _migration_002_permissions(self, con):
+        self._repair_permission_invariants(con)
+
+    def _repair_permission_invariants(self, con):
         con.execute(
             '''INSERT INTO device_permissions(device_id,scopes_json,updated_at)
                SELECT d.id,?,? FROM devices d LEFT JOIN device_permissions p ON p.device_id=d.id
