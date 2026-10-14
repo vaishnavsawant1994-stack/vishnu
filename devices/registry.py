@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from core.security import new_bearer_secret, verify_secret
+from core.security import hash_secret, new_bearer_secret, verify_secret
 from core.sqlite import Migration, connect_sqlite, run_migrations
 
 
@@ -105,16 +105,49 @@ class DeviceRegistry:
     def enroll(self, name, platform):
         did = str(uuid.uuid4())
         token, salt, token_hash = new_bearer_secret()
+        return self._insert_enrollment(did, token, salt, token_hash, name, platform)
+
+    def enroll_with_credential(self, device_id, token, name, platform):
+        """Enroll a client-generated device ID and secret without storing plaintext.
+
+        Native first-run clients generate and retain the bearer secret in their
+        platform secure storage before sending it over TLS. Replaying the same
+        enrollment request is idempotent; a device ID can never be rebound to a
+        different credential or to a revoked record.
+        """
+        did = str(device_id or '').strip()
+        secret = str(token or '')
+        if len(did) < 16 or len(did) > 80:
+            raise ValueError('Invalid device ID')
+        if len(secret) < 32 or len(secret) > 256:
+            raise ValueError('Device credential must contain at least 32 characters')
+        salt = uuid.uuid4().hex
+        token_hash = hash_secret(secret, salt)
         with self._con() as c:
-            c.execute(
-                'INSERT INTO devices VALUES(?,?,?,?,?,?,?,0)',
-                (did, name, platform, salt, token_hash, now(), None),
-            )
-            c.execute(
-                'INSERT INTO device_permissions VALUES(?,?,?)',
-                (did, json.dumps(sorted(self.DEFAULT_SCOPES)), now()),
-            )
-        return {'id': did, 'name': name, 'platform': platform}, token
+            row = c.execute('SELECT * FROM devices WHERE id=?', (did,)).fetchone()
+            if row is not None:
+                if row['revoked'] or not verify_secret(secret, row['salt'], row['token_hash']):
+                    raise ValueError('Device ID is already registered')
+                return {'id': did, 'name': row['name'], 'platform': row['platform']}, secret
+            return self._insert_enrollment(did, secret, salt, token_hash, name, platform)
+
+    def _insert_enrollment(self, did, token, salt, token_hash, name, platform):
+        with self._con() as c:
+            inserted = c.execute(
+                'INSERT OR IGNORE INTO devices VALUES(?,?,?,?,?,?,?,0)',
+                (did, str(name)[:120], str(platform)[:40], salt, token_hash, now(), None),
+            ).rowcount
+            if inserted:
+                c.execute(
+                    'INSERT INTO device_permissions VALUES(?,?,?)',
+                    (did, json.dumps(sorted(self.DEFAULT_SCOPES)), now()),
+                )
+            else:
+                row = c.execute('SELECT * FROM devices WHERE id=?', (did,)).fetchone()
+                if row is None or row['revoked'] or not verify_secret(token, row['salt'], row['token_hash']):
+                    raise ValueError('Device ID is already registered')
+                return {'id': did, 'name': row['name'], 'platform': row['platform']}, token
+        return {'id': did, 'name': str(name)[:120], 'platform': str(platform)[:40]}, token
 
     def authenticate(self, device_id, token):
         with self._con() as c:

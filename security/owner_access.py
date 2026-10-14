@@ -79,7 +79,7 @@ class OwnerAccessStore:
 
     def acquire_first_run_claim(
         self, presented: str | None = None, *, ttl: int = 900,
-        allow_pending_identity: bool = False,
+        allow_pending_identity: bool = False, allow_proposed: bool = False,
     ) -> tuple[str, bool]:
         """Reserve the uninitialized install for one short-lived setup client.
 
@@ -98,9 +98,9 @@ class OwnerAccessStore:
             if (not allow_pending_identity
                     and con.execute('SELECT 1 FROM owner_identity WHERE singleton=1').fetchone()):
                 raise RuntimeError('Vishnu is already initialized. Connect this device instead.')
-            if presented and not allow_pending_identity:
+            if presented and not allow_pending_identity and not allow_proposed:
                 raise FirstRunClaimBusy('The setup session expired. Start the creation ceremony again.')
-            token = secrets.token_urlsafe(32)
+            token = str(presented) if presented and allow_proposed else secrets.token_urlsafe(32)
             salt = secrets.token_hex(16)
             con.execute(
                 '''INSERT INTO first_run_claim(singleton,salt,claim_hash,expires_at,created_at)

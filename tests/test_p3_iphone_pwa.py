@@ -1,5 +1,6 @@
 from pathlib import Path
 import time
+import uuid
 from types import SimpleNamespace
 
 from fastapi import FastAPI
@@ -29,10 +30,22 @@ class Registry:
         self.tokens[device_id] = token
         self.active.add(device_id)
         return {'id': device_id, 'name': name, 'platform': platform}, token
+    def enroll_with_credential(self, device_id, token, name, platform):
+        existing = self.tokens.get(device_id)
+        if existing is not None:
+            if existing != token or device_id not in self.active:
+                raise ValueError('Device ID is already registered')
+            return {'id': device_id, 'name': name, 'platform': platform}, token
+        self.tokens[device_id] = token
+        self.active.add(device_id)
+        return {'id': device_id, 'name': name, 'platform': platform}, token
     def authenticate(self, device_id, token):
         return self.tokens.get(device_id) == token
     def is_active(self, device_id):
         return device_id in self.active
+    def list(self):
+        return [{'id': device_id, 'name': 'Device', 'platform': 'test'}
+                for device_id in sorted(self.active)]
 
 
 class Executor:
@@ -911,6 +924,119 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'password': 'another sufficiently long password',
     })
     assert duplicate.status_code == 409
+
+
+def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_device(tmp_path):
+    bootstrap = 'B' * 40
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=False,
+        owner_bootstrap_secret=bootstrap, google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='https://testserver')
+    request = {
+        'bootstrap_secret': bootstrap,
+        'setup_claim': 'C' * 48,
+        'first_name': 'Ada',
+        'last_name': 'Lovelace',
+        'display_name': 'Ada',
+        'password': 'a sufficiently long password',
+        'device_id': str(uuid.uuid4()),
+        'device_token': 'D' * 48,
+        'device_name': 'Ada Android',
+        'platform': 'android',
+    }
+    denied = client.post('/iphone/api/first-run/native/create', json={
+        **request, 'bootstrap_secret': 'wrong' * 8,
+    })
+    assert denied.status_code == 401
+    assert runtime['owner_access'].identity() is None
+    assert registry.active == set()
+    created = client.post('/iphone/api/first-run/native/create', json=request)
+    assert created.status_code == 200, created.text
+    first = created.json()
+    owner = runtime['owner_access'].identity()
+    assert first['identity']['owner_id'] == owner['owner_id']
+    assert first['device']['id'] == request['device_id']
+    assert first['device']['platform'] == 'android'
+    assert 'device_token' not in first
+    assert len(first['recovery_codes']) >= 4
+    assert runtime['owner_access'].recovery_codes_remaining() == len(first['recovery_codes'])
+
+    # A retry after a lost response keeps the owner and Device 1 stable. The
+    # previous unacknowledged code set is rotated and the replacement is shown.
+    retried = client.post('/iphone/api/first-run/native/create', json=request)
+    assert retried.status_code == 200, retried.text
+    assert retried.json()['identity']['owner_id'] == owner['owner_id']
+    assert retried.json()['device']['id'] == request['device_id']
+    assert len(registry.active) == 1
+    assert retried.json()['recovery_codes'] != first['recovery_codes']
+
+    stolen = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'],
+        'device_id': request['device_id'],
+        'device_token': 'X' * 48,
+        'recovery_saved': True,
+        'privacy_mode': 'local_only',
+        'model_choice': 'configure_later',
+    })
+    assert stolen.status_code == 401
+    assert setup.ready is False
+    completed = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'],
+        'device_id': request['device_id'],
+        'device_token': request['device_token'],
+        'recovery_saved': True,
+        'privacy_mode': 'local_only',
+        'model_choice': 'configure_later',
+    })
+    assert completed.status_code == 200, completed.text
+    assert completed.json()['vishnu_id'] == owner['vishnu_id']
+    assert setup.ready is True
+    retried_completion = client.post('/iphone/api/first-run/native/complete', json={
+        'setup_claim': request['setup_claim'], 'device_id': request['device_id'],
+        'device_token': request['device_token'], 'recovery_saved': True,
+        'privacy_mode': 'local_only', 'model_choice': 'configure_later',
+    })
+    assert retried_completion.status_code == 200
+    duplicate = client.post('/iphone/api/first-run/native/create', json=request)
+    assert duplicate.status_code == 200 and duplicate.json()['status'] == 'ready'
+    recovery_device_id = str(uuid.uuid4())
+    recovery_payload = {
+        'recovery_code': retried.json()['recovery_codes'][0],
+        'device_id': recovery_device_id,
+        'device_token': 'R' * 48,
+        'device_name': 'Replacement iPhone',
+        'platform': 'ios',
+    }
+    restored = client.post('/iphone/api/access/native/recovery', json=recovery_payload)
+    assert restored.status_code == 200, restored.text
+    assert restored.json()['status'] == 'ready'
+    assert restored.json()['identity']['vishnu_id'] == owner['vishnu_id']
+    assert registry.authenticate(recovery_device_id, 'R' * 48)
+    replayed = client.post('/iphone/api/access/native/recovery', json={
+        **recovery_payload, 'device_id': str(uuid.uuid4()), 'device_token': 'S' * 48,
+    })
+    assert replayed.status_code == 401
 
 
 

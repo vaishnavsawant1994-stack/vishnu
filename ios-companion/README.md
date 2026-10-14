@@ -1,6 +1,7 @@
 # Vishnu iPhone Companion
 
-The iOS companion is the primary real-device companion for the owner's current setup.
+The iOS app supports joining an existing Vishnu and a native first-device
+creation/recovery ceremony against a configured runtime.
 
 The app also includes a cloud-first **Open Vishnu** route. It hands off to
 Safari so the same Google sign-in, trusted-device cookie, microphone permissions,
@@ -23,6 +24,16 @@ require an Apple Developer team and Apple-issued signing assets.
 - active `AVAudioSession` voice/microphone foundation using voice-chat mode
 - simulator CI workflow
 - separate physical-iPhone validation workflow
+
+Native Create my Vishnu and Restore Vishnu screens use the canonical server
+first-run and recovery APIs. Device credentials and pending recovery codes are
+stored in Keychain. Native creation requires a reachable HTTPS Vishnu runtime
+and its high-entropy one-time bootstrap code. The app does not host or provision
+the runtime, cannot create an owner offline, and does not yet register a native
+passkey. Creation uses the canonical owner password and one-time recovery-code
+authority. Restore enrolls a new device on an existing runtime; it does not
+restore a lost runtime or move data between runtimes. No physical-device Face ID
+qualification is claimed by simulator tests.
 
 ## iOS lifecycle boundary
 
