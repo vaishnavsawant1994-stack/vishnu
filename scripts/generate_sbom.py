@@ -15,6 +15,7 @@ PYTHON_LOCKS = {
     'python-runtime.cdx.json': ROOT / 'requirements.lock',
     'python-ml.cdx.json': ROOT / 'requirements-ml.lock',
     'python-training.cdx.json': ROOT / 'requirements-training.lock',
+    'python-tools.cdx.json': ROOT / 'requirements-tools.lock',
 }
 NODE_LOCK = ROOT / 'package-lock.json'
 
