@@ -606,6 +606,16 @@ class BackupService:
         touched: list[tuple[Path, Path | None]] = []
         try:
             manifest = self._inspect_zip(payload, encrypted=encrypted)
+            identity = manifest.get('identity_metadata')
+            identity_store = self.data_dir / 'owner-access.sqlite3'
+            if identity is not None and identity_store.is_file():
+                from security.owner_access import OwnerAccessStore
+                current_identity = OwnerAccessStore(identity_store).identity()
+                if current_identity and (
+                    current_identity['owner_id'] != identity['owner_id']
+                    or current_identity['vishnu_id'] != identity['vishnu_id']
+                ):
+                    raise BackupError('backup belongs to a different Vishnu identity')
             with zipfile.ZipFile(payload) as zipped:
                 for item in manifest['files']:
                     rel = self._safe_rel(item['path'])
@@ -661,7 +671,6 @@ class BackupService:
                         temp_destination.unlink(missing_ok=True)
                 if memory_key is not None:
                     self._restore_memory_key(memory_key)
-                identity = manifest.get('identity_metadata')
                 if identity is not None:
                     from security.owner_access import OwnerAccessStore
                     OwnerAccessStore(self.data_dir / 'owner-access.sqlite3').restore_identity_metadata(identity)

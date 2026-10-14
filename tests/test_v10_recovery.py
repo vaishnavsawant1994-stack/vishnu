@@ -343,6 +343,6 @@ def test_backup_identity_conflict_fails_closed_and_keeps_existing_data(tmp_path)
     target_owner.initialize_identity(first_name='Mira')
     (target / 'note.txt').write_text('current')
 
-    with pytest.raises(BackupError, match='original owner state was rolled back'):
+    with pytest.raises(BackupError, match='different Vishnu identity'):
         service(target).restore(archive)
     assert (target / 'note.txt').read_text() == 'current'
