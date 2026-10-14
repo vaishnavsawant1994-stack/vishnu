@@ -11,6 +11,11 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+if __package__:
+    from .build_reproducibility_evidence import validate_evidence
+else:
+    from build_reproducibility_evidence import validate_evidence
+
 _ALLOWED_CHANNELS = {"stable", "beta", "dev"}
 _PLATFORM_PACKAGE = {"windows": "msi", "macos": "dmg", "linux": "deb"}
 _ARTIFACT_RE = re.compile(
@@ -58,7 +63,14 @@ def artifact_metadata(path: Path) -> dict:
     }
 
 
-def build_manifest(*, version: str, source_commit: str, channel: str, artifacts: list[Path]) -> dict:
+def build_manifest(
+    *,
+    version: str,
+    source_commit: str,
+    channel: str,
+    artifacts: list[Path],
+    provenance: dict | None = None,
+) -> dict:
     source_commit = source_commit.strip().lower()
     channel = channel.strip().lower()
     if not version.strip():
@@ -81,7 +93,7 @@ def build_manifest(*, version: str, source_commit: str, channel: str, artifacts:
     if len(set(identities)) != len(identities):
         raise ValueError("release artifact platform/architecture/package identities must be unique")
 
-    return {
+    manifest = {
         "schema": 2,
         "version": version.strip(),
         "source_commit": source_commit,
@@ -89,6 +101,13 @@ def build_manifest(*, version: str, source_commit: str, channel: str, artifacts:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "artifacts": sorted(entries, key=lambda entry: entry["name"]),
     }
+    if provenance is not None:
+        manifest["reproducibility"] = validate_evidence(
+            provenance,
+            expected_source_sha=source_commit,
+            expected_artifacts=entries,
+        )
+    return manifest
 
 
 def main() -> None:
@@ -97,6 +116,7 @@ def main() -> None:
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--channel", required=True, choices=sorted(_ALLOWED_CHANNELS))
     parser.add_argument("--output", required=True)
+    parser.add_argument("--provenance-json")
     parser.add_argument("artifacts", nargs="+")
     args = parser.parse_args()
 
@@ -116,6 +136,11 @@ def main() -> None:
             source_commit=args.source_commit,
             channel=args.channel,
             artifacts=[Path(value) for value in args.artifacts],
+            provenance=(
+                json.loads(Path(args.provenance_json).read_text(encoding="utf-8"))
+                if args.provenance_json
+                else None
+            ),
         )
     except ValueError as exc:
         raise SystemExit(str(exc)) from exc
