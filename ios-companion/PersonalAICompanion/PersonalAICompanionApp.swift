@@ -101,7 +101,12 @@ struct PersonalAICompanionApp: App {
                 }
             }
             .preferredColorScheme(.dark)
-            .onAppear { if store.deviceID != nil { store.connect() } }
+            .onAppear {
+                if store.deviceID != nil {
+                    KeychainStore.shared.remove(RuntimeProvisioningView.secretKey)
+                    store.connect()
+                }
+            }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active, store.deviceID != nil { store.connect() }
                 if phase == .background { BackgroundCoordinator.shared.schedule() }
