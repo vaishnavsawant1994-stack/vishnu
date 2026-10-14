@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import subprocess
 import sys
 import tempfile
@@ -23,6 +24,7 @@ LOCK_FLAGS = (
     '--no-header',
     '--quiet',
 )
+MAX_DIFF_LINES = 200
 
 
 def _run(*args: str) -> None:
@@ -37,7 +39,20 @@ def _verify(source: Path, lock: Path) -> None:
             '--output-file', str(generated),
             str(source),
         )
-        if generated.read_text() != lock.read_text():
+        expected_text = lock.read_text()
+        generated_text = generated.read_text()
+        if generated_text != expected_text:
+            diff = list(difflib.unified_diff(
+                expected_text.splitlines(),
+                generated_text.splitlines(),
+                fromfile=lock.name,
+                tofile=f'{lock.name}.generated',
+                lineterm='',
+            ))
+            for line in diff[:MAX_DIFF_LINES]:
+                print(line, file=sys.stderr)
+            if len(diff) > MAX_DIFF_LINES:
+                print(f'... lock diff truncated after {MAX_DIFF_LINES} lines', file=sys.stderr)
             raise SystemExit(f'{lock.name} is stale; regenerate it with uv 0.12.23.')
 
 
