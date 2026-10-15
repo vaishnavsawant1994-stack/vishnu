@@ -14,12 +14,14 @@ final class SensoriumCompanionBridge {
         "camera_list", "camera_status", "camera_session_start", "camera_snapshot", "camera_session_stop",
         "sensor_inventory", "sensor_session_start", "sensor_snapshot", "sensor_stop_all",
         "screen_snapshot", "audio_event_sample", "document_extract", "pose_gesture", "spatial_snapshot",
+        "wearable_inventory", "wearable_snapshot",
         "data_plane_status", "data_plane_progress_put", "data_plane_progress_get", "data_plane_tombstone",
         "data_plane_progress_pending", "data_plane_progress_ack",
     ]
 
     func install(on companion: CompanionStore) {
         store = companion
+        SensoriumWearableRelay.shared.activate()
         previousHandler = companion.socket.commandHandler
         previousStatus = companion.socket.onStatus
         companion.socket.commandHandler = { [weak self] message in
@@ -30,7 +32,10 @@ final class SensoriumCompanionBridge {
         }
         companion.socket.onStatus = { [weak self, weak companion] text, connected in
             self?.previousStatus?(text, connected)
-            if !connected { SensoriumContext.shared.stopAll() }
+            if !connected {
+                SensoriumContext.shared.stopAll()
+                SensoriumWearableRelay.shared.clear()
+            }
             if connected, let device = companion?.deviceID {
                 Task { await companion?.socket.send(["type": "hello", "device_id": device, "platform": "ios", "capabilities": self?.capabilities ?? []]) }
             }
@@ -38,7 +43,11 @@ final class SensoriumCompanionBridge {
     }
 
     private func handles(_ action: String) -> Bool {
-        ["sensor_inventory", "sensor_session_start", "sensor_snapshot", "sensor_stop_all", "screen_snapshot", "audio_event_sample", "document_extract", "pose_gesture", "spatial_snapshot"].contains(action)
+        [
+            "sensor_inventory", "sensor_session_start", "sensor_snapshot", "sensor_stop_all",
+            "screen_snapshot", "audio_event_sample", "document_extract", "pose_gesture", "spatial_snapshot",
+            "wearable_inventory", "wearable_snapshot",
+        ].contains(action)
     }
 
     private func resource(for sensor: String, requested: String) -> String {
@@ -119,9 +128,14 @@ final class SensoriumCompanionBridge {
                 result["expires_at_epoch"] = grant.expiresAt.timeIntervalSince1970
                 result["local_consent"] = true
                 return ["ok": true, "result": result]
+            case "wearable_inventory":
+                return ["ok": true, "result": SensoriumWearableRelay.shared.inventory()]
+            case "wearable_snapshot":
+                return ["ok": true, "result": try SensoriumWearableRelay.shared.snapshot()]
             case "sensor_stop_all":
                 SensoriumContext.shared.stopAll()
                 SensoriumAudioFeatures.shared.stop()
+                SensoriumWearableRelay.shared.clear()
                 store?.vision.stop(); store?.visionActive = false
                 store?.voice.deactivate(); store?.voiceActive = false
                 return ["ok": true, "result": ["stopped": true, "sessions_revoked": true]]
