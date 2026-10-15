@@ -1,0 +1,63 @@
+name: Sensorium 3 Qualification
+
+on:
+  pull_request:
+    paths:
+      - "sensorium/**"
+      - "server/sensorium_v3_api.py"
+      - "server/sensorium_physical_api.py"
+      - "tests/test_sensorium_v3.py"
+      - "docs/SENSORIUM_3_CAUSAL_WORLD_INTELLIGENCE.md"
+      - ".github/workflows/sensorium-3-qualification.yml"
+  push:
+    branches: [main]
+    paths:
+      - "sensorium/**"
+      - "server/sensorium_v3_api.py"
+      - "server/sensorium_physical_api.py"
+      - "tests/test_sensorium_v3.py"
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install locked runtime and qualification tools
+        run: |
+          python scripts/install_locked_requirements.py runtime
+          python scripts/install_locked_requirements.py tools
+          pip check
+
+      - name: Compile Sensorium 3
+        run: |
+          python -m compileall -q sensorium server/sensorium_v3_api.py server/sensorium_physical_api.py
+
+      - name: Lint Sensorium 3
+        run: |
+          ruff check \
+            sensorium/active_perception.py \
+            sensorium/scene_graph.py \
+            sensorium/causal_world.py \
+            sensorium/task_state.py \
+            sensorium/procedural_memory.py \
+            sensorium/outcome_simulator.py \
+            sensorium/action_feedback.py \
+            sensorium/physical_safety.py \
+            sensorium/unified_reality.py \
+            sensorium/benchmark.py \
+            sensorium/advanced_context.py \
+            server/sensorium_v3_api.py \
+            tests/test_sensorium_v3.py
+
+      - name: Run Sensorium 3 qualification tests
+        run: |
+          pytest -q tests/test_sensorium_v3.py
