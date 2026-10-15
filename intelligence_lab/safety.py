@@ -33,6 +33,17 @@ class LabSafetyPolicy:
         "mutate_trusted_memory",
         "self_promote",
     }
+    _SECRET_KEY_TOKENS = {
+        "password",
+        "secret",
+        "token",
+        "api_key",
+        "apikey",
+        "credential",
+        "private_key",
+        "authorization",
+        "cookie",
+    }
 
     def __init__(self, settings: LabSettings):
         self.settings = settings
@@ -46,7 +57,29 @@ class LabSafetyPolicy:
             reasons.append("action appears to request a security-boundary bypass")
         if not action:
             reasons.append("action is empty")
+        secret_paths = self._secret_parameter_paths(proposal.parameters)
+        if secret_paths:
+            reasons.append(
+                "secret-bearing parameters are not permitted in Lab proposals; use a Core-owned credential reference"
+            )
         return SafetyVerdict(not reasons, tuple(reasons))
+
+    @classmethod
+    def _secret_parameter_paths(cls, value: Any, prefix: str = "parameters") -> tuple[str, ...]:
+        matches: list[str] = []
+        if isinstance(value, Mapping):
+            for key, nested in value.items():
+                key_text = str(key).strip().lower().replace("-", "_")
+                path = f"{prefix}.{key_text}"
+                if any(token in key_text for token in cls._SECRET_KEY_TOKENS):
+                    if nested not in (None, "", [], {}):
+                        matches.append(path)
+                    continue
+                matches.extend(cls._secret_parameter_paths(nested, path))
+        elif isinstance(value, (list, tuple)):
+            for index, nested in enumerate(value):
+                matches.extend(cls._secret_parameter_paths(nested, f"{prefix}[{index}]"))
+        return tuple(matches)
 
     def assert_autonomous(self, proposal: ActionProposal, *, preauthorized: bool) -> None:
         self.settings.require(CapabilityLevel.LIMITED_AUTONOMY)
