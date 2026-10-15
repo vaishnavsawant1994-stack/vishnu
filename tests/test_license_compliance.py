@@ -31,26 +31,34 @@ def test_direct_requirements_resolves_nested_inputs(tmp_path: Path) -> None:
     assert direct_requirements(tools) == {'fastapi', 'httpx', 'ruff'}
 
 
-def test_report_marks_optional_profile_license_as_review(tmp_path: Path) -> None:
+def _node_sbom(root_ref: str, direct_ref: str, direct_name: str) -> dict:
+    return {
+        'bomFormat': 'CycloneDX',
+        'metadata': {'component': {'bom-ref': root_ref}},
+        'dependencies': [{'ref': root_ref, 'dependsOn': [direct_ref]}],
+        'components': [
+            {'bom-ref': direct_ref, 'name': direct_name, 'version': '1.0.0', 'licenses': [{'license': {'id': 'MIT'}}]},
+            {'bom-ref': f'{direct_ref}-transitive', 'name': f'{direct_name}-transitive', 'version': '2.0.0', 'licenses': []},
+        ],
+    }
+
+
+def test_report_marks_optional_profile_license_as_review_and_covers_rea(tmp_path: Path) -> None:
     for filename in ('python-runtime.cdx.json', 'python-tools.cdx.json', 'python-ml.cdx.json', 'python-training.cdx.json'):
         (tmp_path / filename).write_text(json.dumps({'bomFormat': 'CycloneDX', 'components': []}), encoding='utf-8')
-    (tmp_path / 'nodejs.cdx.json').write_text(json.dumps({
-        'bomFormat': 'CycloneDX',
-        'metadata': {'component': {'bom-ref': 'root'}},
-        'dependencies': [{'ref': 'root', 'dependsOn': ['npm-direct']}],
-        'components': [
-            {'bom-ref': 'npm-direct', 'name': 'direct', 'version': '1.0.0', 'licenses': [{'license': {'id': 'MIT'}}]},
-            {'bom-ref': 'npm-transitive', 'name': 'transitive', 'version': '2.0.0', 'licenses': []},
-        ],
-    }), encoding='utf-8')
+    (tmp_path / 'nodejs.cdx.json').write_text(json.dumps(_node_sbom('root', 'npm-direct', 'direct')), encoding='utf-8')
+    (tmp_path / 'rea-nodejs.cdx.json').write_text(json.dumps(_node_sbom('rea-root', 'rea-direct', 'rea-agents')), encoding='utf-8')
     (tmp_path / 'manifest.json').write_text(json.dumps({'source_sha': 'abc123'}), encoding='utf-8')
     policy_path = tmp_path / 'policy.json'
     policy_path.write_text(json.dumps(POLICY), encoding='utf-8')
 
     report = build_report(tmp_path, policy_path)
 
-    node = {entry['name']: entry for entry in report['components'] if entry['ecosystem'] == 'npm'}
-    assert node['direct']['directness'] == 'direct'
-    assert node['direct']['decision'] == 'allow'
-    assert node['transitive']['directness'] == 'transitive'
-    assert node['transitive']['decision'] == 'review'
+    node = {(entry['profile'], entry['name']): entry for entry in report['components'] if entry['ecosystem'] == 'npm'}
+    assert node[('browser-qualification', 'direct')]['directness'] == 'direct'
+    assert node[('browser-qualification', 'direct')]['decision'] == 'allow'
+    assert node[('browser-qualification', 'direct-transitive')]['directness'] == 'transitive'
+    assert node[('browser-qualification', 'direct-transitive')]['decision'] == 'review'
+    assert node[('reverse-engineering', 'rea-agents')]['directness'] == 'direct'
+    assert node[('reverse-engineering', 'rea-agents')]['decision'] == 'allow'
+    assert node[('reverse-engineering', 'rea-agents-transitive')]['decision'] == 'review'
