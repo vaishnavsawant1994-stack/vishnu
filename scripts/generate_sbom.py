@@ -18,6 +18,8 @@ PYTHON_LOCKS = {
     'python-tools.cdx.json': ROOT / 'requirements-tools.lock',
 }
 NODE_LOCK = ROOT / 'package-lock.json'
+REA_ROOT = ROOT / '.rea'
+REA_NODE_LOCK = REA_ROOT / 'package-lock.json'
 
 
 def sha256(path: Path) -> str:
@@ -61,6 +63,16 @@ def build_manifest(
     }
 
 
+def _generate_node_sbom(package_root: Path, output: Path) -> None:
+    with output.open('w', encoding='utf-8', newline='\n') as file:
+        subprocess.run(
+            ['npm', 'sbom', '--sbom-format=cyclonedx', '--package-lock-only', '--sbom-type=application'],
+            cwd=package_root,
+            check=True,
+            stdout=file,
+        )
+
+
 def generate(output_dir: Path) -> Path:
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -83,21 +95,19 @@ def generate(output_dir: Path) -> Path:
         if finding_count:
             vulnerability_findings[name] = finding_count
 
-    node_output = output_dir / 'nodejs.cdx.json'
-    with node_output.open('w', encoding='utf-8', newline='\n') as file:
-        subprocess.run(
-            ['npm', 'sbom', '--sbom-format=cyclonedx', '--package-lock-only', '--sbom-type=application'],
-            cwd=ROOT,
-            check=True,
-            stdout=file,
-        )
+    _generate_node_sbom(ROOT, output_dir / 'nodejs.cdx.json')
+
+    input_paths: dict[str, Path] = {path.name: path for path in PYTHON_LOCKS.values()}
+    input_paths['package-lock.json'] = NODE_LOCK
+    if REA_NODE_LOCK.is_file():
+        _generate_node_sbom(REA_ROOT, output_dir / 'rea-nodejs.cdx.json')
+        input_paths['rea-package-lock.json'] = REA_NODE_LOCK
 
     generators = {
         'pip-audit': subprocess.run(['pip-audit', '--version'], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip(),
         'npm': subprocess.run(['npm', '--version'], cwd=ROOT, check=True, capture_output=True, text=True).stdout.strip(),
         'python': sys.version.split()[0],
     }
-    inputs = {path.name: path for path in (*PYTHON_LOCKS.values(), NODE_LOCK)}
     manifest = build_manifest(
         output_dir=output_dir,
         source_sha=os.environ.get('GITHUB_SHA', 'local'),
@@ -106,7 +116,7 @@ def generate(output_dir: Path) -> Path:
         run_id=os.environ.get('GITHUB_RUN_ID', 'local'),
         run_attempt=os.environ.get('GITHUB_RUN_ATTEMPT', 'local'),
         generators=generators,
-        input_paths=inputs,
+        input_paths=input_paths,
         vulnerability_findings=vulnerability_findings,
     )
     manifest_path = output_dir / 'manifest.json'
