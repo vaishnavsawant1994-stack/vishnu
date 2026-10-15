@@ -96,6 +96,7 @@ def test_sensor_permissions_are_session_only_audited_and_restart_invalidates(tmp
         reason="owner tapped allow",
     )
     assert granted["mode"] == "session"
+    assert store.allows("phone", "location") is False
     assert store.allows("phone", "location", session_id="location-session-123") is True
     actions = [row["action"] for row in store.audit("phone")]
     assert "session_granted" in actions and "policy_changed" in actions
