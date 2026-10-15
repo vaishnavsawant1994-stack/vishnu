@@ -8,6 +8,7 @@ from .config import LabSettings
 from .memory import LabMemory
 from .phase3_config import Phase3Settings
 from .phase3_runtime import IntelligenceLabPhase3
+from .phase4 import IntelligenceLabPhase4
 from .runtime import IntelligenceLabRuntime
 
 
@@ -108,6 +109,7 @@ def build_intelligence_lab(
         core_runtime=core_runtime,
         settings=phase3_settings,
     )
+    runtime.phase3.phase4 = IntelligenceLabPhase4(runtime.phase3)
     memory.audit(
         "runtime",
         "built",
@@ -117,6 +119,7 @@ def build_intelligence_lab(
             "core_attached": core_runtime is not None,
             "governed_model_fabric_attached": core_models is not None,
             "phase3_attached": True,
+            "phase4_attached": True,
             "governed_compute_tool_registered": compute_tool_registered,
             "stable_behavior_changed_when_lab_disabled": False,
         },
