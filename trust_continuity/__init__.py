@@ -4,6 +4,7 @@ This package coordinates existing Vishnu authorities. It does not grant device,
 computer, sensor, IoT, credential or execution authority by itself.
 """
 
+from .future_extensions import CapabilityProposal, FUTURE_CAPABILITY_KINDS, GovernedFutureCapabilities
 from .identity_continuity import DATA_POLICIES, MultiDeviceContinuity, RecoveryResult, UniversalOwnerRecovery
 from .memory_intelligence import MemoryIntelligence
 from .production import (
@@ -22,9 +23,12 @@ from .work_engine import WorkEngineV2
 
 __all__ = [
     "BackupRestoreVerifier",
+    "CapabilityProposal",
     "DATA_POLICIES",
     "DeploymentTransaction",
     "EvaluationLab",
+    "FUTURE_CAPABILITY_KINDS",
+    "GovernedFutureCapabilities",
     "MemoryIntelligence",
     "MultiDeviceContinuity",
     "NON_PHYSICAL_PROVIDERS",
