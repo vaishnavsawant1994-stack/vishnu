@@ -4,6 +4,7 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
@@ -19,21 +20,26 @@ class RecoveryResult:
     restored_device_id: str
     revoked_device_id: str | None
     recovery_method: str
+    # Returned once to the caller when the canonical device authority issues a
+    # new credential. It is deliberately never persisted in TrustContinuityStore.
+    device_credential: str | None = None
 
 
 class UniversalOwnerRecovery:
     """Orchestrates owner restore without introducing a master-device dependency.
 
-    Authentication and device credential issuance are delegated to the existing
-    identity/device authorities supplied by the runtime.
+    Authentication and device credential issuance are delegated to existing
+    identity/device authorities supplied by the runtime. Restore challenges are
+    short-lived and atomically single-consumption; recovery proofs and issued
+    device credentials are never stored in this metadata database.
     """
 
     def __init__(
         self,
         store: TrustContinuityStore,
         *,
-        owner_authenticator: Callable[[str, str], bool],
-        register_device: Callable[[str, dict[str, Any]], str],
+        owner_authenticator: Callable[[str, str, str], bool],
+        register_device: Callable[[str, dict[str, Any]], str | dict[str, Any]],
         revoke_device: Callable[[str], None],
     ):
         self.store = store
@@ -41,21 +47,36 @@ class UniversalOwnerRecovery:
         self.register_device = register_device
         self.revoke_device = revoke_device
 
-    def begin_restore(self, owner_id: str, *, method: str, destination_platform: str) -> str:
+    def begin_restore(
+        self,
+        owner_id: str,
+        *,
+        method: str,
+        destination_platform: str,
+        ttl_seconds: int = 600,
+    ) -> str:
         if method not in {"recovery_code", "recovery_package", "passkey"}:
             raise ValueError("unsupported recovery method")
+        ttl = max(60, min(int(ttl_seconds), 1800))
         restore_id = uuid4().hex
         challenge = secrets.token_urlsafe(32)
         payload = {
             "owner_id": owner_id,
             "method": method,
-            "destination_platform": destination_platform,
+            "destination_platform": destination_platform[:80],
             "challenge_hash": hashlib.sha256(challenge.encode()).hexdigest(),
             "phase": "challenge_issued",
             "created_at": utcnow(),
+            "expires_at": (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat(),
         }
         self.store.put("owner_restore", restore_id, payload, status="pending", owner_id=owner_id)
-        self.store.audit("identity", "restore_started", actor=owner_id, subject=restore_id, payload={"method": method})
+        self.store.audit(
+            "identity",
+            "restore_started",
+            actor=owner_id,
+            subject=restore_id,
+            payload={"method": method, "expires_at": payload["expires_at"]},
+        )
         return f"{restore_id}.{challenge}"
 
     def complete_restore(
@@ -73,33 +94,82 @@ class UniversalOwnerRecovery:
         row = self.store.get("owner_restore", restore_id)
         if row is None or row["status"] != "pending":
             raise PermissionError("restore is not active")
-        payload = row["payload"]
+        payload = dict(row["payload"])
+        expires_at = datetime.fromisoformat(str(payload["expires_at"]).replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) >= expires_at.astimezone(timezone.utc):
+            self.store.put(
+                "owner_restore",
+                restore_id,
+                {**payload, "phase": "expired", "expired_at": utcnow()},
+                status="expired",
+                owner_id=payload["owner_id"],
+            )
+            self.store.audit("identity", "restore_expired", actor=payload["owner_id"], subject=restore_id)
+            raise PermissionError("restore challenge expired")
         actual_hash = hashlib.sha256(challenge.encode()).hexdigest()
         if not hmac.compare_digest(actual_hash, payload["challenge_hash"]):
             raise PermissionError("restore challenge mismatch")
+
+        # Claim before verifying the proof so parallel calls and brute-force
+        # retries cannot reuse a valid challenge. A denied proof requires a new
+        # short-lived owner ceremony.
+        claimed = self.store.claim_status(
+            "owner_restore",
+            restore_id,
+            expected_status="pending",
+            claimed_status="consuming",
+        )
+        if claimed is None:
+            raise PermissionError("restore was already consumed")
+
         owner_id = payload["owner_id"]
-        if not self.owner_authenticator(owner_id, owner_proof):
+        method = str(payload["method"])
+        try:
+            authenticated = bool(self.owner_authenticator(owner_id, method, owner_proof))
+        except Exception:
+            authenticated = False
+        if not authenticated:
+            self.store.put(
+                "owner_restore",
+                restore_id,
+                {**payload, "phase": "denied", "denied_at": utcnow()},
+                status="denied",
+                owner_id=owner_id,
+            )
             self.store.audit("identity", "restore_denied", actor=owner_id, subject=restore_id)
             raise PermissionError("owner recovery proof rejected")
-        restored_device_id = self.register_device(owner_id, dict(device_metadata))
+
+        registration = self.register_device(owner_id, dict(device_metadata))
+        credential = None
+        if isinstance(registration, dict):
+            restored_device_id = str(
+                registration.get("device_id") or registration.get("id") or ""
+            ).strip()
+            credential_value = registration.get("device_credential") or registration.get("token")
+            credential = str(credential_value) if credential_value else None
+        else:
+            restored_device_id = str(registration or "").strip()
+        if not restored_device_id:
+            raise RuntimeError("canonical device authority did not issue a device ID")
+
         revoked = None
         if lost_device_id:
             if lost_device_id == restored_device_id:
                 raise ValueError("restored and lost device cannot be the same")
             self.revoke_device(lost_device_id)
             revoked = lost_device_id
-        payload.update(
-            {
-                "phase": "complete",
-                "restored_device_id": restored_device_id,
-                "revoked_device_id": revoked,
-                "completed_at": utcnow(),
-            }
-        )
+        complete_payload = {
+            **payload,
+            "phase": "complete",
+            "restored_device_id": restored_device_id,
+            "revoked_device_id": revoked,
+            "completed_at": utcnow(),
+        }
+        # Never persist credential/proof material.
         self.store.put(
             "owner_restore",
             restore_id,
-            payload,
+            complete_payload,
             status="complete",
             owner_id=owner_id,
             device_id=restored_device_id,
@@ -109,9 +179,9 @@ class UniversalOwnerRecovery:
             "restore_completed",
             actor=owner_id,
             subject=restored_device_id,
-            payload={"lost_device_revoked": bool(revoked), "method": payload["method"]},
+            payload={"lost_device_revoked": bool(revoked), "method": method},
         )
-        return RecoveryResult(owner_id, restored_device_id, revoked, payload["method"])
+        return RecoveryResult(owner_id, restored_device_id, revoked, method, credential)
 
 
 class MultiDeviceContinuity:
