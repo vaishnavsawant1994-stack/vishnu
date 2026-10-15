@@ -5,8 +5,10 @@ on:
     paths:
       - "trust_continuity/**"
       - "server/trust_continuity_api.py"
+      - "dashboard/api.py"
       - "tests/test_production_trust_continuity.py"
       - "tests/test_production_trust_runtime.py"
+      - "tests/test_production_trust_integration.py"
       - "docs/PRODUCTION_TRUST_UNIVERSAL_CONTINUITY.md"
       - ".github/workflows/production-trust-continuity.yml"
   push:
@@ -14,8 +16,10 @@ on:
     paths:
       - "trust_continuity/**"
       - "server/trust_continuity_api.py"
+      - "dashboard/api.py"
       - "tests/test_production_trust_continuity.py"
       - "tests/test_production_trust_runtime.py"
+      - "tests/test_production_trust_integration.py"
 
 permissions:
   contents: read
@@ -39,21 +43,27 @@ jobs:
 
       - name: Compile production trust and continuity
         run: |
-          python -m compileall -q trust_continuity server/trust_continuity_api.py
+          python -m compileall -q \
+            trust_continuity \
+            server/trust_continuity_api.py \
+            dashboard/api.py
 
       - name: Lint production trust and continuity
         run: |
           ruff check \
             trust_continuity \
             server/trust_continuity_api.py \
+            dashboard/api.py \
             tests/test_production_trust_continuity.py \
-            tests/test_production_trust_runtime.py
+            tests/test_production_trust_runtime.py \
+            tests/test_production_trust_integration.py
 
       - name: Run production trust qualification tests
         run: |
           pytest -q \
             tests/test_production_trust_continuity.py \
-            tests/test_production_trust_runtime.py
+            tests/test_production_trust_runtime.py \
+            tests/test_production_trust_integration.py
 
       - name: Verify fail-closed exact-head readiness semantics
         env:
