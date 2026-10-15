@@ -125,6 +125,14 @@ struct PersonalAICompanionApp: App {
                     Toggle("Allow this camera for 5 minutes",isOn:Binding(get:{store.visionActive},set:{ value in Task { await store.setVisionActive(value) }}))
                     Toggle("Vision + Voice together",isOn:Binding(get:{store.visionActive && store.voiceActive},set:{ value in Task { await store.setVisionVoiceActive(value) }}))
                     LabeledContent("Camera permission", value: store.vision.permissionDescription)
+                    if store.visionActive {
+                        TimelineView(.periodic(from: .now, by: 1)) { _ in
+                            LabeledContent("Session timer", value: "\(store.vision.remainingSeconds)s remaining")
+                            LabeledContent("Battery", value: store.vision.batteryPercent >= 0 ? "\(store.vision.batteryPercent)%" : "Unavailable")
+                        }
+                    }
+                    LabeledContent("Battery floor", value: "\(VisionCameraSession.minLiveBatteryPercent)%")
+                    LabeledContent("Default Live Vision data budget", value: "40 MB")
                     Text("Vision works only while this app remains in the foreground. Starting it creates a new temporary sensor session and turns on the iOS camera privacy indicator. Remote requests cannot arm the camera.")
                         .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                     Text("Privacy processing, including requested face redaction, happens on this iPhone before a frame is uploaded. Raw capture data is not retained by the companion.")
