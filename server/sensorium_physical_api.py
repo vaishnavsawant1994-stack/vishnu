@@ -6,6 +6,7 @@ from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSenso
 from server.sensorium_camera_api import sensorium_camera_router
 from server.sensorium_context_api import sensorium_context_router
 from server.sensorium_fusion_api import sensorium_fusion_router
+from server.sensorium_iot_adapter_api import sensorium_iot_adapter_router
 from server.sensorium_native_api import sensorium_native_router
 from server.vision_voice_api import vision_voice_router
 
@@ -102,6 +103,9 @@ def sensorium_physical_router(runtime) -> APIRouter:
     # physical-device evidence surfaces even in model-less qualification runtimes.
     # Rich screen/cross-modal analysis simply remains unavailable without models.
     root.include_router(sensorium_context_router(runtime))
+    # Read-only smart-home observation adapters remain separate from IoT action
+    # proposals and never receive execution authority.
+    root.include_router(sensorium_iot_adapter_router(runtime))
     # Model-less qualification runtimes intentionally retain only physical/native
     # evidence surfaces. Camera, Vision+Voice and model-based fusion mount only in
     # full runtimes where the governed model router exists.
