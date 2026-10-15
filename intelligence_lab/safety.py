@@ -44,6 +44,10 @@ class LabSafetyPolicy:
         "authorization",
         "cookie",
     }
+    # Numeric inference/output budgets use the word "tokens" but carry no
+    # credential material. Keep this exception exact and tiny: access_token,
+    # api_token, bearer_token and every other token-bearing key remain blocked.
+    _SAFE_NON_SECRET_KEYS = {"max_tokens"}
 
     def __init__(self, settings: LabSettings):
         self.settings = settings
@@ -71,7 +75,9 @@ class LabSafetyPolicy:
             for key, nested in value.items():
                 key_text = str(key).strip().lower().replace("-", "_")
                 path = f"{prefix}.{key_text}"
-                if any(token in key_text for token in cls._SECRET_KEY_TOKENS):
+                if key_text not in cls._SAFE_NON_SECRET_KEYS and any(
+                    token in key_text for token in cls._SECRET_KEY_TOKENS
+                ):
                     if nested not in (None, "", [], {}):
                         matches.append(path)
                     continue
