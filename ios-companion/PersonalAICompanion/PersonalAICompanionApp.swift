@@ -43,6 +43,7 @@ struct PersonalAICompanionApp: App {
         let companion=CompanionStore()
         MobileDataPlaneBridge.shared.install(on:companion.socket)
         ManagedByteBridge.shared.install(on:companion.socket)
+        SensoriumCompanionBridge.shared.install(on: companion)
         _store=StateObject(wrappedValue:companion)
     }
 
@@ -80,7 +81,10 @@ struct PersonalAICompanionApp: App {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active, store.deviceID != nil { store.connect() }
-                if phase != .active { store.vision.stop();store.visionActive = false }
+                if phase != .active {
+                    store.vision.stop();store.visionActive = false
+                    SensoriumContext.shared.stopAll();SensoriumAudioFeatures.shared.stop()
+                }
                 if phase == .background { BackgroundCoordinator.shared.schedule() }
             }
         }
@@ -104,6 +108,13 @@ struct PersonalAICompanionApp: App {
                 Section("Connection") {
                     LabeledContent("Status",value:store.status);LabeledContent("Channel",value:store.connected ? "Connected" : "Offline")
                     HStack { Button("Connect") { store.connect() }; Button("Disconnect",role:.cancel) { store.disconnect() } }
+                }
+                Section("Sensorium") {
+                    NavigationLink { SensoriumPrivacyView(store: store) } label: {
+                        Label("Sensorium Privacy & Sensors", systemImage: "sensor.tag.radiowaves.forward")
+                    }
+                    Text("Camera, microphone, screen, location, motion, environment and spatial access are separately session-gated. No sensor has a permanent silent allow mode.")
+                        .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Local data") {
                     Text("Project/progress continuation metadata can be kept on this iPhone with complete file protection. Device-only files remain on this iPhone; remote view does not grant permanent copy authority.")
