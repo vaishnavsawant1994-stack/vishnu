@@ -322,7 +322,10 @@ class SensorPermissionStore:
         state = self.permission(device_id, sensor, resource_id)
         if state["mode"] != "session":
             return False
-        return not session_id or state["session_id"] == str(session_id)
+        presented = str(session_id or "").strip()
+        if not presented:
+            return False
+        return state["session_id"] == presented
 
     def revoke_session(
         self,
