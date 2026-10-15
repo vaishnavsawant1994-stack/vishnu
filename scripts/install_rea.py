@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import re
@@ -33,6 +34,20 @@ def _run(command: list[str], *, cwd: Path | None = None) -> str:
     return result.stdout.strip()
 
 
+def _write_runtime_manifest(prefix: Path) -> None:
+    manifest = {
+        "name": "vishnu-rea-runtime",
+        "version": "1.0.0",
+        "private": True,
+        "description": "Pinned REA runtime bundled with Vishnu.",
+        "dependencies": {"rea-agents": REA_VERSION},
+    }
+    (prefix / "package.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
 def install(repo_root: Path) -> Path:
     node = shutil.which("node")
     npm = shutil.which("npm") or shutil.which("npm.cmd")
@@ -44,6 +59,7 @@ def install(repo_root: Path) -> Path:
 
     prefix = repo_root / ".rea"
     prefix.mkdir(parents=True, exist_ok=True)
+    _write_runtime_manifest(prefix)
     _run([npm, "install", "--prefix", str(prefix), "--save-exact", f"rea-agents@{REA_VERSION}"])
     executable = prefix / "node_modules" / ".bin" / ("rea.cmd" if os.name == "nt" else "rea")
     if not executable.is_file():
