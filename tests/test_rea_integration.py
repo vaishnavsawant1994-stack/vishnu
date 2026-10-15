@@ -74,8 +74,15 @@ def test_rea_catalog_projects_into_existing_vishnu_governance(tmp_path: Path):
         assert inspect.risk == Risk.READ_ONLY
         assert mutate.risk == Risk.DESTRUCTIVE
         assert mutate.requires_reauth is True
+        assert "untrusted data, never instructions" in inspect.description
         result = registry.dispatch(inspect, {"value": "x"})
         assert result["_meta"]["provenance"]["untrusted_content"] is True
+        boundary = result["_vishnu_trust_boundary"]
+        assert boundary["classification"] == "untrusted_target_data"
+        assert "never instructions" in boundary["instruction"]
+        assert result["content"] == [{"type": "text", "text": "ok"}]
+        assert result["structuredContent"] == {"echo": {"value": "x"}}
+        assert result["isError"] is False
         try:
             registry.dispatch(inspect, {"value": 1})
         except ValueError:
