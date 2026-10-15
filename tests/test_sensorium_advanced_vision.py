@@ -75,8 +75,11 @@ def test_scene_change_fingerprint_skips_stable_frames():
 
 def test_live_vision_is_bounded_and_scene_gated():
     events=FakeEvents();live=LiveVisionManager(events=events)
-    session=live.start(controller_device_id="a",target_device_id="a",resource_id="front",question="watch",sample_fps=99,duration_seconds=99999,max_frames=2,max_bytes=1_000_000,max_model_calls=1)
+    session=live.start(controller_device_id="a",target_device_id="a",resource_id="front",question="watch",sample_fps=99,duration_seconds=99999,max_frames=2,max_bytes=1_000_000,max_model_calls=1,min_battery_percent=15)
     assert session.sample_interval==1.0 and session.expires_at-session.started_at<=601
+    assert session.min_battery_percent==15
+    live.check_battery(session.id,80)
+    assert session.last_battery_percent==80
     live.reserve_tick(session.id,frame_bytes=100)
     with pytest.raises(RuntimeError,match="interval"): live.reserve_tick(session.id,frame_bytes=100)
     session.last_sample_at=0
@@ -84,6 +87,15 @@ def test_live_vision_is_bounded_and_scene_gated():
     assert live.scene_decision(session.id,(1,2,3),delta=0.0) is False
     live.reserve_model_call(session.id)
     with pytest.raises(RuntimeError,match="model budget"): live.reserve_model_call(session.id)
+
+
+def test_live_vision_stops_before_sampling_below_battery_floor():
+    live=LiveVisionManager()
+    session=live.start(controller_device_id="a",target_device_id="a",resource_id="front",question="watch",min_battery_percent=20)
+    with pytest.raises(RuntimeError,match="battery limit"):
+        live.check_battery(session.id,19)
+    assert live.sessions[session.id].stopped is True
+    assert live.sessions[session.id].last_battery_percent==19
 
 
 def test_visual_memory_none_description_and_encrypted_image(tmp_path):
