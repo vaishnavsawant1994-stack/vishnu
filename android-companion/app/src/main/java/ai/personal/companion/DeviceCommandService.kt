@@ -98,25 +98,27 @@ class DeviceCommandService: Service() {
       .put("camera_id",resource)
   }
 
-  private fun requestSensorConsent(sensorRaw:String,resourceRaw:String,reasonRaw:String):JSONObject{
+  private fun requestSensorConsent(sensorRaw:String,resourceRaw:String,reasonRaw:String,requestingDeviceRaw:String):JSONObject{
     val sensor=if(sensorRaw.lowercase()=="audio")"microphone" else sensorRaw.lowercase().take(40)
     val resource=resourceRaw.trim().ifBlank{"*"}.take(240)
     val reason=reasonRaw.trim().ifBlank{"Vishnu requested temporary $sensor context."}.take(240)
+    val requester=requestingDeviceRaw.trim().take(200)
     val active=SensoriumSessionRegistry.get(sensor,resource)
     if(active!=null){return SensoriumSessionRegistry.proof(sensor,resource).put("active",true).put("consent_required",false)}
     val intent=Intent(this,SensoriumConsentActivity::class.java)
       .putExtra("sensor",sensor).putExtra("resource_id",resource).putExtra("reason",reason)
+      .putExtra("requesting_device_id",requester)
       .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     val requestCode=100+(sensor.hashCode() and 0x3fff)
     val pending=PendingIntent.getActivity(this,requestCode,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val notification=NotificationCompat.Builder(this,"vishnu_sensorium")
       .setSmallIcon(android.R.drawable.ic_dialog_info)
       .setContentTitle("Vishnu requests $sensor")
-      .setContentText("Tap to review. Access is temporary, visible, and never permanently silent.")
+      .setContentText(if(requester.isBlank()) "Tap to review. Access is temporary and visible." else "Requested by $requester · tap to review temporary access.")
       .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
     getSystemService(NotificationManager::class.java).notify(requestCode,notification)
     return JSONObject().put("active",false).put("consent_required",true).put("foreground_required",true)
-      .put("sensor",sensor).put("resource_id",resource)
+      .put("sensor",sensor).put("resource_id",resource).put("requested_by_device_id",requester)
   }
 
   private fun stopSensors():JSONObject{
@@ -149,7 +151,7 @@ class DeviceCommandService: Service() {
         "camera_snapshot"->VisionCameraBridge.snapshot(this,p.optJSONObject("privacy")?:JSONObject())
         "camera_session_stop"->{VisionCameraBridge.deactivate();getSystemService(NotificationManager::class.java).cancel(81);JSONObject().put("stopped",true)}
         "sensor_inventory"->SensoriumSensors.inventory(this)
-        "sensor_session_start"->requestSensorConsent(p.optString("sensor"),p.optString("resource_id","*"),p.optString("reason"))
+        "sensor_session_start"->requestSensorConsent(p.optString("sensor"),p.optString("resource_id","*"),p.optString("reason"),p.optString("requesting_device_id",""))
         "sensor_snapshot"->SensoriumSensors.snapshot(this,p.optJSONArray("sensors")?:JSONArray())
         "sensor_stop_all"->stopSensors()
         "screen_snapshot"->SensoriumScreenBridge.snapshot()
