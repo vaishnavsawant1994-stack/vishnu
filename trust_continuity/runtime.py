@@ -4,13 +4,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 
-from .adapters import KeychainSecretStore
+from .adapters import KeychainSecretStore, VerifiedOAuthLifecycleManager
 from .future_extensions import GovernedFutureCapabilities
 from .identity_continuity import MultiDeviceContinuity, UniversalOwnerRecovery
 from .memory_intelligence import MemoryIntelligence
 from .operations import OperationalHealthMonitor
-from .production import DeploymentTransaction, PhysicalL4Qualification, ProductionReadinessManager
-from .services import EvaluationLab, OAuthLifecycleManager, OfflineIntelligence, TrustCenter
+from .production import (
+    DeploymentTransaction,
+    PhysicalL4Qualification,
+    ProductionReadinessManager,
+)
+from .services import OAuthLifecycleManager, EvaluationLab, OfflineIntelligence, TrustCenter
 from .store import TrustContinuityStore
 from .work_engine import WorkEngineV2
 
@@ -60,7 +64,7 @@ def build_trust_continuity_runtime(
     emergency_stop: Callable[[bool], None] | None = None,
     snapshot_sources: dict[str, Callable[[], Any]] | None = None,
 ) -> TrustContinuityRuntime:
-    """Compose the cross-cutting campaign without replacing canonical authorities.
+    """Compose the campaign without replacing canonical Vishnu authorities.
 
     Optional security-sensitive services stay unavailable until their canonical
     callbacks are explicitly supplied. Defaults never grant action authority.
@@ -75,7 +79,10 @@ def build_trust_continuity_runtime(
         l4=PhysicalL4Qualification(store, commit_sha=commit_sha),
         deployment=DeploymentTransaction(store),
         health=OperationalHealthMonitor(store),
-        continuity=MultiDeviceContinuity(store, is_trusted_device=is_trusted_device),
+        continuity=MultiDeviceContinuity(
+            store,
+            is_trusted_device=is_trusted_device,
+        ),
         work=WorkEngineV2(store, approval_check=approval_check),
         memory=MemoryIntelligence(store),
         offline=OfflineIntelligence(store),
@@ -87,7 +94,10 @@ def build_trust_continuity_runtime(
     )
 
     if keychain is not None:
-        runtime.oauth = OAuthLifecycleManager(store, KeychainSecretStore(keychain))
+        runtime.oauth = VerifiedOAuthLifecycleManager(
+            store,
+            KeychainSecretStore(keychain),
+        )
 
     recovery_callbacks = (owner_authenticator, register_device, revoke_device)
     if all(callback is not None for callback in recovery_callbacks):
