@@ -51,6 +51,28 @@ def _core_json_callback(core_runtime: Mapping[str, Any] | None):
     return reason_json
 
 
+def _register_phase3_core_compute(core_runtime: Mapping[str, Any] | None, settings: LabSettings) -> bool:
+    """Opt-in registration of the governed remote-compute Core capability.
+
+    This never constructs a second ToolRegistry or DeviceGateway. The tool is
+    added only when the Intelligence Lab itself is explicitly enabled and all
+    canonical Core authorities are already present.
+    """
+    if core_runtime is None or not settings.enabled:
+        return False
+    registry = core_runtime.get("tools")
+    device_registry = core_runtime.get("device_registry")
+    device_gateway = core_runtime.get("device_gateway")
+    if registry is None or device_registry is None or device_gateway is None:
+        return False
+    if not callable(getattr(registry, "register", None)) or not callable(getattr(registry, "all", None)):
+        return False
+    from tools import device_compute
+
+    device_compute.register(registry, device_registry, device_gateway)
+    return True
+
+
 def build_intelligence_lab(
     *,
     core_runtime: Mapping[str, Any] | None = None,
@@ -71,6 +93,7 @@ def build_intelligence_lab(
     model_callback = _core_model_callback(core_runtime) if use_core_model and settings.enabled else None
     model_json_callback = _core_json_callback(core_runtime) if use_core_model and settings.enabled else None
     core_models = core_runtime.get("models") if core_runtime is not None and use_core_model else None
+    compute_tool_registered = _register_phase3_core_compute(core_runtime, settings)
     runtime = IntelligenceLabRuntime(
         settings,
         memory,
@@ -94,7 +117,8 @@ def build_intelligence_lab(
             "core_attached": core_runtime is not None,
             "governed_model_fabric_attached": core_models is not None,
             "phase3_attached": True,
-            "stable_behavior_changed": False,
+            "governed_compute_tool_registered": compute_tool_registered,
+            "stable_behavior_changed_when_lab_disabled": False,
         },
     )
     return runtime
@@ -111,9 +135,10 @@ def attach_intelligence_lab(
     """Explicitly attach Lab to a built stable runtime.
 
     This function is never imported or called by app.main. A host must opt in.
-    The only mutation is adding `intelligence_lab` to the supplied runtime map;
-    stable ToolRegistry, memory, devices, approvals, vault and composition are
-    left intact.
+    The normal stable runtime remains unchanged while the Lab is disabled. When
+    explicitly enabled, Phase 3 may register the bounded trusted-device compute
+    tool into the *existing* ToolRegistry; all execution still uses normal Core
+    approval, policy, verification, emergency-stop and audit authority.
     """
     if "intelligence_lab" in core_runtime:
         existing = core_runtime["intelligence_lab"]
