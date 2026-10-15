@@ -21,6 +21,7 @@
     <activity android:name=".SensoriumConsentActivity" android:exported="false"/>
     <activity android:name=".SensoriumScreenActivity" android:exported="false"/>
     <activity android:name=".SensoriumSpatialActivity" android:exported="false"/>
+    <activity android:name=".SensoriumPrivacyActivity" android:exported="false"/>
     <activity android:name=".RuntimeProvisioningActivity" android:exported="false"/>
     <activity android:name=".PortableRecoveryActivity" android:exported="false"/>
     <activity android:name=".PasskeySetupActivity" android:exported="false"/>
