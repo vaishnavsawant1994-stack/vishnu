@@ -1551,6 +1551,9 @@ try {
   await page.waitForFunction(()=>document.querySelector('.rp-page[data-rp-page="knowledge"]'));
   assert.equal(await page.locator('.rp-knowledge-item').count(),1,'Knowledge renders the current account item');
   assert.match(await page.locator('.rp-knowledge-item').innerText(),/Indexed/,'Knowledge shows the available indexing status');
+  assert.equal(await page.locator('#knowledgeNoteCreate').isVisible(),true,'Knowledge offers a dedicated Markdown note editor');
+  assert.equal(await page.locator('#knowledgePortableImport').isVisible(),true,'Knowledge offers Markdown and archive import');
+  assert.equal(await page.locator('#knowledgePortableExport').isVisible(),true,'Knowledge offers a portable archive export');
   await page.fill('#rp-knowledge-search','notes');
   await page.waitForTimeout(360);
   assert.equal(await page.evaluate(()=>document.activeElement?.id),'rp-knowledge-search','Knowledge search retains focus after refreshed results');

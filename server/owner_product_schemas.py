@@ -77,6 +77,20 @@ class KnowledgeUploadBody(BaseModel):
     metadata: dict = Field(default_factory=dict)
 
 
+class KnowledgeNoteBody(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    content: str = Field(default='', max_length=10_000_000)
+    access_class: Literal['owner', 'trusted-devices', 'private'] = 'owner'
+    collection_id: str | None = None
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+
+class KnowledgeNoteUpdateBody(BaseModel):
+    title: str = Field(min_length=1, max_length=240)
+    content: str = Field(default='', max_length=10_000_000)
+    tags: list[str] = Field(default_factory=list, max_length=30)
+
+
 class KnowledgeUpdateBody(BaseModel):
     title: str | None = Field(default=None, max_length=240)
     source: str | None = Field(default=None, max_length=500)
