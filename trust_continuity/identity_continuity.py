@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import inspect
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -38,7 +39,7 @@ class UniversalOwnerRecovery:
         self,
         store: TrustContinuityStore,
         *,
-        owner_authenticator: Callable[[str, str, str], bool],
+        owner_authenticator: Callable[..., bool],
         register_device: Callable[[str, dict[str, Any]], str | dict[str, Any]],
         revoke_device: Callable[[str], None],
     ):
@@ -46,6 +47,25 @@ class UniversalOwnerRecovery:
         self.owner_authenticator = owner_authenticator
         self.register_device = register_device
         self.revoke_device = revoke_device
+        # Early campaign callers used (owner_id, proof). Full Vishnu uses the
+        # stronger (owner_id, method, proof) contract so a callback can bind the
+        # proof type. Determine arity once instead of catching TypeError from a
+        # callback body, which could accidentally convert a real bug into auth.
+        try:
+            signature = inspect.signature(owner_authenticator)
+            positional = [
+                parameter
+                for parameter in signature.parameters.values()
+                if parameter.kind
+                in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+            ]
+            variadic = any(
+                parameter.kind == inspect.Parameter.VAR_POSITIONAL
+                for parameter in signature.parameters.values()
+            )
+            self._auth_with_method = variadic or len(positional) >= 3
+        except (TypeError, ValueError):
+            self._auth_with_method = True
 
     def begin_restore(
         self,
@@ -125,7 +145,10 @@ class UniversalOwnerRecovery:
         owner_id = payload["owner_id"]
         method = str(payload["method"])
         try:
-            authenticated = bool(self.owner_authenticator(owner_id, method, owner_proof))
+            if self._auth_with_method:
+                authenticated = bool(self.owner_authenticator(owner_id, method, owner_proof))
+            else:
+                authenticated = bool(self.owner_authenticator(owner_id, owner_proof))
         except Exception:
             authenticated = False
         if not authenticated:
