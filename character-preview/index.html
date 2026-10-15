@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Vishnu Baby Character Preview</title>
+  <style>
+    *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#fff;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#111827}
+    #app{position:fixed;inset:0;background:transparent}
+    canvas{display:block;width:100%;height:100%;background:transparent}
+    .hud{position:fixed;left:20px;top:18px;z-index:2;display:flex;align-items:center;gap:10px;pointer-events:none}
+    .badge{font-size:13px;font-weight:700;letter-spacing:.02em;background:rgba(255,255,255,.9);border:1px solid rgba(17,24,39,.12);padding:8px 11px;border-radius:999px;backdrop-filter:blur(10px)}
+    .actions{position:fixed;right:18px;top:18px;z-index:3;display:flex;gap:8px}
+    button{appearance:none;border:1px solid rgba(17,24,39,.15);background:rgba(255,255,255,.94);color:#111827;border-radius:12px;padding:10px 13px;font-weight:700;font-size:13px;cursor:pointer;box-shadow:0 6px 22px rgba(17,24,39,.08)}
+    button:hover{background:#fff}
+    .hint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2;font-size:12px;color:#6b7280;background:rgba(255,255,255,.86);border:1px solid rgba(17,24,39,.1);padding:7px 10px;border-radius:999px;pointer-events:none;white-space:nowrap}
+    @media(max-width:640px){.hud{left:12px;top:12px}.actions{right:12px;top:12px}.badge{font-size:11px}.hint{bottom:10px;font-size:11px}}
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"}}
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div class="hud"><div class="badge">VISHNU · SIMPLE BABY CHARACTER</div></div>
+  <div class="actions"><button id="resetBtn">Reset view</button><button id="downloadBtn">Download GLB</button></div>
+  <div class="hint">Drag to rotate · Pinch / wheel to zoom · two arms · empty hands</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+const host = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true,alpha:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+renderer.setSize(window.innerWidth,window.innerHeight);
+renderer.setClearColor(0xffffff,0);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.shadowMap.enabled = true;
+host.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(31,window.innerWidth/window.innerHeight,0.1,100);
+camera.position.set(0,1.9,8.0);
+
+const controls = new OrbitControls(camera,renderer.domElement);
+controls.enableDamping = true;
+controls.enablePan = false;
+controls.minDistance = 4.4;
+controls.maxDistance = 12;
+controls.target.set(0,1.9,0);
+
+scene.add(new THREE.HemisphereLight(0xffffff,0xc8d4ff,2.25));
+const key = new THREE.DirectionalLight(0xffffff,3.2); key.position.set(4,6,6); key.castShadow=true; scene.add(key);
+const fill = new THREE.DirectionalLight(0xffe4b8,1.45); fill.position.set(-4,3,3); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x9bb8ff,1.6); rim.position.set(0,4,-5); scene.add(rim);
+
+const character = new THREE.Group();
+character.name='VishnuBabySimpleCharacter';
+scene.add(character);
+
+const C={skin:0x83a9ff,hair:0x151a2b,white:0xf8f2e7,gold:0xe7b94e,yellow:0xf0b944,green:0x2a9d68,blue:0x2367d1,black:0x141414,brown:0x6c421d,pink:0xc9707a};
+const mats={};
+for(const [k,v] of Object.entries(C)) mats[k]=new THREE.MeshStandardMaterial({color:v,roughness:.52,metalness:k==='gold'||k==='yellow'?.28:.02});
+
+function add(mesh,name){mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;character.add(mesh);return mesh}
+function ellipsoid(name,p,s,mat,segments=32){const g=new THREE.SphereGeometry(1,segments,Math.max(16,segments/2));const m=new THREE.Mesh(g,mat);m.position.set(...p);m.scale.set(...s);return add(m,name)}
+function sphere(name,p,r,mat,segments=28){return ellipsoid(name,p,[r,r,r],mat,segments)}
+function box(name,p,s,mat,r=[0,0,0]){const m=new THREE.Mesh(new THREE.BoxGeometry(...s),mat);m.position.set(...p);m.rotation.set(...r);return add(m,name)}
+function cylinderBetween(name,a,b,r,mat,segments=20){const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),mid=A.clone().add(B).multiplyScalar(.5),len=A.distanceTo(B);const m=new THREE.Mesh(new THREE.CylinderGeometry(r,r,len,segments),mat);m.position.copy(mid);m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),B.clone().sub(A).normalize());return add(m,name)}
+function torus(name,p,major,minor,mat,rot=[Math.PI/2,0,0]){const m=new THREE.Mesh(new THREE.TorusGeometry(major,minor,10,32),mat);m.position.set(...p);m.rotation.set(...rot);return add(m,name)}
+
+// Hair shell and baby head.
+ellipsoid('hair_back',[0,.07,3.05],[.64,.52,.70],mats.hair);
+ellipsoid('head',[0,-.05,2.92],[.56,.46,.60],mats.skin);
+ellipsoid('ear_L',[-.57,-.02,2.95],[.11,.08,.15],mats.skin,20);
+ellipsoid('ear_R',[ .57,-.02,2.95],[.11,.08,.15],mats.skin,20);
+[-.44,-.25,0,.25,.44].forEach((x,i)=>sphere(`hair_curl_${i}`,[x,-.36,3.42+.05*Math.cos(i)],Math.abs(x)<.3?.16:.14,mats.hair,20));
+sphere('hair_bun',[.08,.02,3.70],.25,mats.hair,24);
+
+// Simple peacock feather.
+ellipsoid('feather_green',[-.12,-.03,4.02],[.13,.04,.33],mats.green,20);
+ellipsoid('feather_blue',[-.12,-.07,4.08],[.06,.02,.12],mats.blue,16);
+ellipsoid('feather_eye',[-.12,-.085,4.10],[.028,.012,.06],mats.black,12);
+
+// Face.
+for(const [side,x] of [['L',-.21],['R',.21]]){
+  ellipsoid(`eye_white_${side}`,[x,-.455,3.00],[.15,.055,.18],mats.white,24);
+  ellipsoid(`iris_${side}`,[x,-.505,3.00],[.09,.035,.11],mats.brown,20);
+  ellipsoid(`pupil_${side}`,[x,-.535,3.01],[.045,.018,.06],mats.black,16);
+  sphere(`eye_glint_${side}`,[x-.025,-.553,3.05],.018,mats.white,10);
+}
+ellipsoid('nose',[0,-.49,2.88],[.055,.03,.06],mats.skin,16);
+ellipsoid('smile',[0,-.49,2.76],[.13,.025,.045],mats.pink,16);
+box('tilak_L',[-.075,-.485,3.25],[.035,.018,.24],mats.white,[0,0,-.14]);
+box('tilak_R',[ .075,-.485,3.25],[.035,.018,.24],mats.white,[0,0,.14]);
+box('tilak_center',[0,-.49,3.20],[.028,.018,.18],mats.yellow);
+
+// Neck and torso.
+cylinderBetween('neck',[0,0,2.40],[0,0,2.53],.20,mats.skin);
+ellipsoid('torso',[0,0,1.95],[.47,.33,.62],mats.skin);
+
+// Exactly two arms. No weapons, flowers, conch, chakra, props, or held objects.
+const armSpecs={L:[[-.42,0,2.20],[-.70,-.02,1.92],[-.77,-.05,1.57]],R:[ [.42,0,2.20],[ .70,-.02,1.92],[ .77,-.05,1.57]]};
+for(const [side,[shoulder,elbow,wrist]] of Object.entries(armSpecs)){
+  sphere(`shoulder_${side}`,shoulder,.19,mats.skin,20);
+  cylinderBetween(`upper_arm_${side}`,shoulder,elbow,.145,mats.skin);
+  sphere(`elbow_${side}`,elbow,.15,mats.skin,18);
+  cylinderBetween(`forearm_${side}`,elbow,wrist,.13,mats.skin);
+  ellipsoid(`empty_hand_${side}`,[wrist[0],wrist[1]-.02,wrist[2]-.16],[.15,.11,.20],mats.skin,20);
+  torus(`armlet_${side}`,[shoulder[0]*.94,shoulder[1]-.005,shoulder[2]-.10],.16,.025,mats.gold);
+  torus(`bangle_${side}`,[wrist[0],wrist[1],wrist[2]+.01],.135,.022,mats.gold);
+}
+
+// Very simple dhoti and sash.
+torus('waist_belt',[0,0,1.47],.37,.035,mats.gold,[0,0,0]);
+ellipsoid('dhoti_hips',[0,.02,1.26],[.48,.34,.40],mats.white);
+ellipsoid('dhoti_leg_L',[-.20,0,.95],[.25,.25,.38],mats.white,24);
+ellipsoid('dhoti_leg_R',[ .20,0,.95],[.25,.25,.38],mats.white,24);
+box('waist_sash',[0,-.34,1.46],[.76,.07,.12],mats.yellow);
+box('front_sash',[0,-.39,1.12],[.24,.06,.58],mats.yellow);
+box('drape_L',[-.27,-.25,2.00],[.14,.06,.86],mats.yellow,[0,0,-.14]);
+box('drape_R',[ .27,-.25,2.00],[.14,.06,.86],mats.yellow,[0,0,.14]);
+
+// Minimal jewelry.
+torus('necklace',[0,-.26,2.28],.25,.028,mats.gold);
+sphere('pendant',[0,-.36,2.12],.07,mats.gold,18);
+
+// Legs, anklets and bare feet.
+for(const [side,x] of [['L',-.20],['R',.20]]){
+  cylinderBetween(`leg_${side}`,[x,.02,.77],[x,0,.36],.16,mats.skin);
+  torus(`anklet_${side}`,[x,0,.42],.16,.02,mats.gold);
+  ellipsoid(`foot_${side}`,[x,-.09,.12],[.20,.30,.11],mats.skin,22);
+}
+
+// Center object and keep it floorless/background-free.
+character.position.y=.12;
+character.rotation.y=0;
+
+function resetView(){camera.position.set(0,1.9,8.0);controls.target.set(0,1.9,0);controls.update()}
+document.getElementById('resetBtn').addEventListener('click',resetView);
+
+document.getElementById('downloadBtn').addEventListener('click',()=>{
+  const exporter=new GLTFExporter();
+  exporter.parse(character,(result)=>{
+    const blob=new Blob([result],{type:'model/gltf-binary'});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;a.download='vishnu-baby-simple-two-arm.glb';a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),2000);
+  },(err)=>console.error(err),{binary:true,onlyVisible:true,trs:false});
+});
+
+function resize(){camera.aspect=window.innerWidth/window.innerHeight;camera.updateProjectionMatrix();renderer.setSize(window.innerWidth,window.innerHeight)}
+window.addEventListener('resize',resize);
+
+const clock=new THREE.Clock();
+function animate(){requestAnimationFrame(animate);controls.update();const t=clock.getElapsedTime();character.position.y=.12+Math.sin(t*.8)*.015;renderer.render(scene,camera)}
+animate();
+</script>
+</body>
+</html>
