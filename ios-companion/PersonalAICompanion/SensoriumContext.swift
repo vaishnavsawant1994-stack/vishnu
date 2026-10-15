@@ -139,7 +139,7 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
                 }
             }
             _ = grant(kind, reason: reason)
-        case "environment", "network":
+        case "environment", "network", "clipboard":
             _ = grant(kind, reason: reason)
         case "microphone":
             let allowed = await withCheckedContinuation { continuation in
@@ -176,6 +176,7 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
             "motion": ["accelerometer": motion.isAccelerometerAvailable, "gyroscope": motion.isGyroAvailable, "device_motion": motion.isDeviceMotionAvailable, "magnetometer": motion.isMagnetometerAvailable],
             "environment": ["barometer": CMAltimeter.isRelativeAltitudeAvailable(), "proximity": true, "ambient_light_lux": false, "thermal": true, "battery": true],
             "network": ["available": true],
+            "clipboard": ["available": true, "foreground_only": true, "session_required": true],
             "screen": ["replaykit": SensoriumScreenSession.shared.available],
             "microphone": ["permission": SensoriumAudioFeatures.permissionDescription],
             "document": ["vision_text": true, "barcode": true, "hand_pose": true, "body_pose": true],
@@ -183,8 +184,6 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
             "captured_at": Date().timeIntervalSince1970,
         ]
     }
-
-    private func arr(_ values: (Double, Double, Double)?) -> [Double]? { values.map { [$0.0, $0.1, $0.2] } }
 
     func snapshot(_ sensors: [String]) throws -> [String: Any] {
         var values: [String: Any] = [:]
@@ -251,6 +250,30 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
                     "captured_at": Date().timeIntervalSince1970,
                     "freshness_seconds": 30.0,
                     "confidence": 0.95,
+                ]
+            case "clipboard":
+                guard UIApplication.shared.applicationState == .active else {
+                    values[kind] = [
+                        "available": false,
+                        "reason": "foreground_required",
+                        "captured_at": Date().timeIntervalSince1970,
+                        "freshness_seconds": 5.0,
+                        "confidence": 1.0,
+                        "raw_clipboard_retained": false,
+                    ]
+                    continue
+                }
+                let board = UIPasteboard.general
+                values[kind] = [
+                    "available": true,
+                    "has_content": board.hasStrings || board.hasURLs || board.hasImages,
+                    "text": board.string.map { String($0.prefix(8_000)) } as Any,
+                    "types": Array(board.types.prefix(16)),
+                    "captured_at": Date().timeIntervalSince1970,
+                    "freshness_seconds": 5.0,
+                    "confidence": 1.0,
+                    "foreground_only": true,
+                    "raw_clipboard_retained": false,
                 ]
             default: break
             }
