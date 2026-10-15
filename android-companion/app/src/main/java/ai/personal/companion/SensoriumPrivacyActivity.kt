@@ -41,14 +41,15 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
         val sessions = SensoriumSessionRegistry.active()
         if (sessions.isEmpty()) {
             list.addView(TextView(this).apply {
-                text = "Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Environment OFF · Network OFF · Clipboard OFF · Spatial OFF"
+                text = "Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Environment OFF · Network OFF · Clipboard OFF · Wearable OFF · Spatial OFF"
                 textSize = 16f
             })
         } else {
             sessions.forEach { grant ->
                 val remaining = ((grant.expiresAtMs - System.currentTimeMillis()).coerceAtLeast(0) / 1000)
+                val requester = grant.requestedByDeviceId ?: "local owner"
                 list.addView(TextView(this).apply {
-                    text = "${grant.sensor.uppercase()} · SESSION · ${remaining}s remaining · ${grant.resourceId}\nReason: ${grant.reason}\nAuthority: explicit local owner consent on this device"
+                    text = "${grant.sensor.uppercase()} · SESSION · ${remaining}s remaining · ${grant.resourceId}\nRequested by: $requester\nReason: ${grant.reason}\nAuthority: explicit local owner consent on this device"
                     textSize = 15f
                     setPadding(0, 12, 0, 12)
                 })
@@ -64,7 +65,7 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
 
         list.addView(heading("Retention"))
         list.addView(TextView(this).apply {
-            text = "Raw camera/screen frames: not retained by Sensorium. Continuous environmental audio: not retained. Clipboard reads: not retained. Exact mobile location: not written to the semantic World Model by default. Semantic summaries follow the selected memory mode. Selected media is saved only when explicitly chosen and privacy-processed."
+            text = "Raw camera/screen frames: not retained by Sensorium. Continuous environmental audio: not retained. Clipboard reads: not retained. Wearable relay observations: semantic-only. Exact mobile location: not written to the semantic World Model by default. Semantic summaries follow the selected memory mode. Selected media is saved only when explicitly chosen and privacy-processed."
             textSize = 14f
         })
 
@@ -75,15 +76,16 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
         } else {
             val formatter = DateFormat.getTimeInstance(DateFormat.MEDIUM)
             audit.forEach { row ->
+                val requester = row.requestedByDeviceId ?: "local owner"
                 list.addView(TextView(this).apply {
-                    text = "${formatter.format(Date(row.createdAtMs))} · ${row.action} · ${row.sensor.uppercase()} · ${row.resourceId}\n${row.reason}"
+                    text = "${formatter.format(Date(row.createdAtMs))} · ${row.action} · ${row.sensor.uppercase()} · ${row.resourceId}\nRequested by: $requester\n${row.reason}"
                     textSize = 13f
                     setPadding(0, 7, 0, 7)
                 })
             }
         }
         list.addView(TextView(this).apply {
-            text = "The Vishnu server also keeps the persistent per-device sensor permission audit; this list is the current app-process audit."
+            text = "The Vishnu server also keeps the persistent per-device sensor permission audit, including requesting-device provenance; this list is the current app-process audit."
             textSize = 12f
         })
     }
@@ -92,6 +94,7 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
         VisionCameraBridge.deactivate()
         SensoriumScreenBridge.stop()
         SensoriumSpatialBridge.stop()
+        SensoriumWearableRelay.clear()
         stopService(Intent(this, SensoriumScreenCaptureService::class.java))
         stopService(Intent(this, SensoriumAudioService::class.java))
         SensoriumSessionRegistry.stopAll()
