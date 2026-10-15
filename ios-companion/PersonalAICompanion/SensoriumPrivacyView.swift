@@ -15,6 +15,7 @@ struct SensoriumPrivacyView: View {
         ("environment", "Proximity + battery + thermal", "thermometer.medium"),
         ("network", "Network state", "network"),
         ("clipboard", "Clipboard context", "doc.on.clipboard"),
+        ("wearable", "Apple Watch / earbuds / wearable context", "watch.analog"),
         ("document", "Local OCR / barcode", "doc.text.viewfinder"),
         ("spatial", "ARKit spatial / depth", "cube.transparent"),
     ]
@@ -33,7 +34,7 @@ struct SensoriumPrivacyView: View {
                 TimelineView(.periodic(from: .now, by: 1)) { _ in
                     let rows = sensorium.activeGrants()
                     if rows.isEmpty && !store.visionActive && !store.voiceActive {
-                        Text("Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Environment OFF · Network OFF · Clipboard OFF · Spatial OFF")
+                        Text("Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Environment OFF · Network OFF · Clipboard OFF · Wearable OFF · Spatial OFF")
                             .font(.footnote).foregroundStyle(.secondary)
                     } else {
                         ForEach(rows) { grant in
@@ -48,8 +49,19 @@ struct SensoriumPrivacyView: View {
                     }
                 }
             }
+            Section("Wearables") {
+                let inventory = SensoriumWearableRelay.shared.inventory()
+                if let watch = inventory["apple_watch"] as? [String: Any] {
+                    LabeledContent("Apple Watch", value: (watch["paired"] as? Bool ?? false) ? "PAIRED" : "NOT PAIRED")
+                    LabeledContent("Watch reachable", value: (watch["reachable"] as? Bool ?? false) ? "YES" : "NO")
+                }
+                let earbuds = inventory["earbuds"] as? [[String: Any]] ?? []
+                LabeledContent("Earbud/headphone routes", value: "\(earbuds.count)")
+                Text("WatchConnectivity and earbud-route metadata provide semantic context only. Raw watch/glasses camera or microphone media must use the separate governed camera/microphone Sensorium paths.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             Section("Retention") {
-                Text("Raw camera/screen frames are not retained by Sensorium. Continuous environmental audio is not retained. Clipboard reads are not retained. Exact mobile location is not written to the semantic World Model by default. Semantic summaries follow the selected memory mode; selected media is saved only when explicitly chosen and privacy-processed.")
+                Text("Raw camera/screen frames are not retained by Sensorium. Continuous environmental audio is not retained. Clipboard reads are not retained. Wearable relay observations are semantic-only. Exact mobile location is not written to the semantic World Model by default. Semantic summaries follow the selected memory mode; selected media is saved only when explicitly chosen and privacy-processed.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Recent local sensor audit") {
@@ -72,7 +84,7 @@ struct SensoriumPrivacyView: View {
             Section("Emergency privacy control") {
                 Button("STOP ALL SENSING", role: .destructive) { stopAll() }
                     .fontWeight(.semibold)
-                Text("Stops Vishnu Vision, voice, ReplayKit, ARKit, environmental audio, location/motion updates and every temporary Sensorium grant. This does not delete existing memories; retention remains separately controlled.")
+                Text("Stops Vishnu Vision, voice, ReplayKit, ARKit, wearable relay observations, environmental audio, location/motion updates and every temporary Sensorium grant. This does not delete existing memories; retention remains separately controlled.")
                     .font(.footnote).foregroundStyle(.secondary)
             }
             Section("Boundaries") {
@@ -101,6 +113,7 @@ struct SensoriumPrivacyView: View {
                         if sensor == "screen" { SensoriumScreenSession.shared.stop() }
                         if sensor == "spatial" { SensoriumSpatialSession.shared.stop() }
                         if sensor == "microphone" { SensoriumAudioFeatures.shared.stop() }
+                        if sensor == "wearable" { SensoriumWearableRelay.shared.clear() }
                         localAudit.record("session_revoked", sensor: sensor, resourceID: resource, reason: "Owner stopped \(label) from Sensorium Privacy")
                         actionStatus = "\(label) stopped."
                     } else {
@@ -120,7 +133,7 @@ struct SensoriumPrivacyView: View {
     }
 
     private func stopAll() {
-        sensorium.stopAll(); SensoriumAudioFeatures.shared.stop()
+        sensorium.stopAll(); SensoriumAudioFeatures.shared.stop(); SensoriumWearableRelay.shared.clear()
         store.vision.stop(); store.visionActive = false
         store.voice.deactivate(); store.voiceActive = false
         localAudit.record("stop_all", sensor: "all", reason: "Owner stopped all sensing from Sensorium Privacy")
