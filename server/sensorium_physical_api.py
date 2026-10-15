@@ -8,6 +8,7 @@ from server.sensorium_context_api import sensorium_context_router
 from server.sensorium_fusion_api import sensorium_fusion_router
 from server.sensorium_iot_adapter_api import sensorium_iot_adapter_router
 from server.sensorium_native_api import sensorium_native_router
+from server.sensorium_v3_api import sensorium_v3_router
 from server.sensorium_wearable_relay_api import sensorium_wearable_relay_router
 from server.vision_voice_api import vision_voice_router
 
@@ -100,10 +101,16 @@ def sensorium_physical_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     root.include_router(router)
+    settings = runtime.get("settings") if runtime else None
     # Sensorium 2 provides permission/attention/world-state/health/privacy and
     # physical-device evidence surfaces even in model-less qualification runtimes.
-    # Rich screen/cross-modal analysis simply remains unavailable without models.
     root.include_router(sensorium_context_router(runtime))
+    # Sensorium 3 is a reasoning/planning layer over already governed evidence.
+    # It has no sensor-session grant, approval, execution, Computer Control,
+    # Device Control, IoT action or robotics actuator authority. It needs the
+    # normal durable data directory, so stripped qualification runtimes skip it.
+    if getattr(settings, "data_dir", None) is not None:
+        root.include_router(sensorium_v3_router(runtime))
     # Read-only smart-home observation adapters remain separate from IoT action
     # proposals and never receive execution authority.
     root.include_router(sensorium_iot_adapter_router(runtime))
@@ -117,7 +124,6 @@ def sensorium_physical_router(runtime) -> APIRouter:
         root.include_router(sensorium_camera_router(runtime))
         root.include_router(vision_voice_router(runtime))
         root.include_router(sensorium_fusion_router(runtime))
-    settings = runtime.get("settings") if runtime else None
     native_lab = runtime.get("sensorium_native_lab") if runtime else None
     if native_lab is not None or getattr(settings, "data_dir", None) is not None:
         root.include_router(sensorium_native_router(runtime))
