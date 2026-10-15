@@ -67,6 +67,9 @@ class WorkEngineV2:
             unknown = set(step["depends_on"]) - ids
             if unknown:
                 raise ValueError(f"unknown dependencies: {sorted(unknown)}")
+            if step["id"] in set(step["depends_on"]):
+                raise ValueError(f"step cannot depend on itself: {step['id']}")
+        self._assert_acyclic(normalized)
         job_id = uuid4().hex
         payload = {
             "title": title[:240],
@@ -82,6 +85,26 @@ class WorkEngineV2:
         self.store.put("work_v2", job_id, payload, status="planned", owner_id=owner_id)
         self.store.audit("work", "job_created", actor=owner_id, subject=job_id, payload={"steps": len(normalized)})
         return job_id
+
+    @staticmethod
+    def _assert_acyclic(steps: list[dict[str, Any]]) -> None:
+        graph = {step["id"]: tuple(step["depends_on"]) for step in steps}
+        visiting: set[str] = set()
+        visited: set[str] = set()
+
+        def visit(step_id: str) -> None:
+            if step_id in visited:
+                return
+            if step_id in visiting:
+                raise ValueError("work dependency graph contains a cycle")
+            visiting.add(step_id)
+            for dependency in graph[step_id]:
+                visit(dependency)
+            visiting.remove(step_id)
+            visited.add(step_id)
+
+        for step_id in graph:
+            visit(step_id)
 
     def next_step(self, job_id: str) -> dict[str, Any] | None:
         row = self._job(job_id)
@@ -107,13 +130,27 @@ class WorkEngineV2:
 
     def start_step(self, job_id: str, step_id: str) -> dict[str, Any]:
         row, payload, step = self._step(job_id, step_id)
+        if row["status"] in TERMINAL_STATES:
+            raise RuntimeError("job is already terminal")
+        if self._deadline_passed(payload.get("deadline")):
+            self.stop(job_id, "deadline_exceeded", status="failed")
+            raise RuntimeError("job deadline exceeded")
         if step["status"] == "completed":
             return dict(step)
+        if step["status"] == "running":
+            return dict(step)
+        if step["status"] == "failed":
+            raise RuntimeError("failed step is not runnable")
+        completed = {item["id"] for item in payload["steps"] if item["status"] == "completed"}
+        missing = set(step["depends_on"]) - completed
+        if missing:
+            raise RuntimeError(f"step dependencies are incomplete: {sorted(missing)}")
         if step["requires_approval"] and not self.approval_check(job_id, step):
             raise PermissionError("step requires existing Vishnu approval authority")
         step["status"] = "running"
         step["attempts"] = int(step.get("attempts", 0)) + 1
         step["started_at"] = utcnow()
+        payload["stop_reason"] = None
         self.store.put("work_v2", job_id, payload, status="running", owner_id=row["owner_id"])
         self.store.audit("work", "step_started", subject=job_id, payload={"step_id": step_id, "attempt": step["attempts"]})
         return dict(step)
@@ -135,12 +172,15 @@ class WorkEngineV2:
         self._apply_cost(payload, cost or {})
         step.update({"status": "completed", "result": dict(result or {}), "completed_at": utcnow(), "last_error": None})
         new_status = "completed" if all(item["status"] == "completed" for item in payload["steps"]) else "planned"
+        payload["stop_reason"] = None
         self.store.put("work_v2", job_id, payload, status=new_status, owner_id=row["owner_id"])
         self.store.audit("work", "step_completed", subject=job_id, payload={"step_id": step_id})
         return dict(step)
 
     def fail_step(self, job_id: str, step_id: str, *, error: str, retryable: bool = True) -> dict[str, Any]:
         row, payload, step = self._step(job_id, step_id)
+        if step["status"] != "running":
+            raise RuntimeError("only a running step can fail")
         step["last_error"] = error[:4000]
         max_retries = int(payload["max_retries"])
         if retryable and int(step["attempts"]) <= max_retries:
@@ -179,13 +219,15 @@ class WorkEngineV2:
     def _apply_cost(self, payload: dict[str, Any], cost: dict[str, float]) -> None:
         budget = payload.get("budget", {})
         used = payload.setdefault("budget_used", {})
+        staged = dict(used)
         for key, raw in cost.items():
             amount = max(0.0, float(raw))
-            next_value = float(used.get(key, 0.0)) + amount
+            next_value = float(staged.get(key, 0.0)) + amount
             limit = budget.get(key)
             if limit is not None and next_value > float(limit):
                 raise RuntimeError(f"work budget exceeded: {key}")
-            used[key] = next_value
+            staged[key] = next_value
+        payload["budget_used"] = staged
 
     @staticmethod
     def _deadline_passed(deadline: str | None) -> bool:
