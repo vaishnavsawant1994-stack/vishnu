@@ -97,9 +97,9 @@ class CameraVisionService:
                 ],
             },
         ]
-        # Use the governed router's private routing primitive deliberately so the
-        # camera frame is always classified sensitive. This keeps public-provider
-        # use disabled unless the owner's model privacy policy explicitly allows it.
+        # Use the governed router's routing primitive so camera frames are always
+        # classified sensitive. Model output remains observation only and cannot
+        # satisfy approvals or authorize actions.
         analysis = self.models._run(
             "vision",
             lambda provider: self.models._chat_call(provider, messages, 0.1),
@@ -132,11 +132,12 @@ class CameraVisionService:
         return result
 
     def analyze_browser_snapshot(self, controller_device_id: str, *, data_url: str, question: str | None = None) -> dict[str, Any]:
+        # Browser capture is initiated locally by this same paired device through
+        # getUserMedia + an explicit Analyze click. Unlike remote mobile reads it
+        # does not consume another device's sensor, so device:read is sufficient.
         device_id = str(controller_device_id or "").strip()
         if not device_id or not self.registry.authorize(device_id, "device:read"):
-            raise PermissionError("device is not permitted to use camera observation")
-        if not self.registry.authorize(device_id, "memory:sensitive"):
-            raise PermissionError("camera observation requires sensitive-context permission")
+            raise PermissionError("device is not permitted to submit camera observation")
         return self._analyze(
             controller_device_id=device_id,
             data_url=data_url,
