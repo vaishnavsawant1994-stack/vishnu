@@ -1,0 +1,52 @@
+VISHNU PROPRIETARY SOFTWARE LICENSE NOTICE
+
+Copyright (c) 2026 Vaishnav Sawant. All rights reserved.
+
+Vishnu is proprietary software. The original source code, documentation, user
+interface assets, configuration, product logic, and other materials in this
+repository that are owned by the Vishnu copyright holder (collectively, the
+"Vishnu Materials") are not open-source software.
+
+NO GENERAL LICENSE GRANTED
+
+Except under a separate written agreement signed by the copyright holder, no
+license or permission is granted to use, copy, modify, adapt, translate,
+publish, distribute, sublicense, sell, offer as a service, commercially exploit,
+or create derivative works from the Vishnu Materials.
+
+Public availability of this repository does not itself grant an open-source or
+commercial software license. Any rights that independently apply under GitHub's
+terms of service or non-waivable law are not expanded by this notice.
+
+NO PATENT OR TRADEMARK LICENSE
+
+No patent, trademark, trade-name, service-mark, branding, or other intellectual
+property license is granted by this notice.
+
+THIRD-PARTY MATERIALS
+
+Third-party software, libraries, tools, assets, and other materials included in
+or used by Vishnu remain subject to their own licenses and notices. Applicable
+third-party notices are maintained in THIRD_PARTY_NOTICES.md and related
+compliance documentation. Nothing in this notice reduces rights granted by a
+third-party license for the applicable third-party material.
+
+SEPARATE COMMERCIAL OR CUSTOMER TERMS
+
+Any authorized customer distribution, commercial deployment, source access,
+redistribution, integration, or other use of Vishnu must be governed by a
+separate written license or agreement from the copyright holder unless a
+non-waivable legal right applies.
+
+DISCLAIMER
+
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE VISHNU MATERIALS ARE
+PROVIDED "AS IS" AND WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED,
+INCLUDING WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE,
+NONINFRINGEMENT, ACCURACY, SECURITY, OR AVAILABILITY. TO THE MAXIMUM EXTENT
+PERMITTED BY LAW, THE COPYRIGHT HOLDER WILL NOT BE LIABLE FOR INDIRECT,
+INCIDENTAL, SPECIAL, CONSEQUENTIAL, EXEMPLARY, OR PUNITIVE DAMAGES ARISING FROM
+UNAUTHORIZED OR PERMITTED USE OF THE VISHNU MATERIALS.
+
+For permission or commercial licensing, contact the repository owner through an
+authorized private channel.
