@@ -22,11 +22,13 @@ class LiveVisionSession:
     max_frames: int
     max_bytes: int
     max_model_calls: int
+    min_battery_percent: int
     frames_seen: int = 0
     bytes_seen: int = 0
     model_calls: int = 0
     last_sample_at: float = 0.0
     last_fingerprint: tuple[int, ...] | None = None
+    last_battery_percent: int | None = None
     stopped: bool = False
 
     def public(self) -> dict:
@@ -45,6 +47,8 @@ class LiveVisionSession:
             "max_frames": self.max_frames,
             "max_bytes": self.max_bytes,
             "max_model_calls": self.max_model_calls,
+            "min_battery_percent": self.min_battery_percent,
+            "last_battery_percent": self.last_battery_percent,
             "frames_seen": self.frames_seen,
             "bytes_seen": self.bytes_seen,
             "model_calls": self.model_calls,
@@ -57,8 +61,9 @@ class LiveVisionManager:
 
     This object never creates a background camera loop. Clients explicitly call a
     tick endpoint and the manager enforces 0.2-1 FPS sampling, duration, frame,
-    byte and model-call budgets. This keeps live vision observable and auditable
-    while preventing accidental 30/60 FPS streaming.
+    byte, model-call and battery budgets. This keeps live vision observable and
+    auditable while preventing accidental 30/60 FPS streaming or an unattended
+    session draining a mobile device below the owner-selected battery floor.
     """
 
     MIN_INTERVAL = 1.0          # 1 FPS maximum
@@ -71,6 +76,7 @@ class LiveVisionManager:
     MAX_BYTES = 120 * 1024 * 1024
     DEFAULT_MODEL_CALLS = 90
     MAX_MODEL_CALLS = 300
+    DEFAULT_MIN_BATTERY_PERCENT = 15
 
     def __init__(self, *, events=None) -> None:
         self.events = events
@@ -96,6 +102,7 @@ class LiveVisionManager:
         max_frames: int = DEFAULT_MAX_FRAMES,
         max_bytes: int = DEFAULT_MAX_BYTES,
         max_model_calls: int = DEFAULT_MODEL_CALLS,
+        min_battery_percent: int = DEFAULT_MIN_BATTERY_PERCENT,
     ) -> LiveVisionSession:
         fps = max(0.2, min(float(sample_fps), 1.0))
         interval = 1.0 / fps
@@ -103,6 +110,7 @@ class LiveVisionManager:
         frame_budget = max(1, min(int(max_frames), self.MAX_FRAMES))
         byte_budget = max(1_000_000, min(int(max_bytes), self.MAX_BYTES))
         model_budget = max(1, min(int(max_model_calls), self.MAX_MODEL_CALLS))
+        battery_floor = max(0, min(int(min_battery_percent), 100))
         threshold = max(0.0, min(float(scene_threshold), 1.0))
         now = time.time()
         session = LiveVisionSession(
@@ -120,6 +128,7 @@ class LiveVisionManager:
             max_frames=frame_budget,
             max_bytes=byte_budget,
             max_model_calls=model_budget,
+            min_battery_percent=battery_floor,
         )
         with self.lock:
             self.sessions[session.id] = session
@@ -130,6 +139,8 @@ class LiveVisionManager:
             target_device_id=session.target_device_id,
             resource_id=session.resource_id,
             sample_fps=round(1.0 / session.sample_interval, 3),
+            min_battery_percent=session.min_battery_percent,
+            max_bytes=session.max_bytes,
             expires_at=session.expires_at,
         )
         return session
@@ -143,6 +154,29 @@ class LiveVisionManager:
         if session.stopped or time.time() >= session.expires_at:
             self.stop(key, reason="expired")
             raise TimeoutError("live vision session expired")
+        return session
+
+    def check_battery(self, session_id: str, percent: int | float | None) -> LiveVisionSession:
+        """Enforce a battery floor when the source can report battery state.
+
+        A source that cannot expose battery state passes ``None`` and remains
+        governed by the other budgets. A reported value below the configured
+        floor stops the live session before the next camera sample/model call.
+        """
+        session = self.get(session_id)
+        if percent is None:
+            return session
+        try:
+            level = int(float(percent))
+        except (TypeError, ValueError):
+            return session
+        if level < 0 or level > 100:
+            return session
+        with self.lock:
+            session.last_battery_percent = level
+        if level < session.min_battery_percent:
+            self.stop(session.id, reason="battery_limit")
+            raise RuntimeError("live vision battery limit reached")
         return session
 
     def reserve_tick(self, session_id: str, *, frame_bytes: int) -> LiveVisionSession:
@@ -207,6 +241,7 @@ class LiveVisionManager:
             frames_seen=session.frames_seen,
             bytes_seen=session.bytes_seen,
             model_calls=session.model_calls,
+            last_battery_percent=session.last_battery_percent,
         )
         return {**session.public(), "stopped": True, "reason": str(reason)[:80]}
 
