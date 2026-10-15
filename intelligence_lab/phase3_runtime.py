@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any, Mapping
+
+from devices.trusted_compute import CAPABILITY, sanitize_compute_request
 
 from .adaptive_compute import AdaptiveReasoningScheduler, TrustedComputeScheduler
 from .cache import CachePolicy, SafeSemanticCache
@@ -18,7 +21,9 @@ class IntelligenceLabPhase3:
 
     This object owns no tool, approval, secret, device or model authority.
     It optimizes selection, retrieval and planning, then returns real work to
-    the existing Lab/Core bridge.
+    the existing Lab/Core bridge. Phase 3.1 can propose bounded remote compute,
+    but actual dispatch is still re-planned by Core through AgentExecutor and
+    ToolRegistry.
     """
 
     def __init__(
@@ -29,6 +34,7 @@ class IntelligenceLabPhase3:
         settings: Phase3Settings | None = None,
     ):
         self.lab = lab
+        self.core_runtime = core_runtime
         self.settings = settings or Phase3Settings.from_environment()
         self.telemetry = PerformanceTelemetry(
             lab.memory, window=self.settings.telemetry_window
@@ -88,13 +94,22 @@ class IntelligenceLabPhase3:
             "attached",
             {
                 "stable_core_authority_changed": False,
-                "tool_authority_added": False,
-                "device_dispatch_authority_added": False,
+                "parallel_security_authority_added": False,
+                "device_dispatch_bypass_added": False,
             },
         )
 
     def _require_think(self) -> None:
         self.lab.settings.require(CapabilityLevel.THINK)
+
+    def _governed_compute_available(self) -> bool:
+        if self.core_runtime is None:
+            return False
+        tools = self.core_runtime.get("tools")
+        gateway = self.core_runtime.get("device_gateway")
+        if tools is None or gateway is None or not callable(getattr(tools, "all", None)):
+            return False
+        return any(getattr(tool, "name", "") == "trusted_device_compute" for tool in tools.all())
 
     def status(self) -> dict[str, Any]:
         return {
@@ -108,7 +123,9 @@ class IntelligenceLabPhase3:
             "parallel_dag_planning": True,
             "adaptive_performance_learning": True,
             "trusted_device_placement": True,
+            "governed_distributed_compute_available": self._governed_compute_available(),
             "core_execution_authority_added": False,
+            "device_gateway_bypass_added": False,
             "raw_prompt_cache_persisted": False,
             "automatic_core_mutation": False,
         }
@@ -192,6 +209,157 @@ class IntelligenceLabPhase3:
     ) -> dict[str, Any]:
         self._require_think()
         return self.compute.acceleration_plan(platform, metadata)
+
+    def _remote_compute_targets(self, sensitivity: str) -> list[Any]:
+        if str(sensitivity).lower() not in {"public", "internal"}:
+            raise PermissionError("remote distributed compute is disabled for private/sensitive/secret data")
+        if self.core_runtime is None:
+            return []
+        gateway = self.core_runtime.get("device_gateway")
+        registry = self.core_runtime.get("device_registry")
+        if gateway is None or registry is None:
+            return []
+        capability_getter = getattr(gateway, "capabilities", None)
+        authorize = getattr(registry, "authorize", None)
+        if not callable(capability_getter) or not callable(authorize):
+            return []
+        candidates = self.compute.candidates(sensitivity=sensitivity, local_device=None)
+        return [
+            candidate
+            for candidate in candidates
+            if not candidate.local
+            and authorize(candidate.id, "device:admin")
+            and CAPABILITY in set(capability_getter(candidate.id))
+        ]
+
+    def _create_distributed_compute_proposal(
+        self,
+        goal: str,
+        *,
+        context: Mapping[str, Any] | None = None,
+        mode: str = "smart",
+        sensitivity: str = "internal",
+        target_device_id: str | None = None,
+        max_tokens: int = 2048,
+        timeout_seconds: float = 45.0,
+    ):
+        self._require_think()
+        self.lab.settings.require(CapabilityLevel.PROPOSE)
+        if not self._governed_compute_available():
+            raise RuntimeError("governed trusted-device compute capability is unavailable")
+        targets = self._remote_compute_targets(sensitivity)
+        if target_device_id is not None:
+            targets = [item for item in targets if item.id == str(target_device_id)]
+        if not targets:
+            raise RuntimeError("no eligible online trusted compute device is available")
+        selected = targets[0]
+        parameters = {
+            "device_id": selected.id,
+            "destination": f"device:{selected.id}",
+            "prompt": str(goal),
+            "context": dict(context or {}),
+            "mode": str(mode).lower(),
+            "sensitivity": str(sensitivity).lower(),
+            "max_tokens": int(max_tokens),
+            "timeout_seconds": float(timeout_seconds),
+        }
+        clean = sanitize_compute_request(parameters)
+        parameters.update(
+            {
+                "context": clean["context"],
+                "mode": clean["mode"],
+                "sensitivity": clean["sensitivity"],
+                "max_tokens": clean["max_tokens"],
+                "timeout_seconds": clean["timeout_seconds"],
+            }
+        )
+        proposal = self.lab.propose(
+            "trusted_device_compute",
+            parameters,
+            (
+                "Run bounded reasoning on the selected trusted compute device. "
+                "Core must independently re-plan, authorize, approve, dispatch and verify the registered tool."
+            ),
+            risk="external_side_effect",
+        )
+        self.lab.memory.audit(
+            "compute",
+            "distributed_compute_proposed",
+            {
+                "proposal_id": proposal.id,
+                "device_id": selected.id,
+                "dispatch_performed": False,
+                "core_reapproval_required": True,
+            },
+        )
+        return selected, proposal
+
+    def distributed_compute_proposal(
+        self,
+        goal: str,
+        *,
+        context: Mapping[str, Any] | None = None,
+        mode: str = "smart",
+        sensitivity: str = "internal",
+        target_device_id: str | None = None,
+        max_tokens: int = 2048,
+        timeout_seconds: float = 45.0,
+    ) -> dict[str, Any]:
+        selected, proposal = self._create_distributed_compute_proposal(
+            goal,
+            context=context,
+            mode=mode,
+            sensitivity=sensitivity,
+            target_device_id=target_device_id,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
+        return {
+            "selected": asdict(selected),
+            "proposal": proposal.public_dict(),
+            "executed": False,
+            "core_reapproval_required": True,
+        }
+
+    def execute_distributed_compute(
+        self,
+        goal: str,
+        *,
+        context: Mapping[str, Any] | None = None,
+        mode: str = "smart",
+        sensitivity: str = "internal",
+        target_device_id: str | None = None,
+        max_tokens: int = 2048,
+        timeout_seconds: float = 45.0,
+        **execution_context: Any,
+    ) -> Any:
+        """Request real remote compute through the existing Core bridge.
+
+        This method is intentionally not exposed by the standalone Phase-3 API.
+        Capability level 5+, normal ToolRegistry permission/approval, emergency
+        stop, destination/data policy, worker response verification and audit all
+        remain mandatory.
+        """
+        selected, proposal = self._create_distributed_compute_proposal(
+            goal,
+            context=context,
+            mode=mode,
+            sensitivity=sensitivity,
+            target_device_id=target_device_id,
+            max_tokens=max_tokens,
+            timeout_seconds=timeout_seconds,
+        )
+        result = self.lab.execute(proposal, **execution_context)
+        self.lab.memory.audit(
+            "compute",
+            "distributed_compute_returned_via_core",
+            {
+                "proposal_id": proposal.id,
+                "device_id": selected.id,
+                "direct_gateway_dispatch": False,
+            },
+        )
+        return result
 
     def record_optimization_episode(self, **kwargs: Any):
         self._require_think()
