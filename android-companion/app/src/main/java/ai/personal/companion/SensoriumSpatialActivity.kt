@@ -6,6 +6,8 @@ import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -24,9 +26,17 @@ import javax.microedition.khronos.opengles.GL10
 object SensoriumSpatialBridge {
     private val latest = AtomicReference<JSONObject?>(null)
     @Volatile private var active = false
+    @Volatile private var closeOwner: (() -> Unit)? = null
 
+    fun attachCloser(closer: () -> Unit) { closeOwner = closer }
     fun update(value: JSONObject) { latest.set(value); active = true }
-    fun stop() { latest.set(null); active = false; SensoriumSessionRegistry.revoke("spatial", "mobile:spatial") }
+    fun stop(closeActivity: Boolean = true) {
+        val closer = closeOwner
+        closeOwner = null
+        latest.set(null); active = false
+        SensoriumSessionRegistry.revoke("spatial", "mobile:spatial")
+        if (closeActivity && closer != null) Handler(Looper.getMainLooper()).post { closer.invoke() }
+    }
     fun status(): JSONObject = JSONObject().put("active", active).put("available", latest.get() != null)
     fun snapshot(): JSONObject {
         val grant = SensoriumSessionRegistry.require("spatial", "mobile:spatial")
@@ -78,6 +88,12 @@ class SensoriumSpatialActivity : AppCompatActivity(), GLSurfaceView.Renderer {
             config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
             ar.configure(config)
             session = ar
+            SensoriumSpatialBridge.attachCloser {
+                runCatching { session?.pause() }
+                runCatching { session?.close() }
+                session = null
+                if (!isFinishing) finish()
+            }
             SensoriumSessionRegistry.grant("spatial", "mobile:spatial", reason = "Owner opened Vishnu Spatial View")
             status.text = if (depthAvailable) "Spatial View active · ARCore depth available · local geometry only" else "Spatial View active · ARCore tracking · depth sensor unavailable"
         } catch (exc: Exception) {
@@ -101,7 +117,9 @@ class SensoriumSpatialActivity : AppCompatActivity(), GLSurfaceView.Renderer {
     }
 
     override fun onDestroy() {
-        runCatching { session?.close() }; session = null; SensoriumSpatialBridge.stop(); super.onDestroy()
+        runCatching { session?.close() }; session = null
+        SensoriumSpatialBridge.stop(closeActivity = false)
+        super.onDestroy()
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
