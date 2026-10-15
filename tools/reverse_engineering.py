@@ -1,6 +1,7 @@
 """Expose the official REA runtime through Vishnu's governed ToolRegistry."""
 from __future__ import annotations
 
+import atexit
 from dataclasses import dataclass
 
 from integrations.rea import REAMCPRuntime, REARegistration, register_rea_tools
@@ -18,4 +19,6 @@ class ReverseEngineeringCapability:
 def register(registry, _settings) -> ReverseEngineeringCapability:
     runtime = REAMCPRuntime.from_environment()
     registration = register_rea_tools(registry, runtime)
-    return ReverseEngineeringCapability(runtime=runtime, registration=registration)
+    capability = ReverseEngineeringCapability(runtime=runtime, registration=registration)
+    atexit.register(capability.close)
+    return capability
