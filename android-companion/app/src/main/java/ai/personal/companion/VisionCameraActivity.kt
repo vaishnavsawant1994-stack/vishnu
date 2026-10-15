@@ -32,20 +32,26 @@ object VisionCameraBridge {
     @Volatile private var imageCapture: ImageCapture? = null
     @Volatile private var activeFacing: String = "front"
     @Volatile private var expiresAtMs: Long = 0
+    @Volatile private var closeOwner: (() -> Unit)? = null
 
-    fun activate(capture: ImageCapture, facing: String, ttlMs: Long = 5 * 60_000L) {
+    fun activate(capture: ImageCapture, facing: String, ttlMs: Long = 5 * 60_000L, onClose: () -> Unit) {
         synchronized(lock) {
             imageCapture = capture
             activeFacing = facing
             expiresAtMs = System.currentTimeMillis() + ttlMs
+            closeOwner = onClose
         }
     }
 
-    fun deactivate() {
-        synchronized(lock) {
+    fun deactivate(closeCameraOwner: Boolean = true) {
+        val closer = synchronized(lock) {
+            val action = if (closeCameraOwner) closeOwner else null
             imageCapture = null
             expiresAtMs = 0
+            closeOwner = null
+            action
         }
+        if (closer != null) Handler(Looper.getMainLooper()).post { closer.invoke() }
     }
 
     fun status(context: android.content.Context): JSONObject {
@@ -152,7 +158,10 @@ class VisionCameraActivity : AppCompatActivity() {
                 val selector = if (requestedFacing == "back") CameraSelector.DEFAULT_BACK_CAMERA else CameraSelector.DEFAULT_FRONT_CAMERA
                 cameraProvider.unbindAll()
                 cameraProvider.bindToLifecycle(this, selector, preview, capture)
-                VisionCameraBridge.activate(capture, requestedFacing)
+                VisionCameraBridge.activate(capture, requestedFacing) {
+                    provider?.unbindAll()
+                    if (!isFinishing) finish()
+                }
                 status.text = "Vishnu Vision is active · snapshot-only · raw frames are not retained · stops automatically."
             } catch (_: Exception) {
                 VisionCameraBridge.deactivate()
@@ -162,13 +171,13 @@ class VisionCameraActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-        VisionCameraBridge.deactivate()
+        VisionCameraBridge.deactivate(closeCameraOwner = false)
         provider?.unbindAll()
         super.onStop()
     }
 
     override fun onDestroy() {
-        VisionCameraBridge.deactivate()
+        VisionCameraBridge.deactivate(closeCameraOwner = false)
         provider?.unbindAll()
         super.onDestroy()
     }
