@@ -62,6 +62,7 @@ class DeviceCommandService: Service() {
           "camera_list","camera_status","camera_session_start","camera_snapshot","camera_session_stop",
           "sensor_inventory","sensor_session_start","sensor_snapshot","sensor_stop_all",
           "screen_snapshot","audio_event_sample","document_extract","pose_gesture","spatial_snapshot",
+          "wearable_inventory","wearable_snapshot",
           "data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone",
           "data_plane_progress_pending","data_plane_progress_ack","data_plane_byte_read"
         ))
@@ -122,6 +123,7 @@ class DeviceCommandService: Service() {
     VisionCameraBridge.deactivate()
     SensoriumScreenBridge.stop()
     SensoriumSpatialBridge.stop()
+    SensoriumWearableRelay.clear()
     stopService(Intent(this,SensoriumScreenCaptureService::class.java))
     stopService(Intent(this,SensoriumAudioService::class.java))
     val count=SensoriumSessionRegistry.stopAll()
@@ -155,6 +157,8 @@ class DeviceCommandService: Service() {
         "document_extract"->SensoriumVisualLocal.documentExtract(this)
         "pose_gesture"->SensoriumVisualLocal.poseAndGesture(this)
         "spatial_snapshot"->SensoriumSpatialBridge.snapshot()
+        "wearable_inventory"->SensoriumWearableRelay.inventory(this)
+        "wearable_snapshot"->SensoriumWearableRelay.snapshot()
         "data_plane_status"->dataPlane.status()
         "data_plane_progress_put"->dataPlane.putProgress(
           p.getString("global_id"),p.optString("entity_type","project"),p.getLong("version"),p.optJSONObject("payload")?:JSONObject()
