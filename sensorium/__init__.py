@@ -1,4 +1,4 @@
-"""Governed multimodal sensor abstractions and hardware-free simulation."""
+"""Governed multimodal Sensorium abstractions, context awareness and qualification."""
 
 from sensorium.adapters import (
     VirtualAdapterBinding,
@@ -6,6 +6,13 @@ from sensorium.adapters import (
     VirtualScreenAdapter,
     VirtualSystemAdapter,
 )
+from sensorium.attention import AttentionManager, AttentionPlan, SensorNeed
+from sensorium.audio_intelligence import EnvironmentalAudioIntelligence
+from sensorium.document_intelligence import DocumentIntelligence
+from sensorium.episodic_memory import EpisodicMemoryManager
+from sensorium.fusion import MultimodalContextEnvelope, SensorContextItem, SensorFusionContext
+from sensorium.iot import IoTSensorRegistry
+from sensorium.l4_qualification import PhysicalDeviceQualification
 from sensorium.live_work import SensoriumLiveWorkProjection
 from sensorium.models import (
     DataClassification,
@@ -27,8 +34,14 @@ from sensorium.native_lab import (
     NativeProviderProfile,
     NativeStatus,
 )
+from sensorium.perception import ConfidenceBand, PerceptionEvidence
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
+from sensorium.privacy_zones import PrivacyZoneStore
+from sensorium.proactive import ProactivePhysicalAssistant
+from sensorium.sensor_health import SensorHealthMonitor
+from sensorium.sensor_permissions import SensorPermissionStore
 from sensorium.service import SensoriumService
+from sensorium.spatial import SpatialWorld
 from sensorium.virtual_device_lab import VirtualDeviceLab
 from sensorium.virtual_fleet import (
     NetworkType,
@@ -39,16 +52,26 @@ from sensorium.virtual_fleet import (
     VirtualPlatformProfile,
     VirtualRuntimeState,
 )
+from sensorium.wearables import WearableSensorium
+from sensorium.world_model import TemporalWorldModel
 
 __all__ = [
     "AndroidEmulatorProbe",
+    "AttentionManager",
+    "AttentionPlan",
     "CommandResult",
+    "ConfidenceBand",
     "DataClassification",
     "DesktopPhysicalSensorAdapter",
     "DesktopVMProbe",
     "DeviceState",
+    "DocumentIntelligence",
+    "EnvironmentalAudioIntelligence",
+    "EpisodicMemoryManager",
     "IOSSimulatorProbe",
+    "IoTSensorRegistry",
     "MobilePhysicalSensorAdapter",
+    "MultimodalContextEnvelope",
     "NativeDeviceEvidence",
     "NativeDeviceLab",
     "NativePlatform",
@@ -56,11 +79,22 @@ __all__ = [
     "NativeProviderProfile",
     "NativeStatus",
     "NetworkType",
+    "PerceptionEvidence",
     "PermissionState",
+    "PhysicalDeviceQualification",
+    "PrivacyZoneStore",
+    "ProactivePhysicalAssistant",
+    "SensorContextItem",
     "SensorEvent",
+    "SensorFusionContext",
+    "SensorHealthMonitor",
     "SensorKind",
+    "SensorNeed",
+    "SensorPermissionStore",
     "SensoriumLiveWorkProjection",
     "SensoriumService",
+    "SpatialWorld",
+    "TemporalWorldModel",
     "VirtualAdapterBinding",
     "VirtualClipboardAdapter",
     "VirtualDevice",
@@ -73,4 +107,5 @@ __all__ = [
     "VirtualScenario",
     "VirtualScreenAdapter",
     "VirtualSystemAdapter",
+    "WearableSensorium",
 ]
