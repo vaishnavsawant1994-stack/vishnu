@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from uuid import uuid4
 
 from .store import TrustContinuityStore, utcnow
@@ -26,6 +25,13 @@ PRODUCTION_REQUIREMENTS = (
 
 PHYSICAL_PLATFORMS = {"android", "ios", "windows", "macos", "linux", "watchos", "wearos"}
 NON_PHYSICAL_PROVIDERS = {"emulator", "simulator", "hosted_vm", "virtual_simulation", "ci_runner"}
+
+
+def _sha256_digest(value: str) -> str:
+    digest = value.lower().removeprefix("sha256:")
+    if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+        raise ValueError("digest must be a SHA-256 digest")
+    return digest
 
 
 @dataclass(frozen=True)
@@ -87,9 +93,7 @@ class ProductionReadinessManager:
             raise ValueError("unknown production readiness requirement")
         if not evidence_id or not provider:
             raise ValueError("evidence_id and provider are required")
-        digest = artifact_digest.lower().removeprefix("sha256:")
-        if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
-            raise ValueError("artifact_digest must be a SHA-256 digest")
+        digest = _sha256_digest(artifact_digest)
         safe_metadata = dict(metadata or {})
         forbidden = {"token", "password", "secret", "private_key", "credential"}
         if forbidden.intersection(key.lower() for key in safe_metadata):
@@ -127,10 +131,15 @@ class ProductionReadinessManager:
     ) -> dict[str, Any]:
         if drill not in {"backup_restore_drill", "rollback_drill"}:
             raise ValueError("unsupported recovery drill")
+        if passed and drill == "backup_restore_drill" and not restore_verified:
+            raise ValueError("backup/restore drill cannot pass without verified restore")
+        if passed and drill == "rollback_drill" and not rollback_verified:
+            raise ValueError("rollback drill cannot pass without verified rollback")
+        digest = _sha256_digest(backup_digest) if backup_digest else None
         payload = {
             "drill": drill,
             "passed": bool(passed),
-            "backup_digest": backup_digest,
+            "backup_digest": digest,
             "restore_verified": bool(restore_verified),
             "rollback_verified": bool(rollback_verified),
             "recovery_seconds": recovery_seconds,
@@ -143,10 +152,22 @@ class ProductionReadinessManager:
         return result
 
     def readiness(self) -> ReadinessResult:
-        software = self.store.list("readiness_software", limit=1000)
+        software = [
+            row
+            for row in self.store.list("readiness_software", limit=1000)
+            if row["payload"].get("commit_sha") == self.commit_sha
+        ]
         software_ready = bool(software) and all(row["status"] == "passed" for row in software)
-        evidence = {row["record_id"]: row for row in self.store.list("readiness_external", limit=1000)}
-        drills = {row["record_id"]: row for row in self.store.list("recovery_drill", limit=100)}
+        evidence = {
+            row["record_id"]: row
+            for row in self.store.list("readiness_external", limit=1000)
+            if row["payload"].get("commit_sha") == self.commit_sha
+        }
+        drills = {
+            row["record_id"]: row
+            for row in self.store.list("recovery_drill", limit=100)
+            if row["payload"].get("commit_sha") == self.commit_sha
+        }
         pending: list[str] = []
         for requirement in PRODUCTION_REQUIREMENTS:
             if requirement in {"backup_restore_drill", "rollback_drill"}:
@@ -223,9 +244,7 @@ class PhysicalL4Qualification:
         missing_metrics = self.REQUIRED_METRICS - set(metrics)
         if missing_metrics:
             raise ValueError(f"missing L4 metrics: {sorted(missing_metrics)}")
-        digest = evidence_digest.lower().removeprefix("sha256:")
-        if len(digest) != 64:
-            raise ValueError("evidence_digest must be SHA-256")
+        digest = _sha256_digest(evidence_digest)
         passed = bool(scenarios) and all(bool(value) for value in scenarios.values())
         payload = {
             "device_id": device_id,
@@ -250,7 +269,11 @@ class PhysicalL4Qualification:
         return result
 
     def platform_status(self) -> dict[str, str]:
-        rows = self.store.list("l4_evidence", limit=1000)
+        rows = [
+            row
+            for row in self.store.list("l4_evidence", limit=1000)
+            if row["payload"].get("commit_sha") == self.commit_sha
+        ]
         result = {platform: "pending" for platform in PHYSICAL_PLATFORMS}
         for row in rows:
             platform = row["payload"]["platform"]
@@ -273,7 +296,7 @@ class DeploymentTransaction:
             "target": target,
             "from_version": from_version,
             "to_version": to_version,
-            "artifact_digest": artifact_digest,
+            "artifact_digest": _sha256_digest(artifact_digest),
             "phase": "prepared",
             "verified": False,
             "rollback_available": True,
@@ -295,5 +318,10 @@ class DeploymentTransaction:
             raise ValueError("a deployment cannot commit without a verified health check")
         status = "complete" if phase in {"committed", "rolled_back"} else phase
         result = self.store.put("deployment_tx", tx_id, payload, status=status)
-        self.store.audit("deployment", phase, subject=tx_id, payload={"verified": verified, "detail": detail[:1000]})
+        self.store.audit(
+            "deployment",
+            phase,
+            subject=tx_id,
+            payload={"verified": verified, "detail": detail[:1000]},
+        )
         return result
