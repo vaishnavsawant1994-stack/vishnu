@@ -58,7 +58,7 @@ class DeviceCommandService: Service() {
         connecting=false
         val capabilities=JSONArray(listOf(
           "device_info","battery","flashlight","open_url","launch_app",
-          "camera_status","camera_session_start","camera_snapshot","camera_session_stop",
+          "camera_list","camera_status","camera_session_start","camera_snapshot","camera_session_stop",
           "data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone",
           "data_plane_progress_pending","data_plane_progress_ack","data_plane_byte_read"
         ))
@@ -72,18 +72,18 @@ class DeviceCommandService: Service() {
 
   private fun reconnect(){Handler(Looper.getMainLooper()).postDelayed({connect()},3000)}
 
-  private fun requestVisionConsent(facing:String):JSONObject{
+  private fun requestVisionConsent(facing:String,cameraId:String):JSONObject{
     val normalized=if(facing.lowercase()=="back")"back" else "front"
-    val intent=Intent(this,VisionCameraActivity::class.java).putExtra("facing",normalized).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val resource=if(cameraId.isBlank())"mobile:$normalized" else cameraId.take(240)
+    val intent=Intent(this,VisionCameraActivity::class.java)
+      .putExtra("facing",normalized).putExtra("camera_id",resource)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     val pending=PendingIntent.getActivity(this,81,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     val notification=NotificationCompat.Builder(this,"vishnu_vision")
       .setSmallIcon(android.R.drawable.ic_menu_camera)
       .setContentTitle("Vishnu wants to use your camera")
-      .setContentText("Tap to review and start a 5-minute snapshot-only Vision session.")
-      .setContentIntent(pending)
-      .setAutoCancel(true)
-      .setPriority(NotificationCompat.PRIORITY_HIGH)
-      .build()
+      .setContentText("Tap to review and start a temporary visible Vision session. No permanent silent access is allowed.")
+      .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
     getSystemService(NotificationManager::class.java).notify(81,notification)
     val status=VisionCameraBridge.status(this)
     return JSONObject()
@@ -91,6 +91,7 @@ class DeviceCommandService: Service() {
       .put("consent_required",!status.optBoolean("active",false))
       .put("foreground_required",true)
       .put("facing",normalized)
+      .put("camera_id",resource)
   }
 
   private fun handle(w:WebSocket,msg:JSONObject){
@@ -105,28 +106,23 @@ class DeviceCommandService: Service() {
         "flashlight"->{val cm=getSystemService(CameraManager::class.java); val id0=cm.cameraIdList.first(); cm.setTorchMode(id0,p.optBoolean("enabled",true)); JSONObject().put("enabled",p.optBoolean("enabled",true))}
         "open_url"->{val i=Intent(Intent.ACTION_VIEW,Uri.parse(p.getString("url"))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);startActivity(i);JSONObject().put("opened",true)}
         "launch_app"->{val i=packageManager.getLaunchIntentForPackage(p.getString("package"))?:throw IllegalArgumentException("package not launchable");i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);startActivity(i);JSONObject().put("launched",true)}
+        "camera_list"->VisionCameraBridge.cameras(this)
         "camera_status"->VisionCameraBridge.status(this)
-        "camera_session_start"->requestVisionConsent(p.optString("facing","front"))
-        "camera_snapshot"->VisionCameraBridge.snapshot(this)
+        "camera_session_start"->requestVisionConsent(p.optString("facing","front"),p.optString("camera_id",""))
+        "camera_snapshot"->VisionCameraBridge.snapshot(this,p.optJSONObject("privacy")?:JSONObject())
         "camera_session_stop"->{VisionCameraBridge.deactivate();getSystemService(NotificationManager::class.java).cancel(81);JSONObject().put("stopped",true)}
         "data_plane_status"->dataPlane.status()
         "data_plane_progress_put"->dataPlane.putProgress(
-          p.getString("global_id"),
-          p.optString("entity_type","project"),
-          p.getLong("version"),
-          p.optJSONObject("payload")?:JSONObject()
+          p.getString("global_id"),p.optString("entity_type","project"),p.getLong("version"),p.optJSONObject("payload")?:JSONObject()
         )
         "data_plane_progress_get"->dataPlane.get(p.getString("global_id"))?:JSONObject().put("missing",true)
         "data_plane_tombstone"->JSONObject().put("deleted",dataPlane.tombstone(p.getString("global_id"),p.getLong("version")))
         "data_plane_progress_pending"->dataPlane.pending(p.optInt("limit",100))
         "data_plane_progress_ack"->JSONObject().put("acknowledged",dataPlane.acknowledge(p.getString("source_event_id")))
         "data_plane_byte_read"->{
-          val sessionId=p.getString("session_id")
-          val leaseId=p.getString("lease_id")
+          val sessionId=p.getString("session_id");val leaseId=p.getString("lease_id")
           require(sessionId.length in 8..200 && leaseId.length in 8..200){"valid lease-bound session identity is required"}
-          byteStore.readChunk(
-            p.getString("global_id"),p.getLong("object_version"),p.getLong("offset"),p.getInt("length")
-          )
+          byteStore.readChunk(p.getString("global_id"),p.getLong("object_version"),p.getLong("offset"),p.getInt("length"))
         }
         else->throw IllegalArgumentException("unsupported action")
       }
