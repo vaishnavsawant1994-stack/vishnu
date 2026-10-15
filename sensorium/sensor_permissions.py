@@ -48,6 +48,7 @@ class SensorPermissionStore:
                 migrations=(
                     Migration(1, "sensor-permission-policy", self._migration_001),
                     Migration(2, "sensor-permission-audit", self._migration_002),
+                    Migration(3, "sensor-session-requester", self._migration_003),
                 ),
             )
             rows = con.execute(
@@ -56,7 +57,7 @@ class SensorPermissionStore:
             for row in rows:
                 fallback = self.DEFAULTS.get(str(row["sensor"]), "never")
                 con.execute(
-                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,updated_at=? "
+                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,requested_by_device_id=NULL,updated_at=? "
                     "WHERE device_id=? AND sensor=? AND resource_id=?",
                     (fallback, time.time(), row["device_id"], row["sensor"], row["resource_id"]),
                 )
@@ -104,6 +105,11 @@ class SensorPermissionStore:
             "ON sensor_permission_audit(device_id,created_at DESC)"
         )
 
+    @staticmethod
+    def _migration_003(con) -> None:
+        con.execute("ALTER TABLE sensor_permissions ADD COLUMN requested_by_device_id TEXT")
+        con.execute("ALTER TABLE sensor_permission_audit ADD COLUMN requested_by_device_id TEXT")
+
     @classmethod
     def _sensor(cls, value: str) -> str:
         sensor = str(value or "").strip().lower()
@@ -116,6 +122,17 @@ class SensorPermissionStore:
         device = str(value or "").strip()
         if not device or len(device) > 200:
             raise ValueError("valid device ID is required")
+        return device
+
+    @staticmethod
+    def _optional_device(value: str | None) -> str | None:
+        if value is None:
+            return None
+        device = str(value).strip()
+        if not device:
+            return None
+        if len(device) > 200:
+            raise ValueError("requesting device ID is invalid")
         return device
 
     @staticmethod
@@ -144,13 +161,18 @@ class SensorPermissionStore:
         session_id: str | None,
         expires_at: float | None,
         reason: str,
+        requested_by_device_id: str | None = None,
     ) -> None:
+        requester = self._optional_device(requested_by_device_id)
         with self._con() as con:
             con.execute(
                 """INSERT INTO sensor_permission_audit(
-                    created_at,device_id,sensor,resource_id,action,mode,session_id,expires_at,reason
-                ) VALUES(?,?,?,?,?,?,?,?,?)""",
-                (time.time(), device_id, sensor, resource_id, action, mode, session_id, expires_at, self._reason(reason)),
+                    created_at,device_id,sensor,resource_id,action,mode,session_id,expires_at,reason,requested_by_device_id
+                ) VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    time.time(), device_id, sensor, resource_id, action, mode,
+                    session_id, expires_at, self._reason(reason), requester,
+                ),
             )
 
     def _row(self, device_id: str, sensor: str, resource_id: str):
@@ -181,15 +203,17 @@ class SensorPermissionStore:
                 "mode": self.DEFAULTS[kind],
                 "session_id": None,
                 "expires_at": None,
+                "requested_by_device_id": None,
                 "default": True,
             }
         mode = str(row["mode"])
         expires_at = row["expires_at"]
         if mode == "session" and (expires_at is None or float(expires_at) <= time.time()):
             fallback = self.DEFAULTS[kind]
+            requester = row["requested_by_device_id"]
             with self._con() as con:
                 con.execute(
-                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,updated_at=? "
+                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,requested_by_device_id=NULL,updated_at=? "
                     "WHERE device_id=? AND sensor=? AND resource_id=?",
                     (fallback, time.time(), row["device_id"], row["sensor"], row["resource_id"]),
                 )
@@ -202,6 +226,7 @@ class SensorPermissionStore:
                 session_id=None,
                 expires_at=None,
                 reason="temporary sensor session expired",
+                requested_by_device_id=requester,
             )
             mode = fallback
             expires_at = None
@@ -212,6 +237,7 @@ class SensorPermissionStore:
             "mode": mode,
             "session_id": row["session_id"] if mode == "session" else None,
             "expires_at": float(expires_at) if expires_at is not None and mode == "session" else None,
+            "requested_by_device_id": row["requested_by_device_id"] if mode == "session" else None,
             "default": False,
         }
 
@@ -232,10 +258,11 @@ class SensorPermissionStore:
             raise ValueError("sensor policy must be never or ask; permanent allow is forbidden")
         with self._con() as con:
             con.execute(
-                """INSERT INTO sensor_permissions(device_id,sensor,resource_id,mode,session_id,expires_at,updated_at)
-                   VALUES(?,?,?,?,NULL,NULL,?)
-                   ON CONFLICT(device_id,sensor,resource_id) DO UPDATE SET
-                     mode=excluded.mode,session_id=NULL,expires_at=NULL,updated_at=excluded.updated_at""",
+                """INSERT INTO sensor_permissions(
+                    device_id,sensor,resource_id,mode,session_id,expires_at,updated_at,requested_by_device_id
+                ) VALUES(?,?,?,?,NULL,NULL,?,NULL)
+                ON CONFLICT(device_id,sensor,resource_id) DO UPDATE SET
+                  mode=excluded.mode,session_id=NULL,expires_at=NULL,requested_by_device_id=NULL,updated_at=excluded.updated_at""",
                 (device, kind, resource, selected, time.time()),
             )
         self._audit(
@@ -269,10 +296,12 @@ class SensorPermissionStore:
         ttl_seconds: float = 5 * 60,
         session_id: str | None = None,
         reason: str = "explicit local sensor consent",
+        requested_by_device_id: str | None = None,
     ) -> dict:
         device = self._device(device_id)
         kind = self._sensor(sensor)
         resource = self._resource(resource_id)
+        requester = self._optional_device(requested_by_device_id)
         current = self.permission(device, kind, resource)
         if current["mode"] == "never":
             raise PermissionError(f"{kind} is disabled for this device")
@@ -283,12 +312,13 @@ class SensorPermissionStore:
         expires_at = time.time() + ttl
         with self._con() as con:
             con.execute(
-                """INSERT INTO sensor_permissions(device_id,sensor,resource_id,mode,session_id,expires_at,updated_at)
-                   VALUES(?,?,?,'session',?,?,?)
-                   ON CONFLICT(device_id,sensor,resource_id) DO UPDATE SET
-                     mode='session',session_id=excluded.session_id,expires_at=excluded.expires_at,
-                     updated_at=excluded.updated_at""",
-                (device, kind, resource, grant, expires_at, time.time()),
+                """INSERT INTO sensor_permissions(
+                    device_id,sensor,resource_id,mode,session_id,expires_at,updated_at,requested_by_device_id
+                ) VALUES(?,?,?,'session',?,?,?,?)
+                ON CONFLICT(device_id,sensor,resource_id) DO UPDATE SET
+                  mode='session',session_id=excluded.session_id,expires_at=excluded.expires_at,
+                  requested_by_device_id=excluded.requested_by_device_id,updated_at=excluded.updated_at""",
+                (device, kind, resource, grant, expires_at, time.time(), requester),
             )
         self._audit(
             device_id=device,
@@ -299,6 +329,7 @@ class SensorPermissionStore:
             session_id=grant,
             expires_at=expires_at,
             reason=reason,
+            requested_by_device_id=requester,
         )
         self._emit(
             "sensorium.permission.session_granted",
@@ -308,6 +339,7 @@ class SensorPermissionStore:
             session_id=grant,
             expires_at=expires_at,
             reason=self._reason(reason),
+            requested_by_device_id=requester,
         )
         return self.permission(device, kind, resource)
 
@@ -341,9 +373,10 @@ class SensorPermissionStore:
         state = self.permission(device, kind, resource)
         fallback = self.DEFAULTS[kind]
         if state["mode"] == "session":
+            requester = state.get("requested_by_device_id")
             with self._con() as con:
                 con.execute(
-                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,updated_at=? "
+                    "UPDATE sensor_permissions SET mode=?,session_id=NULL,expires_at=NULL,requested_by_device_id=NULL,updated_at=? "
                     "WHERE device_id=? AND sensor=? AND resource_id=?",
                     (fallback, time.time(), device, kind, resource),
                 )
@@ -356,6 +389,7 @@ class SensorPermissionStore:
                 session_id=None,
                 expires_at=None,
                 reason=reason,
+                requested_by_device_id=requester,
             )
             self._emit(
                 "sensorium.permission.session_revoked",
@@ -363,6 +397,7 @@ class SensorPermissionStore:
                 sensor=kind,
                 resource_id=resource,
                 reason=self._reason(reason),
+                requested_by_device_id=requester,
             )
         return self.permission(device, kind, resource)
 
@@ -410,7 +445,7 @@ class SensorPermissionStore:
         bounded = max(1, min(int(limit), 1000))
         with self._con() as con:
             rows = con.execute(
-                """SELECT created_at,sensor,resource_id,action,mode,session_id,expires_at,reason
+                """SELECT created_at,sensor,resource_id,action,mode,session_id,expires_at,reason,requested_by_device_id
                    FROM sensor_permission_audit WHERE device_id=? ORDER BY id DESC LIMIT ?""",
                 (device, bounded),
             ).fetchall()
