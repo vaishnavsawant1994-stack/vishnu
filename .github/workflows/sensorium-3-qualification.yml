@@ -29,13 +29,13 @@ jobs:
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
-      - name: Install package and qualification tools
+      - name: Install locked runtime and qualification tools
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e .
-          python -m pip install pytest ruff
+          python scripts/install_locked_requirements.py runtime
+          python scripts/install_locked_requirements.py tools
+          pip check
 
       - name: Compile Sensorium 3
         run: |
