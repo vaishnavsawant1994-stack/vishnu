@@ -1,6 +1,8 @@
 package ai.personal.companion
 
 import android.Manifest
+import android.app.ActivityManager
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.hardware.Sensor
@@ -168,6 +170,47 @@ object SensoriumSensors {
             .put("confidence", when { loc.accuracy <= 20f -> 0.95; loc.accuracy <= 100f -> 0.8; else -> 0.55 })
     }
 
+    private fun isForeground(): Boolean {
+        val info = ActivityManager.RunningAppProcessInfo()
+        ActivityManager.getMyMemoryState(info)
+        return info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND ||
+            info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE
+    }
+
+    private fun clipboard(context: Context): JSONObject {
+        if (!isForeground()) {
+            return JSONObject()
+                .put("available", false)
+                .put("reason", "foreground_required")
+                .put("captured_at", System.currentTimeMillis() / 1000.0)
+                .put("freshness_seconds", 5.0)
+                .put("confidence", 1.0)
+                .put("raw_clipboard_retained", false)
+        }
+        val manager = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = manager.primaryClip
+        val description = manager.primaryClipDescription
+        val text = if (clip != null && clip.itemCount > 0) {
+            clip.getItemAt(0).coerceToText(context)?.toString()?.take(8_000)
+        } else null
+        val mimeTypes = JSONArray()
+        if (description != null) {
+            for (index in 0 until description.mimeTypeCount.coerceAtMost(16)) {
+                mimeTypes.put(description.getMimeType(index))
+            }
+        }
+        return JSONObject()
+            .put("available", true)
+            .put("has_content", clip != null && clip.itemCount > 0)
+            .put("text", text ?: JSONObject.NULL)
+            .put("mime_types", mimeTypes)
+            .put("captured_at", System.currentTimeMillis() / 1000.0)
+            .put("freshness_seconds", 5.0)
+            .put("confidence", 1.0)
+            .put("foreground_only", true)
+            .put("raw_clipboard_retained", false)
+    }
+
     fun inventory(context: Context): JSONObject {
         val manager = sensorManager(context)
         val available = manager.getSensorList(Sensor.TYPE_ALL).map { it.type }.toSet()
@@ -177,6 +220,7 @@ object SensoriumSensors {
             .put("motion", JSONObject().put("accelerometer", has(Sensor.TYPE_ACCELEROMETER)).put("gyroscope", has(Sensor.TYPE_GYROSCOPE)).put("magnetometer", has(Sensor.TYPE_MAGNETIC_FIELD)).put("rotation_vector", has(Sensor.TYPE_ROTATION_VECTOR)).put("step_detector", has(Sensor.TYPE_STEP_DETECTOR)))
             .put("environment", JSONObject().put("light", has(Sensor.TYPE_LIGHT)).put("proximity", has(Sensor.TYPE_PROXIMITY)).put("barometer", has(Sensor.TYPE_PRESSURE)).put("ambient_temperature", has(Sensor.TYPE_AMBIENT_TEMPERATURE)).put("humidity", has(Sensor.TYPE_RELATIVE_HUMIDITY)))
             .put("network", JSONObject().put("available", true))
+            .put("clipboard", JSONObject().put("available", true).put("foreground_only", true).put("session_required", true))
             .put("battery", JSONObject().put("available", true))
             .put("screen", JSONObject().put("media_projection", Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP))
             .put("microphone", JSONObject().put("available", context.packageManager.hasSystemFeature(PackageManager.FEATURE_MICROPHONE)).put("permission", permission(context, Manifest.permission.RECORD_AUDIO)))
@@ -190,7 +234,7 @@ object SensoriumSensors {
         val sessions = JSONObject()
         for (i in 0 until requested.length().coerceAtMost(16)) {
             val kind = requested.optString(i).lowercase()
-            if (kind !in setOf("location", "motion", "environment", "network")) continue
+            if (kind !in setOf("location", "motion", "environment", "network", "clipboard")) continue
             // Fail closed on-device before touching hardware. A server-side
             // policy/scope can request this read, but only a local owner grant
             // authorizes the phone to sample the sensor.
@@ -200,6 +244,7 @@ object SensoriumSensors {
                 "motion" -> motion(context)
                 "environment" -> environment(context)
                 "network" -> network(context)
+                "clipboard" -> clipboard(context)
                 else -> continue
             }
             sensors.put(kind, sample)
