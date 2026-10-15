@@ -44,8 +44,10 @@ final class CompanionStore: ObservableObject {
     @Published var baseURL=KeychainStore.shared.get("base") ?? ""
     @Published var pairingToken=""; @Published var pairingCode=""; @Published var pairingTLSFingerprint=""; @Published var pairingServiceID=""
     @Published var status="Not paired"; @Published var connected=false; @Published var allowInsecureDevelopment=false; @Published var voiceActive=false; @Published var visionActive=false
+    @Published var visionCameraID="mobile:front"
     let socket=DeviceSocket(); let voice=VoiceSession(); let vision=VisionCameraSession.shared; private let keychain=KeychainStore.shared; private var observers:[NSObjectProtocol]=[]
     var deviceID:String?{keychain.get("device")}; var bearer:String?{keychain.get("bearer")}; var tlsPin:String?{keychain.get("tls_pin")}; var serviceID:String?{keychain.get("service_id")}
+    var availableVisionCameras:[[String:Any]]{VisionCameraSession.cameras()}
 
     init(){
         socket.onStatus={ [weak self] text,connected in Task{@MainActor in self?.status=text;self?.connected=connected;if !connected { self?.vision.stop(); self?.visionActive=false }} }
@@ -55,9 +57,7 @@ final class CompanionStore: ObservableObject {
             guard let text=note.object as? String else{return}
             Task{@MainActor in self?.status="APNs registration unavailable: \(text)"}
         })
-        observers.append(NotificationCenter.default.addObserver(forName:.personalAIBackgroundRefresh,object:nil,queue:.main){[weak self]_ in
-            Task{@MainActor in self?.connect()}
-        })
+        observers.append(NotificationCenter.default.addObserver(forName:.personalAIBackgroundRefresh,object:nil,queue:.main){[weak self]_ in Task{@MainActor in self?.connect()} })
         observers.append(NotificationCenter.default.addObserver(forName:UIApplication.willResignActiveNotification,object:nil,queue:.main){[weak self]_ in
             Task{@MainActor in self?.vision.stop();self?.visionActive=false}
         })
@@ -82,14 +82,8 @@ final class CompanionStore: ObservableObject {
 
     func activateRecoveredDevice(base: String, deviceID: String, bearer: String) throws {
         let origin = try PairingPayload.normalizeOrigin(base, allowLocalHTTP: false)
-        try keychain.set(origin, for: "base")
-        try keychain.set(deviceID, for: "device")
-        try keychain.set(bearer, for: "bearer")
-        keychain.remove("tls_pin")
-        keychain.remove("service_id")
-        baseURL = origin
-        status = "Trusted device registered"
-        connect()
+        try keychain.set(origin, for: "base");try keychain.set(deviceID, for: "device");try keychain.set(bearer, for: "bearer")
+        keychain.remove("tls_pin");keychain.remove("service_id");baseURL = origin;status = "Trusted device registered";connect()
     }
 
     func connect(){
@@ -100,10 +94,8 @@ final class CompanionStore: ObservableObject {
                 guard let self else{return}
                 Task{@MainActor in
                     switch result{
-                    case .success(let discovered):
-                        self.baseURL=discovered;try? self.keychain.set(discovered,for:"base");self.socket.connect(base:discovered,deviceID:device,bearer:bearer,allowInsecure:false,tlsPin:pin)
-                    case .failure:
-                        self.socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:self.allowInsecureDevelopment,tlsPin:pin)
+                    case .success(let discovered):self.baseURL=discovered;try? self.keychain.set(discovered,for:"base");self.socket.connect(base:discovered,deviceID:device,bearer:bearer,allowInsecure:false,tlsPin:pin)
+                    case .failure:self.socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:self.allowInsecureDevelopment,tlsPin:pin)
                     }
                 }
             }
@@ -111,14 +103,28 @@ final class CompanionStore: ObservableObject {
         }
         socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:allowInsecureDevelopment,tlsPin:nil)
     }
-    func disconnect(){vision.stop();visionActive=false;socket.disconnect(reason:"User disconnected")}
-    func forgetDevice(){vision.stop();visionActive=false;socket.disconnect(reason:"Forgot device");keychain.clear();connected=false;status="Not paired"}
+    func disconnect(){vision.stop();visionActive=false;voice.deactivate();voiceActive=false;socket.disconnect(reason:"User disconnected")}
+    func forgetDevice(){vision.stop();visionActive=false;voice.deactivate();voiceActive=false;socket.disconnect(reason:"Forgot device");keychain.clear();connected=false;status="Not paired"}
     func setVoiceActive(_ active:Bool)async{if active{do{try await voice.activate();voiceActive=true;status="Voice session ready"}catch{voiceActive=false;status="Voice unavailable: \(error.localizedDescription)"}}else{voice.deactivate();voiceActive=false}}
     func setVisionActive(_ active:Bool)async{
         if active {
-            do { try await vision.startByOwner(); visionActive=true; status="Vishnu Vision active for up to 5 minutes" }
+            do { try await vision.startByOwner(cameraID:visionCameraID);visionActive=true;status="Vishnu Vision active for up to 5 minutes" }
             catch { vision.stop();visionActive=false;status="Vision unavailable: \(error.localizedDescription)" }
         } else { vision.stop();visionActive=false;status="Vishnu Vision stopped" }
+    }
+    func setVisionVoiceActive(_ active:Bool)async{
+        if active {
+            do {
+                try await voice.activate();voiceActive=true
+                try await vision.startByOwner(cameraID:visionCameraID);visionActive=true
+                status="Vishnu Vision + Voice active"
+            } catch {
+                voice.deactivate();voiceActive=false;vision.stop();visionActive=false
+                status="Vision + Voice unavailable: \(error.localizedDescription)"
+            }
+        } else {
+            vision.stop();visionActive=false;voice.deactivate();voiceActive=false;status="Vision + Voice stopped"
+        }
     }
 
     private func handleCommand(_ message:[String:Any])async->[String:Any]{
@@ -128,10 +134,16 @@ final class CompanionStore: ObservableObject {
         case "battery":UIDevice.current.isBatteryMonitoringEnabled=true;let level=UIDevice.current.batteryLevel;return["ok":true,"result":["percent":level<0 ? -1:Int(level*100),"state":UIDevice.current.batteryState.rawValue]]
         case "notification":let content=UNMutableNotificationContent();content.title=params["title"] as? String ?? "Vishnu";content.body=params["body"] as? String ?? "";do{try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:UUID().uuidString,content:content,trigger:nil));return["ok":true,"result":["delivered":true]]}catch{return["ok":false,"error":error.localizedDescription]}
         case "open_url","launch_app":guard let text=params["url"] as? String,let url=URL(string:text) else{return["ok":false,"error":"iOS requires a valid universal link or registered URL scheme in parameters.url"]};let opened=await UIApplication.shared.open(url);return["ok":opened,"result":["opened":opened]]
-        case "voice_status":return["ok":true,"result":["active":voiceActive,"microphone_permission":voice.permissionDescription]]
+        case "voice_status":return["ok":true,"result":["active":voiceActive,"microphone_permission":voice.permissionDescription,"vision_active":visionActive]]
+        case "camera_list":return["ok":true,"result":["cameras":VisionCameraSession.cameras()]]
         case "camera_status":let result=vision.status();visionActive=(result["active"] as? Bool)==true;return["ok":true,"result":result]
-        case "camera_session_start":let result=vision.status();visionActive=(result["active"] as? Bool)==true;return["ok":true,"result":result.merging(["consent_required":!visionActive,"instruction":visionActive ? "Vision already active." : "Open Vishnu on this iPhone and enable the Vishnu Vision toggle."],uniquingKeysWith:{_,new in new})]
-        case "camera_snapshot":do{let result=try await vision.snapshot();visionActive=true;return["ok":true,"result":result]}catch{visionActive=false;return["ok":false,"error":error.localizedDescription]}
+        case "camera_session_start":
+            let result=vision.status();visionActive=(result["active"] as? Bool)==true
+            let requested=params["camera_id"] as? String ?? "mobile:front"
+            return["ok":true,"result":result.merging(["camera_id":requested,"consent_required":!visionActive,"instruction":visionActive ? "Vision already active." : "Open Vishnu on this iPhone, select the requested camera and enable Vishnu Vision."],uniquingKeysWith:{_,new in new})]
+        case "camera_snapshot":
+            do{let privacy=params["privacy"] as? [String:Any] ?? [:];let result=try await vision.snapshot(privacy:privacy);visionActive=true;return["ok":true,"result":result]}
+            catch{visionActive=false;return["ok":false,"error":error.localizedDescription]}
         case "camera_session_stop":vision.stop();visionActive=false;return["ok":true,"result":["stopped":true]]
         default:return["ok":false,"error":"Unsupported iOS action: \(action)"]
         }
@@ -149,7 +161,7 @@ final class DeviceSocket:NSObject {
         var request=URLRequest(url:url);request.setValue("Bearer \(bearer)",forHTTPHeaderField:"Authorization")
         let transport=PinnedTransport.session(fingerprint:tlsPin);ownedSession=transport.0 === URLSession.shared ? nil:transport.0;pinnedDelegate=transport.1
         let session=ownedSession ?? URLSession.shared;let task=session.webSocketTask(with:request);self.task=task;task.resume();onStatus?("Connecting…",false)
-        Task{await send(["type":"hello","device_id":deviceID,"platform":"ios","capabilities":["device_info","battery","notification","open_url","launch_app","voice_status","camera_status","camera_session_start","camera_snapshot","camera_session_stop","data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone","data_plane_progress_pending","data_plane_progress_ack"]]);if let token=UserDefaults.standard.string(forKey:"personal_ai_apns_token"){await sendPushRegistration(token)};await receiveLoop()}
+        Task{await send(["type":"hello","device_id":deviceID,"platform":"ios","capabilities":["device_info","battery","notification","open_url","launch_app","voice_status","camera_list","camera_status","camera_session_start","camera_snapshot","camera_session_stop","data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone","data_plane_progress_pending","data_plane_progress_ack"]]);if let token=UserDefaults.standard.string(forKey:"personal_ai_apns_token"){await sendPushRegistration(token)};await receiveLoop()}
     }
     func disconnect(reason:String){intentionallyClosed=true;reconnectWork?.cancel();task?.cancel(with:.normalClosure,reason:reason.data(using:.utf8));task=nil;ownedSession?.invalidateAndCancel();ownedSession=nil;pinnedDelegate=nil;onStatus?(reason,false)}
     private func scheduleReconnect(){guard !intentionallyClosed,let c=config else{return};let work=DispatchWorkItem{[weak self]in self?.connect(base:c.0,deviceID:c.1,bearer:c.2,allowInsecure:c.3,tlsPin:c.4)};reconnectWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+3,execute:work)}
@@ -172,11 +184,8 @@ final class VoiceSession {
             let granted = await AVAudioApplication.requestRecordPermission()
             if !granted { throw CompanionError.badResponse("Microphone permission denied") }
         }
-        guard AVAudioApplication.shared.recordPermission == AVAudioApplication.recordPermission.granted else {
-            throw CompanionError.badResponse("Microphone permission denied")
-        }
-        try session.setCategory(.playAndRecord,mode:.voiceChat,options:[.allowBluetoothHFP,.defaultToSpeaker])
-        try session.setActive(true)
+        guard AVAudioApplication.shared.recordPermission == AVAudioApplication.recordPermission.granted else { throw CompanionError.badResponse("Microphone permission denied") }
+        try session.setCategory(.playAndRecord,mode:.voiceChat,options:[.allowBluetoothHFP,.defaultToSpeaker]);try session.setActive(true)
     }
     func deactivate(){try? session.setActive(false,options:.notifyOthersOnDeactivation)}
 }
