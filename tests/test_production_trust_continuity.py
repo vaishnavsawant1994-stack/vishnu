@@ -120,6 +120,8 @@ def test_multi_device_continuity_enforces_all_data_policies(store):
     row = store.get("continuity_task", progress)
     assert row["payload"]["checkpoint"] == {"step": 3}
     continuity.handoff(progress, from_device="a", to_device="b")
+    with pytest.raises(PermissionError):
+        continuity.checkpoint(progress, device_id="a", state={"step": 4}, online=True)
     on_demand = continuity.create_task(owner_id="owner", device_id="a", title="od", data_policy="on_demand")
     with pytest.raises(PermissionError):
         continuity.handoff(on_demand, from_device="a", to_device="b")
@@ -188,15 +190,13 @@ def test_oauth_pkce_refresh_scope_and_revoke(store):
         scopes=["mail.read"],
         redirect_uri="https://localhost.example/callback",
     )
-    flow = store.get("oauth_flow", start["flow_id"])
-    verifier = secrets_store.get(flow["payload"]["verifier_handle"])
     connection = oauth.complete(
         start["flow_id"],
         owner_id="owner",
         state=start["state"],
         authorization_code="code",
         exchange=lambda code, got_verifier, redirect: {
-            "access_token": "access-1",
+            "access_token": "access-1" if code and got_verifier and redirect else "",
             "refresh_token": "refresh-1",
             "scopes": ["mail.read"],
             "expires_at": (datetime.now(timezone.utc) - timedelta(seconds=1)).isoformat(),
@@ -210,7 +210,7 @@ def test_oauth_pkce_refresh_scope_and_revoke(store):
         owner_id="owner",
         required_scope="mail.read",
         refresh=lambda refresh_token: {
-            "access_token": "access-2",
+            "access_token": "access-2" if refresh_token == "refresh-1" else "",
             "expires_at": (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat(),
         },
     )
@@ -222,9 +222,21 @@ def test_oauth_pkce_refresh_scope_and_revoke(store):
 
 def test_offline_routing_and_reconciliation(store):
     offline = OfflineIntelligence(store)
-    offline.register_capability(device_id="phone", name="local-ocr", kind="ocr", model="native", available=True, quality=0.9)
+    offline.register_capability(
+        device_id="phone",
+        name="local-ocr",
+        kind="ocr",
+        model="native",
+        available=True,
+        quality=0.9,
+    )
     assert offline.route(device_id="phone", kind="ocr", allow_cloud=False)["route"] == "local"
-    task = offline.enqueue(owner_id="owner", device_id="phone", task_type="work", payload={"step": 2, "local": True})
+    task = offline.enqueue(
+        owner_id="owner",
+        device_id="phone",
+        task_type="work",
+        payload={"step": 2, "local": True},
+    )
     result = offline.reconcile(task, remote_version={"step": 1, "remote": True}, policy="merge_progress")
     assert result["resolved"]["step"] == 2
     assert result["resolved"]["remote"] is True
@@ -255,12 +267,21 @@ def test_evaluation_lab_is_exact_sha_and_future_capabilities_never_gain_authorit
     score = lab.record(
         suite="release",
         metrics={"task_success": 0.95, "hallucination_rate": 0.01, "privacy_violations": 0},
-        thresholds={"task_success": {"min": 0.9}, "hallucination_rate": {"max": 0.05}, "privacy_violations": {"max": 0}},
+        thresholds={
+            "task_success": {"min": 0.9},
+            "hallucination_rate": {"max": 0.05},
+            "privacy_violations": {"max": 0},
+        },
     )
     assert score["passed"] is True
     assert score["commit_sha"] == "d" * 40
     future = GovernedFutureCapabilities(store, approval_check=lambda _proposal: True)
-    proposal = future.propose(owner_id="owner", kind="robotics", description="observe and propose a robot movement", required_authorities=["device:robotics"])
+    proposal = future.propose(
+        owner_id="owner",
+        kind="robotics",
+        description="observe and propose a robot movement",
+        required_authorities=["device:robotics"],
+    )
     assert proposal.execution_authority is False
     future.mark_tested(proposal.proposal_id, owner_id="owner", evidence={"simulation": "passed"})
     activated = future.authorize_for_existing_runtime(proposal.proposal_id, owner_id="owner")
