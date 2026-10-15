@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.FaceDetector
+import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -41,6 +42,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 object VisionCameraBridge {
+    const val MIN_LIVE_BATTERY_PERCENT = 15
     private val lock = Any()
     @Volatile private var imageCapture: ImageCapture? = null
     @Volatile private var activeFacing: String = "front"
@@ -93,6 +95,13 @@ object VisionCameraBridge {
         if (closer != null) Handler(Looper.getMainLooper()).post { closer.invoke() }
     }
 
+    fun remainingSeconds(): Long = max(0L, (expiresAtMs - System.currentTimeMillis() + 999L) / 1000L)
+
+    private fun batteryPercent(context: Context): Int {
+        val manager = context.getSystemService(Context.BATTERY_SERVICE) as BatteryManager
+        return manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
+    }
+
     fun status(context: Context): JSONObject {
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         val active = imageCapture != null && System.currentTimeMillis() < expiresAtMs
@@ -105,6 +114,9 @@ object VisionCameraBridge {
             .put("camera_id", activeCameraId)
             .put("sensor_session_id", if (active) sensorSessionId else JSONObject.NULL)
             .put("expires_at", if (active) Instant.ofEpochMilli(expiresAtMs).toString() else JSONObject.NULL)
+            .put("remaining_seconds", if (active) remainingSeconds() else 0)
+            .put("battery_percent", batteryPercent(context))
+            .put("min_live_battery_percent", MIN_LIVE_BATTERY_PERCENT)
     }
 
     private fun normalizedRect(obj: JSONObject, width: Int, height: Int): android.graphics.Rect {
@@ -199,6 +211,11 @@ object VisionCameraBridge {
             deactivate()
             throw IllegalStateException("Vishnu Vision session expired")
         }
+        val battery = batteryPercent(context)
+        if (battery in 0 until MIN_LIVE_BATTERY_PERCENT) {
+            deactivate()
+            throw IllegalStateException("Vishnu Vision stopped because battery is below ${MIN_LIVE_BATTERY_PERCENT}%")
+        }
         val file = File.createTempFile("vishnu-vision-", ".jpg", context.cacheDir)
         val error = AtomicReference<Throwable?>(null)
         val latch = CountDownLatch(1)
@@ -222,6 +239,8 @@ object VisionCameraBridge {
                 .put("camera_id", activeCameraId)
                 .put("sensor_session_id", session)
                 .put("privacy", privacyMeta)
+                .put("battery_percent", battery)
+                .put("min_live_battery_percent", MIN_LIVE_BATTERY_PERCENT)
                 .put("captured_at", Instant.now().toString())
         } finally {
             file.delete()
@@ -234,6 +253,17 @@ class VisionCameraActivity : AppCompatActivity() {
     private lateinit var previewView: PreviewView
     private lateinit var status: TextView
     private var provider: ProcessCameraProvider? = null
+    private var selectedCameraLabel: String = "camera"
+    private val timerHandler = Handler(Looper.getMainLooper())
+    private val timerTick = object : Runnable {
+        override fun run() {
+            if (isFinishing) return
+            val remaining = VisionCameraBridge.remainingSeconds()
+            if (remaining <= 0) { finish(); return }
+            status.text = "Vishnu Vision active · $selectedCameraLabel · ${remaining}s remaining · battery floor ${VisionCameraBridge.MIN_LIVE_BATTERY_PERCENT}% · bounded data/model sampling"
+            timerHandler.postDelayed(this, 1000L)
+        }
+    }
     private val requestedFacing: String by lazy {
         when (intent?.getStringExtra("facing")?.lowercase()) { "back" -> "back"; else -> "front" }
     }
@@ -280,18 +310,24 @@ class VisionCameraActivity : AppCompatActivity() {
                 val cameraProvider = future.get(); provider = cameraProvider
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(previewView.surfaceProvider) }
                 val capture = ImageCapture.Builder().setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY).setJpegQuality(75).build()
-                val selected = selector()
+                val selected = selector(); selectedCameraLabel = selected.second
                 cameraProvider.unbindAll(); cameraProvider.bindToLifecycle(this, selected.first, preview, capture)
                 VisionCameraBridge.activate(capture, requestedFacing, selected.second) {
                     provider?.unbindAll(); if (!isFinishing) finish()
                 }
-                status.text = "Vishnu Vision active · ${selected.second} · snapshot/live sampling only · privacy processing is local · stops automatically."
+                timerHandler.removeCallbacks(timerTick); timerHandler.post(timerTick)
             } catch (_: Exception) {
                 VisionCameraBridge.deactivate(); status.text = "Camera is unavailable on this device."
             }
         }, ContextCompat.getMainExecutor(this))
     }
 
-    override fun onStop() { VisionCameraBridge.deactivate(closeCameraOwner = false); provider?.unbindAll(); super.onStop() }
-    override fun onDestroy() { VisionCameraBridge.deactivate(closeCameraOwner = false); provider?.unbindAll(); super.onDestroy() }
+    override fun onStop() {
+        timerHandler.removeCallbacks(timerTick)
+        VisionCameraBridge.deactivate(closeCameraOwner = false); provider?.unbindAll(); super.onStop()
+    }
+    override fun onDestroy() {
+        timerHandler.removeCallbacks(timerTick)
+        VisionCameraBridge.deactivate(closeCameraOwner = false); provider?.unbindAll(); super.onDestroy()
+    }
 }
