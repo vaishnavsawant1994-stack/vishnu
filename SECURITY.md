@@ -36,6 +36,18 @@ Please avoid public disclosure of an unpatched vulnerability until a reasonable
 coordinated-remediation process has occurred or the maintainer has confirmed
 that public disclosure is appropriate.
 
+## Cybersecurity assurance
+
+Vishnu's internal continuous security-qualification baseline is defined by the
+[Vishnu Cybersecurity Assurance Program](CYBERSECURITY_ASSURANCE.md), with its
+threat model and evidence lifecycle under `docs/security/` and machine-readable
+controls under `security/`.
+
+That program is an internal assurance and release-evidence mechanism. It does
+not claim to be an independent third-party security audit or penetration test,
+and a passing result does not authorize deployment or production mutation.
+Independent external assessment remains a separate activity.
+
 ## Testing authorization
 
 This policy does not grant permission to access systems, accounts, devices,

@@ -1,0 +1,51 @@
+name: Cybersecurity Assurance
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  assurance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out exact candidate revision
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked Vishnu test dependencies
+        run: python scripts/install_locked_requirements.py tools
+      - name: Static quality gate
+        run: ruff check security/assurance.py tests/test_cybersecurity_assurance.py
+      - name: Run assurance regression tests
+        run: pytest -q tests/test_cybersecurity_assurance.py
+      - name: Generate exact-SHA assurance evidence
+        run: >-
+          python -m security.assurance
+          --candidate-sha "$CANDIDATE_SHA"
+          --output-dir artifacts/cybersecurity-assurance
+      - name: Show human-readable result
+        if: always()
+        run: cat artifacts/cybersecurity-assurance/cybersecurity-assurance.md || true
+      - name: Upload cybersecurity assurance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cybersecurity-assurance-${{ env.CANDIDATE_SHA }}
+          path: artifacts/cybersecurity-assurance/
+          if-no-files-found: error
