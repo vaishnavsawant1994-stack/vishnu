@@ -62,6 +62,10 @@ class MobileContextService:
         self.documents = documents or DocumentIntelligence(events=events)
         self.spatial = spatial
         self.events = events
+        # Temporary requester provenance only. Sensor sessions are intentionally
+        # invalidated on process restart, so this mapping must not become a
+        # durable cross-restart grant authority.
+        self._pending_requesters: dict[tuple[str, str, str], str] = {}
 
     @staticmethod
     def _sensor(value: str) -> str:
@@ -69,6 +73,10 @@ class MobileContextService:
         if sensor not in SENSOR_SCOPES:
             raise ValueError("unsupported mobile Sensorium sensor")
         return sensor
+
+    @staticmethod
+    def _request_key(target_device_id: str, sensor: str, resource_id: str) -> tuple[str, str, str]:
+        return (str(target_device_id), str(sensor).lower(), str(resource_id or "*"))
 
     def _authorize(self, controller_device_id: str, target_device_id: str, sensor: str) -> tuple[str, str, str]:
         kind = self._sensor(sensor)
@@ -124,14 +132,20 @@ class MobileContextService:
         ttl = 300.0
         if isinstance(expires_at, (int, float)):
             ttl = max(30.0, min(float(expires_at) - time.time(), 600.0))
-        return self.permissions.grant_session(
+        key = self._request_key(target_device_id, sensor, resource_id)
+        requester = str(result.get("requested_by_device_id") or self._pending_requesters.get(key) or "").strip() or None
+        accepted = self.permissions.grant_session(
             target_device_id,
             sensor,
             resource_id,
             ttl_seconds=ttl,
             session_id=session_id,
             reason="mobile companion proved explicit local consent",
+            requested_by_device_id=requester,
         )
+        if requester:
+            self._pending_requesters[key] = requester
+        return accepted
 
     async def inventory(self, controller_device_id: str, target_device_id: str, *, timeout: float = 10.0) -> dict:
         controller = str(controller_device_id or "").strip()
@@ -152,20 +166,27 @@ class MobileContextService:
         reason: str = "Sensorium assistance",
         timeout: float = 15.0,
     ) -> dict:
-        _, target, kind = self._authorize(controller_device_id, target_device_id, sensor)
+        controller, target, kind = self._authorize(controller_device_id, target_device_id, sensor)
         resource = str(resource_id or "*")[:240]
         if not self.permissions.can_request(target, kind, resource):
             raise PermissionError(f"{kind} is disabled by the target device sensor policy")
+        self._pending_requesters[self._request_key(target, kind, resource)] = controller
         result = await self._request(
             target,
             "sensor_session_start",
-            {"sensor": kind, "resource_id": resource, "reason": str(reason or "Sensorium assistance")[:240]},
+            {
+                "sensor": kind,
+                "resource_id": resource,
+                "reason": str(reason or "Sensorium assistance")[:240],
+                "requesting_device_id": controller,
+            },
             timeout=timeout,
         )
         if result.get("active") is True:
             self._accept_local_session(target, kind, resource, result)
         self._emit(
             "sensorium.mobile.session_requested",
+            controller_device_id=controller,
             target_device_id=target,
             sensor=kind,
             resource_id=resource,
