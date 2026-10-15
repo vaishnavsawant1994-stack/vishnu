@@ -53,66 +53,34 @@ struct PersonalAICompanionApp: App {
                     ConnectOnboardingView(store: store)
                         .safeAreaInset(edge: .bottom) {
                             VStack(spacing: 8) {
-                                Button {
-                                    showRuntimeProvisioning = true
-                                } label: {
-                                    Label("I don't have a Vishnu runtime yet", systemImage: "server.rack")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.large)
-                                Button {
-                                    showPortableRecovery = true
-                                } label: {
-                                    Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered)
-                                .controlSize(.large)
+                                Button { showRuntimeProvisioning = true } label: {
+                                    Label("I don't have a Vishnu runtime yet", systemImage: "server.rack").frame(maxWidth: .infinity)
+                                }.buttonStyle(.borderedProminent).controlSize(.large)
+                                Button { showPortableRecovery = true } label: {
+                                    Label("Restore from encrypted recovery package", systemImage: "externaldrive.badge.timemachine").frame(maxWidth: .infinity)
+                                }.buttonStyle(.bordered).controlSize(.large)
                             }
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 10)
-                            .background(.ultraThinMaterial)
+                            .padding(.horizontal, 24).padding(.vertical, 10).background(.ultraThinMaterial)
                         }
                         .sheet(isPresented: $showRuntimeProvisioning) {
                             NavigationStack {
-                                RuntimeProvisioningView()
-                                    .toolbar {
-                                        ToolbarItem(placement: .cancellationAction) {
-                                            Button("Close") { showRuntimeProvisioning = false }
-                                        }
-                                    }
-                            }
-                            .preferredColorScheme(.dark)
+                                RuntimeProvisioningView().toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showRuntimeProvisioning = false } } }
+                            }.preferredColorScheme(.dark)
                         }
                         .sheet(isPresented: $showPortableRecovery) {
                             NavigationStack {
-                                PortableRecoveryView(store: store)
-                                    .toolbar {
-                                        ToolbarItem(placement: .cancellationAction) {
-                                            Button("Close") { showPortableRecovery = false }
-                                        }
-                                    }
-                            }
-                            .preferredColorScheme(.dark)
+                                PortableRecoveryView(store: store).toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showPortableRecovery = false } } }
+                            }.preferredColorScheme(.dark)
                         }
-                } else {
-                    pairedHome
-                }
+                } else { pairedHome }
             }
             .preferredColorScheme(.dark)
             .onAppear {
-                if store.deviceID != nil {
-                    KeychainStore.shared.remove(RuntimeProvisioningView.secretKey)
-                    store.connect()
-                }
+                if store.deviceID != nil { KeychainStore.shared.remove(RuntimeProvisioningView.secretKey);store.connect() }
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active, store.deviceID != nil { store.connect() }
-                if phase != .active {
-                    store.vision.stop()
-                    store.visionActive = false
-                }
+                if phase != .active { store.vision.stop();store.visionActive = false }
                 if phase == .background { BackgroundCoordinator.shared.schedule() }
             }
         }
@@ -122,16 +90,8 @@ struct PersonalAICompanionApp: App {
         NavigationStack {
             Form {
                 Section("Vishnu cloud") {
-                    NavigationLink {
-                        NativeCapabilitiesView()
-                    } label: {
-                        Label("Manage Universal Capabilities", systemImage: "point.3.connected.trianglepath.dotted")
-                    }
-                    NavigationLink {
-                        NativeForgeV3View()
-                    } label: {
-                        Label("Capability Forge V3", systemImage: "hammer.circle")
-                    }
+                    NavigationLink { NativeCapabilitiesView() } label: { Label("Manage Universal Capabilities", systemImage: "point.3.connected.trianglepath.dotted") }
+                    NavigationLink { NativeForgeV3View() } label: { Label("Capability Forge V3", systemImage: "hammer.circle") }
                     Text("Vishnu cloud access is disabled in this internal-testing build; Capability Forge cloud controls are also disabled until a non-production server is configured.")
                         .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                     Text("Uses Safari so Google sign-in, trusted-device cookies, microphone access and conversation continuity work correctly.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
@@ -139,13 +99,10 @@ struct PersonalAICompanionApp: App {
                 Section("Vishnu computer") {
                     LabeledContent("Address", value: store.baseURL)
                     Toggle("Allow insecure local development",isOn:$store.allowInsecureDevelopment)
-                    if store.allowInsecureDevelopment {
-                        Text("Development only. HTTP/WS exposes pairing and bearer credentials to the local network.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.orange)
-                    }
+                    if store.allowInsecureDevelopment { Text("Development only. HTTP/WS exposes pairing and bearer credentials to the local network.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.orange) }
                 }
                 Section("Connection") {
-                    LabeledContent("Status",value:store.status)
-                    LabeledContent("Channel",value:store.connected ? "Connected" : "Offline")
+                    LabeledContent("Status",value:store.status);LabeledContent("Channel",value:store.connected ? "Connected" : "Offline")
                     HStack { Button("Connect") { store.connect() }; Button("Disconnect",role:.cancel) { store.disconnect() } }
                 }
                 Section("Local data") {
@@ -154,36 +111,37 @@ struct PersonalAICompanionApp: App {
                 }
                 Section("Voice") {
                     Toggle("Active voice session",isOn:Binding(get:{store.voiceActive},set:{ value in Task { await store.setVoiceActive(value) }}))
-                    Text("Background audio is used only while an active voice session is running. Ordinary device connectivity follows iOS lifecycle rules.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
+                    Text("Microphone permission is independent from Vision. Background audio is used only while an active voice session is running.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Vishnu Vision") {
-                    Toggle("Allow camera snapshots for 5 minutes",isOn:Binding(get:{store.visionActive},set:{ value in Task { await store.setVisionActive(value) }}))
+                    Picker("Camera", selection:$store.visionCameraID) {
+                        Text("Front / default").tag("mobile:front")
+                        ForEach(Array(store.availableVisionCameras.enumerated()), id:\.offset) { _, camera in
+                            if let cameraID=camera["camera_id"] as? String {
+                                Text((camera["label"] as? String) ?? cameraID).tag(cameraID)
+                            }
+                        }
+                    }.disabled(store.visionActive)
+                    Toggle("Allow this camera for 5 minutes",isOn:Binding(get:{store.visionActive},set:{ value in Task { await store.setVisionActive(value) }}))
+                    Toggle("Vision + Voice together",isOn:Binding(get:{store.visionActive && store.voiceActive},set:{ value in Task { await store.setVisionVoiceActive(value) }}))
                     LabeledContent("Camera permission", value: store.vision.permissionDescription)
-                    Text("Vision works only while this app remains in the foreground. Enabling it turns on the iOS camera privacy indicator. Vishnu may request snapshots during this session, but raw frames are not retained and the session stops automatically.")
+                    Text("Vision works only while this app remains in the foreground. Starting it creates a new temporary sensor session and turns on the iOS camera privacy indicator. Remote requests cannot arm the camera.")
                         .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
-                    Text("Face/identity recognition is not enabled by this control. That would require a separate explicit biometric opt-in.")
+                    Text("Privacy processing, including requested face redaction, happens on this iPhone before a frame is uploaded. Raw capture data is not retained by the companion.")
+                        .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
+                    Text("Face/identity recognition is not enabled by Vision. Biometric identity has its own owner-only permission, enrollment and deletion controls.")
                         .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Notifications") {
                     Text("The iPhone registers its APNs token and sends it through the authenticated Vishnu device channel. A later APNs provider stage can use this registration for server-initiated background notifications.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Security") {
-                    NavigationLink {
-                        NativePasskeyView(store: store)
-                    } label: {
-                        Label("Protect Vishnu with a passkey", systemImage: "person.badge.key")
-                    }
-                    Text("Device ID and bearer token are stored in the iPhone Keychain with this-device-only protection. Native passkeys use Apple Authentication Services only when the signed runtime domain is associated with this app.")
-                        .font(PersonalAITheme.Typography.supporting)
+                    NavigationLink { NativePasskeyView(store: store) } label: { Label("Protect Vishnu with a passkey", systemImage: "person.badge.key") }
+                    Text("Device ID and bearer token are stored in the iPhone Keychain with this-device-only protection. Native passkeys use Apple Authentication Services only when the signed runtime domain is associated with this app.").font(PersonalAITheme.Typography.supporting)
                     Button("Forget this iPhone",role:.destructive) { store.forgetDevice() }
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(PersonalAITheme.ColorToken.background)
-            .navigationTitle("Vishnu")
-            .navigationBarTitleDisplayMode(.inline)
-            .tint(PersonalAITheme.ColorToken.accent)
-            .font(PersonalAITheme.Typography.body)
+            .scrollContentBackground(.hidden).background(PersonalAITheme.ColorToken.background).navigationTitle("Vishnu").navigationBarTitleDisplayMode(.inline).tint(PersonalAITheme.ColorToken.accent).font(PersonalAITheme.Typography.body)
             .toolbar { ToolbarItem(placement: .principal) { Text("Vishnu").font(PersonalAITheme.Typography.pageTitle).fontWeight(.semibold) } }
         }
     }
