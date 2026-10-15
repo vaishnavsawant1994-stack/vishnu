@@ -19,8 +19,8 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.sqrt
 
 object SensoriumVisualLocal {
-    private fun imageFromVision(context: Context): Pair<InputImage, JSONObject> {
-        SensoriumSessionRegistry.require("document", "*")
+    private fun imageFromVision(context: Context, requireDocumentSession: Boolean): Pair<InputImage, JSONObject> {
+        if (requireDocumentSession) SensoriumSessionRegistry.require("document", "*")
         val camera = VisionCameraBridge.snapshot(context, JSONObject().put("max_edge", 1280))
         val bytes = Base64.decode(camera.getString("base64"), Base64.DEFAULT)
         val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
@@ -30,7 +30,7 @@ object SensoriumVisualLocal {
 
     fun documentExtract(context: Context): JSONObject {
         val grant = SensoriumSessionRegistry.require("document", "*")
-        val (image, camera) = imageFromVision(context)
+        val (image, camera) = imageFromVision(context, true)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val scanner = BarcodeScanning.getClient()
         val textRef = AtomicReference("")
@@ -90,18 +90,13 @@ object SensoriumVisualLocal {
     }
 
     fun poseAndGesture(context: Context): JSONObject {
-        SensoriumSessionRegistry.require("camera", "*")
-        val camera = VisionCameraBridge.snapshot(context, JSONObject().put("max_edge", 1024))
-        val bytes = Base64.decode(camera.getString("base64"), Base64.DEFAULT)
-        val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-            ?: throw IllegalStateException("Privacy-processed camera frame could not be decoded")
-        val image = InputImage.fromBitmap(bitmap, 0)
+        val (image, camera) = imageFromVision(context, false)
         val options = PoseDetectorOptions.Builder().setDetectorMode(PoseDetectorOptions.SINGLE_IMAGE_MODE).build()
         val detector = PoseDetection.getClient(options)
         val poseRef = AtomicReference<com.google.mlkit.vision.pose.Pose?>(null)
         val latch = CountDownLatch(1)
         detector.process(image).addOnSuccessListener { poseRef.set(it); latch.countDown() }.addOnFailureListener { latch.countDown() }
-        latch.await(5, TimeUnit.SECONDS); detector.close(); bitmap.recycle()
+        latch.await(5, TimeUnit.SECONDS); detector.close()
         val pose = poseRef.get()
         val landmarks = JSONObject()
         val named = mapOf(
@@ -130,6 +125,7 @@ object SensoriumVisualLocal {
             .put("landmarks", landmarks)
             .put("left_pointing", leftPoint ?: JSONObject.NULL)
             .put("right_pointing", rightPoint ?: JSONObject.NULL)
+            .put("camera_id", camera.optString("camera_id"))
             .put("local_processing", true)
             .put("privacy_processed", true)
             .put("raw_frame_retained", false)
