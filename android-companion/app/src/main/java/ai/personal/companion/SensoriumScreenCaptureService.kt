@@ -15,7 +15,6 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Base64
-import android.view.WindowManager
 import androidx.core.app.NotificationCompat
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.TextRecognition
@@ -77,8 +76,6 @@ object SensoriumScreenBridge {
         if (copy !== bitmap) bitmap.recycle()
         val canvas = Canvas(copy)
         val paint = Paint().apply { color = Color.BLACK }
-        // System status/navigation areas frequently expose notifications, carrier,
-        // other-app state, or transient private information. Redact them locally.
         canvas.drawRect(0f, 0f, copy.width.toFloat(), copy.height * 0.07f, paint)
         canvas.drawRect(0f, copy.height * 0.94f, copy.width.toFloat(), copy.height.toFloat(), paint)
         return copy
@@ -133,6 +130,7 @@ class SensoriumScreenCaptureService : Service() {
     private var projection: MediaProjection? = null
     private var reader: ImageReader? = null
     private var display: android.hardware.display.VirtualDisplay? = null
+    private var shuttingDown = false
 
     override fun onCreate() {
         super.onCreate()
@@ -144,10 +142,17 @@ class SensoriumScreenCaptureService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val privacy = PendingIntent.getActivity(
+            this,
+            9401,
+            Intent(this, SensoriumPrivacyActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
         val notification = NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
             .setContentTitle("Vishnu can see this screen")
-            .setContentText("Temporary owner-approved Sensorium screen session")
+            .setContentText("Tap for Sensorium Privacy · temporary owner-approved screen session")
+            .setContentIntent(privacy)
             .setOngoing(true).build()
         if (Build.VERSION.SDK_INT >= 29) startForeground(NOTIFICATION, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
         else startForeground(NOTIFICATION, notification)
@@ -177,9 +182,14 @@ class SensoriumScreenCaptureService : Service() {
     }
 
     private fun shutdown() {
+        if (shuttingDown) return
+        shuttingDown = true
         runCatching { display?.release() }; display = null
-        SensoriumScreenBridge.stop(); projection = null; reader = null
-        stopForeground(STOP_FOREGROUND_REMOVE); stopSelf()
+        runCatching { reader?.close() }; reader = null
+        if (SensoriumScreenBridge.active()) SensoriumScreenBridge.stop()
+        projection = null
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     override fun onDestroy() { shutdown(); super.onDestroy() }
