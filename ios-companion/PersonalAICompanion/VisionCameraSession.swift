@@ -18,6 +18,7 @@ private final class VisionPhotoDelegate: NSObject, AVCapturePhotoCaptureDelegate
 @MainActor
 final class VisionCameraSession {
     static let shared = VisionCameraSession()
+    static let minLiveBatteryPercent = 15
     private let session = AVCaptureSession()
     private let output = AVCapturePhotoOutput()
     private var facing = "front"
@@ -30,6 +31,7 @@ final class VisionCameraSession {
     private(set) var active = false
 
     init() {
+        UIDevice.current.isBatteryMonitoringEnabled = true
         let center = NotificationCenter.default
         observers.append(center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in VisionCameraSession.shared.stop() }
@@ -67,6 +69,16 @@ final class VisionCameraSession {
         }
     }
 
+    var remainingSeconds: Int {
+        guard active, let expiresAt else { return 0 }
+        return max(0, Int(ceil(expiresAt.timeIntervalSinceNow)))
+    }
+
+    var batteryPercent: Int {
+        let level = UIDevice.current.batteryLevel
+        return level < 0 ? -1 : max(0, min(100, Int((level * 100).rounded())))
+    }
+
     func status() -> [String: Any] {
         if let expiresAt, expiresAt <= Date() { stop() }
         return [
@@ -77,6 +89,9 @@ final class VisionCameraSession {
             "camera_id": cameraID,
             "sensor_session_id": active ? (sensorSessionID ?? NSNull()) : NSNull(),
             "expires_at": expiresAt.map(Self.iso) ?? NSNull(),
+            "remaining_seconds": remainingSeconds,
+            "battery_percent": batteryPercent,
+            "min_live_battery_percent": Self.minLiveBatteryPercent,
             "consent_required": !active,
         ]
     }
@@ -101,6 +116,10 @@ final class VisionCameraSession {
         }
         guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
             throw CompanionError.badResponse("Camera permission is not available.")
+        }
+        let battery = batteryPercent
+        if battery >= 0 && battery < Self.minLiveBatteryPercent {
+            throw CompanionError.badResponse("Vishnu Vision needs at least \(Self.minLiveBatteryPercent)% battery to start.")
         }
         stop()
         facing = requestedFacing.lowercased() == "back" ? "back" : "front"
@@ -235,6 +254,11 @@ final class VisionCameraSession {
             stop()
             throw CompanionError.badResponse("Enable Vishnu Vision in the foreground before requesting a snapshot.")
         }
+        let battery = batteryPercent
+        if battery >= 0 && battery < Self.minLiveBatteryPercent {
+            stop()
+            throw CompanionError.badResponse("Vishnu Vision stopped because battery is below \(Self.minLiveBatteryPercent)%.")
+        }
         let data: Data = try await withCheckedThrowingContinuation { continuation in
             let delegate = VisionPhotoDelegate { result in continuation.resume(with: result) }
             pendingDelegate = delegate
@@ -254,6 +278,8 @@ final class VisionCameraSession {
             "camera_id": cameraID,
             "sensor_session_id": sensorSessionID,
             "privacy": privacyMetadata,
+            "battery_percent": battery,
+            "min_live_battery_percent": Self.minLiveBatteryPercent,
             "captured_at": Self.iso(Date()),
         ]
     }
