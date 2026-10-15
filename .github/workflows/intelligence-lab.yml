@@ -1,0 +1,48 @@
+name: Intelligence Lab
+
+on:
+  push:
+    paths:
+      - "intelligence_lab/**"
+      - "tests/test_intelligence_lab.py"
+      - "docs/INTELLIGENCE_LAB.md"
+      - ".github/workflows/intelligence-lab.yml"
+  pull_request:
+    paths:
+      - "intelligence_lab/**"
+      - "tests/test_intelligence_lab.py"
+      - "docs/INTELLIGENCE_LAB.md"
+      - ".github/workflows/intelligence-lab.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intelligence-lab-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  isolation-qualification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install locked test tooling
+        run: python scripts/install_locked_requirements.py tools
+      - name: Compile Intelligence Lab only
+        run: python -m compileall -q intelligence_lab
+      - name: Qualify Lab isolation and governance
+        run: pytest -q tests/test_intelligence_lab.py
+      - name: Verify stable entrypoint has no Lab import
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          text = Path("app/main.py").read_text(encoding="utf-8")
+          forbidden = ("import intelligence_lab", "from intelligence_lab")
+          if any(item in text for item in forbidden):
+              raise SystemExit("stable app.main must not auto-import Intelligence Lab")
+          print("stable entrypoint remains isolated")
+          PY
