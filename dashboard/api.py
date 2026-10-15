@@ -11,6 +11,10 @@ class TransferAckRequest(BaseModel):sequence:int=Field(ge=0)
 def dashboard_router(runtime,auth_device):
     r=APIRouter(prefix='/dashboard',tags=['dashboard'])
     data_plane=ensure_data_plane_tools(runtime)
+    trust_runtime=None
+    if all(runtime.get(key) is not None for key in ('settings','device_registry','owner_access','tools')):
+        from trust_continuity.integration import attach_trust_continuity_runtime
+        trust_runtime=attach_trust_continuity_runtime(runtime)
     def auth(a,d,scope='ai:chat'):return auth_device(a,d,scope)
     def data_plane_projection():
         if data_plane is None:return {'available':False,'reason':'canonical data directory unavailable'}
@@ -30,7 +34,7 @@ def dashboard_router(runtime,auth_device):
         return transport,status
     @r.get('/status')
     def status(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):
-        auth(authorization,x_device_id,'device:read'); return {'automations':len(runtime['automations'].list()),'devices':len(runtime['device_registry'].list()),'online_devices':runtime['device_gateway'].online(),'integrations':runtime.get('integrations').list() if runtime.get('integrations') else [],'memory_nodes':len(runtime['second_brain'].graph().get('nodes',[])),'voice_state':'active' if getattr(runtime.get('voice'),'thread',None) and runtime['voice'].thread.is_alive() else 'idle','security':{'vault':'keychain-backed' if runtime.get('vault') else 'unavailable','autonomy':runtime['tools'].settings.autonomy_mode},'data_plane':data_plane_projection()}
+        auth(authorization,x_device_id,'device:read'); return {'automations':len(runtime['automations'].list()),'devices':len(runtime['device_registry'].list()),'online_devices':runtime['device_gateway'].online(),'integrations':runtime.get('integrations').list() if runtime.get('integrations') else [],'memory_nodes':len(runtime['second_brain'].graph().get('nodes',[])),'voice_state':'active' if getattr(runtime.get('voice'),'thread',None) and runtime['voice'].thread.is_alive() else 'idle','security':{'vault':'keychain-backed' if runtime.get('vault') else 'unavailable','autonomy':runtime['tools'].settings.autonomy_mode},'data_plane':data_plane_projection(),'trust_continuity':trust_runtime.status() if trust_runtime is not None else {'available':False}}
     @r.get('/devices')
     def devices(authorization:str|None=Header(default=None),x_device_id:str|None=Header(default=None)):auth(authorization,x_device_id,'device:read');return runtime['device_registry'].list()
     @r.get('/automations')
@@ -67,4 +71,8 @@ def dashboard_router(runtime,auth_device):
         cmd=DeviceCommand(action,dict(req.parameters or {}),str(uuid.uuid4()))
         try:return await runtime['device_gateway'].request(device_id,cmd,max(1,min(req.timeout,60)))
         except Exception as e:raise HTTPException(409,str(e))
+    if trust_runtime is not None:
+        from server.trust_continuity_api import trust_continuity_router
+        trust_routes=trust_continuity_router(trust_runtime,auth_device)
+        r.routes.extend(trust_routes.routes)
     return r
