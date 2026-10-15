@@ -75,7 +75,7 @@ def trust_continuity_router(
         authorization: str | None = Header(default=None),
         x_device_id: str | None = Header(default=None),
     ):
-        auth(authorization, x_device_id, "device:read")
+        auth(authorization, x_device_id, "device:admin")
         return {"entries": trust_runtime.store.audit_entries(limit=limit)}
 
     @router.get("/continuity")
@@ -99,7 +99,11 @@ def trust_continuity_router(
         x_device_id: str | None = Header(default=None),
     ):
         auth(authorization, x_device_id, "workflow:read")
-        return {"jobs": trust_runtime.store.list("work_v2", limit=limit)}
+        return {
+            "jobs": trust_runtime.store.list(
+                "work_v2", owner_id=trust_runtime.owner_id, limit=limit
+            )
+        }
 
     @router.get("/memory/timeline")
     def memory_timeline(
@@ -111,7 +115,7 @@ def trust_continuity_router(
         auth(authorization, x_device_id, "memory:read")
         return {
             "facts": trust_runtime.memory.timeline(
-                owner_id="owner",
+                owner_id=trust_runtime.owner_id,
                 project_id=project_id,
                 limit=limit,
             )
@@ -122,8 +126,8 @@ def trust_continuity_router(
         authorization: str | None = Header(default=None),
         x_device_id: str | None = Header(default=None),
     ):
-        auth(authorization, x_device_id, "memory:read")
-        return trust_runtime.memory.export_owner("owner")
+        auth(authorization, x_device_id, "memory:sensitive")
+        return trust_runtime.memory.export_owner(trust_runtime.owner_id)
 
     @router.post("/memory/import")
     def memory_import(
@@ -131,9 +135,9 @@ def trust_continuity_router(
         authorization: str | None = Header(default=None),
         x_device_id: str | None = Header(default=None),
     ):
-        auth(authorization, x_device_id, "memory:write")
+        auth(authorization, x_device_id, "memory:sensitive")
         return trust_runtime.memory.import_owner(
-            owner_id="owner",
+            owner_id=trust_runtime.owner_id,
             package=body.package,
         )
 
@@ -156,7 +160,7 @@ def trust_continuity_router(
         authorization: str | None = Header(default=None),
         x_device_id: str | None = Header(default=None),
     ):
-        auth(authorization, x_device_id, "device:read")
+        auth(authorization, x_device_id, "device:admin")
         if trust_runtime.trust_center is None:
             raise HTTPException(503, "Trust Center mutation authorities are unavailable")
         return trust_runtime.trust_center.snapshot()
