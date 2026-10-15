@@ -12,6 +12,7 @@ object SensoriumSessionRegistry {
         val sessionId: String,
         val expiresAtMs: Long,
         val reason: String,
+        val requestedByDeviceId: String?,
     )
 
     data class AuditEntry(
@@ -20,6 +21,7 @@ object SensoriumSessionRegistry {
         val sensor: String,
         val resourceId: String,
         val reason: String,
+        val requestedByDeviceId: String?,
     )
 
     private val grants = ConcurrentHashMap<String, Grant>()
@@ -27,7 +29,7 @@ object SensoriumSessionRegistry {
 
     private fun key(sensor: String, resourceId: String) = "${sensor.lowercase()}|$resourceId"
 
-    private fun record(action: String, sensor: String, resourceId: String, reason: String) {
+    private fun record(action: String, sensor: String, resourceId: String, reason: String, requestedByDeviceId: String? = null) {
         audit.add(
             AuditEntry(
                 createdAtMs = System.currentTimeMillis(),
@@ -35,14 +37,22 @@ object SensoriumSessionRegistry {
                 sensor = sensor.take(40),
                 resourceId = resourceId.take(240),
                 reason = reason.take(240),
+                requestedByDeviceId = requestedByDeviceId?.trim()?.take(200)?.ifBlank { null },
             )
         )
         while (audit.size > 100) audit.removeAt(0)
     }
 
-    fun grant(sensor: String, resourceId: String = "*", ttlMs: Long = 5 * 60_000L, reason: String = "Owner approved Sensorium") : Grant {
+    fun grant(
+        sensor: String,
+        resourceId: String = "*",
+        ttlMs: Long = 5 * 60_000L,
+        reason: String = "Owner approved Sensorium",
+        requestedByDeviceId: String? = null,
+    ) : Grant {
         val safeSensor = sensor.trim().lowercase().take(40)
         val safeResource = resourceId.trim().ifBlank { "*" }.take(240)
+        val requester = requestedByDeviceId?.trim()?.take(200)?.ifBlank { null }
         require(safeSensor.isNotBlank()) { "Sensor is required" }
         val boundedTtl = ttlMs.coerceIn(30_000L, 30 * 60_000L)
         val grant = Grant(
@@ -51,9 +61,10 @@ object SensoriumSessionRegistry {
             sessionId = UUID.randomUUID().toString(),
             expiresAtMs = System.currentTimeMillis() + boundedTtl,
             reason = reason.take(240),
+            requestedByDeviceId = requester,
         )
         grants[key(safeSensor, safeResource)] = grant
-        record("session_granted", safeSensor, safeResource, grant.reason)
+        record("session_granted", safeSensor, safeResource, grant.reason, requester)
         return grant
     }
 
@@ -63,7 +74,7 @@ object SensoriumSessionRegistry {
         val exact = grants[key(safeSensor, safeResource)] ?: if (safeResource != "*") grants[key(safeSensor, "*")] else null
         if (exact != null && exact.expiresAtMs <= System.currentTimeMillis()) {
             grants.remove(key(exact.sensor, exact.resourceId))
-            record("session_expired", exact.sensor, exact.resourceId, "Temporary sensor session expired")
+            record("session_expired", exact.sensor, exact.resourceId, "Temporary sensor session expired", exact.requestedByDeviceId)
             return null
         }
         return exact
@@ -86,7 +97,7 @@ object SensoriumSessionRegistry {
             record("session_revoke_requested", safeSensor, safeResource, "No active local session remained")
         } else {
             removed.distinctBy { it.sessionId }.forEach {
-                record("session_revoked", it.sensor, it.resourceId, "Owner stopped sensor session")
+                record("session_revoked", it.sensor, it.resourceId, "Owner stopped sensor session", it.requestedByDeviceId)
             }
         }
     }
@@ -94,7 +105,7 @@ object SensoriumSessionRegistry {
     fun stopAll(): Int {
         val rows = grants.values.toList()
         grants.clear()
-        rows.forEach { record("stop_all", it.sensor, it.resourceId, "Owner stopped all sensing") }
+        rows.forEach { record("stop_all", it.sensor, it.resourceId, "Owner stopped all sensing", it.requestedByDeviceId) }
         if (rows.isEmpty()) record("stop_all", "all", "*", "Owner stopped all sensing; no active sessions")
         return rows.size
     }
@@ -104,7 +115,7 @@ object SensoriumSessionRegistry {
         val expired = grants.values.filter { it.expiresAtMs <= now }
         expired.forEach {
             grants.remove(key(it.sensor, it.resourceId))
-            record("session_expired", it.sensor, it.resourceId, "Temporary sensor session expired")
+            record("session_expired", it.sensor, it.resourceId, "Temporary sensor session expired", it.requestedByDeviceId)
         }
         return grants.values.sortedBy { it.sensor }
     }
@@ -120,5 +131,6 @@ object SensoriumSessionRegistry {
             .put("expires_at_epoch", grant.expiresAtMs / 1000.0)
             .put("local_consent", true)
             .put("reason", grant.reason)
+            .put("requested_by_device_id", grant.requestedByDeviceId ?: JSONObject.NULL)
     }
 }
