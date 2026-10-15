@@ -4,8 +4,10 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +22,7 @@ PYTHON_LOCKS = {
 NODE_LOCK = ROOT / 'package-lock.json'
 REA_ROOT = ROOT / '.rea'
 REA_NODE_LOCK = REA_ROOT / 'package-lock.json'
+REA_PACKAGE_JSON = REA_ROOT / 'package.json'
 
 
 def sha256(path: Path) -> str:
@@ -73,6 +76,25 @@ def _generate_node_sbom(package_root: Path, output: Path) -> None:
         )
 
 
+def _generate_rea_node_sbom(output: Path) -> None:
+    """Generate REA's lockfile SBOM without using `.rea` as npm's package cwd.
+
+    npm derives package identity from the working package directory in some
+    versions and rejects hidden-directory names such as `.rea` as invalid npm
+    package names. REA remains installed at `.rea`; only immutable package
+    metadata is staged into a valid temporary package directory for the SBOM
+    command. `--package-lock-only` means no node_modules tree is required.
+    """
+    if not REA_PACKAGE_JSON.is_file() or not REA_NODE_LOCK.is_file():
+        raise RuntimeError('REA package metadata is missing; install the pinned REA runtime before generating its SBOM')
+    with tempfile.TemporaryDirectory(prefix='vishnu-rea-sbom-') as temporary:
+        staged = Path(temporary) / 'rea-runtime'
+        staged.mkdir()
+        shutil.copy2(REA_PACKAGE_JSON, staged / 'package.json')
+        shutil.copy2(REA_NODE_LOCK, staged / 'package-lock.json')
+        _generate_node_sbom(staged, output)
+
+
 def generate(output_dir: Path) -> Path:
     output_dir = output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -100,7 +122,7 @@ def generate(output_dir: Path) -> Path:
     input_paths: dict[str, Path] = {path.name: path for path in PYTHON_LOCKS.values()}
     input_paths['package-lock.json'] = NODE_LOCK
     if REA_NODE_LOCK.is_file():
-        _generate_node_sbom(REA_ROOT, output_dir / 'rea-nodejs.cdx.json')
+        _generate_rea_node_sbom(output_dir / 'rea-nodejs.cdx.json')
         input_paths['rea-package-lock.json'] = REA_NODE_LOCK
 
     generators = {
