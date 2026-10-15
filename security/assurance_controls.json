@@ -1,0 +1,216 @@
+{
+  "schema": "vishnu.cybersecurity-assurance/v1",
+  "domains": [
+    "Application Security",
+    "API Security",
+    "AI/Agent Security",
+    "Device Security",
+    "Cloud/Infrastructure Security",
+    "Supply Chain",
+    "Identity & Access",
+    "Data Protection",
+    "Penetration Testing",
+    "Red Teaming",
+    "Recovery Testing"
+  ],
+  "controls": [
+    {
+      "id": "APP-01",
+      "domain": "Application Security",
+      "title": "Fail-safe input handling",
+      "objective": "Malformed and hostile application input is validated and fails safely.",
+      "required": true,
+      "verification": "Automated application/security tests and repository CI.",
+      "evidence_paths": [".github/workflows/ci.yml", "docs/security/CYBERSECURITY_TEST_MATRIX.md"]
+    },
+    {
+      "id": "APP-02",
+      "domain": "Application Security",
+      "title": "Browser security boundaries",
+      "objective": "Applicable browser actions retain encoding, session, origin and redirect protections.",
+      "required": true,
+      "verification": "Web-focused regression coverage plus threat-model review.",
+      "evidence_paths": ["docs/security/THREAT_MODEL.md", ".github/workflows/reliability.yml"]
+    },
+    {
+      "id": "API-01",
+      "domain": "API Security",
+      "title": "Server-side object authorization",
+      "objective": "API operations independently enforce ownership and authorization rather than trusting client state.",
+      "required": true,
+      "verification": "Authorization regression tests in normal CI.",
+      "evidence_paths": [".github/workflows/ci.yml", "docs/security/THREAT_MODEL.md"]
+    },
+    {
+      "id": "API-02",
+      "domain": "API Security",
+      "title": "Replay and abuse resistance",
+      "objective": "Replay, schema abuse, unauthorized fields and unbounded resource use are rejected or bounded.",
+      "required": true,
+      "verification": "Security/reliability qualification and adversarial coverage.",
+      "evidence_paths": [".github/workflows/reliability.yml", "security/adversarial_cases.json"]
+    },
+    {
+      "id": "AI-01",
+      "domain": "AI/Agent Security",
+      "title": "Untrusted-content containment",
+      "objective": "Prompts, retrieved content and tool/provider results cannot become security authority.",
+      "required": true,
+      "verification": "Prompt-injection/tool-poisoning adversarial corpus and governed execution tests.",
+      "evidence_paths": ["security/adversarial_cases.json", "docs/security/THREAT_MODEL.md"]
+    },
+    {
+      "id": "AI-02",
+      "domain": "AI/Agent Security",
+      "title": "Governed agent actions",
+      "objective": "AI behavior cannot bypass existing permissions, approvals or audit boundaries.",
+      "required": true,
+      "verification": "Approval/permission security tests plus adversarial corpus.",
+      "evidence_paths": ["security/adversarial_cases.json", ".github/workflows/reliability.yml"]
+    },
+    {
+      "id": "DEV-01",
+      "domain": "Device Security",
+      "title": "Device trust lifecycle",
+      "objective": "Enrollment, session use and revocation preserve the existing device/identity authority.",
+      "required": true,
+      "verification": "Native/device qualification and security regression tests.",
+      "evidence_paths": [".github/workflows/native-device-lab.yml", "docs/security/THREAT_MODEL.md"]
+    },
+    {
+      "id": "DEV-02",
+      "domain": "Device Security",
+      "title": "Native boundary protection",
+      "objective": "Deep links, IPC, local state and native permissions do not silently widen authority.",
+      "required": true,
+      "verification": "Android/iOS/device qualification plus threat-model review.",
+      "evidence_paths": [".github/workflows/android-instrumentation.yml", ".github/workflows/ios.yml"]
+    },
+    {
+      "id": "INF-01",
+      "domain": "Cloud/Infrastructure Security",
+      "title": "Production fail-closed configuration",
+      "objective": "Missing or untrusted production configuration cannot silently enable a production mutation.",
+      "required": true,
+      "verification": "Governed release/production preflight behavior.",
+      "evidence_paths": [".github/workflows/release.yml", "CYBERSECURITY_ASSURANCE.md"]
+    },
+    {
+      "id": "INF-02",
+      "domain": "Cloud/Infrastructure Security",
+      "title": "Secret and credential handling",
+      "objective": "Infrastructure credentials are least-privilege, non-committed and redacted from routine output.",
+      "required": true,
+      "verification": "Security workflow, repository policy and secret/redaction tests.",
+      "evidence_paths": ["SECURITY.md", ".github/workflows/reliability.yml"]
+    },
+    {
+      "id": "SC-01",
+      "domain": "Supply Chain",
+      "title": "Dependency and license evidence",
+      "objective": "Dependencies and third-party licensing remain visible and policy checked.",
+      "required": true,
+      "verification": "SBOM Evidence workflow and repository CI.",
+      "evidence_paths": [".github/workflows/sbom-evidence.yml", "LICENSE"]
+    },
+    {
+      "id": "SC-02",
+      "domain": "Supply Chain",
+      "title": "Build and revision provenance",
+      "objective": "Qualified artifacts and evidence remain attributable to the intended source revision.",
+      "required": true,
+      "verification": "Release/package provenance plus exact-SHA assurance gate.",
+      "evidence_paths": [".github/workflows/package.yml", "security/assurance.py"]
+    },
+    {
+      "id": "IAM-01",
+      "domain": "Identity & Access",
+      "title": "Authentication/session lifecycle",
+      "objective": "Sessions and credentials are bounded, revocable and cannot independently grant extra authorization.",
+      "required": true,
+      "verification": "Identity/session regression testing under CI/reliability qualification.",
+      "evidence_paths": [".github/workflows/ci.yml", "docs/security/THREAT_MODEL.md"]
+    },
+    {
+      "id": "IAM-02",
+      "domain": "Identity & Access",
+      "title": "Least privilege and privilege boundaries",
+      "objective": "Owner, user, service, device and capability actions retain server-side scope checks.",
+      "required": true,
+      "verification": "Authorization and privilege-escalation regression coverage.",
+      "evidence_paths": ["security/adversarial_cases.json", ".github/workflows/reliability.yml"]
+    },
+    {
+      "id": "DATA-01",
+      "domain": "Data Protection",
+      "title": "Policy-bound data access",
+      "objective": "Cross-user and data-plane access stays bounded by user choice, leases and existing authorization.",
+      "required": true,
+      "verification": "Data Plane Qualification plus cross-user adversarial coverage.",
+      "evidence_paths": [".github/workflows/data-plane-qualification.yml", "security/adversarial_cases.json"]
+    },
+    {
+      "id": "DATA-02",
+      "domain": "Data Protection",
+      "title": "Sensitive material confidentiality",
+      "objective": "Secrets, private data and cryptographic material are protected in storage, transport and logs according to their owning authority.",
+      "required": true,
+      "verification": "Security/reliability tests and threat-model review.",
+      "evidence_paths": [".github/workflows/reliability.yml", "SECURITY.md"]
+    },
+    {
+      "id": "PEN-01",
+      "domain": "Penetration Testing",
+      "title": "Authorized internal attack simulation",
+      "objective": "Representative attack paths are exercised without misrepresenting internal tests as independent assessment.",
+      "required": true,
+      "verification": "Mandatory adversarial categories and assurance report scope statement.",
+      "evidence_paths": ["security/adversarial_cases.json", "CYBERSECURITY_ASSURANCE.md"]
+    },
+    {
+      "id": "PEN-02",
+      "domain": "Penetration Testing",
+      "title": "Findings lifecycle",
+      "objective": "Security findings have severity, status and release-blocking treatment appropriate to risk.",
+      "required": true,
+      "verification": "Machine-readable findings register validation.",
+      "evidence_paths": ["security/findings.json", "security/assurance.py"]
+    },
+    {
+      "id": "RED-01",
+      "domain": "Red Teaming",
+      "title": "Chained authority abuse scenarios",
+      "objective": "Credential theft, approval bypass, confused-deputy and audit-tampering scenarios remain represented.",
+      "required": true,
+      "verification": "Adversarial corpus coverage validation.",
+      "evidence_paths": ["security/adversarial_cases.json", "docs/security/THREAT_MODEL.md"]
+    },
+    {
+      "id": "RED-02",
+      "domain": "Red Teaming",
+      "title": "No silent policy weakening",
+      "objective": "Adversarial success cannot be hidden by weakening required controls or accepting Critical/High findings.",
+      "required": true,
+      "verification": "Fail-closed assurance engine tests.",
+      "evidence_paths": ["security/assurance.py", "tests/test_cybersecurity_assurance.py"]
+    },
+    {
+      "id": "REC-01",
+      "domain": "Recovery Testing",
+      "title": "Backup and restore assurance",
+      "objective": "Backups are treated as useful only when restoration is tested while preserving authorization and audit boundaries.",
+      "required": true,
+      "verification": "Recovery adversarial case plus existing reliability qualification.",
+      "evidence_paths": ["security/adversarial_cases.json", ".github/workflows/reliability.yml"]
+    },
+    {
+      "id": "REC-02",
+      "domain": "Recovery Testing",
+      "title": "Compromise recovery",
+      "objective": "Credential, key, device and session revocation/rotation paths are security requirements rather than operational suggestions.",
+      "required": true,
+      "verification": "Recovery/key-rotation corpus coverage and findings gate.",
+      "evidence_paths": ["security/adversarial_cases.json", "security/findings.json"]
+    }
+  ]
+}
