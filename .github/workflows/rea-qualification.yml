@@ -1,0 +1,52 @@
+name: REA Qualification
+
+on:
+  push:
+    paths:
+      - "integrations/rea/**"
+      - "tools/reverse_engineering.py"
+      - "tools/builtins.py"
+      - "scripts/install_rea.py"
+      - "scripts/rea_live_probe.py"
+      - "tests/test_rea_integration.py"
+      - "tests/test_install_rea.py"
+      - "installer/**"
+      - ".github/workflows/rea-qualification.yml"
+  pull_request:
+    paths:
+      - "integrations/rea/**"
+      - "tools/reverse_engineering.py"
+      - "tools/builtins.py"
+      - "scripts/install_rea.py"
+      - "scripts/rea_live_probe.py"
+      - "tests/test_rea_integration.py"
+      - "tests/test_install_rea.py"
+      - "installer/**"
+      - ".github/workflows/rea-qualification.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  official-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked Vishnu tool dependencies
+        run: python scripts/install_locked_requirements.py tools
+      - name: Install and verify pinned REA
+        run: python scripts/install_rea.py
+      - name: Qualify official REA stdio MCP boundary
+        run: python scripts/rea_live_probe.py
+      - name: Run REA integration tests
+        run: pytest -q tests/test_rea_integration.py tests/test_install_rea.py
