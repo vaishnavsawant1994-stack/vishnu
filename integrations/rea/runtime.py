@@ -13,6 +13,48 @@ from typing import Any, Mapping
 REA_PACKAGE_VERSION = "6.5.0"
 MCP_PROTOCOL_VERSION = "2025-11-25"
 _SUPPORTED_HANDSHAKE_PROTOCOLS = frozenset({"2025-11-25", "2025-06-18", "2025-03-26"})
+_REA_ENVIRONMENT_KEYS = frozenset(
+    {
+        "PATH",
+        "HOME",
+        "USER",
+        "LOGNAME",
+        "SHELL",
+        "TMP",
+        "TEMP",
+        "TMPDIR",
+        "LANG",
+        "DISPLAY",
+        "WAYLAND_DISPLAY",
+        "XDG_RUNTIME_DIR",
+        "XDG_CONFIG_HOME",
+        "XDG_CACHE_HOME",
+        "DBUS_SESSION_BUS_ADDRESS",
+        "SystemRoot",
+        "WINDIR",
+        "ComSpec",
+        "PATHEXT",
+        "USERPROFILE",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "APPDATA",
+        "LOCALAPPDATA",
+        "PROGRAMDATA",
+        "JAVA_HOME",
+        "GHIDRA_INSTALL_DIR",
+        "ANDROID_HOME",
+        "ANDROID_SDK_ROOT",
+        "HTTP_PROXY",
+        "HTTPS_PROXY",
+        "NO_PROXY",
+        "ALL_PROXY",
+        "http_proxy",
+        "https_proxy",
+        "no_proxy",
+        "all_proxy",
+    }
+)
+_REA_ENVIRONMENT_PREFIXES = ("REA_", "LC_", "NPM_CONFIG_", "npm_config_", "NODE_")
 
 
 class REAError(RuntimeError):
@@ -72,6 +114,29 @@ def _positive_int(value: str | None, default: int) -> int:
     return parsed
 
 
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().casefold() in {"1", "true", "yes", "on"}
+
+
+def filtered_rea_environment(env: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Return only host/provider settings REA needs, excluding unrelated Vishnu secrets.
+
+    REA provider configuration uses the REA_* namespace. Common host, Java,
+    Android, npm/proxy and desktop-session variables are retained so the official
+    runtime and caller-installed engines behave normally. Full inheritance is an
+    explicit owner override for unusual provider environments.
+    """
+    source = os.environ if env is None else env
+    if _truthy(source.get("VISHNU_REA_INHERIT_ENV")):
+        return {str(key): str(value) for key, value in source.items()}
+    selected: dict[str, str] = {}
+    for key, value in source.items():
+        name = str(key)
+        if name in _REA_ENVIRONMENT_KEYS or name.startswith(_REA_ENVIRONMENT_PREFIXES):
+            selected[name] = str(value)
+    return selected
+
+
 class REAMCPRuntime:
     """Own one long-lived local REA MCP process and preserve its native session state.
 
@@ -82,8 +147,10 @@ class REAMCPRuntime:
     """
 
     def __init__(self, config: REAProcessConfig | None = None, *, env: Mapping[str, str] | None = None):
-        self.config = config or REAProcessConfig.from_environment(env)
-        self._environment = dict(os.environ if env is None else env)
+        source_environment = os.environ if env is None else env
+        self.config = config or REAProcessConfig.from_environment(source_environment)
+        self._environment_inherited = _truthy(source_environment.get("VISHNU_REA_INHERIT_ENV"))
+        self._environment = filtered_rea_environment(source_environment)
         self._process: subprocess.Popen[bytes] | None = None
         self._pending: dict[int | str, queue.Queue[dict[str, Any]]] = {}
         self._pending_lock = threading.Lock()
@@ -129,6 +196,7 @@ class REAMCPRuntime:
             "server_capabilities": dict(self._server_capabilities),
             "instructions": self._instructions,
             "command": list(self.config.command),
+            "environment_mode": "inherited" if self._environment_inherited else "filtered",
             "pid": process.pid if process is not None and process.poll() is None else None,
             "recent_stderr": list(self._stderr)[-10:],
             "recent_notifications": list(self._notifications)[-20:],
