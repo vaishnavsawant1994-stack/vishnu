@@ -7,6 +7,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from devices.registry import DeviceRegistry
 from server.trust_continuity_api import trust_continuity_router
 from trust_continuity.integration import attach_trust_continuity_runtime
 
@@ -46,7 +47,11 @@ class FakeRegistry:
             "permissions": [],
             "last_seen_at": None,
         }
-        return {"id": device_id, "name": name, "platform": platform}, f"credential-{self.counter}-not-persisted"
+        return {
+            "id": device_id,
+            "name": name,
+            "platform": platform,
+        }, f"credential-{self.counter}-not-persisted"
 
     def set_permissions(self, device_id, scopes):
         self.devices[device_id]["permissions"] = sorted(scopes)
@@ -124,7 +129,9 @@ def test_attach_uses_canonical_authorities_and_is_idempotent(tmp_path: Path):
     assert services["sensor_permissions"] is not None
 
 
-def test_recovery_is_one_shot_and_never_persists_proof_or_device_credential(tmp_path: Path):
+def test_recovery_is_one_shot_and_never_persists_proof_or_device_credential(
+    tmp_path: Path,
+):
     services = runtime_dict(tmp_path)
     runtime = attach_trust_continuity_runtime(services)
     token = runtime.recovery.begin_restore(
@@ -139,9 +146,10 @@ def test_recovery_is_one_shot_and_never_persists_proof_or_device_credential(tmp_
         lost_device_id="trusted-phone",
     )
     assert result.device_credential == "credential-1-not-persisted"
-    assert services["device_registry"].devices[result.restored_device_id]["permissions"] == sorted(
-        FakeRegistry.OWNER_SCOPES
-    )
+    restored_scopes = services["device_registry"].devices[result.restored_device_id][
+        "permissions"
+    ]
+    assert set(restored_scopes) == set(DeviceRegistry.OWNER_SCOPES)
     with pytest.raises(PermissionError):
         runtime.recovery.complete_restore(
             token,
@@ -173,7 +181,9 @@ def test_work_engine_rejects_cycles_and_manual_dependency_bypass(tmp_path: Path)
         runtime.work.start_step(job, "second")
 
 
-def test_trust_center_delegates_to_canonical_emergency_and_oauth_authorities(tmp_path: Path):
+def test_trust_center_delegates_to_canonical_emergency_and_oauth_authorities(
+    tmp_path: Path,
+):
     services = runtime_dict(tmp_path)
     runtime = attach_trust_continuity_runtime(services)
     runtime.trust_center.stop_actions(actor="trusted-phone")
