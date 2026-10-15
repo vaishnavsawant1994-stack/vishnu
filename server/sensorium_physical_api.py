@@ -8,6 +8,7 @@ from server.sensorium_context_api import sensorium_context_router
 from server.sensorium_fusion_api import sensorium_fusion_router
 from server.sensorium_iot_adapter_api import sensorium_iot_adapter_router
 from server.sensorium_native_api import sensorium_native_router
+from server.sensorium_wearable_relay_api import sensorium_wearable_relay_router
 from server.vision_voice_api import vision_voice_router
 
 
@@ -106,6 +107,9 @@ def sensorium_physical_router(runtime) -> APIRouter:
     # Read-only smart-home observation adapters remain separate from IoT action
     # proposals and never receive execution authority.
     root.include_router(sensorium_iot_adapter_router(runtime))
+    # Native watch/earbud observations travel over the already trusted mobile
+    # DeviceGateway and still require exact local wearable-session proof.
+    root.include_router(sensorium_wearable_relay_router(runtime))
     # Model-less qualification runtimes intentionally retain only physical/native
     # evidence surfaces. Camera, Vision+Voice and model-based fusion mount only in
     # full runtimes where the governed model router exists.
