@@ -1,3 +1,5 @@
+import atexit
+
 from tools import (
     advanced_control,
     automation,
@@ -69,6 +71,7 @@ def register_builtin_tools(
     # so all REA calls inherit the existing emergency-stop and approval policy.
     rea_runtime = REAMCPRuntime.from_environment()
     rea_registration = register_rea_tools(registry, rea_runtime)
+    atexit.register(rea_runtime.close)
     capability_objects['rea_runtime'] = rea_runtime
     capability_objects['rea_registration'] = rea_registration
     if events is not None:
