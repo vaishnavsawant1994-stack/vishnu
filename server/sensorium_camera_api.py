@@ -25,7 +25,7 @@ def sensorium_camera_router(runtime) -> APIRouter:
         service = CameraVisionService(registry, gateway, models, event_bus=events)
         runtime["sensorium_camera"] = service
 
-    def controller(authorization: str | None, device_id: str | None) -> str:
+    def controller(authorization: str | None, device_id: str | None, *, sensitive: bool = True) -> str:
         resolved = str(device_id or "").strip()
         token = str(authorization or "").removeprefix("Bearer ").strip()
         if not resolved or not token:
@@ -34,8 +34,8 @@ def sensorium_camera_router(runtime) -> APIRouter:
             raise HTTPException(401, "Device authentication failed")
         if not registry.authorize(resolved, "device:read"):
             raise HTTPException(403, "Device is not permitted to read device context")
-        if not registry.authorize(resolved, "memory:sensitive"):
-            raise HTTPException(403, "Camera observation requires sensitive-context permission")
+        if sensitive and not registry.authorize(resolved, "memory:sensitive"):
+            raise HTTPException(403, "Remote camera observation requires sensitive-context permission")
         return resolved
 
     def translate(exc: Exception) -> HTTPException:
@@ -53,7 +53,11 @@ def sensorium_camera_router(runtime) -> APIRouter:
         authorization: str | None = Header(default=None),
         x_device_id: str | None = Header(default=None),
     ):
-        device_id = controller(authorization, x_device_id)
+        # Browser camera permission and the explicit Analyze action happen on the
+        # same paired device that submits this one frame. The frame is still
+        # classified sensitive at the model-routing boundary. Remote mobile
+        # camera reads remain gated by memory:sensitive + device:admin.
+        device_id = controller(authorization, x_device_id, sensitive=False)
         try:
             return service.analyze_browser_snapshot(
                 device_id,
