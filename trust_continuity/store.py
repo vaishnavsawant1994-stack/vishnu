@@ -136,6 +136,35 @@ class TrustContinuityStore:
             )
         return self.get(namespace, record_id) or {}
 
+    def claim_status(
+        self,
+        namespace: str,
+        record_id: str,
+        *,
+        expected_status: str,
+        claimed_status: str,
+    ) -> dict[str, Any] | None:
+        """Atomically claim a state transition for one-shot ceremonies.
+
+        The payload is unchanged. Returning ``None`` means another caller already
+        consumed or moved the record, which makes replay/concurrency fail closed.
+        """
+        with self.transaction() as conn:
+            row = conn.execute(
+                "SELECT status FROM tc_records WHERE namespace=? AND record_id=?",
+                (namespace, record_id),
+            ).fetchone()
+            if row is None or row["status"] != expected_status:
+                return None
+            cursor = conn.execute(
+                "UPDATE tc_records SET status=?,updated_at=? "
+                "WHERE namespace=? AND record_id=? AND status=?",
+                (claimed_status, utcnow(), namespace, record_id, expected_status),
+            )
+            if cursor.rowcount != 1:
+                return None
+        return self.get(namespace, record_id)
+
     def get(self, namespace: str, record_id: str) -> dict[str, Any] | None:
         with self._lock, self._connect() as conn:
             row = conn.execute(
