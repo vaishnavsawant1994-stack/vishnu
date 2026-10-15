@@ -26,6 +26,17 @@ from tools import (
 from integrations.rea import REAMCPRuntime, register_rea_tools
 
 
+_rea_runtime_instance = None
+
+
+def _rea_runtime():
+    global _rea_runtime_instance
+    if _rea_runtime_instance is None:
+        _rea_runtime_instance = REAMCPRuntime.from_environment()
+        atexit.register(_rea_runtime_instance.close)
+    return _rea_runtime_instance
+
+
 def register_builtin_tools(
     registry,
     memory,
@@ -66,12 +77,12 @@ def register_builtin_tools(
     advanced_control.register(registry, settings)
     capability_objects = {}
 
-    # REA stays a separate local analysis authority. Vishnu owns the long-lived
-    # stdio transport and projects REA's live catalog through this same registry,
-    # so all REA calls inherit the existing emergency-stop and approval policy.
-    rea_runtime = REAMCPRuntime.from_environment()
+    # REA stays a separate local analysis authority. Vishnu owns one long-lived
+    # stdio transport per process and projects REA's live catalog through this
+    # same registry, so all calls inherit the existing emergency-stop and
+    # approval policy without creating a second authority.
+    rea_runtime = _rea_runtime()
     rea_registration = register_rea_tools(registry, rea_runtime)
-    atexit.register(rea_runtime.close)
     capability_objects['rea_runtime'] = rea_runtime
     capability_objects['rea_registration'] = rea_registration
     if events is not None:
