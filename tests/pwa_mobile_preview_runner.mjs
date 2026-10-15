@@ -20,8 +20,16 @@ if (!source.includes(before)) {
 if (!source.includes(sphereBefore)) {
   throw new Error('Canonical responsive sphere synchronization point changed; update the runner explicitly.');
 }
+const sweepBefore = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    const sweep=await page.evaluate(()=>{";
+const sweepAfter = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    await page.waitForFunction(()=>{const node=document.querySelector('.v-shortcuts');if(!node)return false;const r=node.getBoundingClientRect();return r.width>0&&r.height>0;});\n    const sweep=await page.evaluate(()=>{"
 
-await writeFile(generatedUrl, source.replace(before, after).replace(sphereBefore, sphereAfter), 'utf8');
+if (!source.includes(sweepBefore)) {
+  throw new Error('Canonical responsive sweep changed; update the Home-layout synchronization runner explicitly.');
+}
+
+let generated = source.replace(before, after).replace(sphereBefore, sphereAfter);
+generated = generated.replace(sweepBefore, sweepAfter);
+await writeFile(generatedUrl, generated, 'utf8');
 try {
   await import(generatedUrl.href + '?run=' + Date.now());
 } finally {
