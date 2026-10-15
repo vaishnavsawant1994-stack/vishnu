@@ -22,14 +22,6 @@ class VishnuCoreBridge:
     stop, verification and trusted-action audit rules.
     """
 
-    _OBSERVABLE_RUNTIME_KEYS = (
-        "runtime_state",
-        "tools",
-        "device_registry",
-        "continuity",
-        "telemetry",
-    )
-
     def __init__(
         self,
         settings: LabSettings,
@@ -114,9 +106,8 @@ class VishnuCoreBridge:
         if executor is None or not callable(getattr(executor, "chat", None)):
             raise CoreBridgeUnavailable("stable Vishnu AgentExecutor is unavailable")
 
-        # The Lab deliberately submits an untrusted proposal rather than a tool
-        # call. Core plans the action again, so Lab parameters never become an
-        # approval or dispatch bypass.
+        # The Lab submits advisory data rather than a tool call. Core plans again,
+        # so Lab parameters never become an approval or dispatch bypass.
         request = {
             "source": "vishnu_intelligence_lab",
             "proposal_id": proposal.id,
@@ -170,34 +161,44 @@ class VishnuCoreBridge:
         )
         return result
 
+    @staticmethod
+    def _runtime_state_projection(state: Any) -> dict[str, Any]:
+        try:
+            candidate = state.snapshot() if callable(getattr(state, "snapshot", None)) else state
+        except Exception:
+            return {"available": True, "read_failed": True}
+        if isinstance(candidate, (str, int, float, bool, type(None))):
+            return {"state": str(candidate)}
+        projected: dict[str, Any] = {"available": True}
+        state_value = getattr(candidate, "state", None)
+        if state_value is not None:
+            projected["state"] = str(getattr(state_value, "value", state_value))[:80]
+        sequence = getattr(candidate, "sequence", None)
+        if isinstance(sequence, int):
+            projected["sequence"] = sequence
+        # request_id and arbitrary context are intentionally excluded.
+        return projected
+
     @classmethod
     def _safe_core_snapshot(cls, runtime: Mapping[str, Any]) -> dict[str, Any]:
         snapshot: dict[str, Any] = {}
         state = runtime.get("runtime_state")
         if state is not None:
-            if callable(getattr(state, "snapshot", None)):
-                try:
-                    snapshot["runtime_state"] = state.snapshot()
-                except Exception:
-                    snapshot["runtime_state"] = {"available": True, "read_failed": True}
-            elif isinstance(state, (str, int, float, bool, type(None), dict, list, tuple)):
-                snapshot["runtime_state"] = state
-            else:
-                snapshot["runtime_state"] = {"available": True}
+            snapshot["runtime_state"] = cls._runtime_state_projection(state)
 
         tools = runtime.get("tools")
         if tools is not None and callable(getattr(tools, "all", None)):
             try:
                 snapshot["tools"] = [
                     {
-                        "name": str(getattr(tool, "name", "")),
-                        "risk": str(getattr(getattr(tool, "risk", None), "name", "unknown")),
+                        "name": str(getattr(tool, "name", ""))[:200],
+                        "risk": str(getattr(getattr(tool, "risk", None), "name", "unknown"))[:80],
                         "prohibited": bool(getattr(tool, "prohibited", False)),
                     }
                     for tool in tools.all()
                 ]
                 snapshot["emergency_stop"] = bool(getattr(tools, "emergency_stop", False))
-                snapshot["core_autonomy_mode"] = str(getattr(tools, "autonomy_mode", "unknown"))
+                snapshot["core_autonomy_mode"] = str(getattr(tools, "autonomy_mode", "unknown"))[:80]
             except Exception:
                 snapshot["tools"] = {"available": True, "read_failed": True}
 
@@ -219,7 +220,7 @@ class VishnuCoreBridge:
                 snapshot["devices"] = {"available": True, "read_failed": True}
 
         # Deliberately no SecretVault, memory content, credentials, approval
-        # records, owner-access secrets, or raw continuity messages here.
+        # records, owner-access secrets, raw continuity messages or request IDs.
         snapshot["excluded_from_observation"] = [
             "secret_vault",
             "credential_material",
@@ -227,5 +228,6 @@ class VishnuCoreBridge:
             "approval_tokens",
             "owner_access_secrets",
             "raw_continuity_messages",
+            "request_ids",
         ]
         return snapshot
