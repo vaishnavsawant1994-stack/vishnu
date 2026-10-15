@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import math
 from typing import Any, Callable, Mapping
 
 from .config import LabSettings
@@ -74,18 +75,23 @@ class AGIResearchEvaluator:
         failures: list[str] = []
         for dimension in self.DIMENSIONS:
             raw = float(scores.get(dimension, 0.0))
-            value = max(0.0, min(raw, 1.0))
+            if not math.isfinite(raw):
+                value = 0.0
+                failures.append(f"{dimension} score is non-finite")
+            else:
+                value = max(0.0, min(raw, 1.0))
             normalized[dimension] = value
             if value < self.settings.minimum_promotion_score:
                 failures.append(f"{dimension} below threshold")
-        if not evidence:
+        clean_evidence = tuple(str(item).strip() for item in evidence if str(item).strip())
+        if not clean_evidence:
             failures.append("no qualification evidence supplied")
         result = EvaluationResult(
             subject_id=subject_id,
             scores=normalized,
             passed=not failures,
-            evidence=tuple(str(item) for item in evidence),
-            failures=tuple(failures),
+            evidence=clean_evidence,
+            failures=tuple(dict.fromkeys(failures)),
         )
         self.memory.put(result.id, "evaluation", result.public_dict())
         self.memory.audit(
