@@ -187,18 +187,23 @@ object SensoriumSensors {
 
     fun snapshot(context: Context, requested: JSONArray): JSONObject {
         val sensors = JSONObject()
-        for (i in 0 until requested.length().coerceAtMost(16)) {
-            when (val kind = requested.optString(i).lowercase()) {
-                "location" -> sensors.put(kind, location(context))
-                "motion" -> sensors.put(kind, motion(context))
-                "environment" -> sensors.put(kind, environment(context))
-                "network" -> sensors.put(kind, network(context))
-                else -> Unit
-            }
-        }
         val sessions = JSONObject()
-        listOf("location", "motion", "environment", "network").forEach { kind ->
-            SensoriumSessionRegistry.get(kind)?.let { sessions.put(kind, SensoriumSessionRegistry.proof(kind)) }
+        for (i in 0 until requested.length().coerceAtMost(16)) {
+            val kind = requested.optString(i).lowercase()
+            if (kind !in setOf("location", "motion", "environment", "network")) continue
+            // Fail closed on-device before touching hardware. A server-side
+            // policy/scope can request this read, but only a local owner grant
+            // authorizes the phone to sample the sensor.
+            SensoriumSessionRegistry.require(kind, "*")
+            val sample = when (kind) {
+                "location" -> location(context)
+                "motion" -> motion(context)
+                "environment" -> environment(context)
+                "network" -> network(context)
+                else -> continue
+            }
+            sensors.put(kind, sample)
+            sessions.put(kind, SensoriumSessionRegistry.proof(kind, "*"))
         }
         return JSONObject().put("sensors", sensors).put("sessions", sessions)
     }
