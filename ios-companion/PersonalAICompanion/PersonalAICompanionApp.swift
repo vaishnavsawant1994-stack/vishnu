@@ -109,6 +109,10 @@ struct PersonalAICompanionApp: App {
             }
             .onChange(of: scenePhase) { _, phase in
                 if phase == .active, store.deviceID != nil { store.connect() }
+                if phase != .active {
+                    store.vision.stop()
+                    store.visionActive = false
+                }
                 if phase == .background { BackgroundCoordinator.shared.schedule() }
             }
         }
@@ -151,6 +155,14 @@ struct PersonalAICompanionApp: App {
                 Section("Voice") {
                     Toggle("Active voice session",isOn:Binding(get:{store.voiceActive},set:{ value in Task { await store.setVoiceActive(value) }}))
                     Text("Background audio is used only while an active voice session is running. Ordinary device connectivity follows iOS lifecycle rules.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
+                }
+                Section("Vishnu Vision") {
+                    Toggle("Allow camera snapshots for 5 minutes",isOn:Binding(get:{store.visionActive},set:{ value in Task { await store.setVisionActive(value) }}))
+                    LabeledContent("Camera permission", value: store.vision.permissionDescription)
+                    Text("Vision works only while this app remains in the foreground. Enabling it turns on the iOS camera privacy indicator. Vishnu may request snapshots during this session, but raw frames are not retained and the session stops automatically.")
+                        .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
+                    Text("Face/identity recognition is not enabled by this control. That would require a separate explicit biometric opt-in.")
+                        .font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
                 }
                 Section("Notifications") {
                     Text("The iPhone registers its APNs token and sends it through the authenticated Vishnu device channel. A later APNs provider stage can use this registration for server-initiated background notifications.").font(PersonalAITheme.Typography.supporting).foregroundStyle(.secondary)
