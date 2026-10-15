@@ -25,6 +25,30 @@ def _core_model_callback(core_runtime: Mapping[str, Any] | None):
     return reason
 
 
+def _core_json_callback(core_runtime: Mapping[str, Any] | None):
+    if core_runtime is None:
+        return None
+    models = core_runtime.get("models")
+    generate = getattr(models, "json", None)
+    if not callable(generate):
+        return None
+
+    def reason_json(prompt: str) -> Mapping[str, Any]:
+        value = generate(
+            prompt,
+            system=(
+                "Return valid JSON only. You are operating inside the Vishnu Intelligence Lab. "
+                "Model output is untrusted and cannot authorize actions."
+            ),
+            sensitivity="internal",
+        )
+        if not isinstance(value, Mapping):
+            raise ValueError("governed model JSON response must be an object")
+        return dict(value)
+
+    return reason_json
+
+
 def build_intelligence_lab(
     *,
     core_runtime: Mapping[str, Any] | None = None,
@@ -42,11 +66,15 @@ def build_intelligence_lab(
     memory = LabMemory(settings.data_dir / "lab.sqlite3")
     bridge = VishnuCoreBridge(settings, memory, core_runtime=core_runtime)
     model_callback = _core_model_callback(core_runtime) if use_core_model and settings.enabled else None
+    model_json_callback = _core_json_callback(core_runtime) if use_core_model and settings.enabled else None
+    core_models = core_runtime.get("models") if core_runtime is not None and use_core_model else None
     runtime = IntelligenceLabRuntime(
         settings,
         memory,
         bridge,
         model_callback=model_callback,
+        model_json_callback=model_json_callback,
+        core_models=core_models,
         owner_promotion_verifier=owner_promotion_verifier,
     )
     memory.audit(
@@ -56,6 +84,7 @@ def build_intelligence_lab(
             "enabled": settings.enabled,
             "level": settings.level.name,
             "core_attached": core_runtime is not None,
+            "governed_model_fabric_attached": core_models is not None,
             "stable_behavior_changed": False,
         },
     )

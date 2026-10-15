@@ -87,7 +87,7 @@ class LabMemory:
         }
 
     def recent(self, kind: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
-        limit = max(1, min(int(limit), 500))
+        limit = max(1, min(int(limit), 5000))
         query = "SELECT id,kind,payload,created_at FROM lab_records"
         args: tuple[Any, ...]
         if kind:
@@ -161,7 +161,7 @@ class LabMemory:
             )
 
     def audit_log(self, limit: int = 100) -> list[dict[str, Any]]:
-        limit = max(1, min(int(limit), 1000))
+        limit = max(1, min(int(limit), 5000))
         with self._lock, self._connect() as con:
             rows = con.execute(
                 "SELECT seq,category,action,payload,created_at FROM lab_audit ORDER BY seq DESC LIMIT ?",

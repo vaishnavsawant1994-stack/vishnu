@@ -5,13 +5,17 @@ on:
     paths:
       - "intelligence_lab/**"
       - "tests/test_intelligence_lab.py"
+      - "tests/test_intelligence_lab_phase2.py"
       - "docs/INTELLIGENCE_LAB.md"
+      - "docs/INTELLIGENCE_LAB_PHASE2.md"
       - ".github/workflows/intelligence-lab.yml"
   pull_request:
     paths:
       - "intelligence_lab/**"
       - "tests/test_intelligence_lab.py"
+      - "tests/test_intelligence_lab_phase2.py"
       - "docs/INTELLIGENCE_LAB.md"
+      - "docs/INTELLIGENCE_LAB_PHASE2.md"
       - ".github/workflows/intelligence-lab.yml"
   workflow_dispatch:
 
@@ -34,8 +38,8 @@ jobs:
         run: python scripts/install_locked_requirements.py tools
       - name: Compile Intelligence Lab only
         run: python -m compileall -q intelligence_lab
-      - name: Qualify Lab isolation and governance
-        run: pytest -q tests/test_intelligence_lab.py
+      - name: Qualify Lab isolation, Phase 2 intelligence, and governance
+        run: pytest -q tests/test_intelligence_lab.py tests/test_intelligence_lab_phase2.py
       - name: Verify stable entrypoint has no Lab import
         run: |
           python - <<'PY'
