@@ -4,7 +4,7 @@
 <key>CFBundleDisplayName</key><string>Vishnu</string>
 <key>VishnuCapabilityHost</key><string></string>
 <key>VishnuPasskeyDomain</key><string>$(VISHNU_PASSKEY_DOMAIN)</string>
-<key>NSCameraUsageDescription</key><string>Vishnu uses the camera only when you choose to scan a one-time device connection QR code.</string>
+<key>NSCameraUsageDescription</key><string>Vishnu uses the camera for connection-code scanning and for Vision sessions that you explicitly enable while using the app.</string>
 <key>NSMicrophoneUsageDescription</key><string>Vishnu uses the microphone only while you actively use voice mode.</string>
 <key>NSLocalNetworkUsageDescription</key><string>Vishnu discovers and connects securely to your paired Vishnu computer on your local network.</string>
 <key>NSBonjourServices</key><array><string>_vishnu._tcp</string></array>
