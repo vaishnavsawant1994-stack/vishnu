@@ -4,22 +4,32 @@ on:
   push:
     paths:
       - "intelligence_lab/**"
+      - "devices/gateway.py"
+      - "devices/trusted_compute.py"
+      - "tools/device_compute.py"
       - "tests/test_intelligence_lab.py"
       - "tests/test_intelligence_lab_phase2.py"
       - "tests/test_intelligence_lab_phase3.py"
+      - "tests/test_intelligence_lab_phase3_1_compute.py"
       - "docs/INTELLIGENCE_LAB.md"
       - "docs/INTELLIGENCE_LAB_PHASE2.md"
       - "docs/INTELLIGENCE_LAB_PHASE3.md"
+      - "docs/INTELLIGENCE_LAB_PHASE3_1.md"
       - ".github/workflows/intelligence-lab.yml"
   pull_request:
     paths:
       - "intelligence_lab/**"
+      - "devices/gateway.py"
+      - "devices/trusted_compute.py"
+      - "tools/device_compute.py"
       - "tests/test_intelligence_lab.py"
       - "tests/test_intelligence_lab_phase2.py"
       - "tests/test_intelligence_lab_phase3.py"
+      - "tests/test_intelligence_lab_phase3_1_compute.py"
       - "docs/INTELLIGENCE_LAB.md"
       - "docs/INTELLIGENCE_LAB_PHASE2.md"
       - "docs/INTELLIGENCE_LAB_PHASE3.md"
+      - "docs/INTELLIGENCE_LAB_PHASE3_1.md"
       - ".github/workflows/intelligence-lab.yml"
   workflow_dispatch:
 
@@ -40,10 +50,10 @@ jobs:
           python-version: "3.12"
       - name: Install locked test tooling
         run: python scripts/install_locked_requirements.py tools
-      - name: Compile Intelligence Lab only
-        run: python -m compileall -q intelligence_lab
-      - name: Qualify Lab isolation, Phase 2 intelligence, Phase 3 performance, and governance
-        run: pytest -q tests/test_intelligence_lab.py tests/test_intelligence_lab_phase2.py tests/test_intelligence_lab_phase3.py
+      - name: Compile Intelligence Lab and bounded compute bridge
+        run: python -m py_compile intelligence_lab/*.py devices/gateway.py devices/trusted_compute.py tools/device_compute.py
+      - name: Qualify Lab isolation, Phase 2 intelligence, Phase 3 performance, Phase 3.1 compute, and governance
+        run: pytest -q tests/test_intelligence_lab.py tests/test_intelligence_lab_phase2.py tests/test_intelligence_lab_phase3.py tests/test_intelligence_lab_phase3_1_compute.py
       - name: Verify stable entrypoint has no Lab import
         run: |
           python - <<'PY'
