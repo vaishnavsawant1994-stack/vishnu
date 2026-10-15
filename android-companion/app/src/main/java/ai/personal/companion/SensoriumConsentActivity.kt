@@ -69,11 +69,13 @@ class SensoriumConsentActivity : AppCompatActivity() {
                 finish()
             }
             "document" -> {
-                // Document extraction requires this document session plus the
-                // visible foreground Vision camera. Open it immediately so the
-                // owner can aim at the document and see the camera indicator.
                 startActivity(Intent(this, VisionCameraActivity::class.java).putExtra("facing", "back").putExtra("camera_id", "mobile:back"))
                 finish()
+            }
+            "microphone" -> {
+                ContextCompat.startForegroundService(this, Intent(this, SensoriumAudioService::class.java))
+                status.text = "Microphone allowed for this session. Android will keep a visible Vishnu audio notification."
+                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 900)
             }
             else -> {
                 status.text = "$kind allowed for this session. Expires automatically."
