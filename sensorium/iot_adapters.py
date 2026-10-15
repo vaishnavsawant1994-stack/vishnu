@@ -213,7 +213,11 @@ class HomeAssistantObservationAdapter:
                 (time.time(), str(adapter_id)),
             ).rowcount
         if row is not None:
-            self.vault.delete(str(row["secret_ref"]))
+            secret_ref = str(row["secret_ref"])
+            try:
+                self.vault.delete(secret_ref)
+            except AttributeError:
+                self.vault.set(secret_ref, "")
         if changed:
             self._emit("sensorium.iot.adapter_revoked", adapter_id=str(adapter_id), kind=adapter["kind"])
         return bool(changed)
@@ -243,8 +247,6 @@ class HomeAssistantObservationAdapter:
         if not adapter["enabled"]:
             raise PermissionError("IoT adapter is disabled")
         entity = self._entity(entity_id)
-        # Re-resolve every read so DNS changes cannot silently introduce a
-        # link-local/multicast/mixed public-private target after registration.
         parsed = urlsplit(adapter["base_url"])
         has_private, _ = self._validate_addresses(self._resolver(str(parsed.hostname)))
         if parsed.scheme == "http" and not (adapter["allow_private_http"] and has_private):
