@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from .config import LabSettings
 from .memory import LabMemory
@@ -103,16 +103,23 @@ class AGIResearchEvaluator:
 
 
 class PromotionGate:
-    """Experiment -> evaluation -> verification -> owner approval -> eligibility.
+    """Experiment -> evaluation -> verification -> trusted owner approval -> eligibility.
 
     Eligibility is intentionally the final operation here. This class has no
     code path that mutates stable Vishnu code, memory, policy, permissions, or
     tool registration. Promotion into Core is a separate engineering/release act.
     """
 
-    def __init__(self, memory: LabMemory, settings: LabSettings):
+    def __init__(
+        self,
+        memory: LabMemory,
+        settings: LabSettings,
+        *,
+        owner_approval_verifier: Callable[[], bool] | None = None,
+    ):
         self.memory = memory
         self.settings = settings
+        self.owner_approval_verifier = owner_approval_verifier
 
     def begin(self, subject_id: str) -> PromotionRecord:
         record = PromotionRecord(subject_id=subject_id)
@@ -152,6 +159,15 @@ class PromotionGate:
     def owner_approve(self, record: PromotionRecord, *, approved: bool) -> PromotionRecord:
         if record.status is not PromotionStatus.VERIFIED:
             raise PermissionError("promotion must be verified before owner approval")
+        if approved:
+            if self.owner_approval_verifier is None:
+                raise PermissionError("trusted owner approval verifier is not attached")
+            try:
+                trusted = bool(self.owner_approval_verifier())
+            except Exception as exc:
+                raise PermissionError("trusted owner approval verification failed") from exc
+            if not trusted:
+                raise PermissionError("trusted owner approval was not verified")
         if not approved:
             updated = replace(
                 record,
@@ -170,7 +186,7 @@ class PromotionGate:
 
     def mark_eligible(self, record: PromotionRecord) -> PromotionRecord:
         if record.status is not PromotionStatus.OWNER_APPROVED or not record.owner_approved:
-            raise PermissionError("owner approval is required before promotion eligibility")
+            raise PermissionError("trusted owner approval is required before promotion eligibility")
         if not record.evaluation_id or not record.verification_evidence:
             raise PermissionError("promotion evidence is incomplete")
         updated = replace(record, status=PromotionStatus.ELIGIBLE)
