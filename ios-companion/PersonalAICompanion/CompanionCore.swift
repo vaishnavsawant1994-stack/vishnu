@@ -43,12 +43,12 @@ final class KeychainStore {
 final class CompanionStore: ObservableObject {
     @Published var baseURL=KeychainStore.shared.get("base") ?? ""
     @Published var pairingToken=""; @Published var pairingCode=""; @Published var pairingTLSFingerprint=""; @Published var pairingServiceID=""
-    @Published var status="Not paired"; @Published var connected=false; @Published var allowInsecureDevelopment=false; @Published var voiceActive=false
-    let socket=DeviceSocket(); let voice=VoiceSession(); private let keychain=KeychainStore.shared; private var observers:[NSObjectProtocol]=[]
+    @Published var status="Not paired"; @Published var connected=false; @Published var allowInsecureDevelopment=false; @Published var voiceActive=false; @Published var visionActive=false
+    let socket=DeviceSocket(); let voice=VoiceSession(); let vision=VisionCameraSession.shared; private let keychain=KeychainStore.shared; private var observers:[NSObjectProtocol]=[]
     var deviceID:String?{keychain.get("device")}; var bearer:String?{keychain.get("bearer")}; var tlsPin:String?{keychain.get("tls_pin")}; var serviceID:String?{keychain.get("service_id")}
 
     init(){
-        socket.onStatus={ [weak self] text,connected in Task{@MainActor in self?.status=text;self?.connected=connected} }
+        socket.onStatus={ [weak self] text,connected in Task{@MainActor in self?.status=text;self?.connected=connected;if !connected { self?.vision.stop(); self?.visionActive=false }} }
         socket.commandHandler={ [weak self] message in guard let self else{return ["ok":false,"error":"companion unavailable"]};return await self.handleCommand(message)}
         observers.append(NotificationCenter.default.addObserver(forName:.personalAIAPNSToken,object:nil,queue:.main){[weak self] note in guard let token=note.object as? String else{return};Task{await self?.socket.sendPushRegistration(token)}})
         observers.append(NotificationCenter.default.addObserver(forName:.personalAIAPNSError,object:nil,queue:.main){[weak self] note in
@@ -57,6 +57,9 @@ final class CompanionStore: ObservableObject {
         })
         observers.append(NotificationCenter.default.addObserver(forName:.personalAIBackgroundRefresh,object:nil,queue:.main){[weak self]_ in
             Task{@MainActor in self?.connect()}
+        })
+        observers.append(NotificationCenter.default.addObserver(forName:UIApplication.willResignActiveNotification,object:nil,queue:.main){[weak self]_ in
+            Task{@MainActor in self?.vision.stop();self?.visionActive=false}
         })
         if deviceID != nil { status="Paired" }
     }
@@ -108,9 +111,15 @@ final class CompanionStore: ObservableObject {
         }
         socket.connect(base:base,deviceID:device,bearer:bearer,allowInsecure:allowInsecureDevelopment,tlsPin:nil)
     }
-    func disconnect(){socket.disconnect(reason:"User disconnected")}
-    func forgetDevice(){socket.disconnect(reason:"Forgot device");keychain.clear();connected=false;status="Not paired"}
+    func disconnect(){vision.stop();visionActive=false;socket.disconnect(reason:"User disconnected")}
+    func forgetDevice(){vision.stop();visionActive=false;socket.disconnect(reason:"Forgot device");keychain.clear();connected=false;status="Not paired"}
     func setVoiceActive(_ active:Bool)async{if active{do{try await voice.activate();voiceActive=true;status="Voice session ready"}catch{voiceActive=false;status="Voice unavailable: \(error.localizedDescription)"}}else{voice.deactivate();voiceActive=false}}
+    func setVisionActive(_ active:Bool)async{
+        if active {
+            do { try await vision.startByOwner(); visionActive=true; status="Vishnu Vision active for up to 5 minutes" }
+            catch { vision.stop();visionActive=false;status="Vision unavailable: \(error.localizedDescription)" }
+        } else { vision.stop();visionActive=false;status="Vishnu Vision stopped" }
+    }
 
     private func handleCommand(_ message:[String:Any])async->[String:Any]{
         let action=message["action"] as? String ?? "";let params=message["parameters"] as? [String:Any] ?? [:]
@@ -120,6 +129,10 @@ final class CompanionStore: ObservableObject {
         case "notification":let content=UNMutableNotificationContent();content.title=params["title"] as? String ?? "Vishnu";content.body=params["body"] as? String ?? "";do{try await UNUserNotificationCenter.current().add(UNNotificationRequest(identifier:UUID().uuidString,content:content,trigger:nil));return["ok":true,"result":["delivered":true]]}catch{return["ok":false,"error":error.localizedDescription]}
         case "open_url","launch_app":guard let text=params["url"] as? String,let url=URL(string:text) else{return["ok":false,"error":"iOS requires a valid universal link or registered URL scheme in parameters.url"]};let opened=await UIApplication.shared.open(url);return["ok":opened,"result":["opened":opened]]
         case "voice_status":return["ok":true,"result":["active":voiceActive,"microphone_permission":voice.permissionDescription]]
+        case "camera_status":let result=vision.status();visionActive=(result["active"] as? Bool)==true;return["ok":true,"result":result]
+        case "camera_session_start":let result=vision.status();visionActive=(result["active"] as? Bool)==true;return["ok":true,"result":result.merging(["consent_required":!visionActive,"instruction":visionActive ? "Vision already active." : "Open Vishnu on this iPhone and enable the Vishnu Vision toggle."],uniquingKeysWith:{_,new in new})]
+        case "camera_snapshot":do{let result=try await vision.snapshot();visionActive=true;return["ok":true,"result":result]}catch{visionActive=false;return["ok":false,"error":error.localizedDescription]}
+        case "camera_session_stop":vision.stop();visionActive=false;return["ok":true,"result":["stopped":true]]
         default:return["ok":false,"error":"Unsupported iOS action: \(action)"]
         }
     }
@@ -136,7 +149,7 @@ final class DeviceSocket:NSObject {
         var request=URLRequest(url:url);request.setValue("Bearer \(bearer)",forHTTPHeaderField:"Authorization")
         let transport=PinnedTransport.session(fingerprint:tlsPin);ownedSession=transport.0 === URLSession.shared ? nil:transport.0;pinnedDelegate=transport.1
         let session=ownedSession ?? URLSession.shared;let task=session.webSocketTask(with:request);self.task=task;task.resume();onStatus?("Connecting…",false)
-        Task{await send(["type":"hello","device_id":deviceID,"platform":"ios","capabilities":["device_info","battery","notification","open_url","launch_app","voice_status","data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone","data_plane_progress_pending","data_plane_progress_ack"]]);if let token=UserDefaults.standard.string(forKey:"personal_ai_apns_token"){await sendPushRegistration(token)};await receiveLoop()}
+        Task{await send(["type":"hello","device_id":deviceID,"platform":"ios","capabilities":["device_info","battery","notification","open_url","launch_app","voice_status","camera_status","camera_session_start","camera_snapshot","camera_session_stop","data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone","data_plane_progress_pending","data_plane_progress_ack"]]);if let token=UserDefaults.standard.string(forKey:"personal_ai_apns_token"){await sendPushRegistration(token)};await receiveLoop()}
     }
     func disconnect(reason:String){intentionallyClosed=true;reconnectWork?.cancel();task?.cancel(with:.normalClosure,reason:reason.data(using:.utf8));task=nil;ownedSession?.invalidateAndCancel();ownedSession=nil;pinnedDelegate=nil;onStatus?(reason,false)}
     private func scheduleReconnect(){guard !intentionallyClosed,let c=config else{return};let work=DispatchWorkItem{[weak self]in self?.connect(base:c.0,deviceID:c.1,bearer:c.2,allowInsecure:c.3,tlsPin:c.4)};reconnectWork=work;DispatchQueue.main.asyncAfter(deadline:.now()+3,execute:work)}
