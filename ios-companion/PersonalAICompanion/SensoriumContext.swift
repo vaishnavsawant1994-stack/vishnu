@@ -105,6 +105,17 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
         return grants.values.sorted { $0.sensor < $1.sensor }
     }
 
+    private func cameraPermissionGranted() async -> Bool {
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            return true
+        case .notDetermined:
+            return await AVCaptureDevice.requestAccess(for: .video)
+        default:
+            return false
+        }
+    }
+
     func activateByOwner(_ sensor: String, reason: String = "Owner enabled Sensorium") async throws {
         let kind = sensor.lowercased()
         guard UIApplication.shared.applicationState == .active else {
@@ -141,12 +152,12 @@ final class SensoriumContext: NSObject, ObservableObject, CLLocationManagerDeleg
             try await SensoriumScreenSession.shared.startByOwner()
             _ = grant(kind, resourceID: "mobile:screen", reason: reason)
         case "document":
-            guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized || await AVCaptureDevice.requestAccess(for: .video) else {
+            guard await cameraPermissionGranted() else {
                 throw CompanionError.badResponse("Camera permission is required for local document extraction.")
             }
             _ = grant(kind, reason: reason)
         case "spatial":
-            guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized || await AVCaptureDevice.requestAccess(for: .video) else {
+            guard await cameraPermissionGranted() else {
                 throw CompanionError.badResponse("Camera permission is required for ARKit spatial sensing.")
             }
             try SensoriumSpatialSession.shared.startByOwner()
