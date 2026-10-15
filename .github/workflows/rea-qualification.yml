@@ -47,6 +47,6 @@ jobs:
       - name: Install and verify pinned REA
         run: python scripts/install_rea.py
       - name: Qualify official REA stdio MCP boundary
-        run: python scripts/rea_live_probe.py
+        run: python -m scripts.rea_live_probe
       - name: Run REA integration tests
         run: pytest -q tests/test_rea_integration.py tests/test_install_rea.py
