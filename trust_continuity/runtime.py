@@ -21,6 +21,7 @@ from .work_engine import WorkEngineV2
 
 @dataclass
 class TrustContinuityRuntime:
+    owner_id: str
     store: TrustContinuityStore
     readiness: ProductionReadinessManager
     l4: PhysicalL4Qualification
@@ -40,6 +41,7 @@ class TrustContinuityRuntime:
 
     def status(self) -> dict[str, Any]:
         return {
+            "owner_identity_bound": bool(self.owner_id),
             "readiness": self.readiness.readiness().as_dict(),
             "l4": self.l4.platform_status(),
             "execution_authority": False,
@@ -53,6 +55,7 @@ def build_trust_continuity_runtime(
     *,
     data_dir: str | Path,
     commit_sha: str,
+    owner_id: str = "owner",
     is_trusted_device: Callable[[str], bool],
     approval_check: Callable[[str, dict[str, Any]], bool] | None = None,
     proposal_approval_check: Callable[[str], bool] | None = None,
@@ -79,6 +82,7 @@ def build_trust_continuity_runtime(
     root.mkdir(parents=True, exist_ok=True)
     store = TrustContinuityStore(root / "trust-continuity.sqlite3")
     runtime = TrustContinuityRuntime(
+        owner_id=str(owner_id or "owner"),
         store=store,
         readiness=ProductionReadinessManager(store, commit_sha=commit_sha),
         l4=PhysicalL4Qualification(store, commit_sha=commit_sha),
