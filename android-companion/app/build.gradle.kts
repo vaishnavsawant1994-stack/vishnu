@@ -23,6 +23,7 @@ dependencies {
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
     implementation("com.google.mlkit:pose-detection:18.0.0-beta5")
     implementation("com.google.ar:core:1.56.0")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
