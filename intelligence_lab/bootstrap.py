@@ -6,6 +6,8 @@ from typing import Any, Callable, Mapping, MutableMapping
 from .bridge import VishnuCoreBridge
 from .config import LabSettings
 from .memory import LabMemory
+from .phase3_config import Phase3Settings
+from .phase3_runtime import IntelligenceLabPhase3
 from .runtime import IntelligenceLabRuntime
 
 
@@ -53,6 +55,7 @@ def build_intelligence_lab(
     *,
     core_runtime: Mapping[str, Any] | None = None,
     settings: LabSettings | None = None,
+    phase3_settings: Phase3Settings | None = None,
     owner_promotion_verifier: Callable[[], bool] | None = None,
     use_core_model: bool = True,
 ) -> IntelligenceLabRuntime:
@@ -77,6 +80,11 @@ def build_intelligence_lab(
         core_models=core_models,
         owner_promotion_verifier=owner_promotion_verifier,
     )
+    runtime.phase3 = IntelligenceLabPhase3(
+        runtime,
+        core_runtime=core_runtime,
+        settings=phase3_settings,
+    )
     memory.audit(
         "runtime",
         "built",
@@ -85,6 +93,7 @@ def build_intelligence_lab(
             "level": settings.level.name,
             "core_attached": core_runtime is not None,
             "governed_model_fabric_attached": core_models is not None,
+            "phase3_attached": True,
             "stable_behavior_changed": False,
         },
     )
@@ -95,6 +104,7 @@ def attach_intelligence_lab(
     core_runtime: MutableMapping[str, Any],
     *,
     settings: LabSettings | None = None,
+    phase3_settings: Phase3Settings | None = None,
     owner_promotion_verifier: Callable[[], bool] | None = None,
     use_core_model: bool = True,
 ) -> IntelligenceLabRuntime:
@@ -113,6 +123,7 @@ def attach_intelligence_lab(
     lab = build_intelligence_lab(
         core_runtime=core_runtime,
         settings=settings,
+        phase3_settings=phase3_settings,
         owner_promotion_verifier=owner_promotion_verifier,
         use_core_model=use_core_model,
     )

@@ -6,13 +6,17 @@ changes stable runtime configuration, memory, permissions, or tool authority.
 """
 
 from .config import CapabilityLevel, LabSettings
+from .phase3_config import Phase3Settings
+from .phase3_runtime import IntelligenceLabPhase3
 from .runtime import IntelligenceLabRuntime
 from .bootstrap import attach_intelligence_lab, build_intelligence_lab
 
 __all__ = [
     "CapabilityLevel",
     "LabSettings",
+    "Phase3Settings",
     "IntelligenceLabRuntime",
+    "IntelligenceLabPhase3",
     "attach_intelligence_lab",
     "build_intelligence_lab",
 ]
