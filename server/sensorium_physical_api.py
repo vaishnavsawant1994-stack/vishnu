@@ -4,18 +4,16 @@ from fastapi import APIRouter, Header, HTTPException, Query
 
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
 from server.sensorium_camera_api import sensorium_camera_router
+from server.sensorium_fusion_api import sensorium_fusion_router
 from server.sensorium_native_api import sensorium_native_router
 
 
 def sensorium_physical_router(runtime) -> APIRouter:
-    """Read-only physical Sensorium plus native-emulator qualification routes.
+    """Physical Sensorium plus governed native-device and multimodal surfaces.
 
-    Physical observations reuse existing desktop and companion primitives. The
-    returned root router also mounts the native emulator/simulator/VM evidence
-    surface and the separately governed camera-vision surface when available.
-    Neither surface grants physical input, app-launch, notification, URL-opening,
-    arbitrary adb/simctl/shell, or other side-effecting authority. Those remain
-    owned by the governed tool and Computer Control runtimes.
+    Sensor observations are evidence only. Camera/context routes never inherit
+    Computer Control, ToolRegistry, Device Control, approval or execution
+    authority; those remain separate governed systems.
     """
 
     root = APIRouter()
@@ -40,11 +38,7 @@ def sensorium_physical_router(runtime) -> APIRouter:
         mobile = MobilePhysicalSensorAdapter(registry, gateway, event_bus=events)
         runtime["sensorium_mobile"] = mobile
 
-    def controller(
-        authorization: str | None,
-        device_id: str | None,
-        scope: str,
-    ) -> str:
+    def controller(authorization: str | None, device_id: str | None, scope: str) -> str:
         resolved = str(device_id or "").strip()
         token = str(authorization or "").removeprefix("Bearer ").strip()
         if not resolved or not token:
@@ -102,11 +96,11 @@ def sensorium_physical_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     root.include_router(router)
-    # Some qualification/unit runtimes intentionally construct physical Sensorium
-    # without a model router. Preserve that boundary and mount camera Vision only
-    # in full runtimes where governed visual analysis is actually available.
+    # Model-less qualification runtimes intentionally retain only physical/native
+    # evidence surfaces. Camera and fusion reasoning mount only in full runtimes.
     if runtime.get("models") is not None:
         root.include_router(sensorium_camera_router(runtime))
+        root.include_router(sensorium_fusion_router(runtime))
     settings = runtime.get("settings") if runtime else None
     native_lab = runtime.get("sensorium_native_lab") if runtime else None
     if native_lab is not None or getattr(settings, "data_dir", None) is not None:
