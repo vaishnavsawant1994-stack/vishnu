@@ -1,0 +1,113 @@
+name: Sensorium L4 Physical Device Lab
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  android-physical:
+    runs-on: [self-hosted, sensorium-l4, android]
+    timeout-minutes: 60
+    env:
+      VISHNU_L4_SELF_HOSTED: "true"
+      EVIDENCE_FILE: ${{ vars.SENSORIUM_L4_ANDROID_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require provisioned Android physical evidence
+        shell: bash
+        run: |
+          test -n "$EVIDENCE_FILE"
+          test -f "$EVIDENCE_FILE"
+      - name: Validate Android L4 evidence
+        shell: bash
+        run: python3 scripts/qualify_sensorium_l4.py --platform android --evidence "$EVIDENCE_FILE" --output sensorium-l4-android.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-l4-android
+          path: sensorium-l4-android.json
+
+  ios-physical:
+    runs-on: [self-hosted, sensorium-l4, ios, macos]
+    timeout-minutes: 60
+    env:
+      VISHNU_L4_SELF_HOSTED: "true"
+      EVIDENCE_FILE: ${{ vars.SENSORIUM_L4_IOS_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require provisioned iPhone/iPad physical evidence
+        shell: bash
+        run: |
+          test -n "$EVIDENCE_FILE"
+          test -f "$EVIDENCE_FILE"
+      - name: Validate iOS L4 evidence
+        shell: bash
+        run: python3 scripts/qualify_sensorium_l4.py --platform ios --evidence "$EVIDENCE_FILE" --output sensorium-l4-ios.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-l4-ios
+          path: sensorium-l4-ios.json
+
+  macos-physical:
+    runs-on: [self-hosted, sensorium-l4, macos]
+    timeout-minutes: 45
+    env:
+      VISHNU_L4_SELF_HOSTED: "true"
+      EVIDENCE_FILE: ${{ vars.SENSORIUM_L4_MACOS_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require provisioned macOS physical evidence
+        shell: bash
+        run: |
+          test -n "$EVIDENCE_FILE"
+          test -f "$EVIDENCE_FILE"
+      - name: Validate macOS L4 evidence
+        shell: bash
+        run: python3 scripts/qualify_sensorium_l4.py --platform macos --evidence "$EVIDENCE_FILE" --output sensorium-l4-macos.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-l4-macos
+          path: sensorium-l4-macos.json
+
+  linux-physical:
+    runs-on: [self-hosted, sensorium-l4, linux]
+    timeout-minutes: 45
+    env:
+      VISHNU_L4_SELF_HOSTED: "true"
+      EVIDENCE_FILE: ${{ vars.SENSORIUM_L4_LINUX_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require provisioned Linux physical evidence
+        shell: bash
+        run: |
+          test -n "$EVIDENCE_FILE"
+          test -f "$EVIDENCE_FILE"
+      - name: Validate Linux L4 evidence
+        shell: bash
+        run: python3 scripts/qualify_sensorium_l4.py --platform linux --evidence "$EVIDENCE_FILE" --output sensorium-l4-linux.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-l4-linux
+          path: sensorium-l4-linux.json
+
+  windows-physical:
+    runs-on: [self-hosted, sensorium-l4, windows]
+    timeout-minutes: 45
+    env:
+      VISHNU_L4_SELF_HOSTED: "true"
+      EVIDENCE_FILE: ${{ vars.SENSORIUM_L4_WINDOWS_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require provisioned Windows physical evidence
+        shell: pwsh
+        run: |
+          if (-not $env:EVIDENCE_FILE) { throw "SENSORIUM_L4_WINDOWS_EVIDENCE is not configured" }
+          if (-not (Test-Path $env:EVIDENCE_FILE)) { throw "Physical evidence file is missing" }
+      - name: Validate Windows L4 evidence
+        shell: pwsh
+        run: py -3 scripts/qualify_sensorium_l4.py --platform windows --evidence $env:EVIDENCE_FILE --output sensorium-l4-windows.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sensorium-l4-windows
+          path: sensorium-l4-windows.json
