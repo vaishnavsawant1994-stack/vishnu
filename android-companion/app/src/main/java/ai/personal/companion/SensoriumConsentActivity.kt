@@ -20,12 +20,14 @@ class SensoriumConsentActivity : AppCompatActivity() {
     private val sensor by lazy { intent?.getStringExtra("sensor")?.trim()?.lowercase().orEmpty() }
     private val resource by lazy { intent?.getStringExtra("resource_id")?.trim().orEmpty().ifBlank { "*" } }
     private val reason by lazy { intent?.getStringExtra("reason")?.trim().orEmpty().ifBlank { "Vishnu requested temporary context." } }
+    private val requester by lazy { intent?.getStringExtra("requesting_device_id")?.trim()?.take(200).orEmpty() }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(32, 40, 32, 40) }
+        val requesterText = if (requester.isBlank()) "Requested locally on this device" else "Requested by trusted device: $requester"
         status = TextView(this).apply {
-            text = "Vishnu wants temporary access to $sensor.\n\n$reason\n\nThis session expires automatically. It does not grant Computer Control, Device Control or tool authority."
+            text = "Vishnu wants temporary access to $sensor.\n\n$requesterText\n\n$reason\n\nThis session expires automatically. It does not grant Computer Control, Device Control or tool authority."
             textSize = 17f
         }
         val allow = Button(this).apply { text = "Allow this session"; setOnClickListener { approve() } }
@@ -48,7 +50,9 @@ class SensoriumConsentActivity : AppCompatActivity() {
             return
         }
         if (sensor == "screen") {
-            startActivity(Intent(this, SensoriumScreenActivity::class.java).putExtra("reason", reason))
+            startActivity(Intent(this, SensoriumScreenActivity::class.java)
+                .putExtra("reason", reason)
+                .putExtra("requesting_device_id", requester))
             finish(); return
         }
         val missing = requiredPermissions().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
@@ -61,11 +65,13 @@ class SensoriumConsentActivity : AppCompatActivity() {
 
     private fun grantAndFinish() {
         val kind = if (sensor == "audio") "microphone" else sensor
-        SensoriumSessionRegistry.grant(kind, resource, reason = reason)
+        SensoriumSessionRegistry.grant(kind, resource, reason = reason, requestedByDeviceId = requester.ifBlank { null })
         when (kind) {
             "spatial" -> {
                 SensoriumSessionRegistry.revoke("spatial", resource)
-                startActivity(Intent(this, SensoriumSpatialActivity::class.java))
+                startActivity(Intent(this, SensoriumSpatialActivity::class.java)
+                    .putExtra("reason", reason)
+                    .putExtra("requesting_device_id", requester))
                 finish()
             }
             "document" -> {
