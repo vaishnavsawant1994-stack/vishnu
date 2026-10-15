@@ -102,7 +102,11 @@ def sensorium_physical_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     root.include_router(router)
-    root.include_router(sensorium_camera_router(runtime))
+    # Some qualification/unit runtimes intentionally construct physical Sensorium
+    # without a model router. Preserve that boundary and mount camera Vision only
+    # in full runtimes where governed visual analysis is actually available.
+    if runtime.get("models") is not None:
+        root.include_router(sensorium_camera_router(runtime))
     settings = runtime.get("settings") if runtime else None
     native_lab = runtime.get("sensorium_native_lab") if runtime else None
     if native_lab is not None or getattr(settings, "data_dir", None) is not None:
