@@ -31,7 +31,10 @@ def _risk_from_annotations(descriptor: Mapping[str, Any]) -> Risk:
         return Risk.DESTRUCTIVE
     if annotations.get("readOnlyHint") is True:
         return Risk.READ_ONLY
-    return Risk.EXTERNAL_SIDE_EFFECT
+    # REA intentionally marks additive Evidence/session recording as non-read-only.
+    # When destructiveHint remains false, map that bounded local mutation to
+    # Vishnu's reversible class rather than inventing a stronger external effect.
+    return Risk.REVERSIBLE
 
 
 def _tool_handler(runtime: REAMCPRuntime, upstream_name: str):
