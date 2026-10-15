@@ -13,7 +13,7 @@ Vishnu integrates the official [REA](https://github.com/morluto/rea) runtime as 
 - Complete MCP `CallToolResult` objects are returned unchanged. Vishnu therefore preserves `content`, `structuredContent`, `isError`, Evidence references and `_meta.provenance.untrusted_content` rather than rewriting target-derived data.
 - `rea_catalog` exposes REA's authoritative live catalog. `rea_status` exposes negotiated server/runtime diagnostics.
 
-REA's MCP tool annotations determine the minimum Vishnu risk class. Explicit read-only tools remain `READ_ONLY`; tools marked destructive become `DESTRUCTIVE`; all other non-read operations fail closed as `EXTERNAL_SIDE_EFFECT`. They then pass through the normal Vishnu owner-approval and emergency-stop authority.
+REA's MCP tool annotations determine the Vishnu risk class without weakening REA's own effect model. Explicit read-only tools remain `READ_ONLY`; non-read-only but non-destructive operations such as additive Evidence/session recording map to `REVERSIBLE`; tools marked destructive become `DESTRUCTIVE`. They then pass through the normal Vishnu owner-approval and emergency-stop authority.
 
 ## Configuration
 
