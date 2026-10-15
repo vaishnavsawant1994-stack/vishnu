@@ -13,7 +13,7 @@
 <body>
 <main class="shell">
 <header><div><small>VISHNU</small><h1>Your intelligence, with you.</h1></div><span id="runtime-status" class="status">● Unpaired</span></header>
-<nav><button class="active" data-page="home">Home</button><button data-page="memory">Memory</button><button data-page="control">Control</button><button data-page="dashboard">Dashboard</button></nav>
+<nav><button class="active" data-page="home">Home</button><button data-page="memory">Memory</button><button data-page="vision">Vision</button><button data-page="control">Control</button><button data-page="dashboard">Dashboard</button></nav>
 <section id="home" class="page active">
 <div class="core" aria-label="Neural Pulse Core"><i></i><i></i><i></i><div class="core-center"><span>VISHNU</span><b id="core-state">Ready when you are</b></div></div>
 <div class="mode"><span>Observe</span><span>Suggest</span><span class="selected">Ask</span><span>Act</span></div>
@@ -21,7 +21,30 @@
 <div id="reply" class="panel" hidden></div>
 </section>
 <section id="memory" class="page"><h2>Second Brain</h2><p class="muted">Scoped access only</p><div class="panel"><form id="memory-search" class="stack"><input id="memory-query" aria-label="Search memory" placeholder="Search your memory"/><button type="submit" class="action">Search</button></form><div id="memory-results"><p>Pair a trusted runtime to access permitted memories.</p></div></div></section>
-<section id="control" class="page"><h2>Control</h2><div class="panel"><b>Secure runtime pairing</b><p>The long-lived device credential is kept only for this browser session. No runtime secrets are shipped in this public build.</p><form id="pair" class="stack"><input id="runtime-origin" aria-label="Secure runtime URL" inputmode="url" placeholder="https://your-secure-runtime.example"/><input id="pair-token" aria-label="Pairing token" placeholder="Pairing token"/><input id="pair-code" aria-label="Pairing code" inputmode="numeric" placeholder="Pairing code"/><button type="submit" class="action">Pair this iPhone</button></form><p id="pair-message" class="muted"></p></div><div class="panel"><b>Emergency control</b><p>Emergency stop requires the owner bootstrap secret and is never stored by this web companion.</p><form id="emergency" class="stack"><input id="owner-secret" aria-label="Owner secret" type="password" autocomplete="off" placeholder="Owner secret"/><div class="row"><button type="button" id="stop" class="danger">STOP</button><button type="button" id="resume" class="action">Resume</button></div></form></div></section>
+<section id="vision" class="page">
+<h2>Vishnu Vision</h2><p class="muted">Camera and microphone access are local, visible and temporary</p>
+<div class="panel">
+<b id="vision-indicator">Camera off</b><p id="vision-status">Choose a camera and start an explicit temporary session. Vishnu never receives permanent silent-camera authority.</p>
+<video id="vision-preview" playsinline muted style="width:100%;max-height:52vh;object-fit:cover;border-radius:18px;background:#000;display:none" aria-label="Vishnu Vision camera preview"></video>
+<div class="stack">
+<select id="vision-camera" aria-label="Camera"><option value="">Default camera</option></select>
+<select id="vision-policy" aria-label="Camera permission policy"><option value="ask">Ask every time</option><option value="never">Never allow this camera</option></select>
+<select id="vision-task" aria-label="Visual assistance mode"><option value="general">General observation</option><option value="repair">Repair guidance</option><option value="cooking">Cooking assistance</option><option value="exercise">Exercise form</option><option value="document">Document reading</option><option value="equipment">Equipment setup</option><option value="room">Room/environment</option><option value="screen">Screen troubleshooting</option><option value="troubleshooting">General troubleshooting</option></select>
+<select id="vision-memory" aria-label="Visual memory"><option value="none">Don't remember</option><option value="description">Remember description only</option><option value="image">Save privacy-processed image</option></select>
+<label><input id="vision-redact-faces" type="checkbox" /> Blur detected faces on this device before sending</label>
+<label><input id="vision-speak" type="checkbox" /> Read Vishnu's answer aloud</label>
+<input id="vision-question" aria-label="Vision question" value="Describe what you can see." maxlength="2000"/>
+<div class="row"><button type="button" id="vision-start" class="action">Start camera</button><button type="button" id="vision-analyze" class="action" disabled>Analyze snapshot</button><button type="button" id="vision-stop" class="danger" disabled>Stop</button></div>
+</div>
+</div>
+<div class="panel">
+<b>Bounded Live Vision</b><p class="muted">Samples 0.2–1 frame/second, skips unchanged scenes locally and on the server, and stops at the visible session deadline.</p>
+<div class="stack"><label>Samples/second <input id="vision-fps" type="number" value="0.5" min="0.2" max="1" step="0.1" /></label><div class="row"><button type="button" id="vision-live-start" class="action" disabled>Start live watch</button><button type="button" id="vision-live-stop" class="danger" disabled>Stop live watch</button></div><span id="vision-live-timer" class="muted">Live Vision off</span></div>
+</div>
+<div class="panel"><b>Vision + Voice</b><p class="muted">Microphone starts only after you press the button. Supported browsers transcribe your question locally/browser-side, analyze the current camera frame, and can read the answer aloud.</p><div class="row"><button type="button" id="vision-voice-start" class="action" disabled>Start Vision + Voice</button><button type="button" id="vision-voice-stop" class="danger" disabled>Stop voice</button></div><span id="vision-voice-status" class="muted">Microphone off</span></div>
+<div id="vision-result" class="muted"></div><p class="muted">Raw camera frames are not retained by default. Biometric identity recognition is a separate owner-only subsystem and is never enabled by this page.</p>
+</section>
+<section id="control" class="page"><h2>Control</h2><div class="panel"><b>Secure runtime pairing</b><p>The long-lived device credential is kept only for this browser session. No runtime secrets are shipped in this public build.</p><form id="pair" class="stack"><input id="runtime-origin" aria-label="Secure runtime URL" inputmode="url" placeholder="https://your-secure-runtime.example"/><input id="pair-token" aria-label="Pairing token" placeholder="Pairing token"/><input id="pair-code" aria-label="Pairing code" inputmode="numeric" placeholder="Pairing code"/><button type="submit" class="action">Pair this browser</button></form><p id="pair-message" class="muted"></p></div><div class="panel"><b>Emergency control</b><p>Emergency stop requires the owner bootstrap secret and is never stored by this web companion.</p><form id="emergency" class="stack"><input id="owner-secret" aria-label="Owner secret" type="password" autocomplete="off" placeholder="Owner secret"/><div class="row"><button type="button" id="stop" class="danger">STOP</button><button type="button" id="resume" class="action">Resume</button></div></form></div></section>
 <section id="dashboard" class="page"><h2>Dashboard</h2><div class="stats"><article><small>MEMORY</small><b id="memory-state">Scoped</b></article><article><small>DEVICE</small><b id="device-state">Unpaired</b></article><article><small>SECURITY</small><b id="security-state">Protected</b></article><article><small>SESSION</small><b id="session-state">None</b></article></div></section>
 <footer><form id="ask"><input id="prompt" aria-label="Ask Vishnu" autocomplete="off" placeholder="Ask Vishnu anything…"/><button type="submit" aria-label="Send message">↑</button></form><div class="footline"><span>Session-only credentials</span><span>Scoped memory</span><span>Approvals</span><span>Emergency stop</span></div></footer>
 </main>

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
 
 from core.security import PairingManager
@@ -42,9 +44,15 @@ def test_zero_config_pairing_uri_contains_identity_not_lan_address():
         expires_at=offer.expires_at,
         fallback_url='https://relay.example.test/path?ignored=1',
     )
-    assert '192.168.' not in uri
-    assert '10.0.' not in uri
-    assert '8767' not in uri
+    # Validate the URI structure instead of searching for port digits in the
+    # complete string. Pairing codes are random six-digit values and may
+    # legitimately contain the same digits as a historical local port.
+    parts = urlsplit(uri)
+    fields = parse_qs(parts.query, keep_blank_values=True)
+    assert parts.scheme == 'vishnu'
+    assert parts.hostname == 'pair'
+    assert parts.port is None
+    assert 'base' not in fields
     payload = parse_pairing_uri(uri, now=offer.expires_at - 10)
     assert payload.zero_config is True
     assert payload.version == 2
