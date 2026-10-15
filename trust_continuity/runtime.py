@@ -14,7 +14,7 @@ from .production import (
     PhysicalL4Qualification,
     ProductionReadinessManager,
 )
-from .services import OAuthLifecycleManager, EvaluationLab, OfflineIntelligence, TrustCenter
+from .services import EvaluationLab, OfflineIntelligence, TrustCenter
 from .store import TrustContinuityStore
 from .work_engine import WorkEngineV2
 
@@ -32,7 +32,9 @@ class TrustContinuityRuntime:
     offline: OfflineIntelligence
     evaluation: EvaluationLab
     future: GovernedFutureCapabilities
-    oauth: OAuthLifecycleManager | None = None
+    # In full Vishnu composition this points at the existing canonical OAuth
+    # authority. The provider-neutral fallback exists only for reduced runtimes.
+    oauth: Any = None
     recovery: UniversalOwnerRecovery | None = None
     trust_center: TrustCenter | None = None
 
@@ -54,9 +56,10 @@ def build_trust_continuity_runtime(
     is_trusted_device: Callable[[str], bool],
     approval_check: Callable[[str, dict[str, Any]], bool] | None = None,
     proposal_approval_check: Callable[[str], bool] | None = None,
+    oauth_manager: Any = None,
     keychain=None,
-    owner_authenticator: Callable[[str, str], bool] | None = None,
-    register_device: Callable[[str, dict[str, Any]], str] | None = None,
+    owner_authenticator: Callable[[str, str, str], bool] | None = None,
+    register_device: Callable[[str, dict[str, Any]], str | dict[str, Any]] | None = None,
     revoke_device: Callable[[str], None] | None = None,
     stop_sensing: Callable[[], None] | None = None,
     stop_actions: Callable[[], None] | None = None,
@@ -68,6 +71,8 @@ def build_trust_continuity_runtime(
 
     Optional security-sensitive services stay unavailable until their canonical
     callbacks are explicitly supplied. Defaults never grant action authority.
+    A full Vishnu runtime supplies its existing OAuth manager; the keychain-backed
+    provider-neutral lifecycle is retained only for reduced/test compositions.
     """
 
     root = Path(data_dir)
@@ -93,7 +98,9 @@ def build_trust_continuity_runtime(
         ),
     )
 
-    if keychain is not None:
+    if oauth_manager is not None:
+        runtime.oauth = oauth_manager
+    elif keychain is not None:
         runtime.oauth = VerifiedOAuthLifecycleManager(
             store,
             KeychainSecretStore(keychain),
