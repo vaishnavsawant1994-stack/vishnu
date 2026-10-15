@@ -17,7 +17,10 @@ PYTHON_PROFILES = {
     'python-ml.cdx.json': ('ml', ROOT / 'requirements-ml.txt', False),
     'python-training.cdx.json': ('training', ROOT / 'requirements-training.txt', False),
 }
-NODE_SBOM = 'nodejs.cdx.json'
+NODE_PROFILES = {
+    'nodejs.cdx.json': 'browser-qualification',
+    'rea-nodejs.cdx.json': 'reverse-engineering',
+}
 ALIASES = {
     'mit license': 'MIT',
     'apache license 2.0': 'Apache-2.0',
@@ -143,6 +146,29 @@ def _decision_record(
     }
 
 
+def _node_entries(document: dict[str, Any], *, profile: str, policy: dict[str, Any]) -> list[dict[str, Any]]:
+    root_ref = (document.get('metadata', {}).get('component') or {}).get('bom-ref')
+    direct_refs: set[str] = set()
+    for dependency in document.get('dependencies', []):
+        if dependency.get('ref') == root_ref:
+            direct_refs.update(dependency.get('dependsOn', []))
+            break
+    return [
+        _decision_record(
+            ecosystem='npm',
+            profile=profile,
+            name=str(component.get('name', '')),
+            version=str(component.get('version', '')),
+            license_value=_component_license(component),
+            license_source='package-lock metadata',
+            direct=str(component.get('bom-ref', '')) in direct_refs,
+            policy=policy,
+        )
+        for component in document.get('components', [])
+        if component.get('name') and component.get('version')
+    ]
+
+
 def build_report(sbom_dir: Path, policy_path: Path = POLICY_PATH) -> dict[str, Any]:
     policy = json.loads(policy_path.read_text(encoding='utf-8'))
     entries: list[dict[str, Any]] = []
@@ -169,24 +195,12 @@ def build_report(sbom_dir: Path, policy_path: Path = POLICY_PATH) -> dict[str, A
                 policy=policy,
             ))
 
-    node_document = json.loads((sbom_dir / NODE_SBOM).read_text(encoding='utf-8'))
-    root_ref = (node_document.get('metadata', {}).get('component') or {}).get('bom-ref')
-    direct_refs: set[str] = set()
-    for dependency in node_document.get('dependencies', []):
-        if dependency.get('ref') == root_ref:
-            direct_refs.update(dependency.get('dependsOn', []))
-            break
-    for component in node_document.get('components', []):
-        entries.append(_decision_record(
-            ecosystem='npm',
-            profile='browser-qualification',
-            name=str(component.get('name', '')),
-            version=str(component.get('version', '')),
-            license_value=_component_license(component),
-            license_source='package-lock metadata',
-            direct=str(component.get('bom-ref', '')) in direct_refs,
-            policy=policy,
-        ))
+    for filename, profile in NODE_PROFILES.items():
+        path = sbom_dir / filename
+        if not path.is_file():
+            continue
+        document = json.loads(path.read_text(encoding='utf-8'))
+        entries.extend(_node_entries(document, profile=profile, policy=policy))
 
     totals = {decision: sum(entry['decision'] == decision for entry in entries) for decision in ('allow', 'deny', 'review')}
     manifest = json.loads((sbom_dir / 'manifest.json').read_text(encoding='utf-8'))
