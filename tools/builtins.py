@@ -21,6 +21,7 @@ from tools import (
     vision,
     web,
 )
+from integrations.rea import REAMCPRuntime, register_rea_tools
 
 
 def register_builtin_tools(
@@ -62,6 +63,23 @@ def register_builtin_tools(
     browser.register(registry)
     advanced_control.register(registry, settings)
     capability_objects = {}
+
+    # REA stays a separate local analysis authority. Vishnu owns the long-lived
+    # stdio transport and projects REA's live catalog through this same registry,
+    # so all REA calls inherit the existing emergency-stop and approval policy.
+    rea_runtime = REAMCPRuntime.from_environment()
+    rea_registration = register_rea_tools(registry, rea_runtime)
+    capability_objects['rea_runtime'] = rea_runtime
+    capability_objects['rea_registration'] = rea_registration
+    if events is not None:
+        events.emit(
+            'rea.runtime_ready' if rea_registration.available else 'rea.runtime_unavailable',
+            available=rea_registration.available,
+            tool_count=rea_registration.tool_count,
+            package_version=rea_runtime.status().get('package_version'),
+            error=rea_registration.error,
+        )
+
     if models is not None:
         vision.register(registry, models, settings)
         capability_objects['computer'] = computer.register(
