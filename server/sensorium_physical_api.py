@@ -6,6 +6,7 @@ from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSenso
 from server.sensorium_camera_api import sensorium_camera_router
 from server.sensorium_fusion_api import sensorium_fusion_router
 from server.sensorium_native_api import sensorium_native_router
+from server.vision_voice_api import vision_voice_router
 
 
 def sensorium_physical_router(runtime) -> APIRouter:
@@ -97,9 +98,11 @@ def sensorium_physical_router(runtime) -> APIRouter:
 
     root.include_router(router)
     # Model-less qualification runtimes intentionally retain only physical/native
-    # evidence surfaces. Camera and fusion reasoning mount only in full runtimes.
+    # evidence surfaces. Camera, Vision+Voice and fusion reasoning mount only in
+    # full runtimes where the governed model router exists.
     if runtime.get("models") is not None:
         root.include_router(sensorium_camera_router(runtime))
+        root.include_router(vision_voice_router(runtime))
         root.include_router(sensorium_fusion_router(runtime))
     settings = runtime.get("settings") if runtime else None
     native_lab = runtime.get("sensorium_native_lab") if runtime else None
