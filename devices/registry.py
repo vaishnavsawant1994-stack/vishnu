@@ -18,8 +18,8 @@ def now():
 
 
 class DeviceRegistry:
-    # Keep the legacy sets explicit so upgrades can grant the new data-plane
-    # scopes only to devices whose permissions were never customized by owner.
+    # Keep historical sets explicit so upgrades only add new canonical scopes to
+    # permission rows that the owner never customized.
     LEGACY_DEFAULT_SCOPES = {
         'ai:chat', 'memory:read', 'memory:write', 'knowledge:read',
         'knowledge:write', 'activities:read', 'workflow:read',
@@ -29,8 +29,14 @@ class DeviceRegistry:
         'device:admin', 'workflow:approve', 'knowledge:private',
         'memory:sensitive', 'qualification:read', 'qualification:record',
     }
-    DEFAULT_SCOPES = LEGACY_DEFAULT_SCOPES | {'data:read', 'data:sync'}
-    OWNER_SCOPES = LEGACY_OWNER_SCOPES | {'data:read', 'data:sync', 'data:admin'}
+    PRE_SENSOR_DEFAULT_SCOPES = LEGACY_DEFAULT_SCOPES | {'data:read', 'data:sync'}
+    PRE_SENSOR_OWNER_SCOPES = LEGACY_OWNER_SCOPES | {'data:read', 'data:sync', 'data:admin'}
+    # sensor:camera permits requesting an explicit local camera-consent ceremony.
+    # It never permits silent capture. Actual use additionally requires a live
+    # SensorPermissionStore session grant. Biometric identity is owner-only and
+    # remains disabled until a separate explicit enrollment/enable ceremony.
+    DEFAULT_SCOPES = PRE_SENSOR_DEFAULT_SCOPES | {'sensor:camera'}
+    OWNER_SCOPES = PRE_SENSOR_OWNER_SCOPES | {'sensor:camera', 'sensor:biometric'}
 
     def __init__(self, path: Path, events=None):
         self.path = Path(path)
@@ -44,6 +50,7 @@ class DeviceRegistry:
                 migrations=(
                     Migration(1, 'initial-device-registry', self._migration_001_initial),
                     Migration(2, 'canonical-data-permissions', self._migration_002_permissions),
+                    Migration(3, 'canonical-sensor-permissions', self._migration_003_sensor_permissions),
                 ),
             )
             # Permission-row reconstruction is an integrity repair, not a schema
@@ -61,6 +68,9 @@ class DeviceRegistry:
 
     def _migration_002_permissions(self, con):
         self._repair_permission_invariants(con)
+
+    def _migration_003_sensor_permissions(self, con):
+        self._upgrade_untouched_legacy_scopes(con)
 
     def _repair_permission_invariants(self, con):
         con.execute(
@@ -82,6 +92,8 @@ class DeviceRegistry:
             '''SELECT p.device_id,p.scopes_json,d.platform
                FROM device_permissions p JOIN devices d ON d.id=p.device_id'''
         ).fetchall()
+        default_historical = (self.LEGACY_DEFAULT_SCOPES, self.PRE_SENSOR_DEFAULT_SCOPES)
+        owner_historical = (self.LEGACY_OWNER_SCOPES, self.PRE_SENSOR_OWNER_SCOPES)
         for row in rows:
             try:
                 scopes = {str(value) for value in json.loads(row['scopes_json'])}
@@ -89,9 +101,9 @@ class DeviceRegistry:
                 logger.warning('Unable to decode legacy device permissions for %s', row['device_id'], exc_info=True)
                 continue
             target = None
-            if scopes == self.LEGACY_DEFAULT_SCOPES:
+            if any(scopes == historical for historical in default_historical):
                 target = self.DEFAULT_SCOPES
-            elif scopes == self.LEGACY_OWNER_SCOPES:
+            elif any(scopes == historical for historical in owner_historical):
                 target = self.OWNER_SCOPES
             if target is not None:
                 con.execute(
