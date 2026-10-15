@@ -4,15 +4,20 @@ import os
 import platform
 import shutil
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from scripts.install_rea import install as install_rea
 
 
 def run(*cmd,cwd=None):subprocess.check_call(list(cmd),cwd=cwd)
 def main():
-    root=Path(__file__).resolve().parents[1];dist=root/'dist';install_rea(root);run('pyinstaller','--clean','--noconfirm',str(root/'packaging/personal_ai.spec'),cwd=root);system=platform.system()
+    root=ROOT;dist=root/'dist';install_rea(root);run('pyinstaller','--clean','--noconfirm',str(root/'packaging/personal_ai.spec'),cwd=root);system=platform.system()
     if system=='Darwin':
         if os.getenv('PERSONAL_AI_SKIP_DMG','').lower() in {'1','true','yes'}:return
         source=dist/'PersonalAI.app' if (dist/'PersonalAI.app').exists() else dist/'PersonalAI'
