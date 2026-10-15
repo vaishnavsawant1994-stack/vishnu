@@ -7,6 +7,8 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import java.text.DateFormat
+import java.util.Date
 
 class SensoriumPrivacyActivity : AppCompatActivity() {
     private lateinit var list: LinearLayout
@@ -16,7 +18,7 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(28, 32, 28, 32) }
         root.addView(TextView(this).apply { text = "Sensorium Privacy"; textSize = 24f })
         root.addView(TextView(this).apply {
-            text = "Every sensor is session-only. This screen shows local active grants. Seeing/hearing never grants Computer Control, Device Control or tool authority."
+            text = "Every sensor is session-only. This screen shows local active grants. Seeing/hearing never grants Computer Control, Device Control, IoT or tool authority."
             textSize = 14f
         })
         val refresh = Button(this).apply { text = "Refresh sensor status"; setOnClickListener { render() } }
@@ -27,16 +29,26 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
         render()
     }
 
+    private fun heading(value: String) = TextView(this).apply {
+        text = value
+        textSize = 18f
+        setPadding(0, 22, 0, 8)
+    }
+
     private fun render() {
         list.removeAllViews()
+        list.addView(heading("Current sensor sessions"))
         val sessions = SensoriumSessionRegistry.active()
         if (sessions.isEmpty()) {
-            list.addView(TextView(this).apply { text = "Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Spatial OFF"; textSize = 16f })
+            list.addView(TextView(this).apply {
+                text = "Camera OFF · Microphone OFF · Screen OFF · Location OFF · Motion OFF · Environment OFF · Network OFF · Clipboard OFF · Spatial OFF"
+                textSize = 16f
+            })
         } else {
             sessions.forEach { grant ->
                 val remaining = ((grant.expiresAtMs - System.currentTimeMillis()).coerceAtLeast(0) / 1000)
                 list.addView(TextView(this).apply {
-                    text = "${grant.sensor.uppercase()} · SESSION · ${remaining}s remaining · ${grant.resourceId}\nReason: ${grant.reason}"
+                    text = "${grant.sensor.uppercase()} · SESSION · ${remaining}s remaining · ${grant.resourceId}\nReason: ${grant.reason}\nAuthority: explicit local owner consent on this device"
                     textSize = 15f
                     setPadding(0, 12, 0, 12)
                 })
@@ -48,6 +60,31 @@ class SensoriumPrivacyActivity : AppCompatActivity() {
             val camera = VisionCameraBridge.status(this@SensoriumPrivacyActivity).optBoolean("active")
             text = "Hardware: Camera ${if(camera)"ON" else "OFF"} · Screen ${if(screen)"ON" else "OFF"} · Spatial ${if(spatial)"ON" else "OFF"}"
             textSize = 14f
+        })
+
+        list.addView(heading("Retention"))
+        list.addView(TextView(this).apply {
+            text = "Raw camera/screen frames: not retained by Sensorium. Continuous environmental audio: not retained. Clipboard reads: not retained. Exact mobile location: not written to the semantic World Model by default. Semantic summaries follow the selected memory mode. Selected media is saved only when explicitly chosen and privacy-processed."
+            textSize = 14f
+        })
+
+        list.addView(heading("Recent local sensor audit"))
+        val audit = SensoriumSessionRegistry.recentAudit(12)
+        if (audit.isEmpty()) {
+            list.addView(TextView(this).apply { text = "No local Sensorium session events yet."; textSize = 14f })
+        } else {
+            val formatter = DateFormat.getTimeInstance(DateFormat.MEDIUM)
+            audit.forEach { row ->
+                list.addView(TextView(this).apply {
+                    text = "${formatter.format(Date(row.createdAtMs))} · ${row.action} · ${row.sensor.uppercase()} · ${row.resourceId}\n${row.reason}"
+                    textSize = 13f
+                    setPadding(0, 7, 0, 7)
+                })
+            }
+        }
+        list.addView(TextView(this).apply {
+            text = "The Vishnu server also keeps the persistent per-device sensor permission audit; this list is the current app-process audit."
+            textSize = 12f
         })
     }
 
