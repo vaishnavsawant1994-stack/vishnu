@@ -16,6 +16,7 @@ from tools import (
     proactive,
     recovery,
     reminders,
+    reverse_engineering,
     screen,
     system,
     vision,
@@ -62,6 +63,7 @@ def register_builtin_tools(
     browser.register(registry)
     advanced_control.register(registry, settings)
     capability_objects = {}
+    capability_objects['reverse_engineering'] = reverse_engineering.register(registry, settings)
     if models is not None:
         vision.register(registry, models, settings)
         capability_objects['computer'] = computer.register(

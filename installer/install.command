@@ -5,5 +5,6 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
+python scripts/install_rea.py
 python -m playwright install chromium || true
 python -m app.main
