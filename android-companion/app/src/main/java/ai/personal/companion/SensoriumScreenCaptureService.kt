@@ -172,7 +172,7 @@ class SensoriumScreenCaptureService : Service() {
             DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
             imageReader.surface, null, null
         )
-        val reason = intent.getStringExtra("reason") ?: "Owner approved mobile screen understanding"
+        val reason = intent?.getStringExtra("reason") ?: "Owner approved mobile screen understanding"
         SensoriumSessionRegistry.grant("screen", "mobile:screen", reason = reason)
         SensoriumScreenBridge.attach(mediaProjection, imageReader, w, h)
         mediaProjection.registerCallback(object : MediaProjection.Callback() {
