@@ -4,8 +4,11 @@ from fastapi import APIRouter, Header, HTTPException, Query
 
 from sensorium.physical import DesktopPhysicalSensorAdapter, MobilePhysicalSensorAdapter
 from server.sensorium_camera_api import sensorium_camera_router
+from server.sensorium_context_api import sensorium_context_router
 from server.sensorium_fusion_api import sensorium_fusion_router
+from server.sensorium_iot_adapter_api import sensorium_iot_adapter_router
 from server.sensorium_native_api import sensorium_native_router
+from server.sensorium_wearable_relay_api import sensorium_wearable_relay_router
 from server.vision_voice_api import vision_voice_router
 
 
@@ -97,8 +100,18 @@ def sensorium_physical_router(runtime) -> APIRouter:
             raise HTTPException(422, str(exc)) from exc
 
     root.include_router(router)
+    # Sensorium 2 provides permission/attention/world-state/health/privacy and
+    # physical-device evidence surfaces even in model-less qualification runtimes.
+    # Rich screen/cross-modal analysis simply remains unavailable without models.
+    root.include_router(sensorium_context_router(runtime))
+    # Read-only smart-home observation adapters remain separate from IoT action
+    # proposals and never receive execution authority.
+    root.include_router(sensorium_iot_adapter_router(runtime))
+    # Native watch/earbud observations travel over the already trusted mobile
+    # DeviceGateway and still require exact local wearable-session proof.
+    root.include_router(sensorium_wearable_relay_router(runtime))
     # Model-less qualification runtimes intentionally retain only physical/native
-    # evidence surfaces. Camera, Vision+Voice and fusion reasoning mount only in
+    # evidence surfaces. Camera, Vision+Voice and model-based fusion mount only in
     # full runtimes where the governed model router exists.
     if runtime.get("models") is not None:
         root.include_router(sensorium_camera_router(runtime))

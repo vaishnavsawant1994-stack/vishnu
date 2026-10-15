@@ -23,6 +23,7 @@ class DeviceCommandService: Service() {
     val manager=getSystemService(NotificationManager::class.java)
     manager.createNotificationChannel(NotificationChannel("personal_ai_device","Vishnu Device",NotificationManager.IMPORTANCE_LOW))
     manager.createNotificationChannel(NotificationChannel("vishnu_vision","Vishnu Vision",NotificationManager.IMPORTANCE_HIGH).apply{description="Explicit camera consent requests from your paired Vishnu"})
+    manager.createNotificationChannel(NotificationChannel("vishnu_sensorium","Vishnu Sensorium",NotificationManager.IMPORTANCE_HIGH).apply{description="Explicit temporary sensor consent requests from your paired Vishnu"})
     startForeground(7,NotificationCompat.Builder(this,"personal_ai_device").setContentTitle("Vishnu connected").setContentText("Secure device command channel active").setSmallIcon(android.R.drawable.stat_notify_sync).build())
     connect()
   }
@@ -59,14 +60,17 @@ class DeviceCommandService: Service() {
         val capabilities=JSONArray(listOf(
           "device_info","battery","flashlight","open_url","launch_app",
           "camera_list","camera_status","camera_session_start","camera_snapshot","camera_session_stop",
+          "sensor_inventory","sensor_session_start","sensor_snapshot","sensor_stop_all",
+          "screen_snapshot","audio_event_sample","document_extract","pose_gesture","spatial_snapshot",
+          "wearable_inventory","wearable_snapshot",
           "data_plane_status","data_plane_progress_put","data_plane_progress_get","data_plane_tombstone",
           "data_plane_progress_pending","data_plane_progress_ack","data_plane_byte_read"
         ))
         w.send(JSONObject().put("type","hello").put("device_id",device).put("platform","android").put("capabilities",capabilities).toString())
       }
       override fun onMessage(w:WebSocket,text:String){handle(w,JSONObject(text))}
-      override fun onClosed(w:WebSocket,code:Int,reason:String){ws=null;connecting=false;VisionCameraBridge.deactivate();reconnect()}
-      override fun onFailure(w:WebSocket,t:Throwable,r:Response?){ws=null;connecting=false;VisionCameraBridge.deactivate();reconnect()}
+      override fun onClosed(w:WebSocket,code:Int,reason:String){ws=null;connecting=false;stopSensors();reconnect()}
+      override fun onFailure(w:WebSocket,t:Throwable,r:Response?){ws=null;connecting=false;stopSensors();reconnect()}
     })
   }
 
@@ -94,6 +98,41 @@ class DeviceCommandService: Service() {
       .put("camera_id",resource)
   }
 
+  private fun requestSensorConsent(sensorRaw:String,resourceRaw:String,reasonRaw:String,requestingDeviceRaw:String):JSONObject{
+    val sensor=if(sensorRaw.lowercase()=="audio")"microphone" else sensorRaw.lowercase().take(40)
+    val resource=resourceRaw.trim().ifBlank{"*"}.take(240)
+    val reason=reasonRaw.trim().ifBlank{"Vishnu requested temporary $sensor context."}.take(240)
+    val requester=requestingDeviceRaw.trim().take(200)
+    val active=SensoriumSessionRegistry.get(sensor,resource)
+    if(active!=null){return SensoriumSessionRegistry.proof(sensor,resource).put("active",true).put("consent_required",false)}
+    val intent=Intent(this,SensoriumConsentActivity::class.java)
+      .putExtra("sensor",sensor).putExtra("resource_id",resource).putExtra("reason",reason)
+      .putExtra("requesting_device_id",requester)
+      .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    val requestCode=100+(sensor.hashCode() and 0x3fff)
+    val pending=PendingIntent.getActivity(this,requestCode,intent,PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+    val notification=NotificationCompat.Builder(this,"vishnu_sensorium")
+      .setSmallIcon(android.R.drawable.ic_dialog_info)
+      .setContentTitle("Vishnu requests $sensor")
+      .setContentText(if(requester.isBlank()) "Tap to review. Access is temporary and visible." else "Requested by $requester · tap to review temporary access.")
+      .setContentIntent(pending).setAutoCancel(true).setPriority(NotificationCompat.PRIORITY_HIGH).build()
+    getSystemService(NotificationManager::class.java).notify(requestCode,notification)
+    return JSONObject().put("active",false).put("consent_required",true).put("foreground_required",true)
+      .put("sensor",sensor).put("resource_id",resource).put("requested_by_device_id",requester)
+  }
+
+  private fun stopSensors():JSONObject{
+    VisionCameraBridge.deactivate()
+    SensoriumScreenBridge.stop()
+    SensoriumSpatialBridge.stop()
+    SensoriumWearableRelay.clear()
+    stopService(Intent(this,SensoriumScreenCaptureService::class.java))
+    stopService(Intent(this,SensoriumAudioService::class.java))
+    val count=SensoriumSessionRegistry.stopAll()
+    val nm=getSystemService(NotificationManager::class.java);nm.cancel(81)
+    return JSONObject().put("stopped",true).put("sessions_revoked",count)
+  }
+
   private fun handle(w:WebSocket,msg:JSONObject){
     if(msg.optString("type")!="command")return
     val id=msg.optString("request_id")
@@ -111,6 +150,17 @@ class DeviceCommandService: Service() {
         "camera_session_start"->requestVisionConsent(p.optString("facing","front"),p.optString("camera_id",""))
         "camera_snapshot"->VisionCameraBridge.snapshot(this,p.optJSONObject("privacy")?:JSONObject())
         "camera_session_stop"->{VisionCameraBridge.deactivate();getSystemService(NotificationManager::class.java).cancel(81);JSONObject().put("stopped",true)}
+        "sensor_inventory"->SensoriumSensors.inventory(this)
+        "sensor_session_start"->requestSensorConsent(p.optString("sensor"),p.optString("resource_id","*"),p.optString("reason"),p.optString("requesting_device_id",""))
+        "sensor_snapshot"->SensoriumSensors.snapshot(this,p.optJSONArray("sensors")?:JSONArray())
+        "sensor_stop_all"->stopSensors()
+        "screen_snapshot"->SensoriumScreenBridge.snapshot()
+        "audio_event_sample"->SensoriumAudio.sample(this)
+        "document_extract"->SensoriumVisualLocal.documentExtract(this)
+        "pose_gesture"->SensoriumVisualLocal.poseAndGesture(this)
+        "spatial_snapshot"->SensoriumSpatialBridge.snapshot()
+        "wearable_inventory"->SensoriumWearableRelay.inventory(this)
+        "wearable_snapshot"->SensoriumWearableRelay.snapshot()
         "data_plane_status"->dataPlane.status()
         "data_plane_progress_put"->dataPlane.putProgress(
           p.getString("global_id"),p.optString("entity_type","project"),p.getLong("version"),p.optJSONObject("payload")?:JSONObject()
@@ -132,5 +182,5 @@ class DeviceCommandService: Service() {
     }
   }
 
-  override fun onDestroy(){ws?.close(1000,"service stopping");ws=null;VisionCameraBridge.deactivate();dataPlane.close();super.onDestroy()}
+  override fun onDestroy(){ws?.close(1000,"service stopping");ws=null;stopSensors();dataPlane.close();super.onDestroy()}
 }

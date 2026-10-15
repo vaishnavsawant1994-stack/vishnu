@@ -3,12 +3,31 @@
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
   <uses-permission android:name="android.permission.CAMERA"/>
+  <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+  <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+  <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
   <application android:name=".VishnuApplication" android:theme="@style/AppTheme" android:label="Vishnu" android:usesCleartextTraffic="true">
     <service android:name=".DeviceCommandService" android:exported="false" android:foregroundServiceType="connectedDevice"/>
+    <service android:name=".SensoriumScreenCaptureService" android:exported="false" android:foregroundServiceType="mediaProjection"/>
+    <service android:name=".SensoriumAudioService" android:exported="false" android:foregroundServiceType="microphone"/>
+    <service android:name=".SensoriumWearableListenerService" android:exported="true">
+      <intent-filter>
+        <action android:name="com.google.android.gms.wearable.MESSAGE_RECEIVED"/>
+        <data android:scheme="wear" android:host="*" android:pathPrefix="/vishnu/sensorium/v2/observation"/>
+      </intent-filter>
+    </service>
     <activity android:name=".VisionCameraActivity" android:exported="false"/>
+    <activity android:name=".SensoriumConsentActivity" android:exported="false"/>
+    <activity android:name=".SensoriumScreenActivity" android:exported="false"/>
+    <activity android:name=".SensoriumSpatialActivity" android:exported="false"/>
+    <activity android:name=".SensoriumPrivacyActivity" android:exported="false"/>
     <activity android:name=".RuntimeProvisioningActivity" android:exported="false"/>
     <activity android:name=".PortableRecoveryActivity" android:exported="false"/>
     <activity android:name=".PasskeySetupActivity" android:exported="false"/>
