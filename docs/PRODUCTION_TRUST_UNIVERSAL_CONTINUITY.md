@@ -33,6 +33,15 @@ existing release/update authority still performs the real update.
 `OperationalHealthMonitor` records bounded probe, metric and crash/recovery
 checkpoint evidence. `BackupRestoreVerifier` verifies restored bytes by digest.
 
+Vishnu's existing `.github/workflows/product-production-qualification.yml`
+remains the canonical protected production build/runner qualification path. It
+materializes owner-controlled signing material only inside protected CI
+environments, runs the product-production preflight, can claim one real queued
+production build, and verifies returned distribution evidence. Existing
+`release.yml`, `release-autonomy.yml`, platform runner workflows, TestFlight,
+SBOM and qualification-evidence workflows remain authoritative rather than
+being duplicated by this campaign.
+
 Real production certificates, provisioning profiles, notarization authority,
 container signing identity and production worker credentials remain externally
 owned. CI cannot create or claim them.
@@ -45,17 +54,24 @@ is exact-commit-bound and requires battery, thermal, background restriction,
 permission UI and disconnect/reconnect metrics plus scenario results and a
 SHA-256 evidence digest.
 
-The existing Sensorium physical workflow remains the mechanism that must run on
-actual hardware. A repository implementation or L3 emulator/simulator pass is
-not an L4 certificate.
+The existing Android/iOS physical-device and Sensorium L4 workflows remain the
+mechanisms that must run on actual hardware. A repository implementation or L3
+emulator/simulator pass is not an L4 certificate.
 
 ## 3. Universal owner identity and recovery
 
-`UniversalOwnerRecovery` can restore from a recovery code, encrypted recovery
-package or passkey proof without requiring approval from a lost or designated
-master device. Owner authentication, trusted-device registration and device
-revocation are callbacks into Vishnu's canonical authorities. A successful
-lost-device restore can immediately revoke the lost device.
+`UniversalOwnerRecovery` orchestrates short-lived, atomically one-shot restore
+ceremonies without requiring a designated master device. In the full Vishnu
+runtime, recovery-code proofs are consumed by the canonical
+`OwnerAccessStore`, restored devices are enrolled by the canonical
+`DeviceRegistry`, receive owner scopes, and a selected lost device is revoked.
+Recovery proofs and newly issued device credentials are never persisted in the
+trust-continuity metadata database.
+
+Passkey and encrypted disaster-recovery-package restoration remain in the
+existing canonical WebAuthn/onboarding recovery ceremonies. The generic
+trust-continuity string-proof adapter deliberately refuses to downgrade those
+stronger ceremonies into a reusable string proof.
 
 ## 4. Multi-device continuity
 
@@ -74,9 +90,13 @@ trusted device does not allow a stale participant to change task state.
 
 `WorkEngineV2` provides durable plans, dependency-aware steps, checkpoints,
 resume state, deadlines, bounded retries, budgets, approval gates, partial
-failure state, scheduling metadata and explicit stop explanations. Approval is
-deny-by-default unless the existing Vishnu approval authority authorizes the
-step. The engine stores orchestration state and does not execute tools itself.
+failure state, scheduling metadata and explicit stop explanations. Dependency
+cycles, self-dependencies and manual prerequisite bypasses are rejected.
+
+The engine stores orchestration state and does not execute tools itself. In the
+full runtime, a consequential action still has to flow through the existing
+ToolRegistry/ApprovalManager execution path. The integration therefore never
+turns a Work Engine plan record into execution authority.
 
 ## 6. Deep personal memory intelligence
 
@@ -86,14 +106,20 @@ retention expiry, purge, export/import and `why_known` traceability. Imported
 facts receive import provenance rather than inheriting secret/action authority.
 Every fact explicitly carries `execution_authority=false`.
 
+The owner-facing API binds these records to the stable canonical `owner_id`
+rather than a hard-coded placeholder.
+
 ## 7. Universal integrations and OAuth
 
-`OAuthLifecycleManager` implements provider-neutral PKCE, state validation,
-account scopes, refresh, reauthentication and revocation. Access and refresh
-tokens are stored only through the `SecretStore` protocol; the
-`KeychainSecretStore` adapter uses Vishnu's existing security keychain and the
-metadata database stores only opaque handles. Provider verification state is
-retained and production consumers can fail closed on unverified providers.
+The full Vishnu composition reuses the existing canonical `OAuthAccountManager`
+and connector state/SecretVault lifecycle for PKCE/state, owner/device/session
+binding, scope health, refresh, relink/re-authentication and local/provider
+revocation. `trust_continuity.runtime` accepts that canonical manager directly.
+
+A provider-neutral `OAuthLifecycleManager` plus `KeychainSecretStore` remains
+available only for reduced/test compositions. It is not a second production
+OAuth authority. Provider verification and account-scoped permissions remain
+fail-closed.
 
 ## 8. Local/offline intelligence
 
@@ -108,9 +134,14 @@ policies.
 `TrustCenter` aggregates owner-visible trust data through injected snapshot
 sources and delegates Stop Sensing, Stop Actions, Revoke Device, Disconnect
 Provider and Emergency Stop to canonical runtime callbacks. It has no fallback
-mutation authority. `server/trust_continuity_api.py` exposes owner/device-scoped
-readiness, L4, audit, continuity, work, memory, evaluation and emergency-control
-routes using the existing device authentication function.
+mutation authority.
+
+`trust_continuity.integration` binds those callbacks to the real
+`SensorPermissionStore`, `DeviceRegistry`, canonical OAuth authority and
+`ToolRegistry.set_emergency_stop`. The dashboard/server composition attaches the
+runtime and mounts `server/trust_continuity_api.py`. Aggregated trust/audit and
+mutation endpoints require owner-admin device scope; memory export/import uses
+sensitive-memory scope.
 
 ## 10. Vishnu Evaluation Lab
 
@@ -145,9 +176,12 @@ Owner Identity
 → Learning
 → Reliable continuation across devices and time
 
-`build_trust_continuity_runtime` composes the cross-cutting layer. OAuth,
-recovery and Trust Center mutation services are omitted unless their canonical
-security callbacks are explicitly supplied.
+`attach_trust_continuity_runtime` is the full-product adapter. It is idempotent,
+uses the canonical data directory and stable owner identity, reuses the existing
+DeviceRegistry/OAuth/ToolRegistry/sensor-permission authorities, records
+crash-recovery process state, and refuses to invent an owner or production
+credential. `build_trust_continuity_runtime` remains the lower-level constructor
+for tests and reduced compositions.
 
 ## Qualification semantics
 
@@ -157,6 +191,12 @@ passed the repository qualification gates. "Production ready" additionally
 requires real owner-controlled signing/provisioning/notarization/attestation
 identity, recovery/rollback evidence and production health evidence. "L4"
 additionally requires real physical-device evidence.
+
+The dedicated Production Trust & Continuity workflow compiles the live server
+integration, lints the campaign code and runs core/runtime/integration security
+tests on the exact PR head. Repository-wide CI, reliability/security, product
+production qualification/release evidence and the existing platform workflows
+remain separate authorities and are not replaced by that focused gate.
 
 No CI run, merge or emulator result may be represented as production signing or
 physical-device L4 certification. No production deployment is performed by this
