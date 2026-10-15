@@ -4,8 +4,10 @@
 <key>CFBundleDisplayName</key><string>Vishnu</string>
 <key>VishnuCapabilityHost</key><string></string>
 <key>VishnuPasskeyDomain</key><string>$(VISHNU_PASSKEY_DOMAIN)</string>
-<key>NSCameraUsageDescription</key><string>Vishnu uses the camera for connection-code scanning and for Vision sessions that you explicitly enable while using the app.</string>
-<key>NSMicrophoneUsageDescription</key><string>Vishnu uses the microphone only while you actively use voice mode.</string>
+<key>NSCameraUsageDescription</key><string>Vishnu uses the camera only for connection-code scanning and owner-approved Vision, document, pose, and spatial Sensorium sessions while the app is visibly active.</string>
+<key>NSMicrophoneUsageDescription</key><string>Vishnu uses the microphone only for owner-approved voice or temporary environmental-audio Sensorium sessions. Environmental sensing keeps local features, not continuous raw audio.</string>
+<key>NSLocationWhenInUseUsageDescription</key><string>Vishnu uses your location and compass only during an owner-approved Sensorium location session to understand current context. Location access stops with the session.</string>
+<key>NSMotionUsageDescription</key><string>Vishnu uses motion, orientation and barometer data only during an owner-approved Sensorium motion session.</string>
 <key>NSLocalNetworkUsageDescription</key><string>Vishnu discovers and connects securely to your paired Vishnu computer on your local network.</string>
 <key>NSBonjourServices</key><array><string>_vishnu._tcp</string></array>
 <key>BGTaskSchedulerPermittedIdentifiers</key><array><string>ai.personal.companion.refresh</string></array>
