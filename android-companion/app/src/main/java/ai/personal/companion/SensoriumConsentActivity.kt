@@ -1,6 +1,7 @@
 package ai.personal.companion
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
@@ -47,7 +48,7 @@ class SensoriumConsentActivity : AppCompatActivity() {
             return
         }
         if (sensor == "screen") {
-            startActivity(android.content.Intent(this, SensoriumScreenActivity::class.java).putExtra("reason", reason))
+            startActivity(Intent(this, SensoriumScreenActivity::class.java).putExtra("reason", reason))
             finish(); return
         }
         val missing = requiredPermissions().filter { ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED }
@@ -60,9 +61,25 @@ class SensoriumConsentActivity : AppCompatActivity() {
 
     private fun grantAndFinish() {
         val kind = if (sensor == "audio") "microphone" else sensor
-        val grant = SensoriumSessionRegistry.grant(kind, resource, reason = reason)
-        status.text = "$kind allowed for this session. Expires automatically."
-        Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
+        SensoriumSessionRegistry.grant(kind, resource, reason = reason)
+        when (kind) {
+            "spatial" -> {
+                SensoriumSessionRegistry.revoke("spatial", resource)
+                startActivity(Intent(this, SensoriumSpatialActivity::class.java))
+                finish()
+            }
+            "document" -> {
+                // Document extraction requires this document session plus the
+                // visible foreground Vision camera. Open it immediately so the
+                // owner can aim at the document and see the camera indicator.
+                startActivity(Intent(this, VisionCameraActivity::class.java).putExtra("facing", "back").putExtra("camera_id", "mobile:back"))
+                finish()
+            }
+            else -> {
+                status.text = "$kind allowed for this session. Expires automatically."
+                Handler(Looper.getMainLooper()).postDelayed({ finish() }, 700)
+            }
+        }
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
