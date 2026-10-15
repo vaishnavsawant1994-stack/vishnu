@@ -8,7 +8,7 @@ from .store import TrustContinuityStore, utcnow
 
 
 class MemoryIntelligence:
-    """Provenance/confidence/contradiction/timeline layer over Vishnu memory metadata.
+    """Provenance/confidence/contradiction/timeline layer over memory metadata.
 
     These records are knowledge evidence only and never carry execution authority.
     """
@@ -39,7 +39,9 @@ class MemoryIntelligence:
         expires_at = None
         if retention_days is not None:
             retention_days = max(0, min(int(retention_days), 36500))
-            expires_at = (datetime.now(timezone.utc) + timedelta(days=retention_days)).isoformat()
+            expires_at = (
+                datetime.now(timezone.utc) + timedelta(days=retention_days)
+            ).isoformat()
         normalized_entity = self.resolve_entity(owner_id=owner_id, label=entity)
         payload = {
             "entity": normalized_entity,
@@ -58,10 +60,18 @@ class MemoryIntelligence:
             "execution_authority": False,
             "created_at": now,
         }
-        existing = self.query(owner_id=owner_id, entity=normalized_entity, predicate=predicate, include_expired=False)
+        existing = self.query(
+            owner_id=owner_id,
+            entity=normalized_entity,
+            predicate=predicate,
+            include_expired=False,
+        )
         contradictions: list[str] = []
         for fact in existing:
-            if fact["payload"]["value"] != value and fact["payload"].get("valid_to") is None:
+            if (
+                fact["payload"]["value"] != value
+                and fact["payload"].get("valid_to") is None
+            ):
                 contradictions.append(fact["record_id"])
         payload["contradicts"] = contradictions
         self.store.put("memory_fact", fact_id, payload, owner_id=owner_id)
@@ -69,12 +79,37 @@ class MemoryIntelligence:
             old = self.store.get("memory_fact", old_id)
             if old:
                 old_payload = dict(old["payload"])
-                old_payload["contradicts"] = sorted(set(old_payload.get("contradicts", []) + [fact_id]))
-                self.store.put("memory_fact", old_id, old_payload, status=old["status"], owner_id=owner_id)
-        self.store.audit("memory", "fact_recorded", actor=owner_id, subject=fact_id, payload={"entity": normalized_entity, "predicate": predicate, "confidence": confidence})
+                old_payload["contradicts"] = sorted(
+                    set(old_payload.get("contradicts", []) + [fact_id])
+                )
+                self.store.put(
+                    "memory_fact",
+                    old_id,
+                    old_payload,
+                    status=old["status"],
+                    owner_id=owner_id,
+                )
+        self.store.audit(
+            "memory",
+            "fact_recorded",
+            actor=owner_id,
+            subject=fact_id,
+            payload={
+                "entity": normalized_entity,
+                "predicate": predicate,
+                "confidence": confidence,
+            },
+        )
         return fact_id
 
-    def edit_fact(self, fact_id: str, *, owner_id: str, value: Any, reason: str) -> str:
+    def edit_fact(
+        self,
+        fact_id: str,
+        *,
+        owner_id: str,
+        value: Any,
+        reason: str,
+    ) -> str:
         row = self._owned_fact(fact_id, owner_id)
         payload = row["payload"]
         replacement = self.remember(
@@ -90,14 +125,45 @@ class MemoryIntelligence:
         payload = dict(payload)
         payload["valid_to"] = utcnow()
         payload["superseded_by"] = replacement
-        self.store.put("memory_fact", fact_id, payload, status="superseded", owner_id=owner_id)
-        self.store.audit("memory", "fact_edited", actor=owner_id, subject=fact_id, payload={"replacement": replacement})
+        self.store.put(
+            "memory_fact",
+            fact_id,
+            payload,
+            status="superseded",
+            owner_id=owner_id,
+        )
+        self.store.audit(
+            "memory",
+            "fact_edited",
+            actor=owner_id,
+            subject=fact_id,
+            payload={"replacement": replacement},
+        )
         return replacement
 
     def forget(self, fact_id: str, *, owner_id: str) -> bool:
         self._owned_fact(fact_id, owner_id)
         deleted = self.store.delete("memory_fact", fact_id)
         self.store.audit("memory", "fact_forgotten", actor=owner_id, subject=fact_id)
+        return deleted
+
+    def purge_expired(self, *, owner_id: str) -> int:
+        now = datetime.now(timezone.utc)
+        deleted = 0
+        for row in self.query(owner_id=owner_id, include_expired=True, limit=1000):
+            expires_at = row["payload"].get("expires_at")
+            if not expires_at:
+                continue
+            expiry = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+            if expiry <= now and self.store.delete("memory_fact", row["record_id"]):
+                deleted += 1
+        if deleted:
+            self.store.audit(
+                "memory",
+                "expired_facts_purged",
+                actor=owner_id,
+                payload={"count": deleted},
+            )
         return deleted
 
     def query(
@@ -140,10 +206,20 @@ class MemoryIntelligence:
             "execution_authority": False,
         }
 
-    def timeline(self, *, owner_id: str, project_id: str | None = None, limit: int = 500) -> list[dict[str, Any]]:
+    def timeline(
+        self,
+        *,
+        owner_id: str,
+        project_id: str | None = None,
+        limit: int = 500,
+    ) -> list[dict[str, Any]]:
         rows = self.query(owner_id=owner_id, include_expired=False, limit=limit)
         if project_id is not None:
-            rows = [row for row in rows if row["payload"].get("project_id") == project_id]
+            rows = [
+                row
+                for row in rows
+                if row["payload"].get("project_id") == project_id
+            ]
         rows.sort(key=lambda row: row["payload"].get("observed_at") or row["created_at"])
         return rows
 
@@ -156,30 +232,122 @@ class MemoryIntelligence:
         canonical = []
         contradictions = []
         for key, facts in groups.items():
-            ranked = sorted(facts, key=lambda row: (float(row["payload"]["confidence"]), row["updated_at"]), reverse=True)
+            ranked = sorted(
+                facts,
+                key=lambda row: (
+                    float(row["payload"]["confidence"]),
+                    row["updated_at"],
+                ),
+                reverse=True,
+            )
             canonical.append(ranked[0]["record_id"])
-            values = {repr(row["payload"]["value"]) for row in facts if row["payload"].get("valid_to") is None}
+            values = {
+                repr(row["payload"]["value"])
+                for row in facts
+                if row["payload"].get("valid_to") is None
+            }
             if len(values) > 1:
-                contradictions.append({"entity": key[0], "predicate": key[1], "facts": [row["record_id"] for row in facts]})
-        return {"canonical_fact_ids": canonical, "contradictions": contradictions, "execution_authority": False}
+                contradictions.append(
+                    {
+                        "entity": key[0],
+                        "predicate": key[1],
+                        "facts": [row["record_id"] for row in facts],
+                    }
+                )
+        return {
+            "canonical_fact_ids": canonical,
+            "contradictions": contradictions,
+            "execution_authority": False,
+        }
 
     def export_owner(self, owner_id: str) -> dict[str, Any]:
-        return {"version": 1, "owner_id": owner_id, "facts": self.query(owner_id=owner_id, include_expired=True, limit=1000), "exported_at": utcnow()}
+        return {
+            "version": 1,
+            "owner_id": owner_id,
+            "facts": self.query(
+                owner_id=owner_id,
+                include_expired=True,
+                limit=1000,
+            ),
+            "exported_at": utcnow(),
+        }
+
+    def import_owner(
+        self,
+        *,
+        owner_id: str,
+        package: dict[str, Any],
+    ) -> dict[str, int]:
+        if package.get("version") != 1:
+            raise ValueError("unsupported memory export version")
+        package_owner = package.get("owner_id")
+        if package_owner and str(package_owner) != owner_id:
+            raise PermissionError("memory package belongs to another owner")
+        facts = package.get("facts")
+        if not isinstance(facts, list) or len(facts) > 1000:
+            raise ValueError("memory package facts must be a bounded list")
+        imported = 0
+        skipped = 0
+        for item in facts:
+            payload = item.get("payload") if isinstance(item, dict) else None
+            if not isinstance(payload, dict):
+                skipped += 1
+                continue
+            entity = str(payload.get("entity") or "").strip()
+            predicate = str(payload.get("predicate") or "").strip()
+            if not entity or not predicate:
+                skipped += 1
+                continue
+            confidence = float(payload.get("confidence", 0.5))
+            self.remember(
+                owner_id=owner_id,
+                entity=entity,
+                predicate=predicate,
+                value=payload.get("value"),
+                source={
+                    "kind": "memory_import",
+                    "original_source": self._safe_source(payload.get("source") or {}),
+                },
+                confidence=max(0.0, min(confidence, 1.0)),
+                observed_at=payload.get("observed_at"),
+                project_id=payload.get("project_id"),
+            )
+            imported += 1
+        self.store.audit(
+            "memory",
+            "owner_import",
+            actor=owner_id,
+            payload={"imported": imported, "skipped": skipped},
+        )
+        return {"imported": imported, "skipped": skipped}
 
     def resolve_entity(self, *, owner_id: str, label: str) -> str:
         normalized = " ".join(label.strip().lower().split())
-        aliases = self.store.list("memory_entity_alias", owner_id=owner_id, limit=1000)
+        aliases = self.store.list(
+            "memory_entity_alias",
+            owner_id=owner_id,
+            limit=1000,
+        )
         for row in aliases:
             if row["payload"].get("alias") == normalized:
                 return str(row["payload"]["canonical"])
         return normalized
 
-    def add_entity_alias(self, *, owner_id: str, alias: str, canonical: str) -> str:
+    def add_entity_alias(
+        self,
+        *,
+        owner_id: str,
+        alias: str,
+        canonical: str,
+    ) -> str:
         record_id = uuid4().hex
         self.store.put(
             "memory_entity_alias",
             record_id,
-            {"alias": " ".join(alias.strip().lower().split()), "canonical": " ".join(canonical.strip().lower().split())},
+            {
+                "alias": " ".join(alias.strip().lower().split()),
+                "canonical": " ".join(canonical.strip().lower().split()),
+            },
             owner_id=owner_id,
         )
         return record_id
@@ -188,7 +356,13 @@ class MemoryIntelligence:
     def _safe_source(source: dict[str, Any]) -> dict[str, Any]:
         safe = dict(source)
         for key in list(safe):
-            if key.lower() in {"token", "password", "secret", "private_key", "credential"}:
+            if key.lower() in {
+                "token",
+                "password",
+                "secret",
+                "private_key",
+                "credential",
+            }:
                 safe.pop(key)
         return safe
 
