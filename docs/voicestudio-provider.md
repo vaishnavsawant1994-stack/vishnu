@@ -14,7 +14,7 @@ The adapter in `voice/voicestudio.py` uses VoiceStudio's published OpenAI-compat
 - `POST /v1/audio/translations` for speech-to-English translation
 - `GET /v1/models` for model discovery
 - `GET /v1/audio/voices` for available voices
-- `/mcp/` is exposed as a connection target for Vishnu Universal Capabilities when richer VoiceStudio MCP tools are intentionally registered
+- `/mcp/` for richer VoiceStudio tools through Vishnu Universal Capabilities
 
 The provider implements Vishnu's existing `TextToSpeechProvider` and `SpeechToTextProvider` contracts. It does not create a second router, scheduler, voice-profile database, approval system, credential store, device registry, or MCP execution authority.
 
@@ -36,7 +36,7 @@ VISHNU_VOICESTUDIO_ALLOW_REMOTE=false
 VISHNU_VOICESTUDIO_REQUIRE_HTTPS_REMOTE=true
 ```
 
-When `VISHNU_VOICESTUDIO_ENABLED=false`, application composition does not parse or validate any other VoiceStudio setting and allocates no VoiceStudio provider or provider runtime. This keeps stale optional configuration from disturbing the existing startup path.
+When `VISHNU_VOICESTUDIO_ENABLED=false`, application composition does not parse or validate any other VoiceStudio setting and allocates no VoiceStudio provider or provider runtime. This keeps stale optional configuration from disturbing the existing startup path. The Universal Capabilities bootstrap follows the same disabled-configuration rule.
 
 When `VISHNU_VOICESTUDIO_ENABLED=true`, `app/main.py` composes one VoiceStudio provider behind the existing bounded `VoiceRuntime`. The provider is registered for both STT and TTS, the bounded runtime starts only after normal first-run setup succeeds, remains available for the Vishnu application lifetime, and stops through the existing application shutdown path. The current `RealtimeVoiceSession` remains separate and unchanged.
 
@@ -52,35 +52,56 @@ Vishnu does not make successful VoiceStudio health probing a startup dependency.
 
 Vishnu does not auto-download VoiceStudio, model weights, or speech engines and does not silently launch a third-party process. The separately installed VoiceStudio service and exact model engines must be provisioned and qualified for the target deployment.
 
+## Governed MCP capabilities
+
+When VoiceStudio is enabled, Vishnu registers its configured `/mcp/` endpoint as inert metadata in the existing durable Universal Capabilities catalog. Startup does **not** contact the MCP service, discover tools, copy a provider credential, create a connection, approve a tool, or grant execution authority.
+
+The owner must explicitly connect/discover the registered VoiceStudio server through the existing Capability Console/API. Only then does Vishnu contact `/mcp/`, import bounded tool schemas, and create the server connection. Each discovered tool remains non-executable until the owner reviews and approves its risk classification through the same Universal Capabilities flow used by other MCP tools.
+
+For the normal local deployment, only the internally configured VoiceStudio server descriptor can carry the dedicated trusted-loopback marker. User-added MCP servers still pass through `normalize_mcp_server` plus the existing public-address HTTPS validation and therefore cannot opt themselves into loopback transport.
+
+The dedicated loopback transport accepts only IP-literal loopback origins, ignores proxy environment variables, binds calls to the approved origin and MCP path, blocks redirects, caps timeouts, and applies the existing MCP response-size limit. The normal public MCP and OpenAPI transports remain unchanged.
+
+VoiceStudio-specific minimum risks are persisted with discovered tool metadata and enforced server-side:
+
+- listing, status, health, describe and inspection-style operations may be `read`
+- voice cloning, voice design, transcription, speech/media generation, dubbing, unknown future operations and other non-discovery operations are at least `write`
+- delete, remove, revoke, drop, purge, reset and disable-style operations are `destructive`
+
+An owner may classify a tool more strictly than this minimum, but never less strictly. The approval endpoint rejects a weaker classification, and governed tool attachment independently checks the minimum again so process-restart rehydration cannot reactivate an under-classified tool.
+
+Read-classified tools use the existing read path. Write/destructive tools continue through Vishnu's exact one-use owner approval and durable execution path. Disconnecting the MCP server revokes its discovered tools and blocks later execution through the live catalog connection fence.
+
+For remote VoiceStudio deployments, the registered MCP URL remains HTTPS-only. MCP authentication is established only during the explicit owner connection flow and stored under the existing encrypted MCP credential lifecycle; startup registration does not copy or expose the core VoiceStudio provider key.
+
 ## Security controls
 
-The adapter:
+The integration:
 
 - is disabled by default
-- allows loopback endpoints by default
-- leaves optional VoiceStudio settings inert in normal application composition while disabled
+- allows bounded loopback speech endpoints by default
+- leaves optional VoiceStudio settings inert while disabled
 - requires explicit opt-in for remote hosts
 - requires HTTPS for remote hosts by default
-- requires an injected bearer credential for enabled remote use
-- keeps the remote bearer key in the existing Vishnu `SecretVault`
+- requires an injected bearer credential for enabled remote speech use
+- keeps secrets in the existing Vishnu `SecretVault`
 - rejects credentials embedded in endpoint URLs
 - blocks HTTP redirects
-- applies request timeouts
-- bounds text, input audio, multipart overhead, JSON, and output audio sizes
-- returns sanitized transport errors and does not put the bearer key in capabilities or normal status output
+- applies request timeouts and response-size caps
+- returns sanitized transport errors and does not put bearer keys in capabilities or normal status output
 - requests WAV output and validates the returned WAV before accepting it
 - wraps raw 16-bit mono PCM into WAV for the batch transcription API
+- keeps public MCP discovery HTTPS/public-address constrained
+- registers VoiceStudio MCP metadata without contacting or authorizing the service at startup
+- requires recent owner authentication to connect/discover and classify MCP tools
+- enforces provider minimum risks in both approval and attachment paths
+- grants no MCP tool execution merely because VoiceStudio is configured or discovered
 
 ## Voice cloning, design, dubbing, and other VoiceStudio tools
 
-Those higher-level operations must not bypass Vishnu's current consent and approval boundaries.
+Higher-level VoiceStudio operations enter through Vishnu Universal Capabilities and the existing owner approval system. Vishnu's governed `VoiceProfileRegistry` remains the authoritative in-process enrollment/consent source for the native OpenVoice conversion path; the VoiceStudio MCP integration does not create a second Vishnu cloning database.
 
-Use one of these paths:
-
-1. Keep Vishnu's existing governed `VoiceProfileRegistry` as the authoritative enrollment/consent source and use VoiceStudio only for inference.
-2. Register the separately running VoiceStudio `/mcp/` endpoint through Vishnu Universal Capabilities. Classify cloning/design/mutation tools according to their real risk and require the existing owner approval path for writes.
-
-Do not add a second direct VoiceStudio cloning database or independent approval mechanism inside Vishnu.
+Possession or discovery of a VoiceStudio MCP tool is not consent to clone a person's voice. Operators remain responsible for obtaining the required consent for reference audio and complying with applicable law/provider terms before approving a cloning operation.
 
 ## Licensing
 
@@ -92,6 +113,6 @@ That boundary is an engineering safeguard, not legal advice.
 
 ## Qualification boundary
 
-Repository tests qualify adapter contracts, isolation, endpoint construction, size bounds, loopback/remote policy, bearer injection, PCM-to-WAV wrapping, TTS result validation, disabled-configuration inertness, app-lifetime runtime composition, and clean start/stop behavior without installing VoiceStudio or model weights.
+Repository tests qualify adapter contracts, isolation, endpoint construction, size bounds, loopback/remote policy, bearer injection, PCM-to-WAV wrapping, TTS result validation, disabled-configuration inertness, app-lifetime runtime composition, inert MCP registration, trusted-loopback isolation, origin/path binding, redirect and response-size blocking, durable tool metadata, provider risk floors, and fail-soft registration without installing VoiceStudio or model weights.
 
-Production claims still require qualification against the exact VoiceStudio revision, exact enabled TTS/STT engines and model checkpoints, target CPU/GPU hardware, remote network/TLS configuration when applicable, real microphone/audio devices, and the deployment's licensing terms.
+Production claims still require qualification against the exact VoiceStudio revision, exact enabled TTS/STT/MCP engines and model checkpoints, target CPU/GPU hardware, remote network/TLS configuration when applicable, real microphone/audio devices, and the deployment's licensing terms. No production deployment is performed by this repository change.

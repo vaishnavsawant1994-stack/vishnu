@@ -26,7 +26,6 @@ class CapabilityCatalogStore:
         return len(entries)
 
     def import_openapi(self, document: dict, *, source_url: str | None = None) -> int:
-        """Persist reviewed OpenAPI operations as inert metadata only."""
         entries = parse_openapi(document, source_url=source_url)
         with sqlite3.connect(self.path) as db:
             for entry in entries:
@@ -42,11 +41,18 @@ class CapabilityCatalogStore:
     def import_mcp_tools(self, server_id: str, tools: list[dict], *, server_name: str = "", server_url: str = "") -> list[dict]:
         if not isinstance(tools, list) or len(tools) > 500:
             raise ValueError("invalid MCP tools list")
+        server = self.get(server_id)
         entries = [normalize_mcp_tool(server_id, raw) for raw in tools]
         if len({entry["id"] for entry in entries}) != len(entries):
             raise ValueError("MCP server returned duplicate tool names")
-        for entry in entries:
-            entry.update({"server_name": str(server_name)[:200], "server_url": server_url})
+        trusted_loopback = bool(server and server.get("trusted_loopback") is True)
+        provider_policy = server.get("provider_policy") if isinstance(server, dict) else None
+        for index, entry in enumerate(entries):
+            entry.update({"server_name": str(server_name)[:200], "server_url": server_url,
+                          "trusted_loopback": trusted_loopback})
+            if provider_policy == "voicestudio":
+                from voice.voicestudio_mcp import apply_voicestudio_tool_policy
+                entries[index] = apply_voicestudio_tool_policy(entry)
         with sqlite3.connect(self.path) as db:
             rows = db.execute("SELECT id,payload FROM capability_catalog WHERE category='MCP'").fetchall()
             old_ids = {row[0] for row in rows if json.loads(row[1]).get("type") == "mcp_tool" and json.loads(row[1]).get("server_id") == server_id}
@@ -91,7 +97,6 @@ class CapabilityCatalogStore:
         return [json.loads(row[0]) for row in rows]
 
     def all(self) -> list[dict]:
-        """Return bounded catalog metadata for startup tool rehydration."""
         with sqlite3.connect(self.path) as db:
             rows = db.execute("SELECT payload FROM capability_catalog ORDER BY category,name LIMIT 5000").fetchall()
         return [json.loads(row[0]) for row in rows]
