@@ -50,6 +50,50 @@ def test_data_plane_owner_overview_is_owner_gated_and_secret_free(tmp_path):
     assert result['settings']['default_policy'] == 'progress_only'
     assert result['counts'] == {'items': 0, 'locations': 0, 'pending_events': 0, 'conflicts': 0}
     assert all('credential_ref' not in provider for provider in result['providers'])
+    assert all('config' not in provider for provider in result['providers'])
+
+
+def test_data_plane_owner_provider_detail_is_read_only_and_secret_free(tmp_path):
+    runtime = {
+        'settings': SimpleNamespace(data_dir=tmp_path),
+        'device_registry': Registry(),
+    }
+    data = get_data_plane(runtime)
+    data.update_settings(cloud_enabled=True, cloud_mode='optional')
+    data.configure_provider(
+        's3',
+        enabled=True,
+        credential_ref='vault:storage/s3',
+        config={'bucket': 'owner-backups', 'region': 'eu-central-1'},
+        verified=True,
+    )
+    endpoint = route_endpoint(data_plane_owner_router(runtime), '/iphone/api/data-plane/providers/{provider_id}', 'GET')
+    token = set_trusted_request(trusted_context())
+    try:
+        result = endpoint('s3')
+    finally:
+        reset_trusted_request(token)
+
+    provider = result['provider']
+    assert provider['provider_id'] == 's3'
+    assert provider['destination'] == {'bucket': 'owner-backups', 'region': 'eu-central-1'}
+    assert provider['available'] is True
+    assert 'encrypted_backup' in provider['capabilities']
+    assert 'credential_ref' not in provider
+    assert 'config' not in provider
+    assert 'vault:storage/s3' not in repr(result)
+
+
+def test_data_plane_owner_provider_detail_rejects_unknown_provider(tmp_path):
+    runtime = {'settings': SimpleNamespace(data_dir=tmp_path), 'device_registry': Registry()}
+    endpoint = route_endpoint(data_plane_owner_router(runtime), '/iphone/api/data-plane/providers/{provider_id}', 'GET')
+    token = set_trusted_request(trusted_context())
+    try:
+        with pytest.raises(HTTPException) as missing:
+            endpoint('does-not-exist')
+        assert missing.value.status_code == 404
+    finally:
+        reset_trusted_request(token)
 
 
 def test_data_plane_owner_policy_update_persists_and_requires_admin_scope(tmp_path):
