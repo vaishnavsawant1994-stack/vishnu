@@ -1,25 +1,29 @@
 /* Vishnu Adaptive Universal Composer.
  *
- * This is intentionally an interaction/routing layer only. It never calls a
- * privileged execution endpoint and never replaces Vishnu's canonical chat,
- * ToolRegistry, ApprovalManager, DeviceGateway, or other authorities.
+ * This is an interaction/routing layer only. It never calls a privileged
+ * execution endpoint and never replaces canonical Chat, ToolRegistry,
+ * ApprovalManager, DeviceGateway, server permissions, or audit authorities.
  */
 (()=>{
   'use strict';
-  if(window.__vishnuAdaptiveComposer) return;
+  if(window.__vishnuAdaptiveComposer)return;
 
+  // Direct module routing is deliberately conservative. Only canonical modules
+  // that are known to exist in the current PWA are opened here. Every other
+  // intent continues through canonical Chat so server-side planning/governance
+  // stays authoritative.
   const INTENTS={
     chat:{label:'Chat',icon:'✦',description:'Continue as a normal Vishnu conversation.',module:null},
     projects:{label:'Projects',icon:'▣',description:'Plan, continue, or inspect project work.',module:'projects'},
     memory:{label:'Memory',icon:'◫',description:'Find or work with information Vishnu remembers.',module:'memory'},
-    files:{label:'Files',icon:'⌑',description:'Find, read, summarize, or work with a file.',module:'files'},
+    files:{label:'Files',icon:'⌑',description:'Find, read, summarize, or work with a file.',module:null},
     research:{label:'Research',icon:'⌕',description:'Investigate a topic and collect evidence.',module:null},
     code:{label:'Code',icon:'</>',description:'Build, debug, review, or change software.',module:null},
-    automation:{label:'Automation',icon:'↻',description:'Create a reminder, schedule, or recurring workflow.',module:'automation'},
+    automation:{label:'Automation',icon:'↻',description:'Create a reminder, schedule, or recurring workflow.',module:null},
     devices:{label:'Devices',icon:'◉',description:'Inspect or control a trusted device through Vishnu governance.',module:'devices'},
-    capabilities:{label:'Capabilities',icon:'◇',description:'Find or manage a Vishnu capability or integration.',module:'capabilities'},
-    visualize:{label:'Visualize',icon:'◩',description:'Create or inspect a visual representation.',module:'visualize'},
-    voice:{label:'Voice',icon:'◖',description:'Use Vishnu voice or Voice Lab.',module:'voice'}
+    capabilities:{label:'Capabilities',icon:'◇',description:'Find or manage a Vishnu capability or integration.',module:null},
+    visualize:{label:'Visualize',icon:'◩',description:'Create or inspect a visual representation.',module:null},
+    voice:{label:'Voice',icon:'◖',description:'Use Vishnu voice or Voice Lab.',module:null}
   };
 
   const RULES={
@@ -67,27 +71,25 @@
     ]
   };
 
-  const clamp=n=>Math.max(0,Math.min(0.99,n));
+  const clamp=value=>Math.max(0,Math.min(0.99,value));
   const normalize=value=>String(value||'').trim().replace(/\s+/g,' ');
 
   function classifyDraft(value){
     const text=normalize(value);
-    if(text.length<3) return {intent:'chat',confidence:0,alternatives:[],text};
+    if(text.length<3)return {intent:'chat',confidence:0,alternatives:[],text};
     const lower=text.toLowerCase();
     const rows=Object.entries(RULES).map(([intent,rules])=>{
       let score=0.18;
       for(const [pattern,weight] of rules){
         pattern.lastIndex=0;
         const matches=lower.match(pattern);
-        if(matches) score+=weight*Math.min(matches.length,2);
+        if(matches)score+=weight*Math.min(matches.length,2);
       }
       return {intent,confidence:clamp(score)};
     }).sort((a,b)=>b.confidence-a.confidence);
-
-    const best=rows[0];
-    const second=rows[1];
-    // A single weak keyword should not steal the normal conversation surface.
-    if(!best || best.confidence<0.51) return {intent:'chat',confidence:0.45,alternatives:rows.slice(0,2),text};
+    const best=rows[0],second=rows[1];
+    // One weak keyword should never steal the normal conversation surface.
+    if(!best||best.confidence<0.51)return {intent:'chat',confidence:0.45,alternatives:rows.slice(0,2),text};
     const margin=best.confidence-(second?.confidence||0);
     const confidence=clamp(best.confidence+(margin>=0.20?0.08:0));
     return {...best,confidence,alternatives:rows.slice(1,3),text};
@@ -95,28 +97,19 @@
 
   function stableIntent(previous,candidate){
     const prev=previous||{intent:'chat',confidence:0,pendingIntent:null,pendingWins:0};
-    if(!candidate || candidate.intent==='chat'){
-      return {...prev,intent:'chat',confidence:candidate?.confidence||0,pendingIntent:null,pendingWins:0};
-    }
-    if(prev.intent==='chat' || prev.intent===candidate.intent){
-      return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
-    }
-    if(candidate.confidence>=0.93 || candidate.confidence>=prev.confidence+0.24){
-      return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
-    }
+    if(!candidate||candidate.intent==='chat')return {...prev,intent:'chat',confidence:candidate?.confidence||0,pendingIntent:null,pendingWins:0};
+    if(prev.intent==='chat'||prev.intent===candidate.intent)return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
+    if(candidate.confidence>=0.93||candidate.confidence>=prev.confidence+0.24)return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
     const wins=prev.pendingIntent===candidate.intent?(prev.pendingWins||0)+1:1;
-    if(wins>=2 && candidate.confidence>=0.64){
-      return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
-    }
+    if(wins>=2&&candidate.confidence>=0.64)return {intent:candidate.intent,confidence:candidate.confidence,pendingIntent:null,pendingWins:0};
     return {...prev,pendingIntent:candidate.intent,pendingWins:wins};
   }
 
   let state={intent:'chat',confidence:0,pendingIntent:null,pendingWins:0};
   let dismissedFor='';
-  let mounted=false;
 
   function injectStyle(){
-    if(document.getElementById('vAdaptiveComposerStyle')) return;
+    if(document.getElementById('vAdaptiveComposerStyle'))return;
     const style=document.createElement('style');
     style.id='vAdaptiveComposerStyle';
     style.textContent=`
@@ -136,8 +129,7 @@
       @media(max-width:760px){
         .v-adaptive-preview{position:fixed;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px);min-height:50px;padding:8px 9px;border-radius:15px}
         body.keyboard-open .v-adaptive-preview{bottom:max(calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px),calc(100dvh - var(--keyboard-visible-height,100dvh) + var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px))}
-        .v-adaptive-copy small{max-width:44vw}
-        .v-adaptive-action{padding:0 8px}
+        .v-adaptive-copy small{max-width:44vw}.v-adaptive-action{padding:0 8px}
       }
       @media(max-width:380px){.v-adaptive-copy small{display:none}.v-adaptive-preview{gap:7px}.v-adaptive-icon{width:31px;height:31px;flex-basis:31px}.v-adaptive-action{font-size:11px}}
       @media(prefers-reduced-motion:reduce){.v-adaptive-preview[data-open="true"]{animation:none}}
@@ -147,36 +139,31 @@
 
   function createPreview(composer){
     let preview=document.getElementById('vAdaptivePreview');
-    if(preview) return preview;
+    if(preview)return preview;
     preview=document.createElement('section');
     preview.id='vAdaptivePreview';
     preview.className='v-adaptive-preview';
     preview.dataset.open='false';
-    preview.setAttribute('role','status');
-    preview.setAttribute('aria-live','polite');
+    preview.setAttribute('role','region');
     preview.setAttribute('aria-label','Vishnu adaptive suggestion');
-    preview.innerHTML='<span class="v-adaptive-icon" aria-hidden="true">✦</span><span class="v-adaptive-copy"><strong></strong><small></small></span><span class="v-adaptive-actions"><button type="button" class="v-adaptive-action"></button><button type="button" class="v-adaptive-dismiss" aria-label="Dismiss suggestion">×</button></span>';
+    preview.innerHTML='<span class="v-adaptive-icon" aria-hidden="true">✦</span><span class="v-adaptive-copy" aria-live="polite" aria-atomic="true"><strong></strong><small></small></span><span class="v-adaptive-actions"><button type="button" class="v-adaptive-action"></button><button type="button" class="v-adaptive-dismiss" aria-label="Dismiss suggestion">×</button></span>';
     preview.querySelector('.v-adaptive-dismiss').addEventListener('click',()=>{
-      const input=document.getElementById('message');
-      dismissedFor=normalize(input?.value);
+      dismissedFor=normalize(document.getElementById('message')?.value);
       preview.dataset.open='false';
     });
-    preview.querySelector('.v-adaptive-action').addEventListener('click',()=>activateCurrent());
+    preview.querySelector('.v-adaptive-action').addEventListener('click',activateCurrent);
     composer.prepend(preview);
     return preview;
   }
 
   function render(candidate){
-    const input=document.getElementById('message');
-    const composer=document.getElementById('composer');
-    if(!input||!composer) return;
+    const input=document.getElementById('message'),composer=document.getElementById('composer');
+    if(!input||!composer)return;
     injectStyle();
-    const preview=createPreview(composer);
-    const text=normalize(input.value);
-    const intent=INTENTS[state.intent]||INTENTS.chat;
-    const show=state.intent!=='chat' && state.confidence>=0.60 && text && text!==dismissedFor;
+    const preview=createPreview(composer),text=normalize(input.value),intent=INTENTS[state.intent]||INTENTS.chat;
+    const show=state.intent!=='chat'&&state.confidence>=0.60&&text&&text!==dismissedFor;
     preview.dataset.open=show?'true':'false';
-    if(!show) return;
+    if(!show)return;
     preview.dataset.intent=state.intent;
     preview.querySelector('.v-adaptive-icon').textContent=intent.icon;
     preview.querySelector('strong').textContent=`Looks like ${intent.label}`;
@@ -189,7 +176,7 @@
 
   function update(){
     const input=document.getElementById('message');
-    if(!input) return;
+    if(!input)return;
     const candidate=classifyDraft(input.value);
     state=stableIntent(state,candidate);
     render(candidate);
@@ -197,31 +184,27 @@
 
   function activateCurrent(){
     const input=document.getElementById('message');
-    if(!input) return;
+    if(!input)return;
     const current=INTENTS[state.intent]||INTENTS.chat;
     const detail={intent:state.intent,confidence:state.confidence,text:normalize(input.value),module:current.module};
     const event=new CustomEvent('vishnu:adaptive-intent',{detail,cancelable:true});
     window.dispatchEvent(event);
-    if(event.defaultPrevented) return;
-
-    if(current.module && typeof window.openModule==='function'){
+    if(event.defaultPrevented)return;
+    if(current.module&&typeof window.openModule==='function'){
       try{
-        const outcome=window.openModule(current.module);
-        Promise.resolve(outcome).catch(()=>{});
+        const result=window.openModule(current.module);
+        Promise.resolve(result).catch(()=>{});
         document.getElementById('vAdaptivePreview')?.setAttribute('data-open','false');
         return;
-      }catch(_error){/* normal chat fallback below */}
+      }catch(_error){/* Canonical Send remains the fail-safe. */}
     }
-    // The only execution fallback is the canonical Send control. This preserves
-    // existing server-side planning, permissions, approvals, and audit behavior.
     const send=document.getElementById('sendButton');
-    if(send && !send.disabled) send.click();
+    if(send&&!send.disabled)send.click();
   }
 
   function mount(){
-    const input=document.getElementById('message');
-    const composer=document.getElementById('composer');
-    if(!input||!composer) return false;
+    const input=document.getElementById('message'),composer=document.getElementById('composer');
+    if(!input||!composer)return false;
     injectStyle();
     createPreview(composer);
     if(!input.dataset.adaptiveComposerBound){
@@ -235,24 +218,16 @@
         }
       });
     }
-    mounted=true;
     update();
     return true;
   }
 
-  const api={
-    intents:Object.freeze({...INTENTS}),
-    classifyDraft,
-    stableIntent,
-    mount,
-    refresh:update,
-    get state(){return {...state}}
-  };
+  const api={intents:Object.freeze({...INTENTS}),classifyDraft,stableIntent,mount,refresh:update,get state(){return {...state}}};
   window.__vishnuAdaptiveComposer=api;
   window.vishnuAdaptiveComposer=api;
 
   if(!mount()){
-    const observer=new MutationObserver(()=>{if(mount()) observer.disconnect()});
+    const observer=new MutationObserver(()=>{if(mount())observer.disconnect()});
     observer.observe(document.documentElement,{childList:true,subtree:true});
   }
 })();
