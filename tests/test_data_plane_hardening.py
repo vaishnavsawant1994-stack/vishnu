@@ -48,9 +48,9 @@ def test_v1_data_plane_is_migrated_to_hardened_schema(tmp_path):
     assert legacy.settings()['schema_version'] == 1
 
     upgraded = HardenedDataPlane(path)
-    assert upgraded.settings()['schema_version'] == 2
+    assert upgraded.settings()['schema_version'] == 3
     diagnostics = upgraded.diagnostics()
-    assert 2 in diagnostics['schema_migrations']
+    assert {2, 3} <= set(diagnostics['schema_migrations'])
     assert diagnostics['remote_cache_policy'] == 'no_store'
 
 

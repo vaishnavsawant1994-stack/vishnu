@@ -43,5 +43,6 @@ jobs:
           tests/test_secure_data_transport.py
           tests/test_data_plane_production_readiness.py
           tests/test_data_plane_destructive_qualification.py
+          tests/test_storage_fabric.py
       - name: Portable disaster-recovery certification
         run: pytest -q tests/test_disaster_recovery.py

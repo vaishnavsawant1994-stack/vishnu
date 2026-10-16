@@ -100,6 +100,40 @@ def ensure_data_plane_provider_store(runtime: dict, manager: UnifiedDataPlane | 
     return store
 
 
+def ensure_data_plane_storage_fabric(runtime: dict, manager: UnifiedDataPlane | None = None):
+    """Attach storage-fabric coordination without creating a second authority.
+
+    data_plane_items remain logical-object authority, data_plane_locations remain
+    replica authority, SecretVault remains provider credential/key authority, and
+    the canonical StoragePolicy remains residency authority. The fabric adds only
+    capability truth, durable provider checkpoints, bounded multipart/range I/O,
+    placement previews, replica health, and non-destructive reconciliation.
+    """
+    current = runtime.get('data_plane_storage_fabric')
+    if current is not None:
+        return current
+    manager = manager or get_data_plane(runtime)
+    if manager is None:
+        return None
+    ensure_data_plane_security(runtime, manager)
+    ensure_data_plane_provider_store(runtime, manager)
+    envelopes = runtime.get('data_plane_envelopes')
+    factory = runtime.get('data_plane_provider_factory')
+    if envelopes is None or factory is None:
+        return None
+    from .storage_fabric import StorageFabric
+
+    fabric = StorageFabric(
+        manager,
+        envelopes=envelopes,
+        provider_factory=factory,
+        events=runtime.get('events'),
+    )
+    runtime['data_plane_storage_fabric'] = fabric
+    manager.storage_fabric = fabric
+    return fabric
+
+
 def build_data_plane_relay(runtime: dict, *, local_device_id: str):
     """Build the optional opaque relay only from an explicitly verified Vishnu Cloud config.
 
@@ -151,9 +185,15 @@ def ensure_data_plane_tools(runtime: dict) -> UnifiedDataPlane | None:
         return None
     ensure_data_plane_security(runtime, manager)
     ensure_data_plane_provider_store(runtime, manager)
+    ensure_data_plane_storage_fabric(runtime, manager)
     registry = runtime.get('tools')
     if registry is not None:
         from tools import data_access
+        from tools import storage_fabric as storage_fabric_tools
+
         data_access.register(registry, manager)
+        fabric = runtime.get('data_plane_storage_fabric')
+        if fabric is not None:
+            storage_fabric_tools.register(registry, fabric)
     ensure_data_plane_sync(runtime, manager)
     return manager
