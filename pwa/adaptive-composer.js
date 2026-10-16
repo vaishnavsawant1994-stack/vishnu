@@ -114,13 +114,14 @@
     style.id='vAdaptiveComposerStyle';
     style.textContent=`
       #composer{position:relative}
-      .v-adaptive-preview{position:absolute;left:0;right:0;bottom:calc(100% + 9px);z-index:58;display:none;align-items:center;gap:10px;min-height:54px;padding:9px 10px;border:1px solid rgba(145,157,179,.32);border-radius:16px;background:color-mix(in srgb,var(--panel,#fff) 94%,transparent);box-shadow:0 10px 32px rgba(18,25,38,.14);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:var(--text,#151922)}
+      .v-adaptive-preview{position:absolute;left:0;right:0;bottom:calc(100% + 9px);z-index:58;display:none;align-items:center;gap:10px;min-height:54px;padding:9px 10px;border:1px solid rgba(145,157,179,.32);border-radius:16px;background:color-mix(in srgb,var(--panel,#fff) 94%,transparent);box-shadow:0 10px 32px rgba(18,25,38,.14);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);color:var(--text,#151922);pointer-events:none}
+      body.chat-experience:not(.home-landing) .v-adaptive-preview{bottom:calc(100% + 56px)}
       .v-adaptive-preview[data-open="true"]{display:flex;animation:vAdaptiveIn .14s ease-out}
       .v-adaptive-icon{display:grid;place-items:center;flex:0 0 34px;width:34px;height:34px;border-radius:11px;background:rgba(112,91,255,.10);font-size:15px;font-weight:700}
       .v-adaptive-copy{min-width:0;flex:1;display:grid;gap:2px}
       .v-adaptive-copy strong{font-size:13px;line-height:1.2;font-weight:700}
       .v-adaptive-copy small{font-size:11.5px;line-height:1.25;color:var(--muted,#687083);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-      .v-adaptive-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto}
+      .v-adaptive-actions{display:flex;align-items:center;gap:6px;flex:0 0 auto;pointer-events:auto}
       .v-adaptive-action,.v-adaptive-dismiss{min-height:34px;border-radius:10px;border:1px solid rgba(125,137,159,.28);background:transparent;color:inherit;padding:0 10px;font:inherit;font-size:11.5px;font-weight:650;cursor:pointer}
       .v-adaptive-action{background:rgba(112,91,255,.10);border-color:rgba(112,91,255,.22)}
       .v-adaptive-dismiss{width:34px;padding:0;font-size:17px;color:var(--muted,#687083)}
@@ -128,7 +129,9 @@
       @keyframes vAdaptiveIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
       @media(max-width:760px){
         .v-adaptive-preview{position:fixed;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px);min-height:50px;padding:8px 9px;border-radius:15px}
+        body.chat-experience:not(.home-landing) .v-adaptive-preview{bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px)}
         body.keyboard-open .v-adaptive-preview{bottom:max(calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px),calc(100dvh - var(--keyboard-visible-height,100dvh) + var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px))}
+        body.chat-experience.keyboard-open:not(.home-landing) .v-adaptive-preview{bottom:max(calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px),calc(100dvh - var(--keyboard-visible-height,100dvh) + var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px))}
         .v-adaptive-copy small{max-width:44vw}.v-adaptive-action{padding:0 8px}
       }
       @media(max-width:380px){.v-adaptive-copy small{display:none}.v-adaptive-preview{gap:7px}.v-adaptive-icon{width:31px;height:31px;flex-basis:31px}.v-adaptive-action{font-size:11px}}
