@@ -181,7 +181,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "qualification",
         "Dependency-light WAV quality evaluation",
         CapabilityState.IMPLEMENTED,
-        ("voice/intelligence.py",),
+        ("voice/intelligence.py", "voice/lab/benchmarks.py"),
     ),
     VoiceCapability(
         "avatar-viseme-cues",
@@ -263,7 +263,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "reliability",
         "Provider failure isolation, fallback and clean runtime teardown",
         CapabilityState.IMPLEMENTED,
-        ("voice/platform.py", "voice/voicestudio.py"),
+        ("voice/platform.py", "voice/voicestudio.py", "voice/lab/subprocess_adapter.py"),
     ),
     VoiceCapability(
         "voice-runtime-configuration",
@@ -311,17 +311,20 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
     VoiceCapability(
         "telephony",
         "communications",
-        "PSTN/SIP/telephony calling stack",
-        CapabilityState.GAP,
-        (),
-        ("No confirmed PSTN, SIP or Twilio-style calling stack exists in the inspected voice architecture.",),
+        "Governed provider-injected PSTN/SIP telephony qualification",
+        CapabilityState.IMPLEMENTED,
+        ("voice/lab/telephony.py", "ui/voice_lab.py"),
+        (
+            "Default-off and owner-approved; real provider credentials, numbers, jurisdictional rules and live call quality require exact qualification.",
+            "Voice Lab blocks recognized emergency-number calls and does not auto-enable recording.",
+        ),
     ),
     VoiceCapability(
         "physical-device-acoustics",
         "qualification",
         "Real physical-device microphone, speaker and acoustic qualification",
         CapabilityState.QUALIFICATION_REQUIRED,
-        (),
+        ("voice/lab/devices.py",),
         ("Emulator/simulator evidence must not be treated as physical-device acoustic qualification.",),
     ),
     VoiceCapability(
@@ -329,7 +332,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "qualification",
         "Cross-provider/model/device acoustic and latency parity",
         CapabilityState.QUALIFICATION_REQUIRED,
-        (),
+        ("voice/lab/comparison.py",),
         ("Requires evidence for each exact provider, model, language, device and route tuple.",),
     ),
 )
