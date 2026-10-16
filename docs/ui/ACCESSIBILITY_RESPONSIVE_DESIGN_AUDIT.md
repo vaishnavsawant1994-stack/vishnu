@@ -23,6 +23,8 @@ Current tests/source prove several important contracts:
 - PWA contains reduced-motion handling;
 - responsive breakpoint CSS is under automated layout tests;
 - shared desktop design tokens set 44px control/touch targets and explicit focus borders;
+- Desktop `SettingsPanel` exposes and persists **Reduce motion** and **High contrast**;
+- reduced motion is applied to the active desktop pulse immediately, while high-contrast state is persisted for full application after restart;
 - iOS Sensorium and companion surfaces use native SwiftUI labels/navigation semantics;
 - PWA project and WorkOrder surfaces contain explicit mobile adaptations.
 
@@ -42,11 +44,11 @@ This is meaningful evidence, but it is not full WCAG/platform accessibility acce
 - touch-target acceptance on real devices;
 - non-swipe alternatives for any gesture-only action.
 
-## 4. Required Accessibility settings
+## 4. Accessibility settings truth
 
-`SET-005 Accessibility` is a real missing owner surface because preferences such as reduced motion and high contrast already appear in runtime/control projections but are not presented as one discoverable setting family.
+`SET-005 Accessibility` is **PARTIAL**, not missing. Desktop already provides working owner controls for **Reduce motion** and **High contrast** inside `SettingsPanel`, backed by persisted preferences. What is missing is a coherent/discoverable Accessibility subsection and appropriate parity/OS-following behavior outside Desktop.
 
-Recommended contents:
+Recommended finished contents:
 
 - Follow system appearance/contrast where applicable;
 - Reduce motion;
@@ -54,7 +56,7 @@ Recommended contents:
 - supported text-density/text-size behavior only if Vishnu can genuinely implement it;
 - explanation when an accommodation is managed by the operating system rather than by Vishnu.
 
-Do not create custom accessibility toggles that fight platform-level accessibility settings.
+Do not create custom accessibility toggles that fight platform-level accessibility settings, and do not replace the already-working Desktop preferences with a duplicate persistence path.
 
 ## 5. Keyboard contract
 
