@@ -1,8 +1,12 @@
-"""Bounded MCP Streamable HTTP client for owner-approved read-only tools."""
+"""Bounded MCP Streamable HTTP client for owner-approved tools."""
 from __future__ import annotations
 
+import ipaddress
 import json
 import math
+from urllib.parse import urlsplit
+
+import requests
 
 from integrations.discovery.execution import MAX_RESPONSE_BYTES, _BoundedHTTPSession
 from integrations.contracts import ConnectorManifest, ConnectorOperation, RetryPolicy
@@ -19,16 +23,130 @@ class MCPProtocolError(RuntimeError):
         self.safe_message = message
 
 
+class _BoundedLoopbackSession:
+    """Origin-bound MCP transport for an internally trusted loopback provider.
+
+    This transport is deliberately separate from the public HTTPS transport. It
+    accepts only IP-literal loopback origins, ignores proxy environment variables,
+    blocks redirects and keeps the same response-size cap used by external MCP.
+    """
+
+    def __init__(self, base_url: str):
+        parts = urlsplit(base_url)
+        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username or parts.password:
+            raise ValueError("loopback MCP endpoint required")
+        try:
+            address = ipaddress.ip_address(parts.hostname)
+        except ValueError as exc:
+            raise ValueError("loopback MCP endpoint must use an IP literal") from exc
+        if not address.is_loopback:
+            raise ValueError("loopback MCP endpoint required")
+        self.base_url = base_url
+        self.origin = parts.netloc.lower()
+        self.prefix = parts.path.rstrip("/")
+        self.session = requests.Session()
+        self.session.trust_env = False
+
+    def request(self, method, url, **kwargs):
+        parts = urlsplit(url)
+        if (
+            parts.scheme not in {"http", "https"}
+            or parts.netloc.lower() != self.origin
+            or parts.username
+            or parts.password
+        ):
+            raise ConnectorError(
+                "destination_denied",
+                "The operation destination is not approved.",
+                "permission_denied",
+                403,
+                False,
+            )
+        try:
+            address = ipaddress.ip_address(parts.hostname or "")
+        except ValueError as exc:
+            raise ConnectorError(
+                "destination_denied",
+                "The operation destination is not approved.",
+                "permission_denied",
+                403,
+                False,
+            ) from exc
+        if not address.is_loopback:
+            raise ConnectorError(
+                "destination_denied",
+                "The operation destination is not approved.",
+                "permission_denied",
+                403,
+                False,
+            )
+        if self.prefix and not (parts.path == self.prefix or parts.path.startswith(self.prefix + "/")):
+            raise ConnectorError(
+                "destination_denied",
+                "The operation path is outside the approved MCP base path.",
+                "permission_denied",
+                403,
+                False,
+            )
+        kwargs["allow_redirects"] = False
+        kwargs["stream"] = True
+        kwargs["timeout"] = min(max(float(kwargs.get("timeout", 8)), 0.1), 8.0)
+        response = self.session.request(method, url, **kwargs)
+        try:
+            if 300 <= int(response.status_code) < 400:
+                raise ConnectorError(
+                    "redirect_denied",
+                    "MCP redirects are disabled for this connector.",
+                    "permission_denied",
+                    502,
+                    False,
+                )
+            declared = int(response.headers.get("Content-Length", "0") or 0)
+            if declared > MAX_RESPONSE_BYTES:
+                raise ConnectorError(
+                    "content_too_large",
+                    "The MCP response exceeds the size limit.",
+                    "degraded",
+                    413,
+                    False,
+                )
+            content = bytearray()
+            for chunk in response.iter_content(64 * 1024):
+                content.extend(chunk)
+                if len(content) > MAX_RESPONSE_BYTES:
+                    raise ConnectorError(
+                        "content_too_large",
+                        "The MCP response exceeds the size limit.",
+                        "degraded",
+                        413,
+                        False,
+                    )
+            response._content = bytes(content)
+            response._content_consumed = True
+            return response
+        except Exception:
+            response.close()
+            raise
+
+
 class MCPHTTPClient:
     PROTOCOL_VERSION = "2025-11-25"
     ACCEPT = "application/json, text/event-stream"
 
-    def __init__(self, endpoint: str, bearer_token: str | None = None, *, timeout: float = 8, auth_type: str = "bearer_token"):
+    def __init__(
+        self,
+        endpoint: str,
+        bearer_token: str | None = None,
+        *,
+        timeout: float = 8,
+        auth_type: str = "bearer_token",
+        allow_loopback: bool = False,
+    ):
         self.endpoint = endpoint
         self.bearer_token = bearer_token
         self.auth_type = auth_type
         self.timeout = min(max(float(timeout), 0.1), 8.0)
-        self.session = _BoundedHTTPSession(endpoint)
+        self.session = _BoundedLoopbackSession(endpoint) if allow_loopback else _BoundedHTTPSession(endpoint)
         self.session_id: str | None = None
         self.protocol_version = self.PROTOCOL_VERSION
         self._next_id = 1
@@ -221,7 +339,12 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
         actor = {"device_id": context.device_id, "session_id": context.session_id} if context else {}
         audit_data = {"capability_id": capability["id"], "tool_name": capability["name"], "operation": operation_name}
         current.audit("mcp.execution.started", connector_id=connector_id, **actor, payload=audit_data)
-        client = MCPHTTPClient(live["server_url"], token, auth_type=live.get("auth_type", "bearer_token"))
+        client = MCPHTTPClient(
+            live["server_url"],
+            token,
+            auth_type=live.get("auth_type", "bearer_token"),
+            allow_loopback=capability.get("trusted_loopback") is True,
+        )
         try:
             result = client.call_tool(capability["name"], parameters)
             if result.get("isError") is True:
@@ -229,8 +352,6 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
             encoded = json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
             if len(encoded) > MAX_RESPONSE_BYTES:
                 raise MCPProtocolError("response_too_large", "MCP tool result exceeds the size limit")
-            # Tool result delivery is not evidence that a remote side effect
-            # completed or persisted; reserve "verified" for independent proof.
             current.audit("mcp.execution.accepted", connector_id=connector_id, **actor, payload=audit_data)
             return result
         except Exception as exc:
