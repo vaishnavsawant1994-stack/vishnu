@@ -1,29 +1,164 @@
 from __future__ import annotations
+
 import json
-from PyQt6.QtWidgets import QDialog,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,QTabWidget,QTextBrowser,QMessageBox
+
+from PyQt6.QtWidgets import QDialog, QHBoxLayout, QLabel, QMessageBox, QPushButton, QTabWidget, QTextBrowser, QVBoxLayout
+
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
+from ui.voice_lab import VoiceLabDialog
 from ui.voice_studio import VoiceStudioDialog
 from voice.platform import VoiceIntelligenceService
+
+
 class ControlPanel(QDialog):
-    def __init__(self,runtime,parent=None):
-        super().__init__(parent); self.runtime=runtime; self.setWindowTitle('Vishnu — Owner Control Center'); fit_window_to_screen(self,preferred=(900,650)); self.setStyleSheet(design_system_stylesheet()); lay=QVBoxLayout(self); top=QHBoxLayout(); top.addWidget(QLabel('OWNER CONTROL CENTER')); top.addStretch(1); voice=QPushButton('Voice Studio'); voice.setToolTip('Manage Vishnu voice personas, expression, pronunciation and authorized voices'); voice.clicked.connect(self.open_voice_studio); top.addWidget(voice); b=QPushButton('Refresh'); b.clicked.connect(self.refresh); top.addWidget(b); lay.addLayout(top); self.tabs=QTabWidget(); lay.addWidget(self.tabs); self.views={}
-        for name in ['Overview','Devices & Presence','Automations','Integrations','Models','Voice','Privacy & Data','Security','Preferences']:
-            view=QTextBrowser(); self.views[name]=view; self.tabs.addTab(view,name)
+    def __init__(self, runtime, parent=None):
+        super().__init__(parent)
+        self.runtime = runtime
+        self.setWindowTitle("Vishnu — Owner Control Center")
+        fit_window_to_screen(self, preferred=(900, 650))
+        self.setStyleSheet(design_system_stylesheet())
+        layout = QVBoxLayout(self)
+        top = QHBoxLayout()
+        top.addWidget(QLabel("OWNER CONTROL CENTER"))
+        top.addStretch(1)
+        voice = QPushButton("Voice Studio")
+        voice.setToolTip("Manage Vishnu voice personas, expression, pronunciation and authorized voices")
+        voice.clicked.connect(self.open_voice_studio)
+        top.addWidget(voice)
+        lab = QPushButton("Voice Lab")
+        lab.setToolTip("Research, benchmark, qualify and prepare governed voice release candidates")
+        lab.clicked.connect(self.open_voice_lab)
+        top.addWidget(lab)
+        refresh = QPushButton("Refresh")
+        refresh.clicked.connect(self.refresh)
+        top.addWidget(refresh)
+        layout.addLayout(top)
+        self.tabs = QTabWidget()
+        layout.addWidget(self.tabs)
+        self.views = {}
+        for name in [
+            'Overview',
+            'Devices & Presence',
+            'Automations',
+            'Integrations',
+            'Models',
+            'Voice',
+            'Privacy & Data',
+            'Security',
+            'Preferences',
+        ]:
+            view = QTextBrowser()
+            self.views[name] = view
+            self.tabs.addTab(view, name)
         self.refresh()
+
     def open_voice_studio(self):
         try:
-            VoiceStudioDialog(self.runtime,self).exec(); self.refresh()
+            VoiceStudioDialog(self.runtime, self).exec()
+            self.refresh()
         except Exception as exc:
-            QMessageBox.warning(self,'Voice Studio',f'Voice Studio is unavailable: {type(exc).__name__}')
-    def _voice_status(self):
-        models=self.runtime.get('models'); settings=self.runtime.get('settings') or getattr(models,'settings',None)
-        if models is None or settings is None: return {'available':False}
+            QMessageBox.warning(self, "Voice Studio", f"Voice Studio is unavailable: {type(exc).__name__}")
+
+    def open_voice_lab(self):
         try:
-            service=VoiceIntelligenceService(models,data_dir=settings.data_dir); return {'available':True,**service.status()}
+            VoiceLabDialog(self.runtime, self).exec()
+            self.refresh()
         except Exception as exc:
-            return {'available':False,'error_type':type(exc).__name__}
+            QMessageBox.warning(self, "Voice Lab", f"Voice Lab is unavailable: {type(exc).__name__}")
+
+    def _voice_status(self):
+        models = self.runtime.get("models")
+        settings = self.runtime.get("settings")
+        settings = settings or getattr(models, "settings", None)
+        if models is None or settings is None:
+            return {"available": False}
+        try:
+            service = VoiceIntelligenceService(models, data_dir=settings.data_dir)
+            return {"available": True, **service.status()}
+        except Exception as exc:
+            return {"available": False, "error_type": type(exc).__name__}
+
     def refresh(self):
-        rt=self.runtime; graph=rt['second_brain'].graph(); voice_status=self._voice_status(); self.views['Overview'].setPlainText(json.dumps({'memory_nodes':len(graph.get('nodes',[])),'memory_edges':len(graph.get('edges',[])),'tools':len(rt['tools'].all()),'automations':len(rt['automations'].list()),'devices':len(rt['device_registry'].list()),'voice_intelligence':voice_status.get('available',False)},indent=2)); devices=[]; online=set(rt['device_gateway'].online()) if rt.get('device_gateway') else set()
+        rt = self.runtime
+        graph = rt['second_brain'].graph()
+        voice_status = self._voice_status()
+        self.views['Overview'].setPlainText(
+            json.dumps(
+                {
+                    "memory_nodes": len(graph.get("nodes", [])),
+                    "memory_edges": len(graph.get("edges", [])),
+                    "tools": len(rt['tools'].all()),
+                    "automations": len(rt['automations'].list()),
+                    "devices": len(rt['device_registry'].list()),
+                    "voice_intelligence": voice_status.get("available", False),
+                    "voice_lab": "isolated owner control surface available",
+                },
+                indent=2,
+            )
+        )
+        devices = []
+        online = set(rt['device_gateway'].online()) if rt.get('device_gateway') else set()
         for item in rt['device_registry'].list():
-            active=not bool(item.get('revoked')); device_id=item.get('id'); devices.append({'device_id':device_id,'platform':item.get('platform'),'trust_state':'trusted' if active else 'revoked','presence_state':'online' if active and device_id in online else ('revoked' if not active else 'unknown'),'last_seen_at':item.get('last_seen_at'),'permissions':item.get('permissions',[])})
-        self.views['Devices & Presence'].setPlainText(json.dumps(devices,indent=2,default=str)); self.views['Automations'].setPlainText(json.dumps(rt['automations'].list(),indent=2,default=str)); self.views['Integrations'].setPlainText(json.dumps(rt['integrations'].list(),indent=2,default=str)); models=rt.get('models'); model_status=models.health_status(probe=False) if models and hasattr(models,'health_status') else {'available':bool(models)}; self.views['Models'].setPlainText(json.dumps(model_status,indent=2,default=str)); self.views['Voice'].setPlainText(json.dumps(voice_status,indent=2,default=str)); prefs=rt['preferences'].snapshot(); self.views['Privacy & Data'].setPlainText(json.dumps({'sensitive_memory_remote_access':'scope-gated','secret_store_exported_in_backups':False,'backup_service':'available' if rt.get('backups') else 'unavailable','device_presence':'live-evidence-only','permission_default':'deny','model_privacy_mode':prefs.get('model_privacy_mode','local_preferred')},indent=2)); self.views['Preferences'].setPlainText(json.dumps({'wake_phrase':prefs.get('wake_phrase'),'launch_voice_on_start':prefs.get('launch_voice_on_start'),'show_memory_hints':prefs.get('show_memory_hints'),'reduce_motion':prefs.get('reduce_motion'),'high_contrast':prefs.get('high_contrast'),'autonomy_mode':prefs.get('autonomy_mode'),'model_privacy_mode':prefs.get('model_privacy_mode')},indent=2,default=str)); self.views['Security'].setPlainText(json.dumps({'autonomy_mode':rt['tools'].settings.autonomy_mode,'vault_enabled':rt.get('vault') is not None,'remote_control':'authenticated device bearer token','pairing':'loopback initiated','browser_profile':'persistent local profile','voice_enrollment':'owner-reauthenticated + explicit-consent'},indent=2))
+            active = not bool(item.get("revoked"))
+            device_id = item.get("id")
+            devices.append(
+                {
+                    "device_id": device_id,
+                    "platform": item.get("platform"),
+                    'trust_state':'trusted' if active else 'revoked',
+                    'presence_state':'online' if active and device_id in online else ('revoked' if not active else 'unknown'),
+                    "last_seen_at": item.get("last_seen_at"),
+                    "permissions": item.get("permissions", []),
+                }
+            )
+        self.views['Devices & Presence'].setPlainText(json.dumps(devices, indent=2, default=str))
+        self.views['Automations'].setPlainText(json.dumps(rt['automations'].list(), indent=2, default=str))
+        self.views['Integrations'].setPlainText(json.dumps(rt['integrations'].list(), indent=2, default=str))
+        models = rt.get('models')
+        model_status = models.health_status(probe=False) if models and hasattr(models, "health_status") else {"available": bool(models)}
+        self.views['Models'].setPlainText(json.dumps(model_status, indent=2, default=str))
+        self.views['Voice'].setPlainText(json.dumps(voice_status, indent=2, default=str))
+        prefs = rt['preferences'].snapshot()
+        self.views['Privacy & Data'].setPlainText(
+            json.dumps(
+                {
+                    'sensitive_memory_remote_access':'scope-gated',
+                    'secret_store_exported_in_backups':False,
+                    "backup_service": "available" if rt.get('backups') else "unavailable",
+                    'device_presence':'live-evidence-only',
+                    'permission_default':'deny',
+                    'model_privacy_mode':prefs.get('model_privacy_mode','local_preferred'),
+                    "voice_lab_raw_audio_default": "not retained",
+                },
+                indent=2,
+            )
+        )
+        self.views['Preferences'].setPlainText(
+            json.dumps(
+                {
+                    "wake_phrase": prefs.get("wake_phrase"),
+                    "launch_voice_on_start": prefs.get("launch_voice_on_start"),
+                    "show_memory_hints": prefs.get("show_memory_hints"),
+                    'reduce_motion':prefs.get('reduce_motion'),
+                    "high_contrast": prefs.get("high_contrast"),
+                    'autonomy_mode':prefs.get('autonomy_mode'),
+                    "model_privacy_mode": prefs.get("model_privacy_mode"),
+                },
+                indent=2,
+                default=str,
+            )
+        )
+        self.views['Security'].setPlainText(
+            json.dumps(
+                {
+                    "autonomy_mode": rt['tools'].settings.autonomy_mode,
+                    "vault_enabled": rt.get('vault') is not None,
+                    "remote_control": "authenticated device bearer token",
+                    "pairing": "loopback initiated",
+                    "browser_profile": "persistent local profile",
+                    "voice_enrollment": "owner-reauthenticated + explicit-consent",
+                    "voice_lab_promotion": "separate explicit owner-approved request only",
+                },
+                indent=2,
+            )
+        )
