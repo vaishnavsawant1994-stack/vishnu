@@ -1,98 +1,79 @@
 # Vishnu Missing Screen Report
 
-**Audited baseline:** `4ec735de327f2bab6dccb774e2a9c28ef4fc44af`  
+**Canonical blueprint merge:** `1e6e89b64ca67c77c6189d37db8e581997af75f7`  
+**Implementation evidence baseline:** `9adae5922e1a40b5e3cbaa86b4d6919e535a5b27`  
 **Canonical screens required:** 63  
-**Genuinely missing canonical screens:** 6
+**Source-present canonical screens:** 63  
+**Genuinely missing canonical screens:** **0**
 
-This report contains only owner concepts that were not represented sufficiently by any current visible implementation. A screen is not marked missing merely because one platform lacks parity.
+The six source gaps identified by the original UI/Product Truth audit now have implementation evidence. This closes the **missing-screen** category only. It does **not** mean the 63 screens have passed strict visual, behavior, responsive or accessibility acceptance.
 
-## P1 — ONB-005 Data Placement Policy
+## ONB-005 — Data Placement Policy — PARTIAL
 
-**Why required:** Vishnu already has canonical local-first placement policies: `device_only`, `progress_only`, `sync_everywhere`, `on_demand`. First-run should make that owner decision explicit rather than silently inheriting a default.
+Implemented in PWA and Desktop first-run. Both surfaces expose the exact canonical policies `device_only`, `progress_only`, `sync_everywhere`, `on_demand` and write through the existing Data Plane. Copy and tests explicitly state that changing the default does not silently move existing data.
 
-**Parent/navigation:** First Run → Privacy & Autonomy → Data Placement → AI Provider.  
-**Features represented:** local-first ownership, sync policy, offline behavior, cloud optionality.  
-**Backend already available:** yes, data-plane/storage policy authority exists.  
-**Security:** policy changes must use canonical owner/device authority; no parallel preference store.  
-**Required components:** policy cards, plain-language consequences, local/cloud indicator, confirmation, offline explanation.  
-**Platforms:** Desktop, PWA first-device flow, iOS first-device flow, Android when native first-device creation is supported.  
-**Priority:** P1.  
-**Implementation recommendation:** bind directly to the existing canonical policy authority and persist before final setup review.
+Remaining acceptance: native first-device parity where intended, rendered visual evidence, complete interruption/restart qualification and accessibility acceptance.
 
-## P1 — ONB-008 Setup Review & Completion
+## ONB-008 — Setup Review & Completion — PARTIAL
 
-**Why required:** first-run needs one final owner-verifiable summary before Home.
+Implemented in PWA and Desktop as a final review before the existing idempotent completion authority. The review includes owner identity, first trusted device, security/recovery readiness, data placement, privacy/autonomy and AI/deferred configuration.
 
-**Parent/navigation:** First Run final step.  
-**Features represented:** Vishnu identity, first trusted device, authentication state, recovery readiness, chosen data policy, chosen AI provider/model.  
-**Backend already available:** mostly yes; values are created earlier in onboarding.  
-**Security:** must not display secrets/recovery material after acknowledgement; final commit must remain idempotent.  
-**Required components:** summary sections, warnings for unresolved mandatory setup, back/edit links, `Enter Vishnu` primary action.  
-**Platforms:** every supported first-device platform.  
-**Priority:** P1.  
-**Implementation recommendation:** make this a review/commit step, not another duplicate persistence authority.
+Remaining acceptance: native parity where intended plus exact-SHA visual/behavior/accessibility evidence.
 
-## P1 — DAT-002 Connected Storage Provider Detail
+## DAT-002 — Connected Storage Provider Detail — PARTIAL
 
-**Why required:** if an owner connects remote/cloud storage, they must be able to understand the provider, destination, health, consent, movement and failure state.
+Implemented as an owner-gated PWA deep-link detail backed by the canonical Data Plane:
 
-**Parent/navigation:** Settings → Data & Storage → Connected Storage → provider.  
-**Features represented:** provider connection, capability/health, selected destination, allowed data classes, transfer evidence, disconnect/revoke.  
-**Backend already available:** storage-fabric/provider and data-plane authorities exist, but owner-facing provider detail is incomplete.  
-**Security:** never redisplay secrets; destructive disconnect/movement must explain impact and use canonical confirmation/approval.  
-**Required components:** provider identity, connection/health status, data classes, location, last sync/transfer evidence, reconnect/disconnect actions, offline/degraded states.  
-**Platforms:** Desktop/PWA; native companion parity only if native provider management is intended.  
-**Priority:** P1.  
-**Implementation recommendation:** project canonical provider/storage evidence; do not infer successful movement from a UI click alone.
+`/iphone/api/about/storage-provider/{provider_id}`
 
-## P2 — SEN-002 Sensorium Status & Providers
+The backing provider-detail API is:
 
-**Why required:** Sensorium has owner-relevant provider availability/status/evidence beyond per-sensor permission switches.
+`/iphone/api/data-plane/providers/{provider_id}`
 
-**Parent/navigation:** Advanced → Sensorium → Status & Providers.  
-**Features represented:** provider type, availability, current device, degraded/unavailable state, evidence summary.  
-**Backend already available:** yes, including native-device-lab/provider status/evidence APIs.  
-**Security:** read-only owner projection; do not expose arbitrary ADB/simctl execution or sensitive sensor payloads.  
-**Required components:** provider rows, availability badges, evidence timestamp/summary, troubleshooting guidance.  
-**Platforms:** Desktop/PWA owner management.  
-**Priority:** P2.  
-**Implementation recommendation:** keep low-level lab mechanics in Advanced/Diagnostics.
+The projection is deliberately read-only and omits credential values, credential references and arbitrary provider config. It shows safe provider identity, capabilities, destination metadata, connection/consent state, verification and reported error/sync state. Existing data movement remains a separate governed action.
 
-## P3 — SYS-003 Updates & Release
+## SEN-002 — Sensorium Status & Providers — PARTIAL
 
-**Why required:** update/release infrastructure should have one owner-facing lifecycle instead of scattered technical state.
+Implemented as an owner-gated advanced PWA surface:
 
-**Parent/navigation:** Settings → Updates or System → Updates.  
-**Features represented:** current version, update available, release notes, verification, install/restart status, failure/recovery.  
-**Backend already available:** update/release infrastructure exists, but owner projection is incomplete.  
-**Security:** verified artifacts only; never imply an update is installed until verification/install evidence says so.  
-**Required components:** version card, update state, release notes, verify/install/restart flow, error recovery.  
-**Platforms:** Desktop first; PWA/native only where update ownership actually belongs to Vishnu rather than the browser/app store.  
-**Priority:** P3.
+`/iphone/api/about/sensorium`
 
-## P3 — SYS-004 About / Version / Notices
+with read projection:
 
-**Why required:** owner should be able to discover installed version/build, proprietary license posture and third-party notices.
+`/iphone/api/about/sensorium/status`
 
-**Parent/navigation:** Settings → About.  
-**Features represented:** Vishnu version/build, license, third-party notices, links to privacy/security/update status.  
-**Backend already available:** metadata/release files exist.  
-**Security:** no secret configuration or private diagnostics.  
-**Required components:** version/build rows, license summary, notices, update link.  
-**Platforms:** Desktop/PWA and native About surface where appropriate.  
-**Priority:** P3.
+The surface reads saved `NativeDeviceLab` provider profiles/evidence and explicitly reports that live availability is **not verified**, physical-device qualification is **not claimed**, and execution authority is **false**. It exposes no adb, simctl, shell, keyboard/mouse or app-launch control.
 
-## Corrected non-missing item — SET-005 Accessibility
+## SYS-003 — Updates & Release — PARTIAL
 
-`SET-005` is **PARTIAL**, not missing. Desktop `SettingsPanel` already exposes and persists **Reduce motion** and **High contrast**. Reduced motion is applied to the active pulse immediately; high-contrast state is persisted for full application after restart. Remaining work is organization/discoverability, appropriate PWA parity, OS-managed native behavior and complete accessibility acceptance testing.
+Implemented as a truthful owner deep link:
 
-## Implementation order
+`/iphone/api/about/updates`
 
-1. ONB-005 Data Placement Policy.
-2. ONB-008 Setup Review & Completion.
-3. DAT-002 Connected Storage Provider Detail.
-4. SEN-002 Sensorium Status & Providers.
-5. SYS-003 Updates & Release.
-6. SYS-004 About / Version / Notices.
+The screen shows installed version/build/channel and projects governed release-authority availability when that subsystem exists. It explicitly states that no signed in-app updater is connected and that installed-app updates remain platform/installation-owner managed. There is no fake Install Update button.
 
-Do not build these as duplicate authorities. Each missing UI must project or mutate the existing canonical backend/security/storage authority and prove persistence/action results after refresh/restart where applicable.
+This screen remains PARTIAL until a real signed updater authority exists where Vishnu actually owns update installation, and until rendered visual/behavioral acceptance is complete.
+
+## SYS-004 — About / Version / Notices — PARTIAL
+
+The existing PWA Settings About & Updates surface is backed by `/iphone/api/about`, and the dedicated owner notices deep link is:
+
+`/iphone/api/about/notices`
+
+It exposes safe product/version/build identity, the proprietary **All Rights Reserved** posture, third-party notice guidance, and links to privacy/security/update surfaces. It does not expose secret configuration.
+
+## SET-005 — Accessibility — PARTIAL
+
+This remains non-missing. Desktop Settings persists Reduce Motion and High Contrast using the existing preferences authority. Web/native accessibility acceptance and coherent PWA parity remain unfinished and therefore the screen is not COMPLETE.
+
+## Current canonical source-presence result
+
+- canonical required: **63**
+- source-present: **63**
+- strict COMPLETE: **0**
+- PARTIAL: **58**
+- EXPERIMENTAL: **5**
+- MISSING: **0**
+- exact-SHA visual verified: **0**
+
+`docs/ui/ui_truth.json` remains the machine authority. The remaining campaign is qualification and parity work, not discovery of additional canonical missing pages.

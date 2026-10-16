@@ -18,6 +18,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from data_plane.runtime import get_data_plane
 from onboarding.first_run import FirstRunCoordinator, SetupMode
 
 
@@ -54,14 +55,16 @@ class FirstRunWizard(QDialog):
 
         self.stack = QStackedWidget()
         root.addWidget(self.stack, 1)
-        self.stack.addWidget(self._welcome_page())
-        self.stack.addWidget(self._owner_page())
-        self.stack.addWidget(self._security_page())
-        self.stack.addWidget(self._privacy_page())
-        self.stack.addWidget(self._model_page())
-        self.stack.addWidget(self._recovery_page())
-        self.stack.addWidget(self._restore_page())
-        self.stack.addWidget(self._connect_page())
+        self.stack.addWidget(self._welcome_page())       # 0
+        self.stack.addWidget(self._owner_page())         # 1
+        self.stack.addWidget(self._security_page())      # 2
+        self.stack.addWidget(self._recovery_page())      # 3
+        self.stack.addWidget(self._privacy_page())       # 4
+        self.stack.addWidget(self._data_page())          # 5
+        self.stack.addWidget(self._model_page())         # 6
+        self.stack.addWidget(self._review_page())        # 7
+        self.stack.addWidget(self._restore_page())       # 8
+        self.stack.addWidget(self._connect_page())       # 9
 
         footer = QHBoxLayout()
         self.back_button = QPushButton('Back')
@@ -168,6 +171,18 @@ class FirstRunWizard(QDialog):
         layout.addWidget(self._next_button('Create security', self._save_security))
         return page
 
+    def _recovery_page(self):
+        page, layout = self._page('Save your recovery codes', 'These one-time codes are shown only now. Store them somewhere separate from this computer before continuing.')
+        self.recovery_label = QLabel('Recovery codes will appear here after owner security is created.')
+        self.recovery_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.recovery_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;font-family:monospace;')
+        layout.addWidget(self.recovery_label)
+        self.saved_codes = QCheckBox('I saved these recovery codes in a safe place')
+        layout.addWidget(self.saved_codes)
+        layout.addStretch(1)
+        layout.addWidget(self._next_button('Continue', self._confirm_recovery_codes))
+        return page
+
     def _privacy_page(self):
         page, layout = self._page('Privacy and autonomy', 'Choose the default boundaries. Consequential actions still pass through Vishnu’s canonical risk, approval, verification and recovery systems.')
         form = QFormLayout()
@@ -190,6 +205,24 @@ class FirstRunWizard(QDialog):
         layout.addWidget(self.memory_enabled)
         layout.addStretch(1)
         layout.addWidget(self._next_button('Continue', self._save_preferences))
+        return page
+
+    def _data_page(self):
+        page, layout = self._page('Where may your data live?', 'Choose the canonical Data Plane policy for newly governed data. Changing this default never silently moves data that already exists.')
+        form = QFormLayout()
+        self.data_policy = QComboBox()
+        self.data_policy.addItem('Device only — keep governed data on this device', 'device_only')
+        self.data_policy.addItem('Progress only — share only continuation/progress data', 'progress_only')
+        self.data_policy.addItem('Sync everywhere — sync permitted data to trusted locations', 'sync_everywhere')
+        self.data_policy.addItem('On demand — move data only when explicitly required', 'on_demand')
+        form.addRow('Data placement', self.data_policy)
+        layout.addLayout(form)
+        hint = QLabel('Cloud is optional. A policy change controls future placement decisions; any explicit movement of existing data remains a separate governed action.')
+        hint.setObjectName('hint')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        layout.addWidget(self._next_button('Save data placement', self._save_data_policy))
         return page
 
     def _model_page(self):
@@ -220,20 +253,23 @@ class FirstRunWizard(QDialog):
         self.model_hint.setWordWrap(True)
         layout.addWidget(self.model_hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Finish setup', self._finish_model_setup))
+        layout.addWidget(self._next_button('Review setup', self._save_model_setup))
         self._provider_changed()
         return page
 
-    def _recovery_page(self):
-        page, layout = self._page('Save your recovery codes', 'These one-time codes are shown only now. Store them somewhere separate from this computer before continuing.')
-        self.recovery_label = QLabel('Recovery codes will appear here after owner security is created.')
-        self.recovery_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.recovery_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;font-family:monospace;')
-        layout.addWidget(self.recovery_label)
-        self.saved_codes = QCheckBox('I saved these recovery codes in a safe place')
-        layout.addWidget(self.saved_codes)
+    def _review_page(self):
+        page, layout = self._page('Review your Vishnu', 'Confirm the owner, security, recovery, data placement, privacy and AI choices before this installation becomes ready.')
+        self.review_label = QLabel('Your setup summary will appear here.')
+        self.review_label.setWordWrap(True)
+        self.review_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.review_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;')
+        layout.addWidget(self.review_label)
+        hint = QLabel('Finish is idempotent: retrying after interruption resumes the same Vishnu identity rather than creating a duplicate owner.')
+        hint.setObjectName('hint')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Continue', self._confirm_recovery_codes))
+        layout.addWidget(self._next_button('Finish setup', self._finish_review))
         return page
 
     def _restore_page(self):
@@ -281,18 +317,24 @@ class FirstRunWizard(QDialog):
 
     def _restore_form_values(self):
         preferences = self.runtime.get('preferences')
-        if preferences is None:
-            return
-        self.first_name.setText(str(preferences.get('profile_first_name', '') or ''))
-        self.last_name.setText(str(preferences.get('profile_last_name', '') or ''))
-        self.display_name.setText(str(preferences.get('preferred_name', '') or ''))
-        privacy_index = self.privacy.findData(str(preferences.get('model_privacy_mode', 'local_preferred') or 'local_preferred'))
-        if privacy_index >= 0:
-            self.privacy.setCurrentIndex(privacy_index)
-        autonomy_index = self.autonomy.findData(str(preferences.get('autonomy_mode', 'ask') or 'ask'))
-        if autonomy_index >= 0:
-            self.autonomy.setCurrentIndex(autonomy_index)
-        self.memory_enabled.setChecked(bool(preferences.get('memory_enabled', True)))
+        if preferences is not None:
+            self.first_name.setText(str(preferences.get('profile_first_name', '') or ''))
+            self.last_name.setText(str(preferences.get('profile_last_name', '') or ''))
+            self.display_name.setText(str(preferences.get('preferred_name', '') or ''))
+            privacy_index = self.privacy.findData(str(preferences.get('model_privacy_mode', 'local_preferred') or 'local_preferred'))
+            if privacy_index >= 0:
+                self.privacy.setCurrentIndex(privacy_index)
+            autonomy_index = self.autonomy.findData(str(preferences.get('autonomy_mode', 'ask') or 'ask'))
+            if autonomy_index >= 0:
+                self.autonomy.setCurrentIndex(autonomy_index)
+            self.memory_enabled.setChecked(bool(preferences.get('memory_enabled', True)))
+        try:
+            settings = get_data_plane(self.runtime).settings()
+            index = self.data_policy.findData(str(settings.get('default_policy') or 'device_only'))
+            if index >= 0:
+                self.data_policy.setCurrentIndex(index)
+        except Exception:
+            pass
 
     def _resume_state(self, state: dict):
         status = str(state.get('status') or '')
@@ -303,13 +345,13 @@ class FirstRunWizard(QDialog):
         if status == 'connect_pending':
             self.mode = SetupMode.CONNECT
             self.connect_url.setText(str(state.get('connect_url') or ''))
-            self.stack.setCurrentIndex(7)
+            self.stack.setCurrentIndex(9)
             self.back_button.setVisible(True)
             self.title.setText('Connect to Vishnu')
             return
         if status == 'restore_failed':
             self.mode = SetupMode.RESTORE
-            self.stack.setCurrentIndex(6)
+            self.stack.setCurrentIndex(8)
             self.back_button.setVisible(True)
             self.title.setText('Restore Vishnu')
             return
@@ -327,11 +369,12 @@ class FirstRunWizard(QDialog):
             self.stack.setCurrentIndex(2)
             self.subtitle.setText('Setup was interrupted before recovery codes were confirmed. Re-enter an owner password to generate a fresh recovery-code set.')
         elif stage == 'privacy' or ('recovery_saved' in completed and 'privacy' not in completed):
-            self.stack.setCurrentIndex(3)
-        else:
             self.stack.setCurrentIndex(4)
-            if 'model' in completed or 'model_skipped' in completed:
-                self.skip_model.setChecked(True)
+        elif {'model', 'model_skipped'} & completed:
+            self._refresh_review()
+            self.stack.setCurrentIndex(7)
+        else:
+            self.stack.setCurrentIndex(5)
 
     def _choose_mode(self, mode: SetupMode):
         self.mode = mode
@@ -341,28 +384,23 @@ class FirstRunWizard(QDialog):
             self.stack.setCurrentIndex(1)
             self.title.setText('Set up your Vishnu')
         elif mode is SetupMode.RESTORE:
-            self.stack.setCurrentIndex(6)
+            self.stack.setCurrentIndex(8)
             self.title.setText('Restore Vishnu')
         else:
-            self.stack.setCurrentIndex(7)
+            self.stack.setCurrentIndex(9)
             self.title.setText('Connect to Vishnu')
 
     def _back(self):
         index = self.stack.currentIndex()
-        if index in {1, 6, 7}:
+        if index in {1, 8, 9}:
             self.stack.setCurrentIndex(0)
             self.back_button.setVisible(False)
             self.title.setText('Welcome to Vishnu')
             return
         if self.mode is SetupMode.CREATE:
-            if index == 2:
-                self.stack.setCurrentIndex(1)
-            elif index == 5:
-                self.stack.setCurrentIndex(2)
-            elif index == 3:
-                self.stack.setCurrentIndex(2)
-            elif index == 4:
-                self.stack.setCurrentIndex(3)
+            previous = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}.get(index)
+            if previous is not None:
+                self.stack.setCurrentIndex(previous)
 
     def _save_owner(self):
         try:
@@ -389,7 +427,7 @@ class FirstRunWizard(QDialog):
         self.password_confirm.clear()
         self.saved_codes.setChecked(False)
         self.recovery_label.setText('\n'.join(self.recovery_codes))
-        self.stack.setCurrentIndex(5)
+        self.stack.setCurrentIndex(3)
 
     def _confirm_recovery_codes(self):
         if not self.saved_codes.isChecked():
@@ -402,7 +440,7 @@ class FirstRunWizard(QDialog):
             return
         self.recovery_codes = []
         self.recovery_label.setText('Recovery codes saved and hidden. Regenerate them from Settings → Security if they are ever lost.')
-        self.stack.setCurrentIndex(3)
+        self.stack.setCurrentIndex(4)
 
     def _save_preferences(self):
         try:
@@ -414,7 +452,17 @@ class FirstRunWizard(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, 'Privacy and autonomy', str(exc))
             return
-        self.stack.setCurrentIndex(4)
+        self.stack.setCurrentIndex(5)
+
+    def _save_data_policy(self):
+        try:
+            result = get_data_plane(self.runtime).update_settings(default_policy=str(self.data_policy.currentData()))
+            if str(result.get('default_policy') or '') != str(self.data_policy.currentData()):
+                raise RuntimeError('Vishnu did not confirm the selected data placement policy')
+        except Exception as exc:
+            QMessageBox.warning(self, 'Data placement', str(exc))
+            return
+        self.stack.setCurrentIndex(6)
 
     def _provider_changed(self):
         local = self.provider.currentData() == 'local'
@@ -426,7 +474,7 @@ class FirstRunWizard(QDialog):
             'The provider key is live-validated, then passed directly to the canonical model router/vault and is never written to onboarding state.'
         )
 
-    def _finish_model_setup(self):
+    def _save_model_setup(self):
         try:
             if self.skip_model.isChecked():
                 self.coordinator.skip_model_configuration()
@@ -436,11 +484,52 @@ class FirstRunWizard(QDialog):
                     model=self.model.text(),
                     api_key=self.api_key.text(),
                 )
-            self.coordinator.complete()
         except Exception as exc:
             QMessageBox.warning(self, 'AI configuration', str(exc))
             return
         self.api_key.clear()
+        self._refresh_review()
+        self.stack.setCurrentIndex(7)
+
+    def _refresh_review(self):
+        preferences = self.runtime.get('preferences')
+        owner = ''
+        privacy = str(self.privacy.currentText())
+        autonomy = str(self.autonomy.currentText())
+        if preferences is not None:
+            owner = str(preferences.get('preferred_name', '') or '').strip()
+        if not owner:
+            owner = self.display_name.text().strip() or self.first_name.text().strip() or 'Vishnu Owner'
+        try:
+            policy = str(get_data_plane(self.runtime).settings().get('default_policy') or self.data_policy.currentData())
+        except Exception:
+            policy = str(self.data_policy.currentData())
+        policy_label = {
+            'device_only': 'Device only',
+            'progress_only': 'Progress only',
+            'sync_everywhere': 'Sync everywhere',
+            'on_demand': 'On demand',
+        }.get(policy, policy)
+        ai = 'Configure later' if self.skip_model.isChecked() else str(self.provider.currentText())
+        if not self.skip_model.isChecked() and self.model.text().strip():
+            ai += f' — {self.model.text().strip()}'
+        self.review_label.setText(
+            f'Owner: {owner}\n\n'
+            'First trusted device: this desktop\n\n'
+            'Security: owner password configured; passkeys can be added from Settings → Security\n\n'
+            'Recovery: one-time recovery codes saved and acknowledged\n\n'
+            f'Data placement: {policy_label}\n\n'
+            f'Privacy: {privacy}\n\n'
+            f'Autonomy: {autonomy}\n\n'
+            f'AI: {ai}'
+        )
+
+    def _finish_review(self):
+        try:
+            self.coordinator.complete()
+        except Exception as exc:
+            QMessageBox.warning(self, 'Finish setup', str(exc))
+            return
         QMessageBox.information(self, 'Vishnu is ready', 'Your Vishnu identity is ready on this first trusted device.')
         self.accept()
 

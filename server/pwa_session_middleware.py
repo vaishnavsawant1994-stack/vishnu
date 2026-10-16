@@ -162,6 +162,10 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                 '/iphone/api/access/security',
                 '/iphone/api/first-run/complete',
                 '/iphone/api/first-run/model',
+                # ONB-005 uses the canonical Data Plane settings authority. This
+                # changes only the default policy for newly governed data; it
+                # never moves existing owner data during first-run.
+                '/iphone/api/data-plane/settings',
             }
             if path.startswith('/iphone/api/') and path not in allowed_during_setup and path not in PUBLIC_PATHS:
                 response = JSONResponse(

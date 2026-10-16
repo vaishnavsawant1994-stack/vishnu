@@ -18,6 +18,8 @@ jobs:
         with:
           python-version: "3.12"
       - run: python scripts/install_locked_requirements.py --check-all
+      - name: Canonical UI truth inventory consistency gate
+        run: python scripts/validate_ui_truth.py
       - run: python scripts/install_locked_requirements.py tools
       - run: pip check
       - uses: actions/setup-node@v4

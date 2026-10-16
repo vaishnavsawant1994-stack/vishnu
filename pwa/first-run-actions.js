@@ -2,8 +2,19 @@
   const s = window.vishnuFirstRun;
   if (!s) return;
   const {$,createChoice,joinChoice,restoreChoice,createForm,firstName,lastName,displayName,bootstrap,
-    password,passwordAgain,begin,codes,recovery,saved,privacy,provider,model,apiKey,
-    saveModel,modelStatus,fallback,finish,showError} = s;
+    password,passwordAgain,begin,codes,recovery,saved,privacy,dataPolicy,savePolicy,policyStatus,
+    provider,model,apiKey,saveModel,modelStatus,fallback,reviewButton,review,reviewSummary,
+    finish,showError} = s;
+  let identityCreated=false;
+  const invalidateReview=()=>review.classList.add('hidden');
+  const invalidateModel=()=>{
+    s.modelSaved=false;
+    saveModel.disabled=false;
+    saveModel.textContent='Save AI setup choice';
+    modelStatus.textContent='Save your updated AI choice before reviewing setup.';
+    invalidateReview();
+  };
+
   createChoice.onclick = () => { createForm.classList.remove('hidden'); firstName.focus(); };
   joinChoice.onclick = () => {
     $('enrollStatus').textContent = 'Connect with a passkey, owner password, or one-time recovery code below.';
@@ -29,27 +40,90 @@
         device_name:(navigator.userAgentData?.platform||navigator.platform||'Web browser')+' browser',
       })});
       bootstrap.value='';password.value='';passwordAgain.value='';
+      identityCreated=true;
+      firstName.disabled=true;lastName.disabled=true;displayName.disabled=true;begin.textContent='Identity created';
       codes.textContent=(result.recovery_codes||[]).join('\n');
       recovery.classList.remove('hidden');recovery.scrollIntoView({behavior:'smooth',block:'nearest'});
       $('enrollStatus').textContent='Your owner identity and first trusted browser are ready. Save the recovery codes before continuing.';
-    } catch(error) { showError(error); } finally { begin.disabled=false; }
+    } catch(error) { showError(error); } finally { begin.disabled=identityCreated; }
   };
+
+  privacy.onchange=invalidateReview;
+  dataPolicy.onchange=()=>{
+    s.policySaved=false;
+    savePolicy.disabled=false;
+    savePolicy.textContent='Save data placement';
+    policyStatus.textContent='Changing this default never silently moves data that already exists.';
+    invalidateReview();
+  };
+  savePolicy.onclick=async()=>{
+    savePolicy.disabled=true;
+    policyStatus.textContent='Saving data placement…';
+    try {
+      const result=await api('/data-plane/settings',{method:'PUT',body:JSON.stringify({default_policy:dataPolicy.value})});
+      const savedPolicy=result?.settings?.default_policy||dataPolicy.value;
+      if(savedPolicy!==dataPolicy.value)throw new Error('Vishnu did not confirm the selected data placement policy.');
+      s.policySaved=true;
+      savePolicy.textContent='Data placement saved';
+      policyStatus.textContent='Saved. This is the default for newly governed data; existing data was not moved.';
+      $('enrollStatus').textContent='';
+    } catch(error) {
+      savePolicy.disabled=false;
+      policyStatus.textContent='Data placement was not saved.';
+      showError(error);
+    }
+  };
+
   provider.onchange=()=>{
+    invalidateModel();
     const selected=provider.value,external=!['skip','local'].includes(selected);
     model.classList.toggle('hidden',selected==='skip');apiKey.classList.toggle('hidden',!external);
     model.placeholder=selected==='local'?'Local model (optional)':'Model name (required for provider setup)';
   };
+  model.oninput=()=>{ if(s.modelSaved)invalidateModel(); else invalidateReview(); };
+  apiKey.oninput=()=>{ if(s.modelSaved)invalidateModel(); else invalidateReview(); };
   saveModel.onclick=async()=>{
     if(!['skip','local'].includes(provider.value)&&!model.value.trim())return showError(new Error('Enter the provider model name.'));
+    saveModel.disabled=true;
     try {
       await api('/first-run/model',{method:'POST',body:JSON.stringify({provider_id:provider.value,model:model.value.trim(),api_key:apiKey.value})});
-      apiKey.value='';s.modelSaved=true;saveModel.disabled=true;saveModel.textContent='AI setup saved';
+      apiKey.value='';s.modelSaved=true;saveModel.textContent='AI setup saved';
       modelStatus.textContent=provider.value==='skip'?'AI setup saved for later.':'AI provider setup saved in Vishnu encrypted storage.';
+      invalidateReview();
       $('enrollStatus').textContent='';
-    } catch(error) { showError(error); }
+    } catch(error) {
+      saveModel.disabled=false;
+      showError(error);
+    }
   };
+
+  reviewButton.onclick=()=>{
+    if(!saved.checked)return showError(new Error('Confirm that you saved the recovery codes before reviewing setup.'));
+    if(!s.policySaved)return showError(new Error('Save your data placement policy before reviewing setup.'));
+    if(!s.modelSaved)return showError(new Error('Save your AI choice or select Configure later before reviewing setup.'));
+    const owner=displayName.value.trim()||[firstName.value.trim(),lastName.value.trim()].filter(Boolean).join(' ')||'Vishnu Owner';
+    const policyLabel=dataPolicy.options[dataPolicy.selectedIndex]?.textContent||dataPolicy.value;
+    const providerLabel=provider.options[provider.selectedIndex]?.textContent||provider.value;
+    const privacyLabel=privacy.options[privacy.selectedIndex]?.textContent||privacy.value;
+    reviewSummary.textContent=[
+      `Owner: ${owner}`,
+      'First trusted device: this browser',
+      'Security: owner password configured; passkey will be created now when supported',
+      'Recovery: one-time codes saved and acknowledged',
+      `Data placement: ${policyLabel}`,
+      `Privacy: ${privacyLabel}`,
+      `AI: ${providerLabel}${provider.value==='skip'?' (deferred)':model.value.trim()?` — ${model.value.trim()}`:''}`,
+      'Autonomy: ask before acting',
+    ].join('\n');
+    review.classList.remove('hidden');
+    review.scrollIntoView({behavior:'smooth',block:'nearest'});
+    $('enrollStatus').textContent='Review the setup summary, then finish when it is correct.';
+  };
+
   finish.onclick=async()=>{
+    if(review.classList.contains('hidden'))return showError(new Error('Review your setup before finishing.'));
     if(!s.modelSaved)return showError(new Error('Save your AI choice or select Configure later before finishing.'));
+    if(!s.policySaved)return showError(new Error('Save your data placement policy before finishing.'));
     if(!saved.checked)return showError(new Error('Confirm that you saved the recovery codes before continuing.'));
     const hasPasskey=Boolean(window.PublicKeyCredential&&navigator.credentials);let passkeyFallback=false;
     if(hasPasskey){
