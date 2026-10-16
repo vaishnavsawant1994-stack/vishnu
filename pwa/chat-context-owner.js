@@ -107,3 +107,16 @@
     }catch{}
   });
 })();
+
+// Keep intent adaptation separate from canonical Chat state. The adaptive layer
+// only previews/routs the draft; Chat, server planning, permissions and approvals
+// remain the execution authorities.
+(()=>{
+  if(window.__vishnuAdaptiveComposer||document.querySelector('script[data-adaptive-composer]'))return;
+  const script=document.createElement('script');
+  script.src='/iphone/adaptive-composer.js';
+  script.async=false;
+  script.dataset.adaptiveComposer='true';
+  script.onerror=()=>console.warn('Adaptive universal composer could not be loaded; normal chat remains available.');
+  document.body.append(script);
+})();

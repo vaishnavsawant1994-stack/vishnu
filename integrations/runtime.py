@@ -33,6 +33,31 @@ def provider_catalog(settings):
         out['slack']=OAuthProvider('slack',SLACK_AUTH,SLACK_TOKEN,settings.slack_client_id,['channels:history','chat:write'],getattr(settings,'slack_client_secret',''),SLACK_REVOKE)
     return out
 
+def _discover_configured_voicestudio_mcp(settings, state, vault):
+    """Register configured VoiceStudio MCP metadata without contacting or authorizing it."""
+    from integrations.discovery.catalog_store import CapabilityCatalogStore
+    from voice.voicestudio import VoiceStudioSettings
+    from voice.voicestudio_mcp import register_voicestudio_mcp_server
+    from voice.voicestudio_runtime import _provider_enabled_from_env
+
+    try:
+        if not _provider_enabled_from_env():
+            return
+        voice_settings=VoiceStudioSettings.from_env()
+    except (TypeError, ValueError) as exc:
+        state.audit('voicestudio.mcp.registration_failed', payload={'error_type':type(exc).__name__})
+        return
+    endpoint=voice_settings.base_url.rstrip('/')+'/mcp/'
+    catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
+    try:
+        server=register_voicestudio_mcp_server(catalog,endpoint=endpoint)
+        state.audit('voicestudio.mcp.registered', payload={
+            'server_id':server['id'],
+            'trusted_loopback':server.get('trusted_loopback') is True,
+        })
+    except Exception as exc:
+        state.audit('voicestudio.mcp.registration_failed', payload={'error_type':type(exc).__name__})
+
 def build_integrations(settings,vault=None):
     state=ConnectorStateStore(Path(settings.data_dir)/'connectors.sqlite3',vault=vault); gateway=ConnectorGateway(state); reg=IntegrationRegistry(state_store=state)
     for manifest in builtin_manifests():reg.register_manifest(_runtime_manifest(manifest))
@@ -69,4 +94,5 @@ def build_integrations(settings,vault=None):
         configured=manifest.connector_id in adapters
         current=state.health(manifest.connector_id)
         if not configured and current['state']=='disconnected':state.set_health(manifest.connector_id,'not_configured')
+    _discover_configured_voicestudio_mcp(settings,state,vault)
     return reg,adapters,oauth,providers

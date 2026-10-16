@@ -16,7 +16,7 @@ class HardenedDataPlane(PolicyEnforcedDataPlane):
     schema migration evidence and a verified durable-copy removal workflow.
     """
 
-    SCHEMA_VERSION = 2
+    SCHEMA_VERSION = 3
     DATA_READ_SCOPE = 'data:read'
     DATA_SYNC_SCOPE = 'data:sync'
     DATA_ADMIN_SCOPE = 'data:admin'
@@ -54,15 +54,76 @@ class HardenedDataPlane(PolicyEnforcedDataPlane):
                     ON data_plane_copy_removals(global_id,verified_at);
                 '''
             )
+            if current < 3:
+                con.executescript(
+                    '''
+                    CREATE TABLE IF NOT EXISTS data_plane_storage_jobs(
+                        job_id TEXT PRIMARY KEY,
+                        idempotency_key TEXT NOT NULL UNIQUE,
+                        global_id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        direction TEXT NOT NULL,
+                        object_key TEXT NOT NULL,
+                        state TEXT NOT NULL,
+                        bytes_total INTEGER NOT NULL,
+                        bytes_done INTEGER NOT NULL DEFAULT 0,
+                        next_part INTEGER NOT NULL DEFAULT 1,
+                        retry_count INTEGER NOT NULL DEFAULT 0,
+                        provider_upload_id TEXT,
+                        expected_sha256 TEXT,
+                        metadata_json TEXT NOT NULL DEFAULT '{}',
+                        error_code TEXT,
+                        created_at TEXT NOT NULL,
+                        updated_at TEXT NOT NULL,
+                        FOREIGN KEY(global_id) REFERENCES data_plane_items(global_id) ON DELETE CASCADE
+                    );
+                    CREATE TABLE IF NOT EXISTS data_plane_storage_job_parts(
+                        job_id TEXT NOT NULL,
+                        part_number INTEGER NOT NULL,
+                        etag TEXT NOT NULL,
+                        plaintext_bytes INTEGER NOT NULL,
+                        ciphertext_bytes INTEGER NOT NULL,
+                        plaintext_sha256 TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        PRIMARY KEY(job_id,part_number),
+                        FOREIGN KEY(job_id) REFERENCES data_plane_storage_jobs(job_id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_data_plane_storage_jobs_item
+                        ON data_plane_storage_jobs(global_id,updated_at);
+                    CREATE INDEX IF NOT EXISTS idx_data_plane_storage_jobs_state
+                        ON data_plane_storage_jobs(state,updated_at);
+                    CREATE TABLE IF NOT EXISTS data_plane_provider_health(
+                        provider_id TEXT PRIMARY KEY,
+                        state TEXT NOT NULL,
+                        latency_ms REAL,
+                        free_bytes INTEGER,
+                        detail TEXT,
+                        checked_at TEXT NOT NULL
+                    );
+                    CREATE TABLE IF NOT EXISTS data_plane_replica_reconciliation(
+                        event_id TEXT PRIMARY KEY,
+                        global_id TEXT NOT NULL,
+                        provider_id TEXT NOT NULL,
+                        location_id TEXT,
+                        outcome TEXT NOT NULL,
+                        detail TEXT,
+                        created_at TEXT NOT NULL,
+                        FOREIGN KEY(global_id) REFERENCES data_plane_items(global_id) ON DELETE CASCADE
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_data_plane_reconcile_item
+                        ON data_plane_replica_reconciliation(global_id,created_at);
+                    '''
+                )
             if current < self.SCHEMA_VERSION:
                 con.execute(
                     'UPDATE data_plane_settings SET schema_version=?,updated_at=? WHERE singleton=1',
                     (self.SCHEMA_VERSION, _now()),
                 )
-            con.execute(
-                'INSERT OR IGNORE INTO data_plane_schema_migrations(version,applied_at) VALUES(?,?)',
-                (self.SCHEMA_VERSION, _now()),
-            )
+            for version in range(max(1, current + 1), self.SCHEMA_VERSION + 1):
+                con.execute(
+                    'INSERT OR IGNORE INTO data_plane_schema_migrations(version,applied_at) VALUES(?,?)',
+                    (version, _now()),
+                )
 
     def _require_scope(self, device_id: str, scope: str):
         device_id = str(device_id or '').strip()
