@@ -5,9 +5,12 @@ import wave
 
 import pytest
 
+from voice.config import VoiceRuntimeSettings
 from voice.conversion import VoiceProfileError
 from voice.platform import VoiceIntelligenceService
 from voice.providers import TextToSpeechResult
+from voice.voicestudio import VoiceStudioSettings
+from voice.voicestudio_runtime import active_voicestudio_runtime, compose_voicestudio_runtime
 
 
 def _wav_bytes(*, rate: int = 24_000, amplitude: int = 0) -> bytes:
@@ -160,3 +163,21 @@ def test_status_exposes_only_non_sensitive_provider_runtime_state():
     assert status["external_provider_runtime"] is True
     assert status["external_tts_provider"] == "voicestudio"
     assert status["external_provider_state"] == "running"
+
+
+def test_existing_voice_intelligence_surfaces_auto_discover_app_lifetime_binding():
+    binding = compose_voicestudio_runtime(
+        provider_settings=VoiceStudioSettings(enabled=True),
+        runtime_settings=VoiceRuntimeSettings(enabled=False),
+    )
+    try:
+        service = VoiceIntelligenceService(FakeRouter(conversion=None))
+        assert active_voicestudio_runtime() is binding.runtime
+        assert service.provider_runtime is binding.runtime
+    finally:
+        compose_voicestudio_runtime(
+            provider_settings=VoiceStudioSettings(enabled=False),
+            runtime_settings=VoiceRuntimeSettings(enabled=False),
+        )
+
+    assert active_voicestudio_runtime() is None
