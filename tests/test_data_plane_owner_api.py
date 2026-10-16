@@ -59,7 +59,7 @@ def test_data_plane_owner_provider_detail_is_read_only_and_secret_free(tmp_path)
         'device_registry': Registry(),
     }
     data = get_data_plane(runtime)
-    data.update_settings(cloud_enabled=True, cloud_mode='optional')
+    data.update_settings(cloud_enabled=True, cloud_mode='own_cloud')
     data.configure_provider(
         's3',
         enabled=True,
