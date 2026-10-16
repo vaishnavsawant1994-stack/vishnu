@@ -21,6 +21,6 @@ jobs:
       - name: Compile Voice Lab and Owner UI
         run: python -m compileall -q voice/lab ui/voice_lab.py ui/control_panel.py
       - name: Voice Lab static-quality gate
-        run: ruff check voice/lab ui/voice_lab.py ui/control_panel.py tests/test_voice_lab.py tests/test_voice_lab_operational.py
+        run: ruff check voice/lab ui/voice_lab.py ui/control_panel.py tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
       - name: Voice Lab focused qualification
-        run: pytest -q tests/test_voice_lab.py tests/test_voice_lab_operational.py
+        run: pytest -q tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
