@@ -54,16 +54,6 @@ class VoiceRuntime:
         self._running = False
 
         self.settings = settings or VoiceRuntimeSettings.from_env()
-        if self.settings.enabled and (stt_provider is None or tts_provider is None):
-            # VoiceStudio is an optional external provider and is itself default-off.
-            # Import lazily so the existing runtime remains independent when the
-            # provider feature is unused. Explicitly injected providers always win.
-            from voice.voicestudio import build_voicestudio_provider
-
-            voicestudio = build_voicestudio_provider()
-            if voicestudio is not None:
-                stt_provider = stt_provider or voicestudio
-                tts_provider = tts_provider or voicestudio
         self.stt_provider = stt_provider
         self.tts_provider = tts_provider
         self.speech_intents = speech_intent_bridge or SpeechIntentBridge(events=events)
