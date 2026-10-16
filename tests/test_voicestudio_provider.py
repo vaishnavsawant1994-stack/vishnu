@@ -8,13 +8,13 @@ import pytest
 
 from voice.config import VoiceRuntimeSettings
 from voice.providers import SpeechToTextProvider, SpeechToTextRequest, TextToSpeechProvider, TextToSpeechRequest
-from voice.runtime import VoiceRuntime
 from voice.voicestudio import (
     VoiceStudioError,
     VoiceStudioProvider,
     VoiceStudioSettings,
     build_voicestudio_provider,
 )
+from voice.voicestudio_runtime import compose_voicestudio_runtime
 
 
 def _wav_bytes(*, rate: int = 24_000, frames: int = 240) -> bytes:
@@ -58,17 +58,14 @@ class FakeOpener:
         return FakeResponse(self.responses.pop(0))
 
 
-class ExistingSTT:
-    provider_id = "existing-stt"
+class FakeVault:
+    def __init__(self, value: str | None):
+        self.value = value
+        self.requested = []
 
-    def health(self):
-        raise AssertionError("not called")
-
-    def capabilities(self):
-        return {}
-
-    def transcribe(self, request):
-        raise AssertionError("not called")
+    def get(self, name: str, default=None):
+        self.requested.append(name)
+        return self.value if self.value is not None else default
 
 
 def test_voicestudio_is_default_off_and_does_not_change_current_voice_path():
@@ -213,36 +210,55 @@ def test_mcp_endpoint_is_exposed_for_universal_capabilities_not_reimplemented():
     assert provider.mcp_endpoint == "http://127.0.0.1:3900/mcp/"
 
 
-def test_existing_runtime_does_not_even_parse_voicestudio_when_runtime_is_disabled(monkeypatch):
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "not-a-url")
-
-    runtime = VoiceRuntime(settings=VoiceRuntimeSettings(enabled=False))
-
-    assert runtime.stt_provider is None
-    assert runtime.tts_provider is None
-    assert runtime.start() is False
-
-
-def test_runtime_auto_composes_local_voicestudio_only_when_both_features_are_enabled(monkeypatch):
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "http://127.0.0.1:3900")
-
-    runtime = VoiceRuntime(settings=VoiceRuntimeSettings(enabled=True))
-
-    assert runtime.stt_provider is runtime.tts_provider
-    assert runtime.stt_provider.provider_id == "voicestudio"
-
-
-def test_explicit_existing_provider_wins_and_voicestudio_only_fills_missing_slot(monkeypatch):
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
-    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "http://127.0.0.1:3900")
-    existing = ExistingSTT()
-
-    runtime = VoiceRuntime(
-        settings=VoiceRuntimeSettings(enabled=True),
-        stt_provider=existing,
+def test_application_binding_is_a_noop_while_voicestudio_is_disabled():
+    binding = compose_voicestudio_runtime(
+        provider_settings=VoiceStudioSettings(enabled=False),
+        runtime_settings=VoiceRuntimeSettings(enabled=False),
     )
 
-    assert runtime.stt_provider is existing
-    assert runtime.tts_provider.provider_id == "voicestudio"
+    assert binding.enabled is False
+    assert binding.provider is None
+    assert binding.runtime is None
+
+
+def test_enabled_local_provider_reuses_existing_bounded_runtime_for_application_lifetime():
+    binding = compose_voicestudio_runtime(
+        provider_settings=VoiceStudioSettings(enabled=True),
+        runtime_settings=VoiceRuntimeSettings(enabled=False),
+    )
+
+    assert binding.enabled is True
+    assert binding.provider is binding.runtime.stt_provider
+    assert binding.provider is binding.runtime.tts_provider
+    assert binding.runtime.settings.enabled is True
+    assert binding.runtime.state.value == "stopped"
+
+
+def test_remote_application_binding_reads_bearer_key_only_from_existing_vault():
+    vault = FakeVault("secret-token")
+    binding = compose_voicestudio_runtime(
+        vault=vault,
+        provider_settings=VoiceStudioSettings(
+            enabled=True,
+            base_url="https://voice.example",
+            allow_remote=True,
+        ),
+        runtime_settings=VoiceRuntimeSettings(enabled=False),
+    )
+
+    assert binding.enabled is True
+    assert vault.requested == ["voicestudio.api_key"]
+    assert "secret-token" not in repr(binding.provider.capabilities())
+
+
+def test_remote_application_binding_without_vault_secret_fails_closed():
+    with pytest.raises(ValueError, match="API key"):
+        compose_voicestudio_runtime(
+            vault=FakeVault(None),
+            provider_settings=VoiceStudioSettings(
+                enabled=True,
+                base_url="https://voice.example",
+                allow_remote=True,
+            ),
+            runtime_settings=VoiceRuntimeSettings(enabled=False),
+        )
