@@ -37,8 +37,27 @@ class VoiceModelSpec:
     attribution_required: bool = False
     supported_languages: tuple[str, ...] = ()
     hardware: tuple[str, ...] = ()
+    memory_requirement_mb: int | None = None
+    download_size_mb: int | None = None
+    quality_score: float | None = None
+    latency_score: float | None = None
     verified_hash: str | None = None
     source: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.model_id.strip():
+            raise ValueError("model_id must not be empty")
+        if not self.provider_id.strip():
+            raise ValueError("provider_id must not be empty")
+        for name, value in (
+            ("memory_requirement_mb", self.memory_requirement_mb),
+            ("download_size_mb", self.download_size_mb),
+        ):
+            if value is not None and value < 0:
+                raise ValueError(f"{name} must be non-negative")
+        for name, value in (("quality_score", self.quality_score), ("latency_score", self.latency_score)):
+            if value is not None and not 0.0 <= float(value) <= 1.0:
+                raise ValueError(f"{name} must be between 0 and 1")
 
     def supports(self, capability: ModelCapability) -> bool:
         return capability in self.capabilities
@@ -51,10 +70,6 @@ class VoiceModelRegistry:
         self._models: dict[str, VoiceModelSpec] = {}
 
     def register(self, spec: VoiceModelSpec, *, replace: bool = False) -> None:
-        if not spec.model_id.strip():
-            raise ValueError("model_id must not be empty")
-        if not spec.provider_id.strip():
-            raise ValueError("provider_id must not be empty")
         if spec.model_id in self._models and not replace:
             raise ValueError(f"voice model already registered: {spec.model_id}")
         self._models[spec.model_id] = spec
