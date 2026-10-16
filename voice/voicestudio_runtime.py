@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, replace
 
 from voice.config import VoiceRuntimeSettings
 from voice.runtime import VoiceRuntime
 from voice.voicestudio import VoiceStudioProvider, VoiceStudioSettings, build_voicestudio_provider
+
+_FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
+_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,6 +21,18 @@ class VoiceStudioRuntimeBinding:
     @property
     def enabled(self) -> bool:
         return self.provider is not None and self.runtime is not None
+
+
+def _provider_enabled_from_env() -> bool:
+    raw = os.getenv("VISHNU_VOICESTUDIO_ENABLED")
+    if raw is None:
+        return False
+    normalized = raw.strip().lower()
+    if normalized in _TRUE_VALUES:
+        return True
+    if normalized in _FALSE_VALUES:
+        return False
+    raise ValueError("VISHNU_VOICESTUDIO_ENABLED must be a boolean value")
 
 
 def compose_voicestudio_runtime(
@@ -34,7 +50,16 @@ def compose_voicestudio_runtime(
     already-authenticated canonical SecretVault.
     """
 
-    resolved_provider_settings = provider_settings or VoiceStudioSettings.from_env()
+    if provider_settings is None:
+        # Do not parse or validate any other VoiceStudio configuration while the
+        # integration is disabled. A stale optional URL must never disturb the
+        # existing Vishnu startup path.
+        if not _provider_enabled_from_env():
+            return VoiceStudioRuntimeBinding(provider=None, runtime=None)
+        resolved_provider_settings = VoiceStudioSettings.from_env()
+    else:
+        resolved_provider_settings = provider_settings
+
     if not resolved_provider_settings.enabled:
         return VoiceStudioRuntimeBinding(provider=None, runtime=None)
 
