@@ -2,49 +2,49 @@
 
 **Repository:** `vaishnavsawant1994-stack/vishnu`  
 **Audited baseline:** `main` at `4ec735de327f2bab6dccb774e2a9c28ef4fc44af`  
-**Campaign:** UI, screen, navigation, accessibility and visual product blueprint  
-**Production operations:** none
+**Campaign:** complete UI, screen, navigation, accessibility and visual product blueprint  
+**Production deployment:** none
 
-## Executive result
+## 1. Executive result
 
-This audit derives the visible Vishnu product from the existing Product Truth Map and current UI source. It does not count files as screens and does not mirror backend folders into navigation.
+This audit derives the owner-visible Vishnu product from the existing Product Truth Map and current Desktop/PWA/Android/iOS source. It does not count files as screens and it does not turn backend folders into navigation.
 
-A **canonical logical screen** is a distinct owner question or durable task, even when one platform implements it as a settings subsection, tabbed workspace, responsive drawer, sheet or native navigation destination.
+A **canonical logical screen** is a distinct owner question or durable task, even when a platform implements it as a settings subsection, tabbed workspace, responsive drawer, sheet or native navigation destination.
 
 | Measure | Result |
 |---|---:|
 | Canonical logical screens required | **63** |
-| Canonical screens with some source implementation | **56** |
+| Canonical screens with some source implementation | **57** |
 | COMPLETE under the strict visual/E2E definition | **0** |
-| PARTIAL | **51** |
+| PARTIAL | **52** |
 | EXPERIMENTAL | **5** |
-| MISSING | **7** |
+| MISSING | **6** |
 | Proven ORPHANED canonical screens | **0** |
 | Proven DISCONNECTED canonical screens | **0** |
 | Proven production PLACEHOLDER canonical screens | **0** |
 | Desktop/PWA/Android/iOS platform slots classified | **252** |
-| Source-proven platform implementation instances | **112** |
+| Source-proven platform implementation instances | **113** |
 | Secondary dialog/sheet/drawer/prompt families | **34** |
 | Major visual-state types | **14** |
 | Canonical screens visually verified at this exact SHA | **0** |
 | Canonical screens still not visually verified | **63** |
 
-`0 COMPLETE` is intentional claim discipline. Many screens are real, reachable and backend-connected. The campaign cannot promote a whole screen to COMPLETE without exact-SHA rendered visual evidence plus behavioral/accessibility acceptance for the declared scope.
+`0 COMPLETE` is intentional claim discipline. Many screens are real, reachable and backend-connected. A whole screen is not promoted to COMPLETE without exact-SHA rendered visual evidence plus behavioral/accessibility acceptance for its declared scope.
 
 The machine authority for these counts is [`ui_truth.json`](ui_truth.json), validated by `scripts/validate_ui_truth.py` and `tests/test_ui_truth_artifacts.py`.
 
-## Counting model
+## 2. Counting model
 
-The audit reports four separate things:
+The audit separates four quantities:
 
 1. **Canonical screens** — unique owner concepts such as Device Detail or Work Detail.
-2. **Platform implementations** — Desktop, PWA, Android and iOS implementations of those concepts. iPhone/iPad share the Swift implementation family but have separate responsive acceptance expectations.
+2. **Platform implementations** — Desktop, PWA, Android and iOS implementations of those concepts.
 3. **Secondary UI** — confirmations, approvals, credential prompts, pairing flows, imports, dialogs, sheets and drawers.
 4. **Visual states** — initial, loading, empty, populated, editing, saving, success, error, offline, permission denied, approval required, disabled, revoked/expired and degraded.
 
-Tabs that are alternate views of one owner task do not inflate the canonical screen count. For example, Desktop Memory's Overview/Tree/Graph/Timeline/Why Retrieved remain one Memory workspace plus detail concept. A responsive WorkOrder drawer can implement the canonical Work Detail concept without becoming another page.
+Tabs that are alternate views of one owner task do not inflate the canonical count. Desktop Memory's Overview/Tree/Graph/Timeline/Why Retrieved remain one Memory workspace plus its detail concept. A responsive WorkOrder drawer can implement Work Detail without becoming another page.
 
-## Finished information architecture
+## 3. Finished owner information architecture
 
 ```text
 VISHNU
@@ -99,17 +99,21 @@ VISHNU
     └── Our Products
 ```
 
-Home remains conversational and attention-focused; administrative and technical systems stay in secondary navigation, Settings or Advanced.
+Primary navigation should emphasize Home, Conversation, Memory, Knowledge and current work/attention. Projects, Automations, Apps & Tools and Devices are secondary destinations. Security-sensitive controls belong in deliberate owner-control flows. Diagnostics, Sensorium provider evidence, Voice Lab, Forge and product-building remain Advanced.
 
-## Current platform truth
+## 4. Current platform navigation truth
 
 ### Desktop
 
-The executable application launches `CanonicalMainWindow`. Its active primary navigation contains **9 destinations**: Home, Conversation, Memory, Knowledge, Activities, Dashboard, Apps & Tools, Our Products and Settings. Several are composition entry points: Memory opens the Second Brain workspace; Dashboard opens Owner Control Center; Apps & Tools opens automation/integration/plugin/capability management; Settings launches deeper data-storage and pairing controls.
+The executable entrypoint launches `CanonicalMainWindow`. Its active top-level navigation has **9 destinations**:
+
+`Home`, `Conversation`, `Memory`, `Knowledge`, `Activities`, `Dashboard`, `Apps & Tools`, `Our Products`, `Settings`.
+
+Several destinations compose deeper surfaces rather than standing alone: Memory opens Second Brain views; Dashboard opens Owner Control Center; Apps & Tools opens automation/integration/plugin/capability management; Settings launches storage/device/security/model controls.
 
 ### PWA / web
 
-The PWA is the broadest owner surface:
+The PWA is the broadest owner product:
 
 - Workspace: Home, Projects, Today, Inbox
 - Personal: Conversations, Memory, Knowledge
@@ -117,19 +121,21 @@ The PWA is the broadest owner surface:
 - Account: Owner controls, Settings, Trusted devices, System status
 - Injected advanced/product entries: Agents and Our Products
 
-One P1 ambiguity remains: `Live work` and `Workflows` currently use the same `workflows` module key. Browser interaction must determine whether this is an intentional alias or a navigation defect before code is changed.
+A P1 navigation ambiguity remains: **Live work** and **Workflows** currently resolve through the same `workflows` module key and need executable interaction verification before either label is removed or rewired.
 
 ### Android
 
-Android is currently a companion-oriented native surface rather than full owner-product parity. Source-proven native UI centers on connection/pairing and Universal Capabilities. The internal-testing build intentionally leaves production server/certificate configuration blank. Broad Home/conversation/work can remain the trusted PWA; native screens are required where the OS boundary matters, such as first-device identity/trust, recovery, secure credentials, local permissions/sensors and intended native capability controls.
+Android is currently a companion-oriented native surface, centered on pairing/connection and Universal Capabilities. The internal-testing build intentionally leaves production host/certificate configuration blank. Native capability management is therefore configuration-blocked for production acceptance, not proof of full native parity.
+
+Android does not need native duplicates of every PWA page if general owner work intentionally uses the trusted PWA. Native screens are required where the OS boundary matters: identity/enrollment, secure credentials, recovery, permissions/sensors and intended native capability controls.
 
 ### iOS / iPadOS
 
-The Swift companion has create/join/restore onboarding, passkey/session/recovery/runtime provisioning, Universal Capabilities, connection/device status, Sensorium Privacy and Capability Forge V3. Sensorium Privacy can grant/revoke temporary local sensor sessions and stop all sensing. Forge V3 is deliberately experimental/non-production and remains disabled without a configured non-production host.
+The Swift companion has create/join/restore onboarding, passkey/session/recovery/runtime provisioning, Universal Capabilities, device status, Sensorium Privacy and Capability Forge V3. Sensorium Privacy is reachable and can grant/revoke temporary local sensor sessions or stop all sensing. Forge V3 is reachable but deliberately experimental/non-production and disabled without a configured non-production host.
 
-## Required screen count by domain
+## 5. Required screen count by domain
 
-| Domain | Count |
+| Domain | Canonical screens |
 |---|---:|
 | Onboarding & Auth | 11 |
 | Home & Conversation | 3 |
@@ -153,97 +159,150 @@ The Swift companion has create/join/restore onboarding, passkey/session/recovery
 | Settings | 5 |
 | **Total** | **63** |
 
-The no-blank master table is in [`CURRENT_REQUIRED_SCREEN_MATRIX.md`](CURRENT_REQUIRED_SCREEN_MATRIX.md). Detailed contents/actions/backends/states/acceptance criteria for every screen are in [`PAGE_SPECIFICATIONS.md`](PAGE_SPECIFICATIONS.md).
-
-## Seven missing canonical screens
+## 6. Six missing canonical screens
 
 ### P1
 
-1. **ONB-005 — Data Placement Policy** — first-run must explicitly choose among `device_only`, `progress_only`, `sync_everywhere`, `on_demand`.
-2. **ONB-008 — Setup Review & Completion** — final owner review of identity, trusted device, recovery readiness, data policy and model/provider before Home.
-3. **DAT-002 — Connected Storage Provider Detail** — provider destination/capability/health/encryption/transfer/retry/disconnect owner surface.
-4. **SET-005 — Accessibility** — coherent owner surface for supported reduce-motion/high-contrast and platform-following behavior.
+1. **ONB-005 — Data Placement Policy** — first-run does not clearly ask the owner to choose among `device_only`, `progress_only`, `sync_everywhere`, and `on_demand`, even though those policies exist in the product architecture.
+2. **ONB-008 — Setup Review & Completion** — first-run lacks a coherent final review of identity, first trusted device, selected data policy, recovery and active AI provider/model before entering Home.
+3. **DAT-002 — Connected Storage Provider Detail** — storage/provider capability and health exist behind the product, but there is no complete owner surface proving destination, health, consent, transfer state and safe failure behavior.
 
 ### P2/P3
 
-5. **SEN-002 — Sensorium Status & Providers** — advanced provider availability/evidence status without exposing low-level ADB/simctl execution.
-6. **SYS-003 — Updates & Release** — installed version/update/release-notes/verification/restart/failure-recovery surface.
-7. **SYS-004 — About / Version / Notices** — build identity, proprietary-license notice and third-party notices.
+4. **SEN-002 — Sensorium Status & Providers** — Sensorium privacy/permissions exist, but a normal owner lacks one coherent advanced provider/status/evidence view that does not expose ADB/simctl internals.
+5. **SYS-003 — Updates & Release** — release/update infrastructure exists without one normal owner surface for current version, update availability, release notes, verification, install/restart state and failure recovery.
+6. **SYS-004 — About / Version / Notices** — version, proprietary-license posture and third-party notices need a discoverable owner page.
 
-See [`MISSING_SCREEN_REPORT.md`](MISSING_SCREEN_REPORT.md) for implementation recommendations.
+### Accessibility correction
 
-## Important partial/experimental truth
+**SET-005 — Accessibility is PARTIAL, not MISSING.** Desktop `SettingsPanel` already exposes and persists **Reduce motion** and **High contrast**. Reduced motion applies to the active pulse immediately; high-contrast changes are stored and documented as fully applying after restart. What remains is a coherent Accessibility subsection, PWA parity where appropriate, OS-managed native behavior documentation, and full accessibility acceptance testing.
 
-- **Home / Conversation:** strong source structure, runtime-state projection and accessibility hooks; exact-SHA visual journey not accepted here.
-- **Memory:** real Desktop Second Brain and PWA Memory, but platform and mutation/privacy lifecycle remain uneven.
-- **Knowledge:** real ingestion/search/source UI, with desktop detail parity incomplete.
-- **Projects:** real PWA overview and rich project workspace; WorkOrder detail is an authoritative responsive detail shell.
-- **Apps & Tools / Capabilities:** real governed APIs, credentials, approvals, history and revocation; native/external-provider qualification remains partial.
-- **Devices:** navigation and trust/revocation authorities exist; complete enroll/detail/revoke/lost-device journey still needs accepted executable evidence.
-- **Data & Storage:** real desktop/PWA controls exist, while first-run placement and storage-provider transparency are incomplete.
-- **Security / Recovery:** real controls exist but are fragmented across onboarding, Settings, Owner Controls and Devices.
-- **System:** Desktop Owner Control Center is connected but several tabs are JSON/text runtime projections, so it is a diagnostic partial rather than the finished owner UX.
-- **Experimental:** Agent Workforce, Our Products overview/detail, Capability Forge V3 and Voice Lab remain isolated advanced/lab/product-building experiences.
+## 7. Important source-present but partial areas
 
-## Backend without adequate UI
+- **Home / Conversation:** real state presentation, conversation controls and a11y hooks exist, but this campaign did not execute exact-SHA end-to-end visual acceptance.
+- **Memory:** Desktop Second Brain has Overview, Tree, Graph, Timeline and Why Retrieved views. They are views of one logical workspace, not five pages.
+- **Projects:** PWA has a real project list plus project workspace with Overview, Chat, Work Plan, Files & Sources, Approvals, Discussions, Activity, Live Work and visual-status views. WorkOrder inspection is a secondary responsive drawer/full-screen shell.
+- **Apps & Tools / Capabilities:** real governed API wiring exists, including credentials, risk, approvals and one-time write approval. Native configuration/external-provider qualification remain incomplete.
+- **Devices:** trust/revocation authorities and owner navigation exist, but a complete overview→detail→lost/revoke acceptance journey is not yet visually qualified.
+- **Data & Storage:** Desktop/PWA controls exist; first-run placement selection and provider-detail transparency remain incomplete.
+- **Security / Recovery:** real controls exist but the owner mental model is split across onboarding, Settings, Owner Controls and Devices.
+- **System:** Desktop Owner Control Center is operational but several tabs are raw JSON/text projections, so it is not the finished owner UX.
+- **Accessibility:** Desktop owner controls exist and persist; cross-platform product organization and full a11y qualification remain partial.
 
-The most important owner-manageable backend gaps are first-run data placement, setup review, storage-provider detail, Accessibility, advanced Sensorium provider status, Updates/About, consolidated sessions/security and recovery/lost-device guidance. The detailed mapping is in [`BACKEND_WITHOUT_UI.md`](BACKEND_WITHOUT_UI.md).
+## 8. Backend without adequate owner UI
 
-Low-level registries, migrations, crypto envelopes, SQLite mechanics, conflict resolution, lease internals, event buses, encrypted-segment framing and audit-chain implementation correctly remain internal.
+See [`BACKEND_WITHOUT_UI.md`](BACKEND_WITHOUT_UI.md). Highest-value gaps are first-run data placement, storage-provider detail/health/movement, consolidated session/sign-in management, self-update/release UI, advanced Sensorium provider status, recovery/lost-device guidance and cross-platform accessibility organization.
 
-## UI without backend / orphan truth
+Low-level registries, migrations, crypto envelopes, SQLite connection logic, conflict resolution, lease internals, event buses and transport primitives correctly remain internal.
 
-No required canonical screen was conclusively proven presentation-only or orphaned. PWA preview/demo datasets are explicitly gated and labeled sample-only; they are not counted as production placeholders. The Desktop Owner Control Center's JSON projections are connected diagnostics, not fake UI.
+## 9. UI without backend / placeholder truth
 
-This does **not** prove repository-wide zero no-op callbacks. A future framework-aware trace must map `visible control → handler → API/runtime → authorization/approval → persistence/effect → returned result → UI success/error` before making that stronger claim. See [`UI_WITHOUT_BACKEND.md`](UI_WITHOUT_BACKEND.md) and [`ORPHANED_AND_DISCONNECTED_SCREEN_REPORT.md`](ORPHANED_AND_DISCONNECTED_SCREEN_REPORT.md).
+See [`UI_WITHOUT_BACKEND.md`](UI_WITHOUT_BACKEND.md).
 
-## Accessibility and responsive truth
+No production canonical screen was conclusively proven fake. PWA demo datasets are explicitly gated/labeled preview data rather than normal persisted owner data. The Live work/Workflows duplicate module mapping is a navigation semantics defect candidate, not evidence that the backend is fake.
 
-Existing source/tests prove useful primitives such as accessible labels for chat controls, approval-dialog focus semantics, live/error announcements, reduced-motion rules, responsive breakpoints, safe-area behavior and desktop 44px control/touch targets. They do not establish full screen-reader/keyboard/touch/contrast acceptance across the product.
+Individual controls remain behaviorally NOT VERIFIED until click/type/submit/save/reload/failure/restart tests prove the complete path.
 
-Required executable follow-up includes complete tab order, VoiceOver/TalkBack journeys, native text scaling, physical touch behavior, contrast checks and representative phone/tablet/laptop/desktop layouts. See [`ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md`](ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md).
+## 10. Secondary UI and visual-state model
 
-## Visual evidence
+The blueprint inventories **34 transient UI families**: approvals, fresh-owner reauthentication, destructive confirmation, credentials, provider connection/testing, OpenAPI/MCP setup, one-time write approval, pairing, pending-device approval, lost-device/revoke confirmation, recovery-code handling, restore/backup/data-movement confirmation, sync conflict resolution, knowledge/memory actions, project/work/automation dialogs, conversation/history/attachment shells, sensor permission prompts, Voice Studio/Lab consent, passkey removal and emergency stop.
 
-This connected-GitHub environment cannot launch the repository runtime, browser, Android Emulator or iOS Simulator, and no exact-SHA screenshot artifact was found during this source pass. Consequently all 63 canonical records have `visual_verified=false`; no design mock or `uiDemo=1` preview is promoted to runtime evidence.
+The shared visual state vocabulary has **14 major state types**:
 
-[`VISUAL_PAGE_CATALOG.md`](VISUAL_PAGE_CATALOG.md) defines the screenshot acceptance plan and the evidence slot for every screen.
+`initial`, `loading`, `empty`, `populated`, `editing`, `saving`, `success`, `error`, `offline`, `permission denied`, `approval required`, `disabled`, `revoked/expired`, `degraded`.
 
-## Secondary UI and states
+Local-first UX must distinguish **offline but locally usable** from **unavailable**.
 
-The blueprint inventories **34** transient UI families, including action approvals, reauthentication, destructive confirmations, credential prompts, OpenAPI/MCP flows, device pairing/revocation, recovery/backup, data movement/conflict, project/work/automation dialogs, sensor permissions, voice authorization and emergency stop.
+## 11. Accessibility truth
 
-The shared visual-state vocabulary contains **14** types: initial, loading, empty, populated, editing, saving, success, error, offline, permission denied, approval required, disabled, revoked/expired and degraded. See [`SECONDARY_UI_INVENTORY.md`](SECONDARY_UI_INVENTORY.md).
+Source/tests already prove important primitives such as accessible labels for core chat controls, approval-dialog semantics/focus return, live/error announcements, reduced-motion styling, responsive rules and Desktop Reduce Motion/High Contrast persistence.
 
-## Owner journey and navigation authority
+Still not qualified as whole-product accessibility:
 
-The finished UX must let the owner answer:
+- complete keyboard tab order for every Desktop/PWA screen;
+- screen-reader journeys across major workflows;
+- physical-device VoiceOver/TalkBack acceptance;
+- Dynamic Type/text scaling across native UI;
+- physical touch-target acceptance;
+- complete contrast certification;
+- keyboard reachability of every custom control.
 
-- What is Vishnu doing? → Home / Live Work / Activity
-- What does Vishnu remember? → Memory
-- What does Vishnu know? → Knowledge
-- What needs me? → Inbox / Approvals
-- What can Vishnu access? → Apps & Tools / Capabilities
-- Which devices belong to me? → Devices
-- Where does my data live? → Data & Storage
-- Which AI model/provider is active? → AI Models & Providers
-- What can sense my environment? → Sensorium Privacy
-- How do I stop/revoke something? → relevant detail + canonical confirmation
-- How do I recover? → Recovery
-- Is the system healthy? → Dashboard / System Status
+See [`ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md`](ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md).
 
-Exact click paths and platform navigation are in [`NAVIGATION_BLUEPRINT.md`](NAVIGATION_BLUEPRINT.md); end-to-end owner journeys are in [`USER_JOURNEYS.md`](USER_JOURNEYS.md).
+## 12. Responsive and visual evidence truth
 
-## Implementation priority
+PWA source contains narrow-phone/tablet breakpoints, safe-area handling, mobile composer/home chrome, drawer adaptations, focus-visible styling and reduced-motion handling. Projects and WorkOrder detail include explicit mobile layouts. Desktop uses shared semantic presentation tokens and screen-fitting helpers.
 
-**P0:** no speculative redesign is justified by source audit alone. Any behavioral qualification that finds auth/recovery/data-loss/unauthorized-action failure becomes P0 immediately.
+That is source evidence, not screenshot acceptance. This campaign obtained **0 accepted exact-SHA runtime screenshots**, so visual verification remains open for all 63 canonical screens. Required viewport acceptance is narrow phone, standard phone, large phone, tablet portrait, tablet landscape, laptop, desktop and wide desktop.
 
-**P1:** implement ONB-005, ONB-008, DAT-002 and SET-005; resolve the Live Work/Workflows semantic ambiguity after executable confirmation; unify fragmented Security/Recovery without creating duplicate authorities; capture exact-SHA visual/interaction evidence for Home, Conversation, Memory, Knowledge, Apps & Tools, Devices and Data & Storage.
+See [`VISUAL_PAGE_CATALOG.md`](VISUAL_PAGE_CATALOG.md).
 
-**P2:** Sensorium provider status, Work/Automation/Project parity refinements, owner-session management polish, offline/degraded/failure-state coverage.
+## 13. Design-system direction
 
-**P3:** Updates/About, visual consistency refinements, broader screenshot catalog and low-frequency convenience UI.
+Vishnu already has a consistent dark semantic direction. The finished cross-platform system should preserve:
 
-## Final confidence statement
+- semantic background/surface/text/accent/danger/status tokens;
+- consistent type hierarchy and 4px-based spacing;
+- 44px minimum interactive targets;
+- consistent focus treatment;
+- consistent active/offline/degraded/blocked/revoked badges;
+- one approval vocabulary and one destructive-action vocabulary;
+- progressive disclosure of technical identifiers;
+- native platform conventions without changing Vishnu's owner mental model.
 
-Vishnu's owner-facing product is now specified as a **63-screen canonical model**, separate from platform implementations, transient UI and visual states. Current source proves meaningful implementation for **56** concepts and **112** platform implementation instances, but no full canonical screen is promoted to COMPLETE without exact-SHA rendered behavior/visual acceptance. Seven required concepts are missing. No required canonical screen was proven orphaned or disconnected; unexecuted controls remain explicitly NOT VERIFIED rather than assumed correct.
+## 14. Internal systems correctly requiring no dedicated screen
+
+Infrastructure that should remain internal includes migration engines, key/encryption-envelope internals, registry mechanics, durable-approval internals, event buses, conflict-resolution internals, lease/token transport, encrypted segment framing, retry/backoff mechanics, audit-chain internals and low-level emulator/simulator adapter mechanics. Their owner-relevant status may be projected into Diagnostics/Security, but the implementation machinery itself should not become normal navigation.
+
+## 15. Exact implementation priorities
+
+### P0/P1
+
+1. Implement **ONB-005 Data Placement Policy** using the existing canonical data-policy authority; do not invent a parallel preference store.
+2. Implement **ONB-008 Setup Review & Completion** as the final first-run summary/commit step.
+3. Implement **DAT-002 Connected Storage Provider Detail** only against the canonical provider/storage-fabric authority, including health, consent and movement evidence.
+4. Resolve the PWA **Live work / Workflows** duplicate-module navigation ambiguity after executable interaction verification.
+5. Consolidate **SET-005 Accessibility** into a discoverable settings subsection while retaining the existing working Desktop preferences rather than rebuilding them.
+
+### P2/P3
+
+6. Add Sensorium provider/status evidence UI without exposing raw ADB/simctl execution.
+7. Add Updates & Release.
+8. Add About / Version / Notices.
+9. Continue native parity only where the native OS boundary requires it.
+10. Run exact-SHA visual, responsive, keyboard, screen-reader and behavioral acceptance before promoting any screen to COMPLETE.
+
+## 16. Companion documents
+
+- [`CURRENT_REQUIRED_SCREEN_MATRIX.md`](CURRENT_REQUIRED_SCREEN_MATRIX.md) — required/existing/platform matrix.
+- [`PAGE_SPECIFICATIONS.md`](PAGE_SPECIFICATIONS.md) — page-by-page purpose, contents, actions, backend, navigation, states and acceptance criteria.
+- [`MISSING_SCREEN_REPORT.md`](MISSING_SCREEN_REPORT.md) — missing-screen implementation report.
+- [`ORPHANED_AND_DISCONNECTED_SCREEN_REPORT.md`](ORPHANED_AND_DISCONNECTED_SCREEN_REPORT.md) — reachability/connectivity reconciliation.
+- [`BACKEND_WITHOUT_UI.md`](BACKEND_WITHOUT_UI.md) — owner-manageable backend gaps.
+- [`UI_WITHOUT_BACKEND.md`](UI_WITHOUT_BACKEND.md) — placeholder/no-op risk review.
+- [`NAVIGATION_BLUEPRINT.md`](NAVIGATION_BLUEPRINT.md) — final IA and click paths.
+- [`USER_JOURNEYS.md`](USER_JOURNEYS.md) — new-owner, join-device, lost-device, conversation, tool action, service connection and data-control journeys.
+- [`SECONDARY_UI_INVENTORY.md`](SECONDARY_UI_INVENTORY.md) — dialog/sheet/drawer/prompt inventory.
+- [`ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md`](ACCESSIBILITY_RESPONSIVE_DESIGN_AUDIT.md) — accessibility and viewport truth.
+- [`VISUAL_PAGE_CATALOG.md`](VISUAL_PAGE_CATALOG.md) — source-derived visual catalog and missing runtime evidence.
+- [`ui_truth.json`](ui_truth.json) — machine-readable authority.
+
+## 17. Owner-facing conclusion
+
+Vishnu should have **63 canonical logical screens/surfaces** under the evidence-derived counting rule.
+
+Vishnu currently has **57 canonical concepts with meaningful source implementation**. **52 are PARTIAL**, **5 are deliberately EXPERIMENTAL**, and **6 are genuinely MISSING**. No canonical screen is claimed COMPLETE yet because exact-SHA visual/E2E/a11y acceptance has not been executed. No canonical screen was conclusively proven orphaned, disconnected or production-placeholder during this source audit.
+
+The product direction is not to create dozens of extra administrative pages. It is to preserve one simple mental model:
+
+```text
+Talk with Vishnu
+→ see what Vishnu remembers and knows
+→ see what Vishnu is doing
+→ control what Vishnu can access
+→ control where Vishnu can operate
+→ understand where your data lives
+→ approve, stop, revoke or recover anything important
+```
+
+The next implementation work is therefore bounded: close the six real missing concepts by priority, consolidate partial owner controls instead of duplicating them, then run exact-SHA executable visual/functional qualification before making completion claims.
