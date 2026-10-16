@@ -17,7 +17,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-from voice.lab.benchmarks import BenchmarkEngine
 from voice.lab.evidence import EvidenceRecord, EvidenceStore
 from voice.lab.runner import LabRunControl
 from voice.lab.telephony import (
