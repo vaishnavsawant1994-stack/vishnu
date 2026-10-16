@@ -19,6 +19,8 @@ LAB_COMPONENT_PATHS = (
     "voice/lab/regression.py",
     "voice/lab/release.py",
     "voice/lab/runner.py",
+    "voice/lab/subprocess_adapter.py",
+    "voice/lab/telephony.py",
 )
 
 
