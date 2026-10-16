@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 import re
 from typing import Iterable
 
@@ -20,6 +21,19 @@ def _edit_distance(reference: list[str], hypothesis: list[str]) -> int:
             current.append(min(current[-1] + 1, previous[j] + 1, previous[j - 1] + (left != right)))
         previous = current
     return previous[-1]
+
+
+def _bounded_ratio(numerator: float, denominator: float) -> float:
+    if denominator <= 0:
+        return 0.0
+    return max(0.0, min(1.0, float(numerator) / float(denominator)))
+
+
+def _finite_non_negative(name: str, value: float) -> float:
+    result = float(value)
+    if not math.isfinite(result) or result < 0:
+        raise ValueError(f"{name} must be a finite non-negative number")
+    return result
 
 
 def word_error_rate(reference: str, hypothesis: str) -> float:
@@ -44,6 +58,19 @@ def retention_score(expected: Iterable[str], observed: str) -> float:
         return 1.0
     body = observed.casefold()
     return sum(item in body for item in wanted) / len(wanted)
+
+
+def acoustic_quality_score(*, snr_db: float, clipping_ratio: float, dropped_ratio: float = 0.0) -> float:
+    """Return a bounded 0..1 objective signal-quality score.
+
+    It is intentionally simple and dependency-light: SNR contributes 60%, low
+    clipping 25%, and low dropped-audio ratio 15%. This is a qualification
+    signal, not a claim of human-perceived naturalness or MOS.
+    """
+    snr = max(0.0, min(1.0, float(snr_db) / 30.0))
+    clipping = 1.0 - max(0.0, min(1.0, float(clipping_ratio) / 0.05))
+    dropped = 1.0 - max(0.0, min(1.0, float(dropped_ratio) / 0.05))
+    return round((snr * 0.60) + (clipping * 0.25) + (dropped * 0.15), 6)
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +104,8 @@ DEFAULT_THRESHOLDS = (
     MetricThreshold("dropped-audio-blocks", "dropped_audio_blocks", 0.0),
     MetricThreshold("code-switch-retention", "code_switch_retention", 0.90, False),
     MetricThreshold("pronunciation-accuracy", "pronunciation_accuracy", 0.90, False),
+    MetricThreshold("failure-recovery-rate", "failure_recovery_rate", 0.95, False),
+    MetricThreshold("acoustic-quality-score", "acoustic_quality_score", 0.80, False),
 )
 
 
@@ -86,6 +115,59 @@ class BenchmarkEngine:
 
     def speech_recognition_metrics(self, reference: str, hypothesis: str) -> dict[str, float]:
         return {"wer": word_error_rate(reference, hypothesis), "cer": character_error_rate(reference, hypothesis)}
+
+    def reliability_metrics(
+        self,
+        *,
+        successful_runs: int,
+        total_runs: int,
+        recovered_failures: int = 0,
+        provider_failures: int = 0,
+    ) -> dict[str, float]:
+        if min(successful_runs, total_runs, recovered_failures, provider_failures) < 0:
+            raise ValueError("reliability counters cannot be negative")
+        if successful_runs > total_runs:
+            raise ValueError("successful_runs cannot exceed total_runs")
+        success_rate = _bounded_ratio(successful_runs, total_runs)
+        recovery_rate = 1.0 if provider_failures == 0 else _bounded_ratio(recovered_failures, provider_failures)
+        return {
+            "success_rate": success_rate,
+            "failure_recovery_rate": recovery_rate,
+            "provider_failures": float(provider_failures),
+        }
+
+    def resource_metrics(
+        self,
+        *,
+        cpu_percent: float,
+        memory_mb: float,
+        peak_memory_mb: float | None = None,
+    ) -> dict[str, float]:
+        metrics = {
+            "cpu_percent": _finite_non_negative("cpu_percent", cpu_percent),
+            "memory_mb": _finite_non_negative("memory_mb", memory_mb),
+        }
+        if peak_memory_mb is not None:
+            metrics["peak_memory_mb"] = _finite_non_negative("peak_memory_mb", peak_memory_mb)
+        return metrics
+
+    def acoustic_metrics(
+        self,
+        *,
+        snr_db: float,
+        clipping_ratio: float,
+        dropped_ratio: float = 0.0,
+    ) -> dict[str, float]:
+        return {
+            "snr_db": float(snr_db),
+            "clipping_ratio": float(clipping_ratio),
+            "dropped_ratio": float(dropped_ratio),
+            "acoustic_quality_score": acoustic_quality_score(
+                snr_db=snr_db,
+                clipping_ratio=clipping_ratio,
+                dropped_ratio=dropped_ratio,
+            ),
+        }
 
     def numeric_gates(self, metrics: dict[str, float]) -> tuple[QualificationGate, ...]:
         return tuple(item.evaluate(metrics) for item in self.thresholds)
