@@ -2,7 +2,7 @@
   "schema_version": 1,
   "audited_sha": "4ec735de327f2bab6dccb774e2a9c28ef4fc44af",
   "counting_rule": "A canonical screen is a distinct owner question or durable task. Platform shells, tabs and transient dialogs do not inflate the canonical count.",
-  "summary": {"canonical_required":63,"implemented_canonical":56,"complete":0,"partial":51,"experimental":5,"missing":7,"proven_orphaned":0,"proven_disconnected":0,"platform_slots_classified":252,"source_proven_platform_instances":112,"secondary_ui_families":34,"major_visual_state_types":14,"visual_verified":0},
+  "summary": {"canonical_required":63,"implemented_canonical":57,"complete":0,"partial":52,"experimental":5,"missing":6,"proven_orphaned":0,"proven_disconnected":0,"platform_slots_classified":252,"source_proven_platform_instances":113,"secondary_ui_families":34,"major_visual_state_types":14,"visual_verified":0},
   "screens": [
     {"id":"ONB-001","name":"Welcome / Create-Join-Restore","domain":"Onboarding & Auth","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"partial","android":"missing","ios":"partial","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P2"},
     {"id":"ONB-002","name":"Owner Identity","domain":"Onboarding & Auth","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"partial","android":"missing","ios":"partial","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P2"},
@@ -66,6 +66,6 @@
     {"id":"SET-002","name":"General & Profile","domain":"Settings","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"partial","android":"n/a","ios":"n/a","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P2"},
     {"id":"SET-003","name":"Appearance","domain":"Settings","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"partial","android":"n/a","ios":"n/a","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P2"},
     {"id":"SET-004","name":"Language & Region","domain":"Settings","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"partial","android":"n/a","ios":"n/a","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P2"},
-    {"id":"SET-005","name":"Accessibility","domain":"Settings","required":true,"exists":false,"reachable":false,"backend_connected":"no","desktop":"missing","pwa":"missing","android":"n/a","ios":"n/a","visual_verified":false,"a11y_verified":false,"status":"missing","priority":"P1"}
+    {"id":"SET-005","name":"Accessibility","domain":"Settings","required":true,"exists":true,"reachable":true,"backend_connected":"partial","desktop":"partial","pwa":"missing","android":"n/a","ios":"n/a","visual_verified":false,"a11y_verified":false,"status":"partial","priority":"P1"}
   ]
 }
