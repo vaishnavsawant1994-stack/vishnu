@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
-import re
 from typing import Protocol
 
 from .evaluation import GateStatus, QualificationGate
