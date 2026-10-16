@@ -313,20 +313,20 @@
 
 **Purpose:** Understand and control data location/synchronization
 **Owner question:** Where does my data live and what syncs?
-**Required / exists / reachable / connected:** Yes / PWA settings include privacy/data controls; mobile companions describe local data; full four-policy controls not evidenced uniformly. / Partial / Partial
-**Navigation:** Settings → Data/Privacy; companion local data section.
+**Required / exists / reachable / connected:** Yes / PWA Data & Storage settings page exists. / Reachable in PWA; native parity is not verified. / PWA overview and policy update connect to the canonical Data Plane owner API.
+**Navigation:** PWA Settings → Data & Storage. Companion local-data screens remain platform-specific.
 **Content:** Current location, policy choice, sync status, remote availability, conflict/recovery.
-**Actions:** Change policy, inspect sync, export/delete where supported.
+**Actions:** Inspect provider and aggregate status; set default policy for newly governed data. Existing object policies and data movement are not changed here.
 **Data:** Policy, local/remote state and sync health.
-**Backend:** Data Plane APIs and local-first storage authority.
+**Backend:** `UnifiedDataPlane` through `data_plane.runtime.get_data_plane`; `GET /iphone/api/data-plane/overview`, `PUT /iphone/api/data-plane/settings`.
 **Security:** Owner authorization; explicit confirmation before data movement; no silent sync.
 **Platform status:** desktop: partial, pwa: partial, android: partial, ios: partial.
 **States:** Local-only, syncing, offline queue, conflict, provider unavailable, error.
 **Responsive/visual direction:** Single Data & Storage area with policy, location, sync status and export/recovery links. Plain language for policy; current location/status visible before mutation.
 **Accessibility:** Policy choices explained; status announced; touch-safe controls.
-**Test/evidence:** Data-plane tests exist; complete UI policy matrix and transfer behavior not verified. Evidence: pwa settings data/privacy; iOS MobileDataPlaneStore; Android MobileDataPlaneStore.
+**Test/evidence:** Owner API tests verify authorization, summary redaction and persisted policy update; data-plane readiness tests pass. PWA visual/E2E and native parity are not verified. Evidence: `server/data_plane_owner_api.py`, `server/cloud_app.py`, `pwa/index.html`, `tests/test_data_plane_owner_api.py`.
 **Status:** PARTIAL
-**Required next work:** Trace each supported policy from UI mutation through storage/reload/sync on each intended platform.
+**Required next work:** Capture signed-in PWA desktop/mobile evidence; verify `device:admin` through the live owner session; decide native policy-control parity and qualify any object-level migration flows separately.
 **Acceptance criteria:**
 - [ ] UI never promises remote availability unless confirmed by data plane.
 

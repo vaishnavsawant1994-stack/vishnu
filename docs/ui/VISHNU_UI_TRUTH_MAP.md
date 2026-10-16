@@ -128,7 +128,7 @@ No screen is labeled orphaned solely from its filename. Static evidence found no
 ### Backend without owner UI
 
 - Update/package status: backend/package capabilities exist; an owner-facing status route is not verified (UPD-001).
-- Data Plane four-policy status and movement controls: backend/native storage components exist; complete consistent owner controls are not verified (DAT-001).
+- Data Plane: a connected PWA Data & Storage page now reads aggregate status/provider readiness and writes the new-data default policy through the canonical owner API; object-level movement and native parity remain unverified (DAT-001).
 - Owner audit/approval history: approval panels and activity sources exist, but a comprehensive searchable security history is not verified (SEC-001 / ACT-001).
 - Cross-platform trusted-device approval/revoke: registry APIs exist; full owner workflows across each client are not verified (DEV-001).
 - Sensorium provider diagnostics/evidence: keep low-level provider internals in Advanced; only device-specific consent/session control is required (SEN-001).
@@ -148,7 +148,7 @@ No screen is labeled orphaned solely from its filename. Static evidence found no
 - Add a document: Home attachment or More → Knowledge → Upload → processing/result.
 - Connect an integration: Apps & Tools → capability/import → inspect operations → credential/approval → connected.
 - Revoke a device: More/Settings → Devices → device detail → revoke → confirm. Reachable path is source-supported in PWA; end-to-end revocation is not verified.
-- Change data policy: Settings → Data & Storage; exact policy choices and persistence need source/runtime validation before declaring all four policies available.
+- Change the default policy for newly governed data: Settings → Data & Storage. PWA API persistence is covered by owner API tests; existing data movement is explicitly outside this control.
 - Restore: signed-out access → Restore; native recovery surfaces are directly linked on Android/iOS; desktop/web parity is not verified.
 
 ## Design system, accessibility, responsive and visual evidence

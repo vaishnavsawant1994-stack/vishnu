@@ -176,10 +176,10 @@ CI screenshots were generated and four web-companion views were manually inspect
 
 - Purpose: Understand and control data location/synchronization
 - Platform: desktop: partial, pwa: partial, android: partial, ios: partial.
-- Route / navigation: Settings → Data/Privacy; companion local data section.
-- Status: partial
-- Primary actions: Change policy, inspect sync, export/delete where supported.
-- Backend: Data Plane APIs and local-first storage authority.
+- Route / navigation: PWA Settings → Data & Storage; companion local-data sections are separate.
+- Status: partial (PWA connected; other platform parity and visual execution not verified)
+- Primary actions: Inspect aggregate storage/provider status; change default policy for newly governed objects.
+- Backend: `GET /iphone/api/data-plane/overview`, `PUT /iphone/api/data-plane/settings`; canonical `UnifiedDataPlane`.
 - Visual direction: Single Data & Storage area with policy, location, sync status and export/recovery links.
 - Missing work: Trace each supported policy from UI mutation through storage/reload/sync on each intended platform.
 - Screenshot: NOT CAPTURED in this campaign.

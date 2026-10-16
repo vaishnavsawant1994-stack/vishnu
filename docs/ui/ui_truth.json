@@ -620,15 +620,15 @@
       "purpose": "Understand and control data location/synchronization",
       "user_question": "Where does my data live and what syncs?",
       "required": true,
-      "exists": "PWA settings include privacy/data controls; mobile companions describe local data; full four-policy controls not evidenced uniformly.",
-      "reachable": "Partial",
-      "backend_connected": "Partial",
-      "navigation": "Settings → Data/Privacy; companion local data section.",
+      "exists": "PWA Settings now has a Data & Storage subsection backed by the owner Data Plane API; desktop/native companion parity remains partial.",
+      "reachable": "Reachable in PWA: Settings → Data & Storage; other platforms not verified.",
+      "backend_connected": "PWA reads /data-plane/overview and persists the default policy with PUT /data-plane/settings; APIs are owner-authorized.",
+      "navigation": "PWA: Settings → Data & Storage. Companion local-data views remain separate and are not parity-verified.",
       "content": "Current location, policy choice, sync status, remote availability, conflict/recovery.",
-      "actions": "Change policy, inspect sync, export/delete where supported.",
+      "actions": "Inspect policy/provider/status summaries; update the default policy for newly governed objects. Existing object policy and data movement are not changed.",
       "data": "Policy, local/remote state and sync health.",
-      "backend": "Data Plane APIs and local-first storage authority.",
-      "security": "Owner authorization; explicit confirmation before data movement; no silent sync.",
+      "backend": "UnifiedDataPlane via data_plane.runtime.get_data_plane; GET /iphone/api/data-plane/overview; PUT /iphone/api/data-plane/settings.",
+      "security": "Trusted active device; read requires device:read; policy update requires device:admin; no secret/provider references are returned.",
       "platforms": {
         "desktop": "Partial",
         "pwa": "Partial",
@@ -638,15 +638,19 @@
       "states": "Local-only, syncing, offline queue, conflict, provider unavailable, error.",
       "responsive": "Plain language for policy; current location/status visible before mutation.",
       "accessibility": "Policy choices explained; status announced; touch-safe controls.",
-      "tests": "Data-plane tests exist; complete UI policy matrix and transfer behavior not verified.",
-      "evidence": "pwa settings data/privacy; iOS MobileDataPlaneStore; Android MobileDataPlaneStore.",
+      "tests": "Owner API tests verify authentication, native admin scope, revoked device denial, secret-free summary and persisted policy update; data-plane readiness tests pass. Browser visual/E2E remains unverified.",
+      "evidence": "server/data_plane_owner_api.py; server/cloud_app.py; pwa/index.html renderSettings(storage); tests/test_data_plane_owner_api.py; tests/test_data_plane_production_readiness.py.",
       "status": "partial",
       "missing": [
-        "Trace each supported policy from UI mutation through storage/reload/sync on each intended platform."
+        "Visually execute the PWA page at desktop/mobile widths; verify device:admin access in a signed-in browser; add native desktop/Android/iOS policy parity or document platform-specific control ownership."
       ],
       "visual_spec": "Single Data & Storage area with policy, location, sync status and export/recovery links.",
       "acceptance_criteria": [
-        "UI never promises remote availability unless confirmed by data plane."
+        "[x] PWA displays current default policy and provider readiness from the Data Plane.",
+        "[x] Saving persists the default policy through the canonical authority.",
+        "[x] UI clearly says the choice applies to new governed objects only.",
+        "[x] API denies unauthenticated, revoked and insufficiently scoped requests.",
+        "[ ] Browser visual and responsive execution evidence is captured."
       ],
       "visual_verified": false,
       "a11y_verified": false,
