@@ -84,3 +84,8 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{opacity:.58;cur
 footer{bottom:0!important;padding-bottom:var(--shared-composer-bottom)!important;display:flex;flex-direction:column;align-items:center}
 footer .footline{order:0;margin:0 auto 7px;padding-bottom:0!important}
 footer form{order:1}
+
+/* Management pages contain long forms and safety controls; keep the composer
+   after their content so it cannot cover pairing or emergency actions. */
+body.page-with-footer .shell{padding-bottom:18px!important}
+body.page-with-footer footer{position:static!important;margin-top:12px;background:none;padding:12px 0 calc(10px + env(safe-area-inset-bottom))!important}

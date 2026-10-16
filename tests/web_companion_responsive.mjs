@@ -61,6 +61,9 @@ try {
     await page.getByRole("button",{name:"Control"}).click();
     const pairing=await page.evaluate(()=>({page:document.documentElement.scrollWidth,viewport:innerWidth,fields:[...document.querySelectorAll("#pair input,#emergency input")].map(input=>input.getBoundingClientRect())}));
     assert.ok(pairing.page<=width&&pairing.fields.every(field=>field.width>0&&field.left>=0&&field.right<=width),`Control form reflow failed at ${width}: ${JSON.stringify(pairing)}`);
+    const controlFooter=await page.evaluate(()=>({position:getComputedStyle(document.querySelector("footer")).position,pair:document.querySelector("#pair button").getBoundingClientRect(),footer:document.querySelector("footer").getBoundingClientRect()}));
+    assert.equal(controlFooter.position,"static","Control composer must not be fixed over pairing or emergency actions");
+    assert.ok(controlFooter.pair.bottom<=controlFooter.footer.top,"Pairing action must remain above the composer in document flow");
     if(width===390)await page.screenshot({path:"artifacts/web-companion-control-phone-390.png",fullPage:true});
 
     await page.getByRole("button",{name:"Dashboard"}).click();
