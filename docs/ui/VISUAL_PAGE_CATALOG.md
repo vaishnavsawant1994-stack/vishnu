@@ -351,3 +351,15 @@ CI screenshots were generated and four web-companion views were manually inspect
 - Visual direction: Scrollable graph canvas with textual summary and accessible alternative; avoid shrinking labels.
 - Missing work: Run gallery and API-backed visualization through source navigation; screenshot wide and narrow canvas.
 - Screenshot: NOT CAPTURED in this campaign.
+
+## LAB-001 — Labs & Workspaces
+
+- Purpose: Central route to the existing project, agent, product, visualization and advanced capability-development workspaces.
+- Platform: PWA implemented; desktop NOT VERIFIED; Android/iOS companion surfaces N/A.
+- Route / navigation: Authenticated PWA sidebar → Explore → Labs & workspaces.
+- Status: PARTIAL; this turn's implementation is source- and contract-tested, but local browser rendering was blocked by the missing Playwright Chromium binary.
+- Primary actions: Open Projects, Agents, Products, Visualize, Capability Forge, production readiness and Advanced Settings.
+- Backend: Existing destination APIs and services; the hub itself creates no state.
+- Visual direction: Group everyday workspaces separately from owner-controlled advanced labs.
+- Missing work: Run the mobile/desktop browser suite, inspect destinations and capture screenshots.
+- Screenshot: NOT CAPTURED in this campaign.

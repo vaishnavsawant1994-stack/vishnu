@@ -1317,7 +1317,14 @@ try {
       "The final Home action must remain reachable above the composer in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
   }
   const responsiveModuleWidths=[320,360,375,390,430,600,768,820,1024,1280,1440,1920,2560];
-  const responsiveModules=["memory","knowledge","activities","tools","workflows","devices","dashboard","settings","owner","system"];
+  const responsiveModules=["memory","knowledge","activities","tools","workflows","devices","dashboard","settings","owner","system","labs"];
+  await page.evaluate(()=>openModule("labs"));
+  await page.waitForSelector('#moduleBody #labWorkspaceHeading');
+  assert.equal(await page.locator('#moduleBody [data-lab-module="projects"]').count(),1,"Labs hub must link to the existing project workspace");
+  assert.equal(await page.locator('#moduleBody [data-lab-href="/iphone/agents.html"]').count(),1,"Labs hub must link to the existing Agents page");
+  assert.equal(await page.locator('#moduleBody [data-lab-href="/iphone/our-products.html"]').count(),1,"Labs hub must link to the existing Products page");
+  assert.equal(await page.locator('#moduleBody [data-lab-href="/capabilities/forge/production-readiness"]').count(),1,"Labs hub must expose the existing readiness surface");
+  assert.match(await page.locator('#moduleBody').innerText(),/separate approval authority/i,"Labs hub must explain the existing Forge approval boundary");
   for(const width of responsiveModuleWidths){
     await page.setViewportSize({width,height:844});
     for(const moduleName of responsiveModules){

@@ -1249,28 +1249,74 @@
       "a11y_evidence_status": "not verified in this campaign",
       "visual_capture_files": [],
       "visual_views_manually_inspected": false
+    },
+    {
+      "id": "LAB-001",
+      "name": "Labs & Workspaces",
+      "domain": "Labs",
+      "purpose": "Provide one reachable directory for existing project, agent, product, visualization and capability-development workspaces.",
+      "user_question": "Where do I continue project work or open Vishnu's advanced labs?",
+      "required": true,
+      "exists": "PWA hub added in this change; targets existing Projects, Agents, Products, Visualize, Capability Forge and Advanced Settings surfaces.",
+      "reachable": "Yes — authenticated PWA sidebar → Explore → Labs & workspaces.",
+      "backend_connected": "Partial — directory actions navigate to their existing service-backed surfaces; the hub itself is a navigation layer.",
+      "navigation": "Launch → authenticated PWA → sidebar → Explore → Labs & workspaces.",
+      "content": "Workspace cards for Projects, Agents, Products and Visualize; advanced cards for Capability Forge and Qualification evidence.",
+      "actions": "Open an existing workspace, open Forge or readiness, or open Advanced Settings.",
+      "data": "No additional owner data is loaded or stored by this navigation hub.",
+      "backend": "Existing Projects APIs; agent workforce APIs; product lifecycle APIs; visualization APIs; Capability Forge and qualification authorities.",
+      "security": "Each destination retains its existing owner authentication, capability and approval controls. Forge cannot self-approve production activation.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "N/A — companion surface",
+        "ios": "N/A — companion surface"
+      },
+      "states": "Rendered hub; destination loading/error states are owned by each destination page.",
+      "responsive": "Reuses the responsive PWA module shell and two-column card grid that collapses with the existing module grid on narrow screens.",
+      "accessibility": "Semantic page sections and named headings; keyboard operable buttons. Screen-reader and touch-size qualification not run.",
+      "tests": "Python route/authority contract tests pass. PWA responsive browser suite was not executable locally because the Playwright Chromium binary is unavailable.",
+      "evidence": "pwa/index.html Labs module/nav; tests/test_labs_workspace_hub_contract.py; tests/pwa_mobile_preview.mjs responsive and reachability assertions.",
+      "status": "partial",
+      "missing": [
+        "Run the PWA browser suite and verify destination actions at desktop and mobile sizes; qualify destination authentication and failure states end to end."
+      ],
+      "visual_spec": "Workspace directory grouped into everyday workspaces and owner-controlled advanced labs. Avoid embedding duplicate workspace implementations.",
+      "acceptance_criteria": [
+        "Sidebar entry opens the hub.",
+        "Projects and Visualize actions activate their existing in-app pages.",
+        "Agents, Products and Forge actions navigate to existing routes.",
+        "Qualification opens the current Advanced Settings section.",
+        "Forge copy preserves the separate approval boundary."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not captured for this screen",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     }
   ],
   "counts": {
-    "canonical_required": 29,
-    "currently_present_or_partial": 28,
+    "canonical_required": 30,
+    "currently_present_or_partial": 29,
     "complete": 0,
-    "partial": 28,
+    "partial": 29,
     "missing": 1,
     "orphaned": 0,
     "disconnected": 0,
     "secondary_surfaces_source_named": 11,
     "major_visual_state_classes": 14,
-    "platform_implementation_entries": 116,
+    "platform_implementation_entries": 120,
     "visually_verified_screens_in_this_campaign": 0,
-    "platform_classification_cells": 116,
-    "platform_surface_implementations_present_or_partial": 89,
-    "platform_surface_not_applicable": 15,
+    "platform_classification_cells": 120,
+    "platform_surface_implementations_present_or_partial": 90,
+    "platform_surface_not_applicable": 17,
     "platform_surface_missing": 1,
-    "platform_surface_not_verified": 11,
+    "platform_surface_not_verified": 12,
     "screens_fully_visually_verified": 0,
     "companion_views_manually_reviewed": 4,
     "canonical_screens_with_companion_screenshot_evidence": 5,
-    "canonical_screens_not_fully_visually_verified": 29
+    "canonical_screens_not_fully_visually_verified": 30
   }
 }

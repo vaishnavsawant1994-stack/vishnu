@@ -6,7 +6,7 @@
 
 ## Executive summary
 
-This audit defines **29 canonical logical owner-facing screens** from the implemented product surface and required owner controls. 28 have a source-backed implementation or partial surface; 1 is classified missing. **0 are called complete** because this campaign did not execute every screen’s live API mutations, persisted reload, security gate, failure state, accessibility behavior, and visual evidence as one qualified path. That is an evidence threshold, not a claim that all surfaces are broken.
+This audit defines **30 canonical logical owner-facing screens** from the implemented product surface and required owner controls. 29 have a source-backed implementation or partial surface; 1 is classified missing. **0 are called complete** because this campaign did not execute every screen’s live API mutations, persisted reload, security gate, failure state, accessibility behavior, and visual evidence as one qualified path. That is an evidence threshold, not a claim that all surfaces are broken.
 
 A screen count is a product taxonomy, not a count of files, tabs or native view structs. Settings subsections and view/detail steps remain grouped unless they represent a distinct owner task. Existing internal test consoles are not counted as consumer screens. Today (`reference-pages.js`) and Visualize (`visualize-workspace.js`) are included as distinct reachable logical destinations.
 
@@ -14,23 +14,24 @@ A screen count is a product taxonomy, not a count of files, tabs or native view 
 
 | Measure | Count | Basis |
 |---|---:|---|
-| Canonical required screens | 29 | Logical owner-facing destinations in `ui_truth.json` |
-| Present or partial | 28 | Source has a corresponding surface; not a completion claim |
+| Canonical required screens | 30 | Logical owner-facing destinations in `ui_truth.json` |
+| Present or partial | 29 | Source has a corresponding surface; not a completion claim |
 | Complete | 0 | Full behavior + accessibility + visual proof not demonstrated |
-| Partial | 28 | Source-backed surface with one or more unverified/incomplete links |
+| Partial | 29 | Source-backed surface with one or more unverified/incomplete links |
 | Missing | 1 | Required capability has no verified active product destination |
 | Orphaned / disconnected | 0 / 0 | No source-proven canonical orphan/disconnect in this pass; disabled/preview controls remain partial |
-| Platform classification cells | 116 | 4 platform values for each logical screen; includes N/A and not verified |
-| Platform surface implementations present/partial/blocked | 89 | Cells with source-backed surface state; not a completed parity count |
-| Platform cells N/A / missing / not verified | 15 / 1 / 11 | Explicit platform coverage labels |
+| Platform classification cells | 120 | 4 platform values for each logical screen; includes N/A and not verified |
+| Platform surface implementations present/partial/blocked | 90 | Cells with source-backed surface state; not a completed parity count |
+| Platform cells N/A / missing / not verified | 17 / 1 / 12 | Explicit platform coverage labels |
 | Secondary surfaces source-catalogued | 11 | 5 PWA `<dialog>` IDs, 4 named PWA drawers/screen overlays, 2 iOS sheet flows; native OS prompts/dynamic overlays not exhaustive |
 | Major visual state classes | 14 | loading, empty, populated, editing, saving, success, error, offline, unauthorized, approval, disabled, revoked, expired, degraded |
 | Full canonical screens visually verified | 0 | Companion subviews are not equivalent to their full PWA/desktop/native canonical screen flows |
 | Companion views screenshot-captured and manually inspected | 4 | Home, Memory, Control (pairing/emergency), Dashboard in CI artifacts; 8 post-change screenshots at phone/tablet/desktop/wide sizes |
-| Canonical screens not fully visually verified | 29 | Companion views do not prove every canonical platform implementation or state |
+| Canonical screens not fully visually verified | 30 | Companion views do not prove every canonical platform implementation or state |
 ### By domain
 
 | Domain | Required logical screens |
+| Labs | 1 |
 |---|---:|
 | AI | 1 |
 | Activity | 1 |
@@ -112,6 +113,7 @@ The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Wo
 | UPD-001 | About and updates | Yes | No | No | Partial | Partial | Missing | Partial | Partial | Not verified | Not verified | missing |
 | TOD-001 | Today | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 | VIZ-001 | Visualize | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
+| LAB-001 | Labs & Workspaces | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 
 ## Missing, orphaned, disconnected and placeholder surfaces
 
@@ -153,7 +155,7 @@ No screen is labeled orphaned solely from its filename. Static evidence found no
 
 The repository’s `docs/ui/DESIGN_SYSTEM.md` documents semantic tokens and CI responsive suites. It reports Playwright widths from narrow phone through wide desktop for PWA/web companion and notes desktop visual capture, physical mobile hardware, authenticated owner sessions, physical microphone, browser chrome zoom, and platform accessibility sweeps remain unverified. The PR exact-head responsive workflow captured screenshot artifacts (run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760), artifact `personal-ai-design-system-web-companion`) and four companion views were manually inspected. This does not qualify the corresponding full canonical screens, so their full-screen visual status stays NOT VERIFIED; A11Y is also not fully verified.
 
-Prior design-system CI evidence is evidence of tested responsive scenarios for the named suites, not proof that all 29 screens or all controls are correct.`
+Prior design-system CI evidence is evidence of tested responsive scenarios for the named suites, not proof that all 30 screens or all controls are correct.`
 
 ## Engineering priorities
 
