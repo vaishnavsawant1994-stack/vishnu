@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from voice.lab import (
@@ -66,10 +68,32 @@ def test_capability_catalog_is_unique_and_covers_every_major_voice_workstream() 
         "model-license-provenance",
         "raw-audio-privacy",
         "provider-failure-isolation",
+        "voice-runtime-configuration",
+        "provider-contracts-registry",
+        "voice-runtime-lifecycle",
+        "voice-inference-scheduling",
+        "sensorium-speech-intent-bridge",
+        "wake-phrase",
         "telephony",
         "physical-device-acoustics",
         "provider-model-device-parity",
     } <= set(ids)
+
+
+def test_every_top_level_voice_module_is_tracked_by_the_catalog() -> None:
+    voice_modules = {
+        path.as_posix()
+        for path in Path("voice").glob("*.py")
+        if path.name != "__init__.py"
+    }
+    covered_paths = {
+        evidence_path
+        for capability in all_capabilities()
+        for evidence_path in capability.evidence_paths
+        if evidence_path.endswith(".py")
+    }
+
+    assert voice_modules <= covered_paths
 
 
 def test_unimplemented_telephony_is_explicitly_a_gap() -> None:
@@ -258,3 +282,37 @@ def test_noncanonical_voice_authority_requires_explicit_architecture_review() ->
         _qualified_report(),
     )
     assert reviewed.allowed
+
+
+def test_report_rejects_duplicate_required_gate_ids() -> None:
+    with pytest.raises(ValueError, match="must be unique"):
+        VoiceLabReport(
+            experiment_id="duplicate-required",
+            provider="provider",
+            model="model",
+            device="device",
+            language="en",
+            gates=(passed_gate("a"),),
+            required_gate_ids=("a", "a"),
+        )
+
+
+def test_experiment_metadata_is_immutable_and_part_of_identity() -> None:
+    first = VoiceExperimentSpec(
+        title="metadata",
+        provider="local",
+        model="model-a",
+        device="desktop",
+        language="en",
+        metadata=(("revision", "abc123"),),
+    )
+    second = VoiceExperimentSpec(
+        title="metadata",
+        provider="local",
+        model="model-a",
+        device="desktop",
+        language="en",
+        metadata=(("revision", "def456"),),
+    )
+
+    assert first.experiment_id != second.experiment_id

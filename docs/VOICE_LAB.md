@@ -67,11 +67,19 @@ The catalog in `voice/lab/catalog.py` tracks the full inspected Vishnu voice sur
 20. model license, provenance, hash/integrity and readiness governance;
 21. raw-audio privacy and retention controls;
 22. provider failure isolation, fallback and teardown;
-23. telephony/PSTN/SIP as an explicit current gap;
-24. real physical-device acoustic qualification as required evidence;
-25. cross-provider/model/device parity as required evidence.
+23. strict default-off runtime configuration;
+24. typed provider contracts and the governed voice registry;
+25. isolated runtime lifecycle and teardown;
+26. five-tier voice inference scheduling;
+27. Sensorium SpeechIntent bridging without action authority;
+28. local wake-phrase activation;
+29. telephony/PSTN/SIP as an explicit current gap;
+30. real physical-device acoustic qualification as required evidence;
+31. cross-provider/model/device parity as required evidence.
 
 A capability is never marked implemented just because a neighboring subsystem exists. `GAP` and `QUALIFICATION_REQUIRED` are first-class states.
+
+The focused test suite also scans every top-level `voice/*.py` module and requires it to appear in at least one catalog evidence path. Adding a new voice module without cataloging its workstream therefore fails the Voice Lab coverage test instead of silently creating an untracked voice surface.
 
 ## What 100% voice workstream coverage means
 
@@ -88,11 +96,9 @@ A change to one member of that tuple may require requalification.
 
 ## Experiment specifications
 
-`VoiceExperimentSpec` creates deterministic experiment IDs from the complete test definition. This makes repeated runs comparable and prevents ambiguous "we tested voice" claims.
+`VoiceExperimentSpec` creates deterministic experiment IDs from the complete immutable test definition. This makes repeated runs comparable and prevents ambiguous "we tested voice" claims.
 
-Every experiment names its exact provider, model, device, language, route, fixtures and required gates.
-
-Raw voice retention defaults to disabled. If a Lab test genuinely requires temporary raw audio, it must explicitly enable retention, use a bounded duration of at most one hour, and include an explicit consent reference. Voice-biometric experiments also require an explicit consent reference.
+Every experiment names its exact provider, model, device, language, route, fixtures and required gates. Raw voice retention defaults to disabled. If a Lab test genuinely requires temporary raw audio, it must explicitly enable retention, use a bounded duration of at most one hour, and include an explicit consent reference. Voice-biometric experiments also require an explicit consent reference.
 
 The specification is policy metadata only; it does not itself store audio.
 

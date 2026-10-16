@@ -68,6 +68,25 @@ class VoiceLabReport:
     gates: tuple[QualificationGate, ...]
     required_gate_ids: tuple[str, ...] = BASELINE_REQUIRED_GATES
 
+    def __post_init__(self) -> None:
+        for label, value in (
+            ("experiment_id", self.experiment_id),
+            ("provider", self.provider),
+            ("model", self.model),
+            ("device", self.device),
+            ("language", self.language),
+        ):
+            if not value.strip():
+                raise ValueError(f"{label} is required")
+        if not self.required_gate_ids:
+            raise ValueError("at least one required qualification gate is required")
+        if len(set(self.required_gate_ids)) != len(self.required_gate_ids):
+            raise ValueError("required qualification gate IDs must be unique")
+        if any(not gate_id.strip() for gate_id in self.required_gate_ids):
+            raise ValueError("required qualification gate IDs cannot be empty")
+        if any(not gate.gate_id.strip() for gate in self.gates):
+            raise ValueError("qualification gate IDs cannot be empty")
+
     def gate(self, gate_id: str) -> QualificationGate | None:
         matches = tuple(item for item in self.gates if item.gate_id == gate_id)
         return matches[0] if len(matches) == 1 else None

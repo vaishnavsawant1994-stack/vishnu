@@ -5,7 +5,7 @@ evidence and promotion-policy primitives without starting providers or touching
 production voice configuration.
 """
 
-from .catalog import CapabilityState, VoiceCapability, all_capabilities, find_capability, gaps
+from .catalog import CapabilityState, VoiceCapability, all_capabilities, find_capability, gaps, qualification_required
 from .evaluation import (
     BASELINE_REQUIRED_GATES,
     GateStatus,
@@ -33,4 +33,5 @@ __all__ = [
     "find_capability",
     "gaps",
     "passed_gate",
+    "qualification_required",
 ]

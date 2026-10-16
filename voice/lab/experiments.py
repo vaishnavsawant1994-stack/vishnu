@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 import hashlib
 import json
 from typing import Any
@@ -35,7 +35,7 @@ class VoiceExperimentSpec:
     raw_audio_retention_seconds: int = 0
     contains_voice_biometrics: bool = False
     consent_reference: str | None = None
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.title.strip():
@@ -49,6 +49,10 @@ class VoiceExperimentSpec:
         ):
             if not value.strip():
                 raise ValueError(f"{label} is required")
+        if len({key for key, _ in self.metadata}) != len(self.metadata):
+            raise ValueError("metadata keys must be unique")
+        if any(not key.strip() for key, _ in self.metadata):
+            raise ValueError("metadata keys cannot be empty")
         if self.raw_audio_retention_seconds < 0:
             raise ValueError("raw audio retention cannot be negative")
         if not self.retain_raw_audio and self.raw_audio_retention_seconds != 0:
