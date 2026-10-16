@@ -6,7 +6,7 @@ Vishnu can use VoiceStudio as an optional external speech provider without repla
 
 VoiceStudio remains a separately installed and separately running service. Vishnu does not vendor VoiceStudio source code, Electron UI code, Python backend code, model weights, or transitive model dependencies.
 
-The adapter in `voice/voicestudio.py` uses VoiceStudio's published OpenAI-compatible speech API:
+The adapter in `voice/voicestudio.py` uses VoiceStudio's published OpenAI-compatible speech API on its normal backend service (port 3900 by default):
 
 - `GET /.well-known/voicestudio-speech` for discovery/health
 - `POST /v1/audio/speech` for text-to-speech
@@ -36,17 +36,23 @@ VISHNU_VOICESTUDIO_ALLOW_REMOTE=false
 VISHNU_VOICESTUDIO_REQUIRE_HTTPS_REMOTE=true
 ```
 
-Enabling VoiceStudio only makes the adapter available. Composition code must still inject it into the existing `VoiceRuntime` as the selected STT and/or TTS provider.
+When `VISHNU_VOICESTUDIO_ENABLED=false`, Vishnu does not parse or validate any other VoiceStudio setting and allocates no VoiceStudio provider or provider runtime. This keeps stale optional configuration from disturbing the existing startup path.
 
-Credentials are intentionally not loaded by `VoiceStudioSettings`. For a remote endpoint, composition must obtain the bearer key from Vishnu's existing secret authority and inject it into `VoiceStudioProvider(api_key=...)`. Remote endpoints fail closed unless remote use is explicitly enabled; HTTPS is required by default and an injected bearer key is mandatory.
+When `VISHNU_VOICESTUDIO_ENABLED=true`, `app/main.py` composes one VoiceStudio provider behind the existing bounded `VoiceRuntime`. The provider is registered for both STT and TTS, the bounded runtime starts only after normal first-run setup succeeds, remains available for the Vishnu application lifetime, and stops through the existing application shutdown path. The current `RealtimeVoiceSession` remains separate and unchanged.
+
+The generic `VoiceRuntime` also retains its lazy VoiceStudio fallback for callers that explicitly enable the generic provider runtime and do not inject an STT or TTS provider. Explicitly injected providers always win.
+
+Credentials are intentionally not loaded by `VoiceStudioSettings`. For a remote endpoint, application composition reads only `voicestudio.api_key` from the already-authenticated canonical Vishnu `SecretVault` and injects it into `VoiceStudioProvider(api_key=...)`. Remote endpoints fail closed unless remote use is explicitly enabled; HTTPS is required by default and an injected bearer key is mandatory.
 
 Loopback use can remain credential-free when the separately running VoiceStudio deployment is configured that way.
 
 ## Continuous operation
 
-VoiceStudio is used as a stateless provider behind Vishnu's existing runtime. Each inference call is bounded and independently authenticated, so Vishnu does not need a new persistent background controller just to keep the integration alive. The existing runtime can keep the provider registered continuously and call it whenever selected.
+VoiceStudio is a stateless inference provider behind Vishnu's existing runtime, not a second orchestrator. Each inference call is bounded and independently authenticated. Once explicitly enabled, Vishnu keeps the provider runtime alive for the app session rather than repeatedly creating and destroying it.
 
-If VoiceStudio is stopped, unhealthy, or unreachable, the adapter reports provider failure; it does not take down Vishnu or silently mutate Vishnu's current voice path. Provider selection/fallback remains the responsibility of Vishnu's existing routing/composition layer.
+Vishnu does not make successful VoiceStudio health probing a startup dependency. If the separately running VoiceStudio service is stopped, unhealthy, or unreachable, the adapter reports provider failure when used; the rest of Vishnu remains available and the current realtime voice flow is not silently replaced.
+
+Vishnu does not auto-download VoiceStudio, model weights, or speech engines and does not silently launch a third-party process. The separately installed VoiceStudio service and exact model engines must be provisioned and qualified for the target deployment.
 
 ## Security controls
 
@@ -54,9 +60,11 @@ The adapter:
 
 - is disabled by default
 - allows loopback endpoints by default
+- ignores other VoiceStudio configuration while disabled
 - requires explicit opt-in for remote hosts
 - requires HTTPS for remote hosts by default
 - requires an injected bearer credential for enabled remote use
+- keeps the remote bearer key in the existing Vishnu `SecretVault`
 - rejects credentials embedded in endpoint URLs
 - blocks HTTP redirects
 - applies request timeouts
@@ -78,12 +86,14 @@ Do not add a second direct VoiceStudio cloning database or independent approval 
 
 ## Licensing
 
-VoiceStudio is currently distributed under GNU AGPL v3. Vishnu is proprietary, so this integration deliberately does not copy, vendor, link, or modify VoiceStudio source code in this repository. It communicates with a separately installed service through its documented network interfaces.
+VoiceStudio is currently distributed under GNU AGPL v3. Vishnu is proprietary, so this integration deliberately does not copy, vendor, link, or modify VoiceStudio source code in this repository. It communicates with a separately installed service through VoiceStudio's documented network interfaces.
 
-That boundary is an engineering safeguard, not legal advice. Distribution, hosted-service obligations, commercial licensing, model/checkpoint licenses, and transitive dependencies must be reviewed for the exact deployment before production distribution.
+VoiceStudio upstream also publishes a separate commercial-license option for closed-source/proprietary embedding. This integration does not assume that such a license has been obtained. Distribution, hosted-service obligations, commercial licensing, model/checkpoint licenses, and transitive dependencies must be reviewed for the exact deployment before production distribution.
+
+That boundary is an engineering safeguard, not legal advice.
 
 ## Qualification boundary
 
-Repository tests qualify adapter contracts, isolation, endpoint construction, size bounds, loopback/remote policy, bearer injection, PCM-to-WAV wrapping, TTS result validation, and the default-off behavior without installing VoiceStudio or model weights.
+Repository tests qualify adapter contracts, isolation, endpoint construction, size bounds, loopback/remote policy, bearer injection, PCM-to-WAV wrapping, TTS result validation, disabled-configuration inertness, app-lifetime runtime composition, and clean start/stop behavior without installing VoiceStudio or model weights.
 
 Production claims still require qualification against the exact VoiceStudio revision, exact enabled TTS/STT engines and model checkpoints, target CPU/GPU hardware, remote network/TLS configuration when applicable, real microphone/audio devices, and the deployment's licensing terms.
