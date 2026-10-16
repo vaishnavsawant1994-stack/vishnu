@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Validate the canonical UI truth inventory without external dependencies."""
 import json
+from collections import Counter
 from pathlib import Path
 
 
@@ -34,6 +35,28 @@ def main() -> None:
             assert entry["purpose"], f"{entry['id']}: internal justification required"
         if entry["status"] == "missing":
             assert entry["missing"], f"{entry['id']}: missing screen needs action item"
+
+    counts = data["counts"]
+    statuses = Counter(entry["status"] for entry in entries)
+    assert counts["canonical_required"] == len(entries), "canonical screen total is stale"
+    assert counts["complete"] == statuses["complete"], "complete screen count is stale"
+    assert counts["partial"] == statuses["partial"], "partial screen count is stale"
+    assert counts["missing"] == statuses["missing"], "missing screen count is stale"
+    assert counts["orphaned"] == statuses["orphaned"], "orphaned screen count is stale"
+    assert counts["disconnected"] == statuses["disconnected"], "disconnected screen count is stale"
+    present = sum(statuses[key] for key in ("complete", "partial", "blocked", "experimental", "internal"))
+    assert counts["currently_present_or_partial"] == present, "present/partial screen count is stale"
+
+    platform_values = [value for entry in entries for value in entry["platforms"].values()]
+    platform_counts = Counter(platform_values)
+    assert counts["platform_classification_cells"] == len(platform_values), "platform cell total is stale"
+    assert counts["platform_implementation_entries"] == len(platform_values), "platform entry total is stale"
+    assert counts["platform_surface_missing"] == platform_counts["Missing"], "platform missing count is stale"
+    assert counts["platform_surface_not_verified"] == platform_counts["Not verified"], "platform verification count is stale"
+    not_applicable = sum(value.startswith("N/A") for value in platform_values)
+    assert counts["platform_surface_not_applicable"] == not_applicable, "platform N/A count is stale"
+    implemented = sum(value in {"Complete", "Partial", "Blocked"} for value in platform_values)
+    assert counts["platform_surface_implementations_present_or_partial"] == implemented, "platform implementation count is stale"
     print(f"validated {len(entries)} UI screen records; unique IDs and required fields present")
 
 
