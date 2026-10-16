@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 
+from voice.bootstrap import build_voice_runtime
 from voice.chunking import chunk_speech_text
 from voice.governance import (
     VoiceConsentError,
@@ -58,6 +59,33 @@ def test_voice_runtime_is_disabled_by_default() -> None:
     asyncio.run(scenario())
     assert called is False
     assert runtime.health()["scheduler_running"] is False
+
+
+def test_bootstrap_composes_without_activating_runtime() -> None:
+    called = False
+
+    async def synthesize(_request: SynthesisRequest) -> SynthesisResult:
+        nonlocal called
+        called = True
+        return SynthesisResult(audio=b"unused", sample_rate_hz=24_000)
+
+    runtime = build_voice_runtime(
+        env={},
+        models=(_tts_spec(),),
+        tts_providers=(CallableTTSProvider("test-provider", synthesize),),
+    )
+    assert runtime.health() == {
+        "enabled": False,
+        "started": False,
+        "closed": False,
+        "commercial_mode": True,
+        "scheduler_running": False,
+        "scheduler_pending": 0,
+        "tts_providers": ["test-provider"],
+        "stt_providers": [],
+        "models": ["test-tts"],
+    }
+    assert called is False
 
 
 def test_model_registry_fails_closed_for_noncommercial_model() -> None:
@@ -131,6 +159,32 @@ def test_runtime_routes_through_registered_provider_without_logging_content() ->
     asyncio.run(scenario())
     assert any(event == "voice.synthesis_completed" for event, _metadata in events)
     assert all("private spoken text" not in str(metadata) for _event, metadata in events)
+
+
+def test_long_form_synthesis_uses_bounded_chunks_and_preserves_order() -> None:
+    registry = VoiceModelRegistry()
+    registry.register(_tts_spec())
+    seen: list[str] = []
+
+    async def synthesize(request: SynthesisRequest) -> SynthesisResult:
+        seen.append(request.text)
+        assert "long_form_chunk_index" in request.intent
+        return SynthesisResult(audio=request.text.encode(), sample_rate_hz=24_000)
+
+    runtime = VoiceRuntimeService(enabled=True, registry=registry)
+    runtime.register_tts_provider(CallableTTSProvider("test-provider", synthesize))
+    text = " ".join(["This sentence is suitable for long form speech."] * 12)
+
+    async def scenario() -> None:
+        results = await runtime.synthesize_long_form(
+            SynthesisRequest(text=text, model_id="test-tts", language="en"),
+            max_chunk_characters=120,
+        )
+        assert len(results) == len(seen) > 1
+        assert " ".join(seen) == text
+        await runtime.close()
+
+    asyncio.run(scenario())
 
 
 def test_voice_clone_requires_matching_active_consent_and_defaults_device_only() -> None:
