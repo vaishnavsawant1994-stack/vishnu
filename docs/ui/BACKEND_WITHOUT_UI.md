@@ -4,7 +4,7 @@
 
 | Capability | Evidence / backend | Owner need | Recommended location | Full page? | Priority |
 |---|---|---|---|---|---|
-| Update status and recovery | `updates/`, `packaging/`, `installer/`; active PWA module registry lacks About/Updates | Check version, signature, availability and recovery | Settings → About & Updates | Small settings page only if updater is active | P2 |
+| Signed update check/install/recovery | `updates/`, `packaging/`, `installer/`; no in-app updater is connected to the PWA runtime | See build identity and learn where updates are managed; check/install only through a verified signed updater | Settings → About & Updates | PWA About page exists; update actions remain unavailable | P2 |
 | Unified Data Plane policy/status | PWA owner API and Settings → Data & Storage now expose aggregate status/provider readiness and the default policy; native views exist, parity is not verified | Understand location/status and choose the policy for newly governed data | Settings → Data & Storage | Yes, grouped page | P1 — PWA slice implemented; native parity and visual/E2E qualification remain |
 | Searchable security/audit history | Audit and approval services exist; Activities provides broader activity sources | Inspect sign-in, device, approval, revoke history safely | Settings → Security → Recent security activity; link into Activities | Section, not separate primary page | P1 |
 | Cross-platform device approval/revocation | DeviceRegistry/owner APIs and companion enrollment exist; complete owner workflow not verified per platform | Approve and revoke trusted devices | Apps & Tools / Settings → Devices | Yes, devices overview/detail | P1 |

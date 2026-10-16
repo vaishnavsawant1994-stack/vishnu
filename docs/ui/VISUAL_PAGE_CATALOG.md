@@ -316,14 +316,14 @@ CI screenshots were generated and four web-companion views were manually inspect
 - Missing work: Verify consent→session→stop/revoke on real device; do not infer physical support from simulator.
 - Screenshot: NOT CAPTURED in this campaign.
 
-## UPD-001 — About and updates
+## UPD-001 — About & Updates
 
 - Purpose: Check version, update status and release identity
 - Platform: desktop: partial, pwa: missing, android: partial, ios: partial.
-- Route / navigation: Settings → About/Updates expected; no verified active route.
-- Status: missing
-- Primary actions: Check, review, install/restart only where supported.
-- Backend: Updates/package APIs.
+- Route / navigation: Settings → About & Updates.
+- Status: partial (PWA metadata connected; in-app updater is not integrated)
+- Primary actions: Retry loading build metadata. No update/install control is shown without an active signed updater.
+- Backend: authenticated `GET /iphone/api/about` in `server/about_api.py`.
 - Visual direction: About section with version, build, notices and update status; install control only when updater is active.
 - Missing work: Add a small About/update surface only if owner must check/update supported installation; connect to verified updater.
 - Screenshot: NOT CAPTURED in this campaign.

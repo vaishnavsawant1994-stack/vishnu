@@ -566,20 +566,20 @@
 
 **Purpose:** Check version, update status and release identity
 **Owner question:** Which build am I using, and is an update available?
-**Required / exists / reachable / connected:** Yes / Packaging/update systems exist; a coherent owner-facing update page is not evidenced in active PWA/native navigation. / No / Partial
-**Navigation:** Settings → About/Updates expected; no verified active route.
-**Content:** Version/build, update availability, signature state, release notes, restart status.
-**Actions:** Check, review, install/restart only where supported.
-**Data:** Build version and signed update metadata.
-**Backend:** Updates/package APIs.
-**Security:** Signature verification and rollback; no production update executed.
-**Platform status:** desktop: partial, pwa: missing, android: partial, ios: partial.
+**Required / exists / reachable / connected:** Yes / PWA About & Updates page exists. / Reachable in PWA Settings. / Connected to authenticated safe release-identity metadata; signed update check/install is not connected.
+**Navigation:** Settings → About & Updates.
+**Content:** Product name, version/source, optional build revision, release channel and installation-managed update status.
+**Actions:** Retry metadata load. No check/install control appears until a signed updater is connected.
+**Data:** Safe build identity metadata; no secrets or filesystem paths. Signed update metadata is not currently returned.
+**Backend:** `GET /iphone/api/about` in `server/about_api.py`; installed package/repository metadata and explicit build environment values.
+**Security:** Active trusted device and `device:read`; no production update is performed or represented as available.
+**Platform status:** desktop: not verified, pwa: partial, android: partial, ios: partial.
 **States:** Current, available, downloading, verification failure, restart.
 **Responsive/visual direction:** About section with version, build, notices and update status; install control only when updater is active. Clear version and verified update state; no false-ready status.
 **Accessibility:** Button and progress announcements; destructive/restart confirmation.
-**Test/evidence:** Packaging/update tests exist; owner UI and update path not verified. Evidence: updates/, packaging/, installer/; no active page found in PWA nav.
-**Status:** MISSING
-**Required next work:** Add a small About/update surface only if owner must check/update supported installation; connect to verified updater.
+**Test/evidence:** About API tests cover metadata and native scope. PWA visual/API execution and packaged build identity are not verified. Evidence: `server/about_api.py`, `pwa/index.html`, `tests/test_about_api.py`, `updates/`, `packaging/`.
+**Status:** PARTIAL
+**Required next work:** Verify PWA visual/accessibility states and packaged release identity; wire update actions only where signed update verification and recovery are fully connected.
 **Acceptance criteria:**
 - [ ] No update control shown unless actual update flow can verify and recover.
 

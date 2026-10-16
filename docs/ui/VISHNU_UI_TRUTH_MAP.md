@@ -110,7 +110,7 @@ The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Wo
 | OWN-001 | Owner profile and account | Yes | Yes | Yes | Partial | Partial | Partial | Partial | Partial | Not verified | Not verified | partial |
 | ADV-001 | Advanced diagnostics | Yes | Yes | Partial | Partial | Partial | Partial | N/A | N/A | Not verified | Not verified | partial |
 | SEN-001 | Sensorium permissions | Yes | Yes | Yes | Partial | N/A | N/A | Partial | Partial | Not verified | Not verified | partial |
-| UPD-001 | About and updates | Yes | No | No | Partial | Partial | Missing | Partial | Partial | Not verified | Not verified | missing |
+| UPD-001 | About & Updates | Yes | Yes (PWA) | Yes (PWA) | Partial | Not verified | Partial | Partial | Partial | Not verified | Not verified | partial |
 | TOD-001 | Today | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 | VIZ-001 | Visualize | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 | LAB-001 | Labs & Workspaces | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
@@ -119,7 +119,7 @@ The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Wo
 
 ### Missing
 
-**UPD-001 About and Updates** is a missing verified product destination. Update/package code exists, but no active owner navigation route is established by the scanned PWA module registry. Recommended home: Settings → About & Updates, with update controls shown only where the installed updater can verify, recover and persist. Priority P2.
+**UPD-001 About & Updates** now has a reachable PWA page and authenticated release-identity API. No in-app update check/install is connected; the page says updates are managed by the platform or installer. Native parity and visual qualification remain open. Priority P2.
 
 ### Orphaned and disconnected
 
@@ -127,7 +127,7 @@ No screen is labeled orphaned solely from its filename. Static evidence found no
 
 ### Backend without owner UI
 
-- Update/package status: backend/package capabilities exist; an owner-facing status route is not verified (UPD-001).
+- Update/package status: the About page reports version/channel and the lack of in-app updater support; signed update control is still unconnected (UPD-001).
 - Data Plane: a connected PWA Data & Storage page now reads aggregate status/provider readiness and writes the new-data default policy through the canonical owner API; object-level movement and native parity remain unverified (DAT-001).
 - Owner audit/approval history: approval panels and activity sources exist, but a comprehensive searchable security history is not verified (SEC-001 / ACT-001).
 - Cross-platform trusted-device approval/revoke: registry APIs exist; full owner workflows across each client are not verified (DEV-001).
@@ -161,7 +161,7 @@ Prior design-system CI evidence is evidence of tested responsive scenarios for t
 
 1. **P0:** execute security, recovery, device revoke, data deletion and approval paths in isolated test environments; fix any false success or unauthorized action. No code-level P0 defect is claimed without execution evidence.
 2. **P1:** qualify Home, Conversation, Memory, Knowledge, Apps & Tools, Devices and Data & Storage end-to-end, including reload/error/offline states.
-3. **P2:** add the About/Updates destination only where a real updater is available; complete platform parity and screen-level visual evidence.
+3. **P2:** qualify About & Updates on supported surfaces and connect signed update controls only after updater integration is real.
 4. **P3:** improve diagnostics discoverability, visual consistency and assistive-technology coverage based on test results.
 
 ## Fix completed from visual evidence
