@@ -1,5 +1,4 @@
 """Deterministic, privacy-first Voice Lab experiment specifications."""
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
@@ -16,11 +15,7 @@ def _normalized_json(value: Any) -> str:
 
 @dataclass(frozen=True, slots=True)
 class VoiceExperimentSpec:
-    """An immutable test definition for one exact voice route.
-
-    Fixture references are identifiers/paths, not embedded audio bytes. Raw voice
-    persistence is disabled by default and cannot be silently enabled.
-    """
+    """An immutable test definition for one exact voice route."""
 
     title: str
     provider: str
@@ -49,6 +44,10 @@ class VoiceExperimentSpec:
         ):
             if not value.strip():
                 raise ValueError(f"{label} is required")
+        if len(set(self.required_gate_ids)) != len(self.required_gate_ids):
+            raise ValueError("required qualification gate IDs must be unique")
+        if any(not gate_id.strip() for gate_id in self.required_gate_ids):
+            raise ValueError("required qualification gate IDs cannot be empty")
         if len({key for key, _ in self.metadata}) != len(self.metadata):
             raise ValueError("metadata keys must be unique")
         if any(not key.strip() for key, _ in self.metadata):
@@ -69,6 +68,19 @@ class VoiceExperimentSpec:
 
     @property
     def experiment_id(self) -> str:
-        data = asdict(self)
-        digest = hashlib.sha256(_normalized_json(data).encode("utf-8")).hexdigest()
+        digest = hashlib.sha256(_normalized_json(asdict(self)).encode("utf-8")).hexdigest()
         return f"voice-lab-{digest[:20]}"
+
+    @property
+    def baseline_key(self) -> str:
+        """Stable comparison family across provider/model/config changes."""
+        family = {
+            "title": self.title,
+            "device": self.device,
+            "language": self.language,
+            "route": self.route,
+            "fixture_refs": self.fixture_refs,
+            "required_gate_ids": self.required_gate_ids,
+        }
+        digest = hashlib.sha256(_normalized_json(family).encode("utf-8")).hexdigest()
+        return f"voice-baseline-{digest[:20]}"

@@ -9,18 +9,25 @@ from voice.lab.benchmarks import BenchmarkEngine, character_error_rate, word_err
 from voice.lab.comparison import ComparisonCandidate, ProviderComparison
 from voice.lab.components import missing_modules, unregistered_modules
 from voice.lab.dashboard import VOICE_LAB_SECTIONS, snapshot
-from voice.lab.devices import DeviceClass, DeviceQualificationEvidence, physical_acoustics_gate
+from voice.lab.devices import (
+    DeviceClass,
+    DeviceQualificationEvidence,
+    native_software_evidence,
+    native_software_gate,
+    physical_acoustics_gate,
+)
 from voice.lab.evaluation import BASELINE_REQUIRED_GATES, GateStatus, passed_gate
 from voice.lab.evidence import EvidenceRecord, EvidenceStore
 from voice.lab.experiments import VoiceExperimentSpec
 from voice.lab.fixtures import FixtureKind, FixtureRegistry, VoiceFixture, builtin_fixture_ids
 from voice.lab.regression import MetricDirection, RegressionEngine, RegressionRule
 from voice.lab.release import ReleaseManager
-from voice.lab.runner import AdapterResult, VoiceExperimentRunner
+from voice.lab.runner import AdapterResult, LabRunControl, VoiceExperimentRunner
 
 
 class PassingAdapter:
-    def run(self, spec, fixtures, workspace, *, deadline_monotonic):
+    def run(self, spec, fixtures, workspace, *, control):
+        control.checkpoint()
         assert workspace.is_dir()
         assert fixtures
         metrics = (
@@ -35,11 +42,7 @@ class PassingAdapter:
             ("pronunciation_accuracy", 1.0),
         )
         numeric = {item.gate_id for item in BenchmarkEngine().numeric_gates(dict(metrics))}
-        gates = tuple(
-            passed_gate(gate_id)
-            for gate_id in BASELINE_REQUIRED_GATES
-            if gate_id not in numeric
-        )
+        gates = tuple(passed_gate(gate_id) for gate_id in BASELINE_REQUIRED_GATES if gate_id not in numeric)
         return AdapterResult(
             metrics=metrics,
             gates=gates,
@@ -49,6 +52,13 @@ class PassingAdapter:
             provenance=(("fixture", "deterministic"),),
             artifacts=(("summary.json", b"{}"),),
         )
+
+
+class CancelAdapter:
+    def run(self, spec, fixtures, workspace, *, control):
+        control.cancel()
+        control.checkpoint()
+        raise AssertionError("checkpoint must raise")
 
 
 def _spec(provider="fake"):
@@ -78,14 +88,13 @@ def test_fixture_registry_covers_required_scenarios_and_protects_sensitive_audio
     with pytest.raises(ValueError):
         VoiceFixture("bad", FixtureKind.CLEAN, sensitive=True)
     path = (tmp_path / "owner.wav").resolve()
-    fixture = VoiceFixture(
+    assert VoiceFixture(
         "owner-consented",
         FixtureKind.CLEAN,
         local_audio_path=str(path),
         sensitive=True,
         consent_reference="consent:test",
-    )
-    assert fixture.sensitive
+    ).sensitive
     with pytest.raises(ValueError):
         VoiceFixture("remote", FixtureKind.CLEAN, local_audio_path="https://example.com/audio.wav")
 
@@ -100,35 +109,47 @@ def test_runner_blocks_unregistered_provider_and_persists_evidence(tmp_path):
 
 def test_runner_qualifies_explicit_adapter_and_hashes_artifacts(tmp_path):
     store = EvidenceStore(tmp_path / "lab.sqlite3")
-    runner = VoiceExperimentRunner(
-        fixtures=FixtureRegistry(),
-        evidence=store,
-        adapters={"fake": PassingAdapter()},
-    )
-    run = runner.run(_spec())
+    run = VoiceExperimentRunner(
+        fixtures=FixtureRegistry(), evidence=store, adapters={"fake": PassingAdapter()}
+    ).run(_spec())
     assert run.report.is_qualified
     row = store.get(run.evidence_id)
-    assert row is not None
     assert row["artifact_digests"][0][0] == "summary.json"
-    assert "raw_audio" not in str(row).casefold()
+    assert row["fixture_refs"] == ["clean-short"]
+    assert "audio_bytes" not in str(row).casefold()
+
+
+def test_runner_supports_explicit_cooperative_cancellation(tmp_path):
+    store = EvidenceStore(tmp_path / "lab.sqlite3")
+    run = VoiceExperimentRunner(
+        fixtures=FixtureRegistry(), evidence=store, adapters={"cancel": CancelAdapter()}
+    ).run(_spec("cancel"), control=LabRunControl.bounded(10))
+    assert not run.report.is_qualified
+    assert all(gate.status is GateStatus.BLOCKED for gate in run.report.gates)
 
 
 def test_evidence_and_baselines_are_append_only(tmp_path):
     store = EvidenceStore(tmp_path / "lab.sqlite3")
-    run = VoiceExperimentRunner(
-        fixtures=FixtureRegistry(),
-        evidence=store,
-        adapters={"fake": PassingAdapter()},
-    ).run(_spec())
-    store.accept_baseline("baseline-v1", run.evidence_id)
-    assert store.baseline("baseline-v1")["evidence_id"] == run.evidence_id
-    other = VoiceExperimentRunner(
-        fixtures=FixtureRegistry(),
-        evidence=store,
-        adapters={"fake": PassingAdapter()},
-    ).run(replace(_spec(), title="other run"))
+    runner = VoiceExperimentRunner(fixtures=FixtureRegistry(), evidence=store, adapters={"fake": PassingAdapter()})
+    run = runner.run(_spec())
+    key = store.get(run.evidence_id)["baseline_key"]
+    store.accept_baseline(key, run.evidence_id)
+    assert store.baseline(key)["evidence_id"] == run.evidence_id
+    other = runner.run(replace(_spec(), model="other-model"))
     with pytest.raises(ValueError):
-        store.accept_baseline("baseline-v1", other.evidence_id)
+        store.accept_baseline(key, other.evidence_id)
+
+
+def test_accepted_baseline_triggers_automatic_regression_gate(tmp_path):
+    store = EvidenceStore(tmp_path / "lab.sqlite3")
+    runner = VoiceExperimentRunner(fixtures=FixtureRegistry(), evidence=store, adapters={"fake": PassingAdapter()})
+    first = runner.run(_spec())
+    store.accept_baseline(_spec().baseline_key, first.evidence_id)
+    second = runner.run(replace(_spec(), model="new-model"))
+    row = store.get(second.evidence_id)
+    assert second.report.is_qualified
+    assert dict(row["regression_summary"])["wer"] == "pass"
+    assert any(gate["gate_id"] == "baseline-regression" and gate["status"] == "pass" for gate in row["gates"])
 
 
 def test_provider_comparison_requires_identical_fixtures_and_complete_metrics():
@@ -147,6 +168,32 @@ def test_regression_is_fail_closed_and_direction_aware():
     assert engine.compare(None, {"wer": 0.1}, (rule,))[0].status == "blocked"
     assert engine.compare({"wer": 0.1}, {"wer": 0.2}, (rule,))[0].status == "fail"
     assert engine.compare({"wer": 0.1}, {"wer": 0.105}, (rule,))[0].status == "pass"
+
+
+def test_native_device_lab_bridge_is_fail_closed_and_software_only():
+    item = native_software_evidence(
+        {
+            "provider_type": "ANDROID_EMULATOR",
+            "device_id": "emulator-5554",
+            "os_name": "Android",
+            "identity_verified": True,
+            "probe_passed": True,
+            "evidence_reference": "artifact:android-emulator.json",
+        }
+    )
+    assert native_software_gate(item).status is GateStatus.PASS
+    assert item.provider_type is DeviceClass.ANDROID_EMULATOR
+    false_strings = native_software_evidence(
+        {
+            "provider_type": "ANDROID_EMULATOR",
+            "device_id": "emulator-5554",
+            "os_name": "Android",
+            "identity_verified": "false",
+            "probe_passed": "false",
+            "evidence_reference": "artifact:android-emulator.json",
+        }
+    )
+    assert native_software_gate(false_strings).status is GateStatus.BLOCKED
 
 
 def test_simulator_or_vm_can_never_satisfy_physical_acoustics():
@@ -189,9 +236,7 @@ def test_complete_physical_evidence_can_pass_physical_gate():
 def test_release_candidate_requires_full_baseline_evidence_and_exact_owner_approval(tmp_path):
     store = EvidenceStore(tmp_path / "lab.sqlite3")
     run = VoiceExperimentRunner(
-        fixtures=FixtureRegistry(),
-        evidence=store,
-        adapters={"fake": PassingAdapter()},
+        fixtures=FixtureRegistry(), evidence=store, adapters={"fake": PassingAdapter()}
     ).run(_spec())
     manager = ReleaseManager(store)
     candidate = manager.prepare(("tts",), (run.evidence_id,))
@@ -220,21 +265,9 @@ def test_release_rejects_partial_passing_evidence(tmp_path):
 
 def test_voice_lab_dashboard_has_all_owner_sections():
     required = {
-        "Overview",
-        "Conversation",
-        "STT",
-        "TTS",
-        "Voice Profiles",
-        "Voice Intelligence",
-        "Multilingual",
-        "Realtime",
-        "Audio / Sensorium",
-        "Devices",
-        "Providers & Models",
-        "Experiments",
-        "Benchmarks",
-        "Qualification",
-        "Release",
+        "Overview", "Conversation", "STT", "TTS", "Voice Profiles", "Voice Intelligence", "Multilingual",
+        "Realtime", "Audio / Sensorium", "Devices", "Providers & Models", "Experiments", "Benchmarks",
+        "Qualification", "Release",
     }
     assert set(VOICE_LAB_SECTIONS) == required
     assert snapshot().capabilities > 0

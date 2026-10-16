@@ -1,0 +1,26 @@
+name: Voice Lab Qualification
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: voice-lab-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  voice-lab:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python scripts/install_locked_requirements.py tools
+      - name: Compile Voice Lab and Owner UI
+        run: python -m compileall -q voice/lab ui/voice_lab.py ui/control_panel.py
+      - name: Voice Lab static-quality gate
+        run: ruff check voice/lab ui/voice_lab.py ui/control_panel.py tests/test_voice_lab.py tests/test_voice_lab_operational.py
+      - name: Voice Lab focused qualification
+        run: pytest -q tests/test_voice_lab.py tests/test_voice_lab_operational.py

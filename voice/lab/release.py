@@ -61,12 +61,14 @@ class ReleaseManager:
                 reasons.append(f"missing evidence: {evidence_id}")
                 continue
             gates = row.get("gates", [])
-            by_id = {gate.get("gate_id"): gate for gate in gates}
-            missing = [gate_id for gate_id in BASELINE_REQUIRED_GATES if gate_id not in by_id]
-            if missing:
-                reasons.append(f"evidence is missing baseline gates: {evidence_id}")
-            if any(by_id.get(gate_id, {}).get("status") != "pass" for gate_id in BASELINE_REQUIRED_GATES):
-                reasons.append(f"evidence is not baseline-qualified: {evidence_id}")
+            for gate_id in BASELINE_REQUIRED_GATES:
+                matches = [gate for gate in gates if gate.get("gate_id") == gate_id]
+                if len(matches) != 1:
+                    reasons.append(f"evidence does not contain exactly one {gate_id} gate: {evidence_id}")
+                elif matches[0].get("status") != "pass":
+                    reasons.append(f"evidence baseline gate did not pass: {gate_id}: {evidence_id}")
+            if any(gate.get("status") != "pass" for gate in gates):
+                reasons.append(f"evidence contains non-passing scenario/regression gates: {evidence_id}")
             evidence_digests.append(row.get("digest"))
         if reasons:
             raise ValueError("; ".join(reasons))
@@ -78,13 +80,7 @@ class ReleaseManager:
             "created_at": created,
         }
         manifest = _digest(body)
-        return ReleaseCandidate(
-            "vlrc-" + manifest[:20],
-            capability_ids,
-            evidence_ids,
-            created,
-            manifest,
-        )
+        return ReleaseCandidate("vlrc-" + manifest[:20], capability_ids, evidence_ids, created, manifest)
 
     def approve(self, candidate: ReleaseCandidate, *, owner_id: str, attestation: str) -> ReleaseApproval:
         if not owner_id.strip() or not attestation.strip():

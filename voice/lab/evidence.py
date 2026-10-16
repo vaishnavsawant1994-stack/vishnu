@@ -25,6 +25,7 @@ def _utc_now() -> str:
 class EvidenceRecord:
     evidence_id: str
     experiment_id: str
+    baseline_key: str
     created_at: str
     provider: str
     model: str
@@ -34,10 +35,12 @@ class EvidenceRecord:
     os_name: str
     language: str
     route: str
+    fixture_refs: tuple[str, ...]
     configuration: tuple[tuple[str, str], ...]
     provenance: tuple[tuple[str, str], ...]
     metrics: tuple[tuple[str, float], ...]
     gates: tuple[QualificationGate, ...]
+    regression_summary: tuple[tuple[str, str], ...] = ()
     artifact_digests: tuple[tuple[str, str], ...] = ()
 
     @property
@@ -57,16 +60,20 @@ class EvidenceRecord:
         language: str,
         route: str,
         gates: tuple[QualificationGate, ...],
+        baseline_key: str = "",
+        fixture_refs: tuple[str, ...] = (),
         revision: str = "",
         device_class: str = "unknown",
         os_name: str = "",
         configuration: dict[str, str] | None = None,
         provenance: dict[str, str] | None = None,
         metrics: dict[str, float] | None = None,
+        regression_summary: tuple[tuple[str, str], ...] = (),
         artifact_digests: dict[str, str] | None = None,
         created_at: str | None = None,
     ) -> "EvidenceRecord":
         stamp = created_at or _utc_now()
+        key = baseline_key or f"unassigned:{experiment_id}"
         seed = _json(
             {
                 "experiment": experiment_id,
@@ -81,6 +88,7 @@ class EvidenceRecord:
         return cls(
             evidence_id,
             experiment_id,
+            key,
             stamp,
             provider,
             model,
@@ -90,10 +98,12 @@ class EvidenceRecord:
             os_name,
             language,
             route,
+            fixture_refs,
             tuple(sorted((configuration or {}).items())),
             tuple(sorted((provenance or {}).items())),
             tuple(sorted((metrics or {}).items())),
             gates,
+            regression_summary,
             tuple(sorted((artifact_digests or {}).items())),
         )
 
@@ -182,12 +192,7 @@ class EvidenceStore:
                 "SELECT payload,digest FROM voice_lab_evidence WHERE experiment_id=? ORDER BY created_at",
                 (experiment_id,),
             ).fetchall()
-        result = []
-        for payload, digest in rows:
-            item = json.loads(payload)
-            item["digest"] = digest
-            result.append(item)
-        return tuple(result)
+        return self._decode_rows(rows)
 
     def list_recent(self, limit: int = 100) -> tuple[dict[str, Any], ...]:
         limit = max(1, min(int(limit), 1000))
@@ -196,6 +201,10 @@ class EvidenceStore:
                 "SELECT payload,digest FROM voice_lab_evidence ORDER BY created_at DESC LIMIT ?",
                 (limit,),
             ).fetchall()
+        return self._decode_rows(rows)
+
+    @staticmethod
+    def _decode_rows(rows) -> tuple[dict[str, Any], ...]:
         result = []
         for payload, digest in rows:
             item = json.loads(payload)
@@ -218,7 +227,7 @@ class EvidenceStore:
                 (baseline_id,),
             ).fetchone()
             if existing and existing[0] != evidence_id:
-                raise ValueError("accepted baselines are immutable; create a new baseline ID")
+                raise ValueError("accepted baselines are immutable; create a new baseline family/version")
             conn.execute(
                 "INSERT OR IGNORE INTO voice_lab_baselines VALUES(?,?,?)",
                 (baseline_id, evidence_id, _utc_now()),
