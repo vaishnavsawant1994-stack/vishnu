@@ -2,7 +2,7 @@
 
 **Audited baseline:** `4ec735de327f2bab6dccb774e2a9c28ef4fc44af`
 
-No screenshots are embedded in this catalog because no fresh running UI was captured in this campaign. Existing workflow screenshot artifacts are referenced by `docs/ui/DESIGN_SYSTEM.md`; they are not copied or represented as page-by-page evidence here.
+CI screenshots were generated and four web-companion views were manually inspected. The artifact is available from [PR #248 responsive run 38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760) under `personal-ai-design-system-web-companion`. These screenshots are companion subviews only, not full-page evidence for all Vishnu screen implementations. The catalog links available evidence without copying binary screenshots into the repository.
 
 ## ONB-001 — Connect / first run
 
@@ -14,7 +14,7 @@ No screenshots are embedded in this catalog because no fresh running UI was capt
 - Backend: PWA owner enrollment APIs; Android ConnectActivity; iOS ConnectOnboardingView.
 - Visual direction: Short guided steps; clear create/connect/restore choices; no provider jargon.
 - Missing work: Prove each platform’s complete creation/join path and persistence; screenshot authenticated and error states.
-- Screenshot: NOT CAPTURED in this campaign.
+- Screenshot: `web-companion-control-phone-390.png` from CI artifact run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760); companion subview manually inspected, full canonical page remains NOT VERIFIED.
 
 ## AUTH-001 — Sign-in and session recovery
 
@@ -50,7 +50,7 @@ No screenshots are embedded in this catalog because no fresh running UI was capt
 - Backend: PWA conversation/status APIs and desktop runtime/event bus.
 - Visual direction: Vishnu identity and status, primary message composer, immediate attention, optional recent continuation.
 - Missing work: Verify authenticated UI, live API behavior, all home actions, error and offline visuals.
-- Screenshot: NOT CAPTURED in this campaign.
+- Screenshot: `web-companion-phone-390.png`, `web-companion-phone-320.png`, `web-companion-desktop-1440.png`, `web-companion-wide-2560.png` from CI artifact run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760); companion subview manually inspected, full canonical page remains NOT VERIFIED.
 
 ## CHAT-001 — Conversation
 
@@ -86,7 +86,7 @@ No screenshots are embedded in this catalog because no fresh running UI was capt
 - Backend: Memory APIs and MemoryStore; distinct from Knowledge.
 - Visual direction: Overview with ambient review queue and switchable tree/graph detail.
 - Missing work: Verify edit/delete/export/review persistence, source provenance and privacy toggles.
-- Screenshot: NOT CAPTURED in this campaign.
+- Screenshot: `web-companion-memory-phone-390.png` from CI artifact run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760); companion subview manually inspected, full canonical page remains NOT VERIFIED.
 
 ## KNW-001 — Knowledge and files
 
@@ -218,7 +218,7 @@ No screenshots are embedded in this catalog because no fresh running UI was capt
 - Backend: Security owner APIs and per-capability approval services.
 - Visual direction: Central security sections plus context approval card with risk and consequence.
 - Missing work: Exercise approve/deny/expiry/revocation and confirm exact action scope is enforced.
-- Screenshot: NOT CAPTURED in this campaign.
+- Screenshot: `web-companion-control-phone-390.png` from CI artifact run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760); companion subview manually inspected, full canonical page remains NOT VERIFIED.
 
 ## PRI-001 — Privacy & data controls
 
@@ -254,7 +254,7 @@ No screenshots are embedded in this catalog because no fresh running UI was capt
 - Backend: Dashboard APIs; runtime health owner.
 - Visual direction: Health cards with degraded reasons and direct remediation routes.
 - Missing work: Verify every dashboard claim against source service and stale/error state.
-- Screenshot: NOT CAPTURED in this campaign.
+- Screenshot: `web-companion-dashboard-tablet-768.png` from CI artifact run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760); companion subview manually inspected, full canonical page remains NOT VERIFIED.
 
 ## SYS-002 — System status
 

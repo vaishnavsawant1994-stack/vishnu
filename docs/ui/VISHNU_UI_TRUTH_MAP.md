@@ -25,8 +25,9 @@ A screen count is a product taxonomy, not a count of files, tabs or native view 
 | Platform cells N/A / missing / not verified | 15 / 1 / 11 | Explicit platform coverage labels |
 | Secondary surfaces source-catalogued | 11 | 5 PWA `<dialog>` IDs, 4 named PWA drawers/screen overlays, 2 iOS sheet flows; native OS prompts/dynamic overlays not exhaustive |
 | Major visual state classes | 14 | loading, empty, populated, editing, saving, success, error, offline, unauthorized, approval, disabled, revoked, expired, degraded |
-| Screens visually verified in this campaign | 0 | Browser launch attempted; Playwright browser binary download was invalid in this environment |
-| Screens not visually verified in this campaign | 29 | CI artifact references are not represented as fresh per-screen screenshots |
+| Full canonical screens visually verified | 0 | Companion subviews are not equivalent to their full PWA/desktop/native canonical screen flows |
+| Companion views screenshot-captured and manually inspected | 4 | Home, Memory, Control (pairing/emergency), Dashboard in CI artifacts; 8 post-change screenshots at phone/tablet/desktop/wide sizes |
+| Canonical screens not fully visually verified | 29 | Companion views do not prove every canonical platform implementation or state |
 ### By domain
 
 | Domain | Required logical screens |
@@ -150,7 +151,7 @@ No screen is labeled orphaned solely from its filename. Static evidence found no
 
 ## Design system, accessibility, responsive and visual evidence
 
-The repository’s `docs/ui/DESIGN_SYSTEM.md` documents semantic tokens and CI responsive suites. It reports Playwright widths from narrow phone through wide desktop for PWA/web companion and notes desktop visual capture, physical mobile hardware, authenticated owner sessions, physical microphone, browser chrome zoom, and platform accessibility sweeps remain unverified. This campaign captured no fresh screenshots. Therefore no per-screen visual or A11Y status is promoted to verified.
+The repository’s `docs/ui/DESIGN_SYSTEM.md` documents semantic tokens and CI responsive suites. It reports Playwright widths from narrow phone through wide desktop for PWA/web companion and notes desktop visual capture, physical mobile hardware, authenticated owner sessions, physical microphone, browser chrome zoom, and platform accessibility sweeps remain unverified. The PR exact-head responsive workflow captured screenshot artifacts (run [38940576760](https://github.com/vaishnavsawant1994-stack/vishnu/actions/runs/38940576760), artifact `personal-ai-design-system-web-companion`) and four companion views were manually inspected. This does not qualify the corresponding full canonical screens, so their full-screen visual status stays NOT VERIFIED; A11Y is also not fully verified.
 
 Prior design-system CI evidence is evidence of tested responsive scenarios for the named suites, not proof that all 29 screens or all controls are correct.`
 
@@ -160,6 +161,10 @@ Prior design-system CI evidence is evidence of tested responsive scenarios for t
 2. **P1:** qualify Home, Conversation, Memory, Knowledge, Apps & Tools, Devices and Data & Storage end-to-end, including reload/error/offline states.
 3. **P2:** add the About/Updates destination only where a real updater is available; complete platform parity and screen-level visual evidence.
 4. **P3:** improve diagnostics discoverability, visual consistency and assistive-technology coverage based on test results.
+
+## Fix completed from visual evidence
+
+The initial Control phone screenshot showed the fixed Ask composer covering part of secure browser pairing and crowding the emergency-control footer. The companion now moves the composer into document flow on non-Home management pages, and the responsive test asserts that the pairing action stays above it. The updated Control phone screenshot is in artifact run 38940576760. This fixes the observed overlap; it does not certify all companion actions or other canonical screens.
 
 ## Detailed pages and acceptance criteria
 

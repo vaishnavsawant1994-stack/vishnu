@@ -30,7 +30,7 @@
       "responsive": "Use clear progress and secure browser handoff; preserve retry state.",
       "accessibility": "Labels, keyboard reachability, focus and native screen-reader validation required.",
       "tests": "Existing PWA/native onboarding tests; full fresh-install journey not verified.",
-      "evidence": "pwa/first-run.js; Android ConnectActivity; iOS ConnectOnboardingView; Android manifest launcher.",
+      "evidence": "pwa/first-run.js; Android ConnectActivity; iOS ConnectOnboardingView; Android manifest launcher.; PR #248 responsive artifact run 38940576760 (head 11e2a2546177a879ed002aa9c95bb041f43a1ee4): web-companion-control-phone-390.png; companion view only.",
       "status": "partial",
       "missing": [
         "Prove each platform’s complete creation/join path and persistence; screenshot authenticated and error states."
@@ -43,8 +43,12 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "companion subview screenshot manually inspected; not full canonical-screen qualification",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [
+        "web-companion-control-phone-390.png"
+      ],
+      "visual_views_manually_inspected": true
     },
     {
       "id": "AUTH-001",
@@ -84,8 +88,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "REC-001",
@@ -125,8 +131,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "HOME-001",
@@ -154,7 +162,7 @@
       "responsive": "Reflow cards/composer; avoid dashboard density; safe-area composer on mobile.",
       "accessibility": "Focus order across shortcuts/composer; live state announcements; 44px targets.",
       "tests": "PWA responsive workflow + desktop unit tests; authenticated live screenshot not captured here.",
-      "evidence": "pwa/index.html Home markup and openModule; ui/main_window.py _home_page.",
+      "evidence": "pwa/index.html Home markup and openModule; ui/main_window.py _home_page.; PR #248 responsive artifact run 38940576760 (head 11e2a2546177a879ed002aa9c95bb041f43a1ee4): web-companion-phone-390.png, web-companion-phone-320.png, web-companion-desktop-1440.png, web-companion-wide-2560.png; companion view only.",
       "status": "partial",
       "missing": [
         "Verify authenticated UI, live API behavior, all home actions, error and offline visuals."
@@ -166,8 +174,15 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "companion subview screenshot manually inspected; not full canonical-screen qualification",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [
+        "web-companion-phone-390.png",
+        "web-companion-phone-320.png",
+        "web-companion-desktop-1440.png",
+        "web-companion-wide-2560.png"
+      ],
+      "visual_views_manually_inspected": true
     },
     {
       "id": "CHAT-001",
@@ -208,8 +223,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "CHAT-002",
@@ -249,8 +266,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "MEM-001",
@@ -278,7 +297,7 @@
       "responsive": "Graph scroll region; tree/card views; mobile one-column.",
       "accessibility": "Readable graph alternative, review button labels, status announcements.",
       "tests": "Memory UI tests and API coverage exist; complete owner workflow not verified.",
-      "evidence": "pwa/memory-experiences.js; ui/memory_panel.py; MemoryStore APIs.",
+      "evidence": "pwa/memory-experiences.js; ui/memory_panel.py; MemoryStore APIs.; PR #248 responsive artifact run 38940576760 (head 11e2a2546177a879ed002aa9c95bb041f43a1ee4): web-companion-memory-phone-390.png; companion view only.",
       "status": "partial",
       "missing": [
         "Verify edit/delete/export/review persistence, source provenance and privacy toggles."
@@ -290,8 +309,12 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "companion subview screenshot manually inspected; not full canonical-screen qualification",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [
+        "web-companion-memory-phone-390.png"
+      ],
+      "visual_views_manually_inspected": true
     },
     {
       "id": "KNW-001",
@@ -331,8 +354,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "ACT-001",
@@ -371,8 +396,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "WRK-001",
@@ -411,8 +438,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "PRJ-001",
@@ -452,8 +481,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "APP-001",
@@ -492,8 +523,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "CAP-001",
@@ -533,8 +566,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "DEV-001",
@@ -573,8 +608,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "DAT-001",
@@ -613,8 +650,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "MOD-001",
@@ -653,8 +692,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "VOC-001",
@@ -693,8 +734,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "SEC-001",
@@ -722,7 +765,7 @@
       "responsive": "Approval prompt names action, target, impact and one-time vs persistent scope.",
       "accessibility": "Dialog focus trap/Escape; announce urgency and risk; large touch actions.",
       "tests": "Security/capability tests exist; every approval presentation not UI-tested.",
-      "evidence": "pwa approval panel and settings/approvals; native passkey/sensor consent.",
+      "evidence": "pwa approval panel and settings/approvals; native passkey/sensor consent.; PR #248 responsive artifact run 38940576760 (head 11e2a2546177a879ed002aa9c95bb041f43a1ee4): web-companion-control-phone-390.png; companion view only.",
       "status": "partial",
       "missing": [
         "Exercise approve/deny/expiry/revocation and confirm exact action scope is enforced."
@@ -734,8 +777,12 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "companion subview screenshot manually inspected; not full canonical-screen qualification",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [
+        "web-companion-control-phone-390.png"
+      ],
+      "visual_views_manually_inspected": true
     },
     {
       "id": "PRI-001",
@@ -774,8 +821,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "NOT-001",
@@ -814,8 +863,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "SYS-001",
@@ -843,7 +894,7 @@
       "responsive": "Operational density separate from calm Home; responsive grid.",
       "accessibility": "Status text and timestamps; keyboard access to detail links.",
       "tests": "Dashboard APIs/tests exist; live page visual execution not performed.",
-      "evidence": "pwa loadDashboard; ui/main_window Dashboard.",
+      "evidence": "pwa loadDashboard; ui/main_window Dashboard.; PR #248 responsive artifact run 38940576760 (head 11e2a2546177a879ed002aa9c95bb041f43a1ee4): web-companion-dashboard-tablet-768.png; companion view only.",
       "status": "partial",
       "missing": [
         "Verify every dashboard claim against source service and stale/error state."
@@ -854,8 +905,12 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "companion subview screenshot manually inspected; not full canonical-screen qualification",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [
+        "web-companion-dashboard-tablet-768.png"
+      ],
+      "visual_views_manually_inspected": true
     },
     {
       "id": "SYS-002",
@@ -894,8 +949,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "SET-001",
@@ -934,8 +991,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "OWN-001",
@@ -974,8 +1033,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "ADV-001",
@@ -1014,8 +1075,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "SEN-001",
@@ -1054,8 +1117,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "UPD-001",
@@ -1094,8 +1159,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "TOD-001",
@@ -1135,8 +1202,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     },
     {
       "id": "VIZ-001",
@@ -1176,8 +1245,10 @@
       ],
       "visual_verified": false,
       "a11y_verified": false,
-      "visual_evidence_status": "not verified in this campaign",
-      "a11y_evidence_status": "not verified in this campaign"
+      "visual_evidence_status": "not visually verified for the full canonical screen in this campaign",
+      "a11y_evidence_status": "not verified in this campaign",
+      "visual_capture_files": [],
+      "visual_views_manually_inspected": false
     }
   ],
   "counts": {
@@ -1196,6 +1267,10 @@
     "platform_surface_implementations_present_or_partial": 89,
     "platform_surface_not_applicable": 15,
     "platform_surface_missing": 1,
-    "platform_surface_not_verified": 11
+    "platform_surface_not_verified": 11,
+    "screens_fully_visually_verified": 0,
+    "companion_views_manually_reviewed": 4,
+    "canonical_screens_with_companion_screenshot_evidence": 5,
+    "canonical_screens_not_fully_visually_verified": 29
   }
 }

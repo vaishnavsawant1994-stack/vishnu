@@ -11,6 +11,7 @@ REQUIRED = {
     "backend", "security", "platforms", "states", "responsive", "accessibility",
     "tests", "evidence", "status", "missing", "visual_spec", "acceptance_criteria",
     "visual_verified", "a11y_verified", "visual_evidence_status", "a11y_evidence_status",
+    "visual_capture_files", "visual_views_manually_inspected",
 }
 
 
@@ -22,7 +23,7 @@ def main() -> None:
     for entry in entries:
         missing = REQUIRED - entry.keys()
         assert not missing, f"{entry.get('id')}: missing fields {sorted(missing)}"
-        for key in REQUIRED - {"required", "exists", "reachable", "backend_connected"}:
+        for key in REQUIRED - {"required", "exists", "reachable", "backend_connected", "visual_capture_files"}:
             value = entry[key]
             assert value not in (None, "", [], {}), f"{entry['id']}: blank {key}"
         if entry["status"] == "complete":
