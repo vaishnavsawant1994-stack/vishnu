@@ -42,6 +42,8 @@ def test_desktop_wizard_uses_canonical_data_plane_and_review_before_complete() -
     for policy in ("device_only", "progress_only", "sync_everywhere", "on_demand"):
         assert f"'{policy}'" in source
     assert "get_data_plane(self.runtime).update_settings" in source
+    assert "get_data_plane(self.runtime).settings()" in source
+    assert ".get_settings()" not in source
     assert "Changing this default never silently moves data" in source
     assert "self.stack.addWidget(self._review_page())" in source
     assert "Review setup" in source
