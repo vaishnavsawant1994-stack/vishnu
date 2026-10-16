@@ -17,6 +17,7 @@ from voice.providers import (
     TextToSpeechResult,
 )
 from voice.scheduler import InferencePriority, InferenceScheduler
+from voice.sensorium import SpeechIntent, SpeechIntentBridge
 
 
 class VoiceRuntimeState(str, Enum):
@@ -44,6 +45,7 @@ class VoiceRuntime:
         settings: VoiceRuntimeSettings | None = None,
         stt_provider: SpeechToTextProvider | None = None,
         tts_provider: TextToSpeechProvider | None = None,
+        speech_intent_bridge: SpeechIntentBridge | None = None,
     ):
         self.recorder = recorder
         self.tts = tts
@@ -54,6 +56,7 @@ class VoiceRuntime:
         self.settings = settings or VoiceRuntimeSettings.from_env()
         self.stt_provider = stt_provider
         self.tts_provider = tts_provider
+        self.speech_intents = speech_intent_bridge or SpeechIntentBridge(events=events)
         self._state = VoiceRuntimeState.STOPPED
         self._state_lock = threading.RLock()
         self._workspace: Path | None = None
@@ -113,39 +116,80 @@ class VoiceRuntime:
         request: SpeechToTextRequest,
         *,
         timeout_seconds: float | None = None,
+        priority: InferencePriority = InferencePriority.LIVE,
     ) -> SpeechToTextResult:
         provider = self.stt_provider
         if provider is None:
             raise RuntimeError("no speech-to-text provider configured")
-        future = self._submit(provider.transcribe, request, timeout_seconds=timeout_seconds)
+        future = self._submit(
+            provider.transcribe,
+            request,
+            timeout_seconds=timeout_seconds,
+            priority=priority,
+        )
         result = future.result(timeout=timeout_seconds)
         if not isinstance(result, SpeechToTextResult):
             raise TypeError("speech-to-text provider returned an invalid result")
         return result
+
+    def transcribe_intent(
+        self,
+        request: SpeechToTextRequest,
+        *,
+        timeout_seconds: float | None = None,
+        priority: InferencePriority = InferencePriority.LIVE,
+        source: str = "microphone",
+        device_id: str | None = None,
+        audio_features: dict | None = None,
+    ) -> SpeechIntent:
+        result = self.transcribe(
+            request,
+            timeout_seconds=timeout_seconds,
+            priority=priority,
+        )
+        return self.speech_intents.from_transcription(
+            result,
+            source=source,
+            device_id=device_id,
+            audio_features=audio_features,
+        )
 
     def synthesize(
         self,
         request: TextToSpeechRequest,
         *,
         timeout_seconds: float | None = None,
+        priority: InferencePriority = InferencePriority.LIVE,
     ) -> TextToSpeechResult:
         provider = self.tts_provider
         if provider is None:
             raise RuntimeError("no text-to-speech provider configured")
-        future = self._submit(provider.synthesize, request, timeout_seconds=timeout_seconds)
+        future = self._submit(
+            provider.synthesize,
+            request,
+            timeout_seconds=timeout_seconds,
+            priority=priority,
+        )
         result = future.result(timeout=timeout_seconds)
         if not isinstance(result, TextToSpeechResult):
             raise TypeError("text-to-speech provider returned an invalid result")
         return result
 
-    def _submit(self, function, request, *, timeout_seconds: float | None):
+    def _submit(
+        self,
+        function,
+        request,
+        *,
+        timeout_seconds: float | None,
+        priority: InferencePriority,
+    ):
         with self._state_lock:
             if self._state is not VoiceRuntimeState.RUNNING or self._scheduler is None:
                 raise RuntimeError("voice provider runtime is not running")
             return self._scheduler.submit(
                 function,
                 request,
-                priority=InferencePriority.INTERACTIVE,
+                priority=priority,
                 timeout_seconds=timeout_seconds,
             )
 
