@@ -78,7 +78,7 @@ flowchart TD
   K --> Q[About and Updates]
 ```
 
-The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Workflows, Apps & Tools, Devices, Dashboard, Settings, Owner and System; separate reachability layers add Today, Projects, Visualize, and conversation/history views. Desktop `MainWindow.NAV` exposes Home, Conversation, Memory, Knowledge, Activities, Dashboard, Apps & Tools and Settings. Android/iOS are companion control surfaces with connect, recovery, security, voice/Sensorium and capability screens; their source does not establish a full parity UI.
+The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Workflows, Apps & Tools, Devices, Dashboard, Settings, Owner, System and Labs; Settings exposes Data & Storage and About & Updates. Separate reachability layers add Today, Projects, Visualize, and conversation/history views. Desktop `MainWindow.NAV` exposes Home, Conversation, Memory, Knowledge, Activities, Dashboard, Apps & Tools and Settings. Android/iOS are companion control surfaces with connect, recovery, security, voice/Sensorium and capability screens; their source does not establish a full parity UI.
 
 ## Master screen matrix
 
@@ -115,11 +115,15 @@ The active PWA `openModule` registry has Home, Memory, Knowledge, Activities, Wo
 | VIZ-001 | Visualize | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 | LAB-001 | Labs & Workspaces | Yes | Yes | Yes | Partial | Not verified | Partial | N/A | N/A | Not verified | Not verified | partial |
 
-## Missing, orphaned, disconnected and placeholder surfaces
+## Remaining gaps, orphaned, disconnected and placeholder surfaces
 
-### Missing
+### Missing screens
 
-**UPD-001 About & Updates** now has a reachable PWA page and authenticated release-identity API. No in-app update check/install is connected; the page says updates are managed by the platform or installer. Native parity and visual qualification remain open. Priority P2.
+None in the 30-screen logical inventory. This means each canonical screen has at least one existing or partial implementation; it does not mean cross-platform parity or qualification is complete.
+
+### Partial screens
+
+**UPD-001 About & Updates** has a reachable PWA page and authenticated release-identity API. No in-app update check/install is connected; the page says updates are managed by the platform or installer. Native parity and visual qualification remain open. Priority P2.
 
 ### Orphaned and disconnected
 
