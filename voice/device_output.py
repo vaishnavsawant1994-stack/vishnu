@@ -67,7 +67,6 @@ class TrustedVoiceOutputRouter:
                 device_id=device_id,
                 request_id=scoped_request_id,
                 byte_length=len(payload),
-                sha256=digest,
             )
         return result
 
