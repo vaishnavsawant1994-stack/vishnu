@@ -96,11 +96,12 @@ def test_every_top_level_voice_module_is_tracked_by_the_catalog() -> None:
     assert voice_modules <= covered_paths
 
 
-def test_unimplemented_telephony_is_explicitly_a_gap() -> None:
+def test_telephony_software_framework_is_implemented_not_a_gap() -> None:
     telephony = find_capability("telephony")
     assert telephony is not None
-    assert telephony.state is CapabilityState.GAP
-    assert telephony in gaps()
+    assert telephony.state is CapabilityState.IMPLEMENTED
+    assert telephony not in gaps()
+    assert "voice/lab/telephony.py" in telephony.evidence_paths
 
 
 def test_physical_device_acoustics_are_not_assumed_from_emulators() -> None:
@@ -208,14 +209,31 @@ def test_voice_biometric_experiment_requires_explicit_consent() -> None:
         )
 
 
-def test_promotion_never_allows_a_known_gap() -> None:
-    decision = evaluate_promotion(
+def test_telephony_promotion_requires_telephony_specific_live_evidence() -> None:
+    without_telephony = evaluate_promotion(
         PromotionRequest(target_capability_ids=("telephony",), manual_owner_approval=True),
         _qualified_report(),
     )
+    assert not without_telephony.allowed
+    assert any("telephony promotion requires" in reason for reason in without_telephony.reasons)
 
-    assert not decision.allowed
-    assert any("gap" in reason for reason in decision.reasons)
+    telephony_gate_ids = (
+        "telephony-enabled",
+        "telephony-direction-policy",
+        "telephony-provider-boundary",
+        "telephony-owner-approval",
+        "telephony-recording-consent",
+        "telephony-emergency-boundary",
+        "telephony-connectivity",
+        "telephony-recording-state",
+        "telephony-duration-bound",
+        "telephony-hangup-control",
+    )
+    with_telephony = evaluate_promotion(
+        PromotionRequest(target_capability_ids=("telephony",), manual_owner_approval=True),
+        _qualified_report(extra_gates=tuple(passed_gate(gate_id) for gate_id in telephony_gate_ids)),
+    )
+    assert with_telephony.allowed
 
 
 def test_promotion_requires_manual_owner_approval() -> None:
