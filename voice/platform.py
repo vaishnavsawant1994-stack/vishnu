@@ -23,6 +23,8 @@ from voice.intelligence import (
 from voice.preferences import VoicePreferenceStore
 from voice.providers import TextToSpeechRequest
 
+_AUTO_PROVIDER_RUNTIME = object()
+
 
 @dataclass(frozen=True)
 class VoiceSynthesisResult:
@@ -47,9 +49,13 @@ class VoiceIntelligenceService:
         model_router,
         *,
         data_dir: Path | None = None,
-        provider_runtime=None,
+        provider_runtime=_AUTO_PROVIDER_RUNTIME,
     ):
         self.model_router = model_router
+        if provider_runtime is _AUTO_PROVIDER_RUNTIME:
+            from voice.voicestudio_runtime import active_voicestudio_runtime
+
+            provider_runtime = active_voicestudio_runtime()
         self.provider_runtime = provider_runtime
         self.data_dir = Path(data_dir) if data_dir is not None else None
         custom_personas = {}
