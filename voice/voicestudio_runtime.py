@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, replace
+from threading import RLock
 
 from voice.config import VoiceRuntimeSettings
 from voice.runtime import VoiceRuntime
@@ -9,6 +10,8 @@ from voice.voicestudio import VoiceStudioProvider, VoiceStudioSettings, build_vo
 
 _FALSE_VALUES = frozenset({"0", "false", "no", "off", ""})
 _TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
+_ACTIVE_LOCK = RLock()
+_ACTIVE_RUNTIME: VoiceRuntime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,6 +24,24 @@ class VoiceStudioRuntimeBinding:
     @property
     def enabled(self) -> bool:
         return self.provider is not None and self.runtime is not None
+
+
+def active_voicestudio_runtime() -> VoiceRuntime | None:
+    """Return the currently composed app-lifetime provider runtime, if any.
+
+    This is a non-owning composition reference. ``VoiceRuntime`` remains the
+    scheduler/lifecycle authority and ``app.main`` remains responsible for
+    start/stop. Keeping the pointer here lets existing Voice Intelligence
+    surfaces discover the optional provider without rewriting every UI caller.
+    """
+    with _ACTIVE_LOCK:
+        return _ACTIVE_RUNTIME
+
+
+def _set_active_runtime(runtime: VoiceRuntime | None) -> None:
+    global _ACTIVE_RUNTIME
+    with _ACTIVE_LOCK:
+        _ACTIVE_RUNTIME = runtime
 
 
 def _provider_enabled_from_env() -> bool:
@@ -49,6 +70,10 @@ def compose_voicestudio_runtime(
     lifecycle authority. A remote bearer key, when needed, comes only from the
     already-authenticated canonical SecretVault.
     """
+
+    # A failed or disabled re-composition must never leave a stale provider from
+    # an earlier runtime visible to newly created Voice Intelligence surfaces.
+    _set_active_runtime(None)
 
     if provider_settings is None:
         # Do not parse or validate any other VoiceStudio configuration while the
@@ -88,4 +113,5 @@ def compose_voicestudio_runtime(
         stt_provider=provider,
         tts_provider=provider,
     )
+    _set_active_runtime(runtime)
     return VoiceStudioRuntimeBinding(provider=provider, runtime=runtime)
