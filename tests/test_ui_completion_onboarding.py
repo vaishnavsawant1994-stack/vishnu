@@ -34,3 +34,16 @@ def test_incomplete_first_run_allows_only_canonical_data_plane_settings_write() 
     source = (ROOT / "server" / "pwa_session_middleware.py").read_text(encoding="utf-8")
     assert "'/iphone/api/data-plane/settings'" in source
     assert "never moves existing owner data during first-run" in source
+
+
+def test_desktop_wizard_uses_canonical_data_plane_and_review_before_complete() -> None:
+    source = (ROOT / "ui" / "first_run_wizard.py").read_text(encoding="utf-8")
+    assert "from data_plane.runtime import get_data_plane" in source
+    for policy in ("device_only", "progress_only", "sync_everywhere", "on_demand"):
+        assert f"'{policy}'" in source
+    assert "get_data_plane(self.runtime).update_settings" in source
+    assert "Changing this default never silently moves data" in source
+    assert "self.stack.addWidget(self._review_page())" in source
+    assert "Review setup" in source
+    assert "def _finish_review" in source
+    assert "self.coordinator.complete()" in source
