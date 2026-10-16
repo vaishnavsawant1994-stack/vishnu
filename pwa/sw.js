@@ -1,9 +1,9 @@
-const CACHE='personal-ai-iphone-v37';
+const CACHE='personal-ai-iphone-v38';
 const SHELL=[
   '/iphone/','/iphone/manifest.webmanifest','/iphone/projects-workspace.css','/iphone/projects-workspace.js',
   '/iphone/projects-workspace-views.css','/iphone/projects-workspace-views.js','/iphone/home-chat-redesign.js',
   '/iphone/home-chat-redesign-core.js','/iphone/chat-experience.css','/iphone/chat-experience.js',
-  '/iphone/chat-context-owner.js','/iphone/projects-work-runtime.js','/iphone/project-autonomy-controls.js',
+  '/iphone/chat-context-owner.js','/iphone/adaptive-composer.js','/iphone/projects-work-runtime.js','/iphone/project-autonomy-controls.js',
   '/iphone/projects-work-visualization-runtime.js','/iphone/workorder-detail.js','/iphone/global-work-awareness.js',
   '/iphone/work-attention-center.js','/iphone/owner-controls.css','/iphone/owner-controls.js',
   '/iphone/agent-workforce-entry.js','/iphone/agents.html','/iphone/agents-workforce.css',
