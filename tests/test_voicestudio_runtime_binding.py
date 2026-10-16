@@ -32,6 +32,17 @@ def test_disabled_binding_allocates_no_provider_or_runtime():
     assert vault.lookups == []
 
 
+def test_disabled_environment_does_not_parse_stale_optional_configuration(monkeypatch):
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "false")
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "not-a-url")
+
+    binding = compose_voicestudio_runtime()
+
+    assert binding.enabled is False
+    assert binding.provider is None
+    assert binding.runtime is None
+
+
 def test_local_binding_reuses_existing_voice_runtime_for_application_lifetime(tmp_path):
     binding = compose_voicestudio_runtime(
         provider_settings=VoiceStudioSettings(enabled=True),
