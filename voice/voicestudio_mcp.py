@@ -11,11 +11,13 @@ _DESTRUCTIVE_PREFIXES = ("delete", "remove", "revoke", "drop", "purge", "reset",
 _READ_PREFIXES = ("list", "get", "status", "health", "describe", "inspect", "languages", "models", "voices")
 
 
-def register_voicestudio_mcp_server(catalog, provider) -> dict | None:
+def register_voicestudio_mcp_server(catalog, provider=None, *, endpoint: str | None = None) -> dict | None:
     """Persist the configured VoiceStudio MCP endpoint as inert catalog metadata."""
-    if provider is None:
-        return None
-    endpoint = str(provider.mcp_endpoint).rstrip("/")
+    if endpoint is None:
+        if provider is None:
+            return None
+        endpoint = str(provider.mcp_endpoint)
+    endpoint = str(endpoint).rstrip("/")
     parts = urlsplit(endpoint)
     trusted_loopback = False
     try:
@@ -44,10 +46,6 @@ def minimum_voicestudio_risk(tool_name: str) -> str:
         return "destructive"
     if normalized.startswith(_READ_PREFIXES):
         return "read"
-    # Speech generation, transcription, cloning, design, dubbing and other
-    # non-discovery calls can create artifacts, process owner media, or change
-    # provider state. They must never become approval-free merely because an
-    # upstream annotation is missing or optimistic.
     return "write"
 
 
