@@ -251,7 +251,14 @@ def apps_tools_router(runtime):
             vault.set(credential_ref, token)
         state_store = runtime['integrations'].state_store
         try:
-            remote_tools = MCPHTTPClient(server['url'], token, auth_type=auth_type).list_tools()
+            trusted_voicestudio_loopback = (
+                server.get('trusted_loopback') is True
+                and server.get('provider_policy') == 'voicestudio'
+            )
+            remote_tools = MCPHTTPClient(
+                server['url'], token, auth_type=auth_type,
+                allow_loopback=trusted_voicestudio_loopback,
+            ).list_tools()
             entries = catalog.import_mcp_tools(server_id, remote_tools, server_name=server['name'], server_url=server['url'])
             connector_id = 'mcpserver_' + server_id.split(':', 1)[-1]
             catalog.connect(server_id, server_url=server['url'], auth_type=auth_type, credential_ref=credential_ref,
@@ -292,6 +299,10 @@ def apps_tools_router(runtime):
             raise HTTPException(422, 'Owner must explicitly classify the MCP tool as read, write, or destructive')
         if requested_risk == 'read' and payload.get('read_only_attested') is not True:
             raise HTTPException(422, 'Owner must attest that a read-classified MCP tool is read-only')
+        minimum_risk = capability.get('minimum_risk')
+        risk_rank = {'read': 0, 'write': 1, 'destructive': 2}
+        if minimum_risk in risk_rank and risk_rank[requested_risk] < risk_rank[minimum_risk]:
+            raise HTTPException(422, f'MCP tool requires at least {minimum_risk} risk classification')
         server_connection = catalog.connection(capability['server_id'], include_credential_ref=True)
         if not server_connection or server_connection.get('status') != 'connected':
             raise HTTPException(409, 'Connect and discover this MCP server first')
