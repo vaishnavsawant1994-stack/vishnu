@@ -75,7 +75,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "authority",
         "STT to CanonicalTurnRuntime to TTS authority bridge",
         CapabilityState.IMPLEMENTED,
-        ("voice/realtime.py", "voice/full_duplex.py"),
+        ("voice/realtime.py", "voice/full_duplex.py", "voice/plan_adapter.py"),
         production_authority=True,
     ),
     VoiceCapability(
@@ -151,7 +151,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "speech-synthesis",
         "Bounded long-form speech synthesis",
         CapabilityState.IMPLEMENTED,
-        ("voice/platform.py",),
+        ("voice/platform.py", "voice/chunking.py"),
         ("Long-form coherence, latency and cancellation require provider qualification.",),
     ),
     VoiceCapability(
@@ -159,7 +159,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "identity",
         "Voice profile enrollment, consent, provenance, revocation and deletion",
         CapabilityState.IMPLEMENTED,
-        ("voice/platform.py", "voice/profile_archive.py"),
+        ("voice/platform.py", "voice/profile_archive.py", "voice/governance.py"),
     ),
     VoiceCapability(
         "openvoice-conversion",
@@ -248,7 +248,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "governance",
         "Voice model license, provenance, integrity and local readiness governance",
         CapabilityState.IMPLEMENTED,
-        ("voice/model_manager.py", "voice/platform.py", "voice/registry.py"),
+        ("voice/model_manager.py", "voice/platform.py", "voice/registry.py", "voice/model_registry.py"),
     ),
     VoiceCapability(
         "raw-audio-privacy",
@@ -270,7 +270,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "runtime",
         "Strict default-off voice runtime configuration",
         CapabilityState.IMPLEMENTED,
-        ("voice/config.py",),
+        ("voice/config.py", "voice/bootstrap.py"),
     ),
     VoiceCapability(
         "provider-contracts-registry",
@@ -284,7 +284,7 @@ _CAPABILITIES: tuple[VoiceCapability, ...] = (
         "runtime",
         "Isolated voice runtime lifecycle and teardown",
         CapabilityState.IMPLEMENTED,
-        ("voice/runtime.py", "voice/platform.py"),
+        ("voice/runtime.py", "voice/platform.py", "voice/runtime_service.py"),
     ),
     VoiceCapability(
         "voice-inference-scheduling",
