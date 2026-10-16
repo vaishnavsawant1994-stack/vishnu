@@ -5,6 +5,16 @@
     password,passwordAgain,begin,codes,recovery,saved,privacy,dataPolicy,savePolicy,policyStatus,
     provider,model,apiKey,saveModel,modelStatus,fallback,reviewButton,review,reviewSummary,
     finish,showError} = s;
+  let identityCreated=false;
+  const invalidateReview=()=>review.classList.add('hidden');
+  const invalidateModel=()=>{
+    s.modelSaved=false;
+    saveModel.disabled=false;
+    saveModel.textContent='Save AI setup choice';
+    modelStatus.textContent='Save your updated AI choice before reviewing setup.';
+    invalidateReview();
+  };
+
   createChoice.onclick = () => { createForm.classList.remove('hidden'); firstName.focus(); };
   joinChoice.onclick = () => {
     $('enrollStatus').textContent = 'Connect with a passkey, owner password, or one-time recovery code below.';
@@ -30,18 +40,21 @@
         device_name:(navigator.userAgentData?.platform||navigator.platform||'Web browser')+' browser',
       })});
       bootstrap.value='';password.value='';passwordAgain.value='';
+      identityCreated=true;
+      firstName.disabled=true;lastName.disabled=true;displayName.disabled=true;begin.textContent='Identity created';
       codes.textContent=(result.recovery_codes||[]).join('\n');
       recovery.classList.remove('hidden');recovery.scrollIntoView({behavior:'smooth',block:'nearest'});
       $('enrollStatus').textContent='Your owner identity and first trusted browser are ready. Save the recovery codes before continuing.';
-    } catch(error) { showError(error); } finally { begin.disabled=false; }
+    } catch(error) { showError(error); } finally { begin.disabled=identityCreated; }
   };
 
+  privacy.onchange=invalidateReview;
   dataPolicy.onchange=()=>{
     s.policySaved=false;
     savePolicy.disabled=false;
     savePolicy.textContent='Save data placement';
     policyStatus.textContent='Changing this default never silently moves data that already exists.';
-    review.classList.add('hidden');
+    invalidateReview();
   };
   savePolicy.onclick=async()=>{
     savePolicy.disabled=true;
@@ -62,20 +75,26 @@
   };
 
   provider.onchange=()=>{
+    invalidateModel();
     const selected=provider.value,external=!['skip','local'].includes(selected);
     model.classList.toggle('hidden',selected==='skip');apiKey.classList.toggle('hidden',!external);
     model.placeholder=selected==='local'?'Local model (optional)':'Model name (required for provider setup)';
-    review.classList.add('hidden');
   };
+  model.oninput=()=>{ if(s.modelSaved)invalidateModel(); else invalidateReview(); };
+  apiKey.oninput=()=>{ if(s.modelSaved)invalidateModel(); else invalidateReview(); };
   saveModel.onclick=async()=>{
     if(!['skip','local'].includes(provider.value)&&!model.value.trim())return showError(new Error('Enter the provider model name.'));
+    saveModel.disabled=true;
     try {
       await api('/first-run/model',{method:'POST',body:JSON.stringify({provider_id:provider.value,model:model.value.trim(),api_key:apiKey.value})});
-      apiKey.value='';s.modelSaved=true;saveModel.disabled=true;saveModel.textContent='AI setup saved';
+      apiKey.value='';s.modelSaved=true;saveModel.textContent='AI setup saved';
       modelStatus.textContent=provider.value==='skip'?'AI setup saved for later.':'AI provider setup saved in Vishnu encrypted storage.';
-      review.classList.add('hidden');
+      invalidateReview();
       $('enrollStatus').textContent='';
-    } catch(error) { showError(error); }
+    } catch(error) {
+      saveModel.disabled=false;
+      showError(error);
+    }
   };
 
   reviewButton.onclick=()=>{
