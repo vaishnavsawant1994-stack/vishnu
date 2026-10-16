@@ -19,8 +19,13 @@ jobs:
           python-version: "3.12"
       - run: python scripts/install_locked_requirements.py tools
       - name: Compile Voice Lab and Owner UI
-        run: python -m compileall -q voice/lab ui/voice_lab.py ui/control_panel.py
+        run: python -m compileall -q voice/lab ui/voice_lab.py ui/voice_lab_telephony.py ui/control_panel.py
       - name: Voice Lab static-quality gate
-        run: ruff check voice/lab ui/voice_lab.py ui/control_panel.py tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
+        run: >-
+          ruff check voice/lab ui/voice_lab.py ui/voice_lab_telephony.py ui/control_panel.py
+          tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
+          tests/test_voice_lab_ui_contract.py
       - name: Voice Lab focused qualification
-        run: pytest -q tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
+        run: >-
+          pytest -q tests/test_voice_lab.py tests/test_voice_lab_operational.py tests/test_voice_lab_completion.py
+          tests/test_voice_lab_ui_contract.py

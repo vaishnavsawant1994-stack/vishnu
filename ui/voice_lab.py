@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
+from ui.voice_lab_telephony import TelephonyLabPage
 from voice.lab.catalog import all_capabilities, gaps, qualification_required
 from voice.lab.comparison import ComparisonCandidate, ProviderComparison
 from voice.lab.dashboard import VOICE_LAB_SECTIONS, snapshot
@@ -43,7 +44,6 @@ _CATEGORY_MAP = {
     "Audio / Sensorium": {"sensorium", "content"},
     "Devices": {"devices", "qualification"},
     "Providers & Models": {"providers", "governance", "runtime"},
-    "Telephony": {"communications"},
 }
 
 _RELIABILITY_METRICS = {"success_rate", "failure_recovery_rate", "provider_failures"}
@@ -94,6 +94,7 @@ class VoiceLabDialog(QDialog):
         self._worker = None
         self._run_control = None
         self.views = {}
+        self.telephony_page = None
 
         self.setWindowTitle("Vishnu — Voice Lab")
         fit_window_to_screen(self, preferred=(1080, 820), minimum=(780, 600))
@@ -116,6 +117,9 @@ class VoiceLabDialog(QDialog):
                 page = self._experiments_page()
             elif section == "Benchmarks":
                 page = self._benchmarks_page()
+            elif section == "Telephony":
+                self.telephony_page = TelephonyLabPage(runtime, self.telephony, self.store)
+                page = self.telephony_page
             elif section == "Release":
                 page = self._release_page()
             else:
@@ -403,32 +407,8 @@ class VoiceLabDialog(QDialog):
                 if item.category in categories
             ]
             self.views[section].setPlainText(json.dumps(rows, indent=2))
-        telephony_capabilities = [
-            {"id": item.capability_id, "title": item.title, "state": item.state.value, "notes": item.qualification_notes}
-            for item in capabilities
-            if item.category == "communications"
-        ]
-        self.views["Telephony"].setPlainText(
-            json.dumps(
-                {
-                    "capabilities": telephony_capabilities,
-                    "policy": {
-                        "enabled": self.telephony.policy.enabled,
-                        "allow_outbound": self.telephony.policy.allow_outbound,
-                        "allow_inbound": self.telephony.policy.allow_inbound,
-                        "allow_recording": self.telephony.policy.allow_recording,
-                        "allow_live_provider": self.telephony.policy.allow_live_provider,
-                        "max_call_seconds": self.telephony.policy.max_call_seconds,
-                    },
-                    "registered_providers": self.telephony.registered_providers(),
-                    "owner_approval": "exact request required by default",
-                    "recording": "off unless policy + consent + exact approval allow it",
-                    "emergency_calls": "blocked in Voice Lab",
-                    "destination_evidence": "masked plus SHA-256 fingerprint; raw destination is not evidence metadata",
-                },
-                indent=2,
-            )
-        )
+        if self.telephony_page is not None:
+            self.telephony_page.refresh_status(capabilities)
         self.benchmark_view.setPlainText(json.dumps(recent, indent=2, default=str))
         self.views["Qualification"].setPlainText(
             json.dumps(
@@ -464,6 +444,14 @@ class VoiceLabDialog(QDialog):
                 self,
                 "Voice Lab experiment",
                 "Cancellation was requested. Close Voice Lab after the Lab adapter acknowledges the stop checkpoint.",
+            )
+            event.ignore()
+            return
+        if self.telephony_page is not None and not self.telephony_page.can_close():
+            QMessageBox.information(
+                self,
+                "Voice Lab telephony",
+                "Telephony cancellation was requested. Close Voice Lab after the registered provider returns control.",
             )
             event.ignore()
             return
