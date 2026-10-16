@@ -3,6 +3,10 @@ from fastapi import HTTPException
 
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from server.about_api import about_router
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class Registry:
@@ -45,3 +49,16 @@ def test_about_endpoint_enforces_native_read_scope():
         assert denied.value.status_code == 403
     finally:
         reset_trusted_request(token)
+
+
+def test_about_screen_is_reachable_and_does_not_offer_a_fake_update_action():
+    pwa = (ROOT / 'pwa/index.html').read_text(encoding='utf-8')
+    cloud_app = (ROOT / 'server/cloud_app.py').read_text(encoding='utf-8')
+
+    assert "['about','About & Updates']" in pwa
+    assert "api('/about')" in pwa
+    assert "row('about','About & Updates'" in pwa
+    assert "managed_by_installation" in (ROOT / 'server/about_api.py').read_text(encoding='utf-8')
+    assert 'app.include_router(about_router(runtime))' in cloud_app
+    assert 'Check for updates' not in pwa
+    assert 'Install update' not in pwa
