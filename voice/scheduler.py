@@ -11,9 +11,21 @@ from typing import Any, Callable
 
 
 class InferencePriority(IntEnum):
-    INTERACTIVE = 0
-    NORMAL = 10
-    BACKGROUND = 20
+    """Voice-work admission order from safety-critical to deferrable work.
+
+    The legacy names remain aliases so callers added before the full priority
+    model continue to behave the same way.
+    """
+
+    EMERGENCY = 0
+    LIVE = 10
+    AGENT = 20
+    NOTIFICATION = 30
+    LONG_FORM = 40
+
+    INTERACTIVE = LIVE
+    NORMAL = AGENT
+    BACKGROUND = LONG_FORM
 
 
 @dataclass(slots=True)
@@ -65,7 +77,7 @@ class InferenceScheduler:
         function: Callable[..., Any],
         /,
         *args: Any,
-        priority: InferencePriority = InferencePriority.NORMAL,
+        priority: InferencePriority = InferencePriority.AGENT,
         timeout_seconds: float | None = None,
         **kwargs: Any,
     ) -> Future[Any]:
