@@ -38,13 +38,14 @@ def _discover_configured_voicestudio_mcp(settings, state, vault):
     from integrations.discovery.catalog_store import CapabilityCatalogStore
     from voice.voicestudio import VoiceStudioSettings
     from voice.voicestudio_mcp import register_voicestudio_mcp_server
+    from voice.voicestudio_runtime import _provider_enabled_from_env
 
     try:
+        if not _provider_enabled_from_env():
+            return
         voice_settings=VoiceStudioSettings.from_env()
     except (TypeError, ValueError) as exc:
         state.audit('voicestudio.mcp.registration_failed', payload={'error_type':type(exc).__name__})
-        return
-    if not voice_settings.enabled:
         return
     endpoint=voice_settings.base_url.rstrip('/')+'/mcp/'
     catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
