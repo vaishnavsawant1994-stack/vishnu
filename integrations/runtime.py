@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import time
 from dataclasses import replace
 from integrations.registry import IntegrationRegistry,Integration
 from integrations.adapters import GmailAdapter,GoogleCalendarAdapter,SlackAdapter,HomeAssistantAdapter
@@ -32,6 +33,36 @@ def provider_catalog(settings):
     if getattr(settings,'slack_client_id',''):
         out['slack']=OAuthProvider('slack',SLACK_AUTH,SLACK_TOKEN,settings.slack_client_id,['channels:history','chat:write'],getattr(settings,'slack_client_secret',''),SLACK_REVOKE)
     return out
+
+def _discover_configured_voicestudio_mcp(settings, state, vault):
+    """Discover configured VoiceStudio MCP metadata without granting tool authority."""
+    from integrations.discovery.catalog_store import CapabilityCatalogStore
+    from integrations.discovery.mcp_runtime import MCPHTTPClient
+    from voice.voicestudio import VoiceStudioSettings
+    from voice.voicestudio_mcp import register_voicestudio_mcp_server
+
+    voice_settings=VoiceStudioSettings.from_env()
+    if not voice_settings.enabled:
+        return
+    endpoint=voice_settings.base_url.rstrip('/')+'/mcp/'
+    catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
+    server=register_voicestudio_mcp_server(catalog,endpoint=endpoint)
+    token=vault.get('voicestudio.api_key') if voice_settings.is_remote and vault is not None else None
+    auth_type='bearer_token' if token else 'none'
+    credential_ref='voicestudio.api_key' if token else None
+    try:
+        remote_tools=MCPHTTPClient(endpoint,token,auth_type=auth_type,timeout=1.0,
+                                   allow_loopback=server.get('trusted_loopback') is True).list_tools()
+        entries=catalog.import_mcp_tools(server['id'],remote_tools,server_name=server['name'],server_url=server['url'])
+        connector_id='mcpserver_'+server['id'].split(':',1)[-1]
+        catalog.connect(server['id'],server_url=server['url'],auth_type=auth_type,
+                        credential_ref=credential_ref,approved_by='configured-provider',
+                        approved_at=time.time(),connector_id=connector_id)
+        state.audit('voicestudio.mcp.discovered',connector_id=connector_id,
+                    payload={'server_id':server['id'],'tools_discovered':len(entries)})
+    except Exception as exc:
+        state.audit('voicestudio.mcp.discovery_deferred',
+                    payload={'server_id':server['id'],'error_type':type(exc).__name__})
 
 def build_integrations(settings,vault=None):
     state=ConnectorStateStore(Path(settings.data_dir)/'connectors.sqlite3',vault=vault); gateway=ConnectorGateway(state); reg=IntegrationRegistry(state_store=state)
@@ -69,4 +100,5 @@ def build_integrations(settings,vault=None):
         configured=manifest.connector_id in adapters
         current=state.health(manifest.connector_id)
         if not configured and current['state']=='disconnected':state.set_health(manifest.connector_id,'not_configured')
+    _discover_configured_voicestudio_mcp(settings,state,vault)
     return reg,adapters,oauth,providers
