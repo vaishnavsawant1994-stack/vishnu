@@ -6,7 +6,9 @@ import wave
 
 import pytest
 
+from voice.config import VoiceRuntimeSettings
 from voice.providers import SpeechToTextProvider, SpeechToTextRequest, TextToSpeechProvider, TextToSpeechRequest
+from voice.runtime import VoiceRuntime
 from voice.voicestudio import (
     VoiceStudioError,
     VoiceStudioProvider,
@@ -54,6 +56,19 @@ class FakeOpener:
         if not self.responses:
             raise AssertionError("unexpected VoiceStudio request")
         return FakeResponse(self.responses.pop(0))
+
+
+class ExistingSTT:
+    provider_id = "existing-stt"
+
+    def health(self):
+        raise AssertionError("not called")
+
+    def capabilities(self):
+        return {}
+
+    def transcribe(self, request):
+        raise AssertionError("not called")
 
 
 def test_voicestudio_is_default_off_and_does_not_change_current_voice_path():
@@ -196,3 +211,38 @@ def test_response_and_request_bounds_fail_closed():
 def test_mcp_endpoint_is_exposed_for_universal_capabilities_not_reimplemented():
     provider = VoiceStudioProvider(VoiceStudioSettings(enabled=True))
     assert provider.mcp_endpoint == "http://127.0.0.1:3900/mcp/"
+
+
+def test_existing_runtime_does_not_even_parse_voicestudio_when_runtime_is_disabled(monkeypatch):
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "not-a-url")
+
+    runtime = VoiceRuntime(settings=VoiceRuntimeSettings(enabled=False))
+
+    assert runtime.stt_provider is None
+    assert runtime.tts_provider is None
+    assert runtime.start() is False
+
+
+def test_runtime_auto_composes_local_voicestudio_only_when_both_features_are_enabled(monkeypatch):
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "http://127.0.0.1:3900")
+
+    runtime = VoiceRuntime(settings=VoiceRuntimeSettings(enabled=True))
+
+    assert runtime.stt_provider is runtime.tts_provider
+    assert runtime.stt_provider.provider_id == "voicestudio"
+
+
+def test_explicit_existing_provider_wins_and_voicestudio_only_fills_missing_slot(monkeypatch):
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_ENABLED", "true")
+    monkeypatch.setenv("VISHNU_VOICESTUDIO_URL", "http://127.0.0.1:3900")
+    existing = ExistingSTT()
+
+    runtime = VoiceRuntime(
+        settings=VoiceRuntimeSettings(enabled=True),
+        stt_provider=existing,
+    )
+
+    assert runtime.stt_provider is existing
+    assert runtime.tts_provider.provider_id == "voicestudio"
