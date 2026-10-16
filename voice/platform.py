@@ -21,6 +21,9 @@ from voice.intelligence import (
     segment_language_scripts,
 )
 from voice.preferences import VoicePreferenceStore
+from voice.providers import TextToSpeechRequest
+
+_AUTO_PROVIDER_RUNTIME = object()
 
 
 @dataclass(frozen=True)
@@ -34,15 +37,26 @@ class VoiceSynthesisResult:
 
 
 class VoiceIntelligenceService:
-    """Composition layer around Vishnu's existing ModelRouter voice authority.
+    """Composition layer around Vishnu's existing voice authorities.
 
-    The service plans persona/expression/language first, then delegates actual
-    synthesis/provider selection to the existing router. It never creates a second
-    provider router or a second voice-cloning authority.
+    Persona/expression/language planning stays here. An optional bounded provider
+    runtime may supply source TTS audio, but Vishnu's existing ModelRouter and
+    governed voice-conversion authority remain the fallback and cloning authority.
     """
 
-    def __init__(self, model_router, *, data_dir: Path | None = None):
+    def __init__(
+        self,
+        model_router,
+        *,
+        data_dir: Path | None = None,
+        provider_runtime=_AUTO_PROVIDER_RUNTIME,
+    ):
         self.model_router = model_router
+        if provider_runtime is _AUTO_PROVIDER_RUNTIME:
+            from voice.voicestudio_runtime import active_voicestudio_runtime
+
+            provider_runtime = active_voicestudio_runtime()
+        self.provider_runtime = provider_runtime
         self.data_dir = Path(data_dir) if data_dir is not None else None
         custom_personas = {}
         if self.data_dir is not None:
@@ -174,6 +188,43 @@ class VoiceIntelligenceService:
             raise RuntimeError("governed voice profile registry is unavailable")
         return registry
 
+    def _provider_source_audio(self, text: str, *, language: str | None) -> bytes | None:
+        runtime = self.provider_runtime
+        if runtime is None:
+            return None
+        try:
+            result = runtime.synthesize(
+                TextToSpeechRequest(text=text, language=language),
+            )
+        except (RuntimeError, TimeoutError):
+            return None
+        return result.audio
+
+    def _synthesize_audio(
+        self,
+        text: str,
+        *,
+        language: str | None,
+        voice_profile_id: str | None,
+        voice_style: str,
+    ) -> bytes:
+        source_audio = self._provider_source_audio(text, language=language)
+        if source_audio is None:
+            return self.model_router.synthesize(
+                text,
+                voice_profile_id=voice_profile_id,
+                voice_style=voice_style,
+            )
+
+        conversion = getattr(self.model_router, "voice_conversion", None)
+        if conversion is None:
+            return source_audio
+        return conversion.convert(
+            source_audio,
+            profile_id=voice_profile_id,
+            style=voice_style,
+        )
+
     def synthesize(
         self,
         text: str,
@@ -195,8 +246,9 @@ class VoiceIntelligenceService:
         )
         governed_profile_id = voice_profile_id if voice_profile_id is not None else plan.voice_profile_id
         conversion_style = "normal" if plan.style == "neutral" else plan.style
-        audio = self.model_router.synthesize(
+        audio = self._synthesize_audio(
             text,
+            language=plan.language,
             voice_profile_id=governed_profile_id,
             voice_style=conversion_style,
         )
@@ -301,6 +353,9 @@ class VoiceIntelligenceService:
 
     def status(self) -> dict:
         profiles = self.list_voice_profiles(include_revoked=True)
+        runtime = self.provider_runtime
+        provider = getattr(runtime, "tts_provider", None) if runtime is not None else None
+        runtime_state = getattr(getattr(runtime, "state", None), "value", None)
         return {
             "personas": len(self.director.personas),
             "builtin_voice_packs": list(BUILTIN_VOICE_PACKS),
@@ -310,6 +365,9 @@ class VoiceIntelligenceService:
             "active_voice_profiles": sum(bool(row["active"]) for row in profiles),
             "application_streaming": True,
             "native_openvoice_streaming_claimed": False,
+            "external_provider_runtime": runtime is not None,
+            "external_tts_provider": getattr(provider, "provider_id", None),
+            "external_provider_state": runtime_state,
             "avatar_alignment": "estimated_without_provider_timestamps",
             "emotion_model": "bounded_context_signal_not_feeling",
             "raw_transcripts_retained": False,
