@@ -266,7 +266,7 @@ def test_release_rejects_partial_passing_evidence(tmp_path):
 def test_voice_lab_dashboard_has_all_owner_sections():
     required = {
         "Overview", "Conversation", "STT", "TTS", "Voice Profiles", "Voice Intelligence", "Multilingual",
-        "Realtime", "Audio / Sensorium", "Devices", "Providers & Models", "Experiments", "Benchmarks",
+        "Realtime", "Audio / Sensorium", "Devices", "Providers & Models", "Telephony", "Experiments", "Benchmarks",
         "Qualification", "Release",
     }
     assert set(VOICE_LAB_SECTIONS) == required
