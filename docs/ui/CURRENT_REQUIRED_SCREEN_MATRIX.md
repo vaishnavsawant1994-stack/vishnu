@@ -68,10 +68,11 @@ Legend: `P` partial/source-present, `E` experimental, `M` missing, `N/A` not req
 | SET-002 | General & Profile | Yes | Yes | Yes | P | P | P | N/A | N/A | NV | NV | PARTIAL |
 | SET-003 | Appearance | Yes | Yes | Yes | P | P | P | N/A | N/A | NV | NV | PARTIAL |
 | SET-004 | Language & Region | Yes | Yes | Yes | P | P | P | N/A | N/A | NV | NV | PARTIAL |
-| SET-005 | Accessibility | Yes | No | No | No | M | M | N/A | N/A | NV | NV | MISSING |
+| SET-005 | Accessibility | Yes | Yes | Yes | P | P | M | N/A | N/A | NV | NV | PARTIAL |
 
 ## Notes
 
 - `M` in a platform column does **not** automatically mean the whole canonical screen is missing. It means that platform implementation is absent where the blueprint expects one.
 - Android/iOS `N/A` is intentional where the trusted PWA is the declared owner product and a native duplicate would add no OS-bound value.
+- SET-005 is source-present on Desktop through persisted Reduce Motion and High Contrast controls; cross-platform organization and acceptance remain incomplete.
 - No screen is marked COMPLETE because visual/runtime acceptance evidence is absent for this exact audit SHA.
