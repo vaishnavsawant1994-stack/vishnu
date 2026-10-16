@@ -59,3 +59,13 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Vishnu does not vendor OpenVoice in this repository. OpenVoice and its model assets are separately provisioned optional runtime components. Separate model checkpoints and transitive dependencies retain their own licenses and terms.
+
+## VoiceStudio
+
+Source: https://github.com/debpalash/VoiceStudio
+
+License at the reviewed upstream `main`: GNU Affero General Public License v3 (AGPL-3.0).
+
+Vishnu does not vendor, copy, modify, or redistribute VoiceStudio source code or model assets in this repository. The optional `voice/voicestudio.py` integration communicates with a separately installed VoiceStudio service through its documented HTTP/MCP network interfaces.
+
+VoiceStudio engines, model checkpoints, and transitive dependencies retain their own licenses and terms. Before production distribution or hosted commercial use, review the exact VoiceStudio revision, deployment model, and every enabled engine/checkpoint license. A separate commercial license from the VoiceStudio copyright holder may be appropriate for deployments that do not want to operate under AGPL terms.
