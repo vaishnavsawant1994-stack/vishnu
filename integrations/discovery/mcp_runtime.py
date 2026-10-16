@@ -344,12 +344,19 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
         actor = {"device_id": context.device_id, "session_id": context.session_id} if context else {}
         audit_data = {"capability_id": capability["id"], "tool_name": capability["name"], "operation": operation_name}
         current.audit("mcp.execution.started", connector_id=connector_id, **actor, payload=audit_data)
-        client = MCPHTTPClient(
-            live["server_url"],
-            token,
-            auth_type=live.get("auth_type", "bearer_token"),
-            allow_loopback=capability.get("trusted_loopback") is True,
-        )
+        if capability.get("trusted_loopback") is True and capability.get("provider_policy") == "voicestudio":
+            client = MCPHTTPClient(
+                live["server_url"],
+                token,
+                auth_type=live.get("auth_type", "bearer_token"),
+                allow_loopback=True,
+            )
+        else:
+            client = MCPHTTPClient(
+                live["server_url"],
+                token,
+                auth_type=live.get("auth_type", "bearer_token"),
+            )
         try:
             result = client.call_tool(capability["name"], parameters)
             if result.get("isError") is True:
