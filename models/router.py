@@ -11,6 +11,8 @@ from urllib.parse import urlsplit
 
 import requests
 
+from voice.conversion import VoiceConversionPipeline
+
 
 class ModelError(RuntimeError):
     code = 'provider_error'
@@ -138,6 +140,10 @@ class ModelRouter:
             provider_id: {'state': 'not_checked', 'error_code': None, 'checked_at': None, 'latency_ms': None}
             for provider_id in self.providers
         }
+        self.voice_conversion = VoiceConversionPipeline.from_settings(
+            settings,
+            event_sink=self._record_voice_event,
+        )
 
     def _safe_provider_id(self, value: str) -> str:
         """Normalize provider IDs without retaining arbitrary secret-like input."""
@@ -364,6 +370,17 @@ class ModelRouter:
         if self.audit:
             self.audit('model', event.removeprefix('model.'), safe)
 
+    def _record_voice_event(self, event: str, payload: dict) -> None:
+        safe = {
+            key: value
+            for key, value in payload.items()
+            if key not in {'text', 'audio', 'reference_audio', 'prompt', 'api_key'}
+        }
+        if self.events:
+            self.events.emit(event, **safe)
+        if self.audit:
+            self.audit('voice', event.removeprefix('voice.'), safe)
+
     def _run(self, capability: str, call, *, sensitivity: str = 'internal'):
         candidates = self._candidates(capability, sensitivity)
         if not candidates:
@@ -432,11 +449,23 @@ class ModelRouter:
                 raise InvalidModelResponse('Invalid transcription response', provider=provider.id) from exc
         return self._run('audio', call)
 
-    def synthesize(self, text: str) -> bytes:
+    def synthesize(
+        self,
+        text: str,
+        *,
+        voice_profile_id: str | None = None,
+        voice_style: str = 'normal',
+    ) -> bytes:
         def call(provider):
             payload = {'model': str(getattr(self.settings, 'tts_model', 'tts-1')), 'voice': str(getattr(self.settings, 'tts_voice', 'alloy')), 'input': text, 'format': 'wav'}
             return self._request(provider, 'POST', '/audio/speech', json=payload).content
-        return self._run('audio', call)
+
+        source_wav = self._run('audio', call)
+        return self.voice_conversion.convert(
+            source_wav,
+            profile_id=voice_profile_id,
+            style=voice_style,
+        )
 
     def speak(self, text: str):
         try:
@@ -467,6 +496,7 @@ class ModelRouter:
                 for item in self.providers.values()
             ],
             'last_check': dict(self._last),
+            'voice_conversion': self.voice_conversion.status(),
         }
         if not probe or not configured:
             return result
