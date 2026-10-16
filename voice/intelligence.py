@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 import io
 import json
 import math
@@ -10,7 +10,7 @@ import re
 import struct
 import tempfile
 import time
-from typing import Callable, Final, Iterable, Iterator, Mapping, Sequence
+from typing import Final, Iterable, Iterator, Mapping, Sequence
 import wave
 
 
@@ -63,7 +63,7 @@ _STYLE_TO_AVATAR: Final[dict[str, str]] = {
 
 @dataclass(frozen=True)
 class VoiceProfile:
-    """Provider-agnostic capture/playback behavior used by the live voice runtime."""
+    """User-facing live voice behavior independent of any one provider."""
 
     personality: str = "calm, concise, warm and direct"
     speaking_rate: float = 1.0
@@ -84,11 +84,7 @@ class VoiceProfile:
 
 @dataclass(frozen=True)
 class VoicePersona:
-    """A reusable Vishnu speaking identity, separate from provider/model choice.
-
-    `voice_profile_id` may reference an enrolled governed conversion profile. Raw
-    reference-audio paths and URLs intentionally do not belong in this object.
-    """
+    """Reusable speaking identity; raw clone references intentionally are not fields."""
 
     id: str
     name: str
@@ -123,11 +119,31 @@ class VoicePersona:
 
 BUILTIN_VOICE_PACKS: Final[dict[str, VoicePersona]] = {
     "vishnu_original": VoicePersona("vishnu_original", "Vishnu Original"),
-    "vishnu_warm": VoicePersona("vishnu_warm", "Vishnu Warm", style="warm", energy=1.05, avatar_expression="friendly"),
-    "vishnu_professional": VoicePersona("vishnu_professional", "Vishnu Professional", style="serious", formality=0.9, avatar_expression="serious"),
-    "vishnu_storyteller": VoicePersona("vishnu_storyteller", "Vishnu Storyteller", style="storytelling", speaking_rate=0.92, energy=1.15, avatar_expression="expressive"),
-    "vishnu_calm": VoicePersona("vishnu_calm", "Vishnu Calm", style="calm", speaking_rate=0.9, energy=0.8, avatar_expression="calm"),
-    "vishnu_energetic": VoicePersona("vishnu_energetic", "Vishnu Energetic", style="cheerful", speaking_rate=1.08, energy=1.25, avatar_expression="happy"),
+    "vishnu_warm": VoicePersona(
+        "vishnu_warm", "Vishnu Warm", style="warm", energy=1.05, avatar_expression="friendly"
+    ),
+    "vishnu_professional": VoicePersona(
+        "vishnu_professional", "Vishnu Professional", style="serious", formality=0.9, avatar_expression="serious"
+    ),
+    "vishnu_storyteller": VoicePersona(
+        "vishnu_storyteller",
+        "Vishnu Storyteller",
+        style="storytelling",
+        speaking_rate=0.92,
+        energy=1.15,
+        avatar_expression="expressive",
+    ),
+    "vishnu_calm": VoicePersona(
+        "vishnu_calm", "Vishnu Calm", style="calm", speaking_rate=0.9, energy=0.8, avatar_expression="calm"
+    ),
+    "vishnu_energetic": VoicePersona(
+        "vishnu_energetic",
+        "Vishnu Energetic",
+        style="cheerful",
+        speaking_rate=1.08,
+        energy=1.25,
+        avatar_expression="happy",
+    ),
 }
 
 
@@ -275,7 +291,7 @@ class AvatarCue:
 
 
 class VoiceDirector:
-    """Deterministic policy layer for persona, expression, language and routing."""
+    """Deterministic policy for persona, bounded expression, language and routing."""
 
     def __init__(self, personas: Mapping[str, VoicePersona] | None = None):
         self.personas = dict(BUILTIN_VOICE_PACKS)
@@ -309,14 +325,16 @@ class VoiceDirector:
         persona = self.personas.get(selected_id)
         if persona is None:
             raise ValueError(f"Unknown voice persona: {selected_id}")
-        explicit_or_preferred_style = manual_style if manual_style is not None else preferences.style
+
+        preferred_style = manual_style if manual_style is not None else preferences.style
         decision = self.choose_style(
-            manual_style=explicit_or_preferred_style,
+            manual_style=preferred_style,
             emotion_label=context.emotion_label,
             intent=context.intent,
         )
         if decision.source == "default" and persona.style != "neutral":
             decision = VoiceStyleDecision(style=persona.style, source="persona")
+
         selected_language = language or preferences.language or context.language or persona.language
         _validate_language(selected_language)
         rate = preferences.speaking_rate if preferences.speaking_rate is not None else persona.speaking_rate
@@ -325,7 +343,7 @@ class VoiceDirector:
         energy = max(0.0, min(2.0, 1.0 + (persona.energy - 1.0) * intensity))
         style = "urgent" if context.urgent and manual_style is None and preferences.style is None else decision.style
         style_source = "context" if style == "urgent" and style != decision.style else decision.source
-        avatar_expression = _STYLE_TO_AVATAR.get(style, persona.avatar_expression)
+
         return VoicePlan(
             persona_id=persona.id,
             voice_profile_id=persona.voice_profile_id,
@@ -336,7 +354,7 @@ class VoiceDirector:
             pitch=float(persona.pitch),
             energy=energy,
             formality=float(formality),
-            avatar_expression=avatar_expression,
+            avatar_expression=_STYLE_TO_AVATAR.get(style, persona.avatar_expression),
             character_id=context.character_id or persona.character_id,
             route=VoiceRouteRequirements(
                 language=selected_language,
@@ -354,21 +372,19 @@ class VoiceDirector:
         preferences: VoicePreferences | None = None,
         context: VoiceContext | None = None,
     ) -> list[tuple[VoiceUtterance, VoicePlan]]:
-        result: list[tuple[VoiceUtterance, VoicePlan]] = []
-        for utterance in utterances:
-            result.append(
-                (
-                    utterance,
-                    self.direct(
-                        persona_id=utterance.speaker,
-                        manual_style=utterance.style,
-                        language=utterance.language,
-                        preferences=preferences,
-                        context=context,
-                    ),
-                )
+        return [
+            (
+                utterance,
+                self.direct(
+                    persona_id=utterance.speaker,
+                    manual_style=utterance.style,
+                    language=utterance.language,
+                    preferences=preferences,
+                    context=context,
+                ),
             )
-        return result
+            for utterance in utterances
+        ]
 
 
 class PersonaStore:
@@ -389,6 +405,8 @@ class PersonaStore:
         return {key: VoicePersona(**value) for key, value in payload.items() if isinstance(value, dict)}
 
     def put(self, persona: VoicePersona) -> None:
+        if persona.id in BUILTIN_VOICE_PACKS:
+            raise ValueError("built-in Vishnu voice packs cannot be overwritten")
         rows = self.list()
         rows[persona.id] = persona
         self._write(rows)
@@ -402,17 +420,12 @@ class PersonaStore:
 
     def _write(self, rows: Mapping[str, VoicePersona]) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        body = json.dumps({key: asdict(value) for key, value in sorted(rows.items())}, indent=2, sort_keys=True) + "\n"
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=str(self.path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        body = json.dumps(
+            {key: asdict(value) for key, value in sorted(rows.items())},
+            indent=2,
+            sort_keys=True,
+        ) + "\n"
+        _atomic_text_write(self.path, body)
 
 
 class PronunciationLexicon:
@@ -457,7 +470,6 @@ class PronunciationLexicon:
         return tuple(sorted(self._rows.items(), key=lambda item: item[0].casefold()))
 
     def substitutions(self, text: str) -> list[dict[str, str]]:
-        """Return provider-agnostic hints; never mutate semantic text automatically."""
         result = []
         for term, pronunciation in self.items():
             if re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text, flags=re.IGNORECASE):
@@ -469,44 +481,35 @@ class PronunciationLexicon:
             return
         self.path.parent.mkdir(parents=True, exist_ok=True)
         body = json.dumps(self._rows, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
-        fd, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=str(self.path.parent))
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                handle.write(body)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temporary, self.path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+        _atomic_text_write(self.path, body)
 
 
 class VoiceQualityEvaluator:
-    """Dependency-light WAV integrity/level checks. It never performs speech recognition."""
+    """Dependency-light WAV integrity/level checks; no speech recognition."""
 
     def inspect(self, audio: bytes) -> AudioQualityReport:
         try:
             with wave.open(io.BytesIO(audio), "rb") as reader:
                 channels = reader.getnchannels()
-                sample_width = reader.getsampwidth()
+                width = reader.getsampwidth()
                 sample_rate = reader.getframerate()
-                frame_count = reader.getnframes()
-                frames = reader.readframes(frame_count)
+                frames_count = reader.getnframes()
+                frames = reader.readframes(frames_count)
         except (wave.Error, EOFError):
             return AudioQualityReport(valid_wav=False, reasons=("invalid_wav",))
-        if sample_width not in {1, 2, 4} or channels < 1 or sample_rate < 1 or frame_count < 1:
+        if width not in {1, 2, 4} or channels < 1 or sample_rate < 1 or frames_count < 1:
             return AudioQualityReport(valid_wav=False, reasons=("unsupported_wav",))
-        samples = _pcm_samples(frames, sample_width)
+        samples = _pcm_samples(frames, width)
         if not samples:
             return AudioQualityReport(valid_wav=False, reasons=("empty_audio",))
-        scale = float((1 << (8 * sample_width - 1)) - 1) if sample_width > 1 else 127.0
+        scale = float((1 << (8 * width - 1)) - 1) if width > 1 else 127.0
         normalized = [abs(value) / scale for value in samples]
         peak = max(normalized)
         rms = math.sqrt(sum(value * value for value in normalized) / len(normalized))
         silence_ratio = sum(value < 0.01 for value in normalized) / len(normalized)
         clipping_ratio = sum(value >= 0.995 for value in normalized) / len(normalized)
-        duration = frame_count / float(sample_rate)
-        reasons: list[str] = []
+        duration = frames_count / float(sample_rate)
+        reasons = []
         if duration < 0.05:
             reasons.append("too_short")
         if silence_ratio > 0.98:
@@ -528,7 +531,7 @@ class VoiceQualityEvaluator:
 
 
 class AdaptiveVoiceActivity:
-    """Small deterministic VAD helper used by the provider-agnostic fallback path."""
+    """Deterministic VAD helper used by the provider-agnostic fallback path."""
 
     def __init__(self, profile: VoiceProfile, *, initial_noise: float = 0.002):
         self.profile = profile
@@ -538,7 +541,10 @@ class AdaptiveVoiceActivity:
 
     @property
     def threshold(self) -> float:
-        return max(float(self.profile.min_voice_threshold), self.noise_floor * float(self.profile.noise_multiplier))
+        return max(
+            float(self.profile.min_voice_threshold),
+            self.noise_floor * float(self.profile.noise_multiplier),
+        )
 
     def observe(self, rms: float, *, speech_active: bool) -> bool:
         rms = max(0.0, float(rms))
@@ -596,6 +602,7 @@ class AudioDeviceManager:
 
     def list(self) -> list[dict]:
         import sounddevice as sd
+
         return self._rows(sd.query_devices())
 
     def resolve(self, name: str | None, *, kind: str, devices: Iterable | None = None):
@@ -606,7 +613,11 @@ class AudioDeviceManager:
         rows = self._rows(devices) if devices is not None else self.list()
         needle = str(name).strip().lower()
         capacity_key = "max_input_channels" if kind == "input" else "max_output_channels"
-        eligible = [row for row in rows if needle in str(row.get("name", "")).lower() and int(row.get(capacity_key, 0)) > 0]
+        eligible = [
+            row
+            for row in rows
+            if needle in str(row.get("name", "")).lower() and int(row.get(capacity_key, 0)) > 0
+        ]
         if not eligible:
             raise ValueError(f"Configured {kind} audio device was not found: {name}")
         exact = [row for row in eligible if str(row.get("name", "")).strip().lower() == needle]
@@ -622,7 +633,8 @@ def normalize_voice_style(style: str | None) -> str | None:
     if not candidate:
         return None
     if candidate not in SUPPORTED_VOICE_STYLES:
-        raise ValueError(f"Unsupported voice style {style!r}; expected one of {', '.join(SUPPORTED_VOICE_STYLES)}")
+        expected = ", ".join(SUPPORTED_VOICE_STYLES)
+        raise ValueError(f"Unsupported voice style {style!r}; expected one of {expected}")
     return candidate
 
 
@@ -633,6 +645,7 @@ def choose_voice_style(
     intent: str | None = None,
 ) -> VoiceStyleDecision:
     """Resolve bounded expression. Emotion labels are context signals, not feelings."""
+
     normalized_manual = normalize_voice_style(manual_style)
     if normalized_manual is not None:
         return VoiceStyleDecision(style=normalized_manual, source="manual")
@@ -649,6 +662,7 @@ def choose_voice_style(
 
 def segment_language_scripts(text: str, *, default_language: str = "en") -> list[LanguageSegment]:
     """Bounded script heuristic for code-switch planning, not full language detection."""
+
     _validate_language(default_language)
     if not text:
         return []
@@ -686,6 +700,7 @@ def segment_language_scripts(text: str, *, default_language: str = "en") -> list
 
 def chunk_text_for_voice(text: str, *, max_chars: int = 320) -> Iterator[str]:
     """Yield sentence-biased chunks for application-level streaming synthesis."""
+
     if max_chars < 32 or max_chars > 4000:
         raise ValueError("max_chars must be between 32 and 4000")
     remaining = str(text).strip()
@@ -706,29 +721,46 @@ def chunk_text_for_voice(text: str, *, max_chars: int = 320) -> Iterator[str]:
         remaining = remaining[cut:].strip()
 
 
-def estimated_avatar_cues(text: str, duration_seconds: float, *, expression: str = "neutral") -> list[AvatarCue]:
-    """Generate coarse, explicitly estimated mouth cues when provider phonemes are absent."""
+def estimated_avatar_cues(
+    text: str,
+    duration_seconds: float,
+    *,
+    expression: str = "neutral",
+) -> list[AvatarCue]:
+    """Generate coarse, explicitly estimated mouth cues without provider timestamps."""
+
     tokens = re.findall(r"[A-Za-zÀ-ÿ0-9]+|[^\w\s]", str(text), flags=re.UNICODE)
     if not tokens or duration_seconds <= 0:
         return []
     weights = [max(1, len(token)) for token in tokens]
     total = sum(weights)
     cursor = 0.0
-    result: list[AvatarCue] = []
+    result = []
     for token, weight in zip(tokens, weights):
         span = duration_seconds * weight / total
-        viseme = "closed" if re.fullmatch(r"[^\w\s]", token, flags=re.UNICODE) else _rough_viseme(token)
-        result.append(AvatarCue(cursor, min(duration_seconds, cursor + span), viseme, expression, "estimated"))
+        punctuation = re.fullmatch(r"[^\w\s]", token, flags=re.UNICODE)
+        viseme = "closed" if punctuation else _rough_viseme(token)
+        result.append(
+            AvatarCue(
+                cursor,
+                min(duration_seconds, cursor + span),
+                viseme,
+                expression,
+                "estimated",
+            )
+        )
         cursor += span
     return result
 
 
 def resample_for_rate(audio, rate: float):
     """Dependency-light playback rate adjustment for the fallback TTS path."""
+
     rate = float(rate)
     if math.isclose(rate, 1.0, rel_tol=1e-3):
         return audio
     import numpy as np
+
     if len(audio) < 2:
         return audio
     target = max(1, int(len(audio) / rate))
@@ -736,8 +768,25 @@ def resample_for_rate(audio, rate: float):
     new_x = np.linspace(0.0, 1.0, num=target, endpoint=True)
     if getattr(audio, "ndim", 1) == 1:
         return np.interp(new_x, old_x, audio).astype("float32")
-    channels = [np.interp(new_x, old_x, audio[:, i]) for i in range(audio.shape[1])]
+    channels = [np.interp(new_x, old_x, audio[:, index]) for index in range(audio.shape[1])]
     return np.stack(channels, axis=1).astype("float32")
+
+
+def _atomic_text_write(path: Path, body: str) -> None:
+    fd, temporary = tempfile.mkstemp(prefix=f".{path.name}.", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            handle.write(body)
+            handle.flush()
+            os.fsync(handle.fileno())
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def _validate_identifier(value: str, label: str) -> None:
