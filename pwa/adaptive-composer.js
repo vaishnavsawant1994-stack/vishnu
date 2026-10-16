@@ -105,8 +105,10 @@
     return {...prev,pendingIntent:candidate.intent,pendingWins:wins};
   }
 
-  let state={intent:'chat',confidence:0,pendingIntent:null,pendingWins:0};
+  const freshState=()=>({intent:'chat',confidence:0,pendingIntent:null,pendingWins:0});
+  let state=freshState();
   let dismissedFor='';
+  let lastText='';
 
   function injectStyle(){
     if(document.getElementById('vAdaptiveComposerStyle'))return;
@@ -180,8 +182,12 @@
   function update(){
     const input=document.getElementById('message');
     if(!input)return;
-    const candidate=classifyDraft(input.value);
+    const text=normalize(input.value);
+    const replaced=Boolean(lastText&&text&&!text.startsWith(lastText)&&!lastText.startsWith(text));
+    if(replaced)state=freshState();
+    const candidate=classifyDraft(text);
     state=stableIntent(state,candidate);
+    lastText=text;
     render(candidate);
   }
 
