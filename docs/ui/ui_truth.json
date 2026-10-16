@@ -1,0 +1,1201 @@
+{
+  "schema_version": "1.0",
+  "audited_sha": "4ec735de327f2bab6dccb774e2a9c28ef4fc44af",
+  "repository": "vaishnavsawant1994-stack/vishnu",
+  "scope_note": "Logical owner-facing screen groups derived from current source/navigation. Static presence is not proof of full behavior. Platform status and evidence are explicit; no screen is labeled complete unless its full UI path has been executed.",
+  "screens": [
+    {
+      "id": "ONB-001",
+      "name": "Connect / first run",
+      "domain": "Onboarding",
+      "purpose": "Create or join a Vishnu runtime",
+      "user_question": "How do I create Vishnu, connect my device, or restore access?",
+      "required": true,
+      "exists": "PWA and native enrollment surfaces exist; platform-specific creation/restore paths differ.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Launch → signed-out state → enroll/connect/restore.",
+      "content": "Profile/device enrollment, pairing code/QR, consent, retry and completion.",
+      "actions": "Create/connect, scan or enter pairing code, configure name, retry.",
+      "data": "Enrollment state, runtime URL, device identity and connection state.",
+      "backend": "PWA owner enrollment APIs; Android ConnectActivity; iOS ConnectOnboardingView.",
+      "security": "Owner authentication, PKCE/OAuth or pairing gates; do not display bearer secrets.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Loading, empty discovery, invalid code, network error, paired success.",
+      "responsive": "Use clear progress and secure browser handoff; preserve retry state.",
+      "accessibility": "Labels, keyboard reachability, focus and native screen-reader validation required.",
+      "tests": "Existing PWA/native onboarding tests; full fresh-install journey not verified.",
+      "evidence": "pwa/first-run.js; Android ConnectActivity; iOS ConnectOnboardingView; Android manifest launcher.",
+      "status": "partial",
+      "missing": [
+        "Prove each platform’s complete creation/join path and persistence; screenshot authenticated and error states."
+      ],
+      "visual_spec": "Short guided steps; clear create/connect/restore choices; no provider jargon.",
+      "acceptance_criteria": [
+        "Fresh owner can reach a completion state.",
+        "Existing owner can pair without creating a duplicate identity.",
+        "Interrupted enrollment can retry safely."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "AUTH-001",
+      "name": "Sign-in and session recovery",
+      "domain": "Identity",
+      "purpose": "Authenticate the owner and recover expired sessions",
+      "user_question": "Why am I being asked to sign in, and how do I regain access?",
+      "required": true,
+      "exists": "PWA passkey/password/recovery choices and native secure-browser sign-in are present.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Launch → access gate; expired/unauthorized API response → sign-in/re-auth.",
+      "content": "Passkey, password fallback if enabled, recovery entry, session-expired messaging.",
+      "actions": "Authenticate, retry, choose recovery, cancel.",
+      "data": "Session status and safe error/recovery guidance; never token values.",
+      "backend": "PWA identity APIs; Android native OAuth/PKCE exchange; iOS companion owner flow.",
+      "security": "Session checks; secure token storage on native; route/API authorization still needs end-to-end checks.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Unauthenticated, loading, expired, denied, offline, authenticated.",
+      "responsive": "Explain next step and preserve intended return destination.",
+      "accessibility": "Native/browser handoff must announce status; keyboard and focus checks required.",
+      "tests": "Auth/security tests exist; visual sign-in flow not fully executed in this campaign.",
+      "evidence": "pwa/index.html#enrollPanel; Android ConnectActivity; iOS ConnectOnboardingView.",
+      "status": "partial",
+      "missing": [
+        "Execute auth, expiry, reauthentication, recovery and deep-link return on each supported platform."
+      ],
+      "visual_spec": "Trust-focused, minimal form; explain passkey/password/recovery choices.",
+      "acceptance_criteria": [
+        "Unauthorized owner data is never rendered.",
+        "Sign-in failure is actionable and does not imply success."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "REC-001",
+      "name": "Restore Vishnu",
+      "domain": "Recovery",
+      "purpose": "Restore encrypted owner data and trusted access",
+      "user_question": "How do I restore Vishnu on a replacement device?",
+      "required": true,
+      "exists": "Portable recovery UI exists on Android/iOS and PWA access choices; complete restore parity is not established.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Signed-out access → Restore Vishnu or platform recovery action.",
+      "content": "Package selection/import, validation, reauthentication, progress, result.",
+      "actions": "Select package, authenticate, restore, retry/cancel.",
+      "data": "Recovery package metadata and restore result without exposing key material.",
+      "backend": "PortableRecoveryActivity / PortableRecoveryView; PWA recovery APIs.",
+      "security": "Recovery authentication and encrypted package handling.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "No package, invalid package, decrypt failure, interrupted, restored.",
+      "responsive": "Show what is restored and what requires re-enrollment.",
+      "accessibility": "Accessible file chooser labels, progress announcement and confirmation.",
+      "tests": "Recovery unit/integration coverage exists; cross-platform restore not verified.",
+      "evidence": "Android PortableRecoveryActivity; iOS PortableRecoveryView; first-run access panel.",
+      "status": "partial",
+      "missing": [
+        "Run isolated restore and interrupted restore on desktop/web and native targets; verify revocation and persistence."
+      ],
+      "visual_spec": "Step-by-step restore with explicit data/device distinction.",
+      "acceptance_criteria": [
+        "Invalid package fails safely.",
+        "Successful restore reports restored data and next enrollment step."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "HOME-001",
+      "name": "Home",
+      "domain": "Core",
+      "purpose": "Provide a calm starting point for conversation and attention",
+      "user_question": "What can I do next, and does Vishnu need my attention?",
+      "required": true,
+      "exists": "PWA Home and desktop Home exist; native companions show connection/control form rather than equivalent Home.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Launch after authentication; primary Home navigation.",
+      "content": "Presence state, composer, voice/attachment entry, recent work, pending attention.",
+      "actions": "Start/continue chat, voice, attach file, select context, open recent item.",
+      "data": "Runtime/presence, recent projects/conversations and pending attention.",
+      "backend": "PWA conversation/status APIs and desktop runtime/event bus.",
+      "security": "Owner session; approval summary must link to approval authority.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Idle, loading, no recent work, offline, provider degraded, approval needed.",
+      "responsive": "Reflow cards/composer; avoid dashboard density; safe-area composer on mobile.",
+      "accessibility": "Focus order across shortcuts/composer; live state announcements; 44px targets.",
+      "tests": "PWA responsive workflow + desktop unit tests; authenticated live screenshot not captured here.",
+      "evidence": "pwa/index.html Home markup and openModule; ui/main_window.py _home_page.",
+      "status": "partial",
+      "missing": [
+        "Verify authenticated UI, live API behavior, all home actions, error and offline visuals."
+      ],
+      "visual_spec": "Vishnu identity and status, primary message composer, immediate attention, optional recent continuation.",
+      "acceptance_criteria": [
+        "Text conversation entry is primary and keyboard-operable.",
+        "Status never claims action success before runtime confirmation."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "CHAT-001",
+      "name": "Conversation",
+      "domain": "Conversation",
+      "purpose": "Exchange messages and review governed actions/results",
+      "user_question": "Can I talk to Vishnu and understand what it is doing?",
+      "required": true,
+      "exists": "PWA and desktop conversation implementations; native companions hand off to Safari/web session.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Home composer or conversation navigation.",
+      "content": "Messages, streaming state, citations/attachments where supported, tool action, approval/result.",
+      "actions": "Send, stop/retry, copy/share where present, attach, voice, approve/deny.",
+      "data": "Conversation events, status, source references and action results.",
+      "backend": "/iphone conversation API and desktop runtime; approvals/tool execution paths.",
+      "security": "Owner session; action-specific approval; output must distinguish pending/failure/success.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Sending, streaming, tool running, approval, error, offline, interrupted, resumed.",
+      "responsive": "Transcript scroll, composer safe areas and long content; mobile keyboard qualified in workflow.",
+      "accessibility": "Message semantics, announcements, keyboard send/stop, accessible composer required.",
+      "tests": "PWA conversation lifecycle/responsive tests; live provider/tool completion not verified.",
+      "evidence": "pwa chat experience modules; ui/main_window.py _conversation_page; web-companion app.js.",
+      "status": "partial",
+      "missing": [
+        "Exercise real response and mock/tool approval lifecycle with persistence and failure states."
+      ],
+      "visual_spec": "Readable transcript, unobscured composer, clear tool/approval cards and response provenance.",
+      "acceptance_criteria": [
+        "User message reaches runtime.",
+        "Cancel and retry produce accurate state.",
+        "Failure remains visible after refresh."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "CHAT-002",
+      "name": "Conversation history and search",
+      "domain": "Conversation",
+      "purpose": "Find and resume previous conversations",
+      "user_question": "Where is my prior conversation?",
+      "required": true,
+      "exists": "PWA conversation drawer, search and timeline are present; desktop history reachability not exhaustively verified.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Home → history/sidebar → conversations or timeline.",
+      "content": "Conversation list, date grouping, search, selected item/timeline, rename/delete controls.",
+      "actions": "Search, select/resume, rename, archive/delete where supported.",
+      "data": "Conversation metadata and timeline events.",
+      "backend": "Conversation APIs; PWA drawer/timeline JS.",
+      "security": "Owner session; destructive actions confirmation.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Not verified"
+      },
+      "states": "Loading, empty, no search results, stale/deleted thread, offline.",
+      "responsive": "Drawer/sheet on narrow screens; list and reading area on wide screens.",
+      "accessibility": "Search label, selected item announcement, keyboard navigation.",
+      "tests": "PWA interaction tests exist; all history mutations not verified.",
+      "evidence": "pwa/index.html conversation/timeline drawer; chat-experience.js.",
+      "status": "partial",
+      "missing": [
+        "Verify history queries and every visible action against persistence and reload."
+      ],
+      "visual_spec": "Searchable list with clear date labels and source timeline.",
+      "acceptance_criteria": [
+        "Selecting a conversation restores the correct thread.",
+        "Delete/rename results persist after reload."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "MEM-001",
+      "name": "Memory",
+      "domain": "Memory",
+      "purpose": "Inspect, review and control personal memories",
+      "user_question": "What does Vishnu remember about me?",
+      "required": true,
+      "exists": "PWA Memory with ambient suggestions/tree/graph; desktop Memory panel.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Home feature card / More / Settings shortcut → Memory.",
+      "content": "Saved memories, pending suggestions, tree/graph views, provenance, review/settings controls.",
+      "actions": "Search/filter, approve/dismiss, exclude source, export/settings.",
+      "data": "Memory records, source, timestamps and privacy settings.",
+      "backend": "Memory APIs and MemoryStore; distinct from Knowledge.",
+      "security": "Owner authorization; review-before-save and deletion confirmation where applicable.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Loading, empty, suggestions pending, populated, error, offline.",
+      "responsive": "Graph scroll region; tree/card views; mobile one-column.",
+      "accessibility": "Readable graph alternative, review button labels, status announcements.",
+      "tests": "Memory UI tests and API coverage exist; complete owner workflow not verified.",
+      "evidence": "pwa/memory-experiences.js; ui/memory_panel.py; MemoryStore APIs.",
+      "status": "partial",
+      "missing": [
+        "Verify edit/delete/export/review persistence, source provenance and privacy toggles."
+      ],
+      "visual_spec": "Overview with ambient review queue and switchable tree/graph detail.",
+      "acceptance_criteria": [
+        "Memory is clearly distinguished from Knowledge.",
+        "Review and dismiss actions update canonical memory state."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "KNW-001",
+      "name": "Knowledge and files",
+      "domain": "Knowledge",
+      "purpose": "Add, find and manage indexed sources/documents",
+      "user_question": "What documents can Vishnu use, and where did an answer come from?",
+      "required": true,
+      "exists": "PWA Knowledge page supports upload/search/export/delete; desktop surface and mobile web path.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Home shortcut / More → Knowledge; file attachment can add to Knowledge.",
+      "content": "Recent sources, indexed status, supported file picker, search/filter, detail/citation.",
+      "actions": "Upload, open, search, export, delete, connect source.",
+      "data": "Document metadata, processing state, provenance and citations.",
+      "backend": "/knowledge APIs and KnowledgeStore; parser/index pipeline.",
+      "security": "Owner authorization; deletion confirmation; content upload limits.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Loading, empty, indexing, populated, unsupported file, permission, offline.",
+      "responsive": "Responsive cards/list; filename wraps; detail may be drawer/modal.",
+      "accessibility": "File picker label, progress announcements, citation semantics.",
+      "tests": "Knowledge UI/API tests exist; real-format end-to-end ingestion not verified in this campaign.",
+      "evidence": "pwa/index.html loadKnowledge/uploadKnowledge; pwa/knowledge-notes.js.",
+      "status": "partial",
+      "missing": [
+        "Execute supported-format ingestion, citation retrieval, delete/index removal and failure paths."
+      ],
+      "visual_spec": "Source list, indexing status, upload/search and source detail with provenance.",
+      "acceptance_criteria": [
+        "Uploaded content persists and is searchable after reload.",
+        "Unsupported format reports a clear reason."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "ACT-001",
+      "name": "Activities",
+      "domain": "Activity",
+      "purpose": "Review recent work and product events",
+      "user_question": "What has Vishnu done recently?",
+      "required": true,
+      "exists": "PWA Activities screen with search/range/source navigation.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "More/app drawer → Activities; activity-source links deep into feature.",
+      "content": "Time-ordered activity, filters, status and source links.",
+      "actions": "Search, filter, open source, inspect event.",
+      "data": "Safe activity metadata and timestamps; no secrets.",
+      "backend": "Activities API/event store.",
+      "security": "Owner authorization; sensitive payload redaction.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Not verified",
+        "ios": "Not verified"
+      },
+      "states": "Loading, empty, populated, source deleted, offline.",
+      "responsive": "Filter controls wrap; timeline scroll.",
+      "accessibility": "Status conveyed in text/icons; keyboard filter navigation.",
+      "tests": "test_work_attention_center_ui and activity API tests; runtime visual flow not verified.",
+      "evidence": "pwa/reference-pages.js bindActivities.",
+      "status": "partial",
+      "missing": [
+        "Confirm event sources and source deep-links resolve and redact sensitive fields."
+      ],
+      "visual_spec": "Chronological list with filters and source-context panel.",
+      "acceptance_criteria": [
+        "Every activity link opens its originating record or explains it is unavailable."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "WRK-001",
+      "name": "Workflows and active work",
+      "domain": "Work",
+      "purpose": "Inspect and control governed long-running work",
+      "user_question": "What is running, waiting, complete, or failed?",
+      "required": true,
+      "exists": "PWA Workflows/Work attention; agent workforce pages; native capability/work UI is internal-testing oriented.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "More → Workflows / work attention; project detail and owner controls.",
+      "content": "Runs, queued/running/approval/failure status, progress, result, cancel/resume.",
+      "actions": "Open, approve, cancel, retry/resume where service supports.",
+      "data": "Durable work state, checkpoints, action/event summaries.",
+      "backend": "Workflow and agent work APIs.",
+      "security": "Owner identity and per-action approval; cancellation authority.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Queued, running, waiting approval, completed, failed, offline.",
+      "responsive": "Progress/detail sections; confirmation for cancellation.",
+      "accessibility": "Status updates announced; cancel confirmation keyboard accessible.",
+      "tests": "Work attention / project autonomy tests; full restart recovery UI not verified.",
+      "evidence": "pwa/work-attention-center.js; pwa/agents-workforce.js; workorder-detail.js.",
+      "status": "partial",
+      "missing": [
+        "Validate start→approval→execution→completion and cancel/restart durability from UI."
+      ],
+      "visual_spec": "Queue summary and readable detail with progress, approvals and result.",
+      "acceptance_criteria": [
+        "UI status matches durable backend state after refresh."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "PRJ-001",
+      "name": "Projects",
+      "domain": "Projects",
+      "purpose": "Group work, context and files around a project",
+      "user_question": "How do I continue work on a project?",
+      "required": true,
+      "exists": "PWA project workspace exists; desktop has Products panel, not proven equivalent.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Home recent projects → See all / project card; project deep link.",
+      "content": "Project list/detail tabs for overview, plan, files, chat, live/activities.",
+      "actions": "Create/edit/pause/resume, add tasks/files/discussion, ask Vishnu.",
+      "data": "Project/task/milestone/file metadata and activity.",
+      "backend": "Projects workspace APIs and persistence.",
+      "security": "Owner authorization; approvals for action-bearing work.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Not verified"
+      },
+      "states": "Empty, populated, loading, saving, failed action, offline.",
+      "responsive": "Detail tabs adapt to cards/menu on mobile; avoid wide tables.",
+      "accessibility": "Tabs and project actions keyboard/semantics; progress announced.",
+      "tests": "Project UI contract/browser tests exist; all action/persistence paths not verified.",
+      "evidence": "pwa/projects-workspace.js and projects-workspace-views.js.",
+      "status": "partial",
+      "missing": [
+        "Exercise create/edit/task/file/work persistence with auth and failure handling."
+      ],
+      "visual_spec": "Overview with project purpose, next work, plan, files, chat and activity tabs.",
+      "acceptance_criteria": [
+        "New project appears after reload.",
+        "Project-specific context remains scoped."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "APP-001",
+      "name": "Apps & Tools",
+      "domain": "Integrations",
+      "purpose": "Review connected services and available tools",
+      "user_question": "What can Vishnu access or act through?",
+      "required": true,
+      "exists": "PWA tools manager and settings links; native has capability manager/Forge internal test controls.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Sidebar/More → Apps & Tools; settings shortcut.",
+      "content": "Connected/available tools, status, scopes/permissions, credentials state, activity.",
+      "actions": "Inspect, connect/disconnect/reconnect, open capability details.",
+      "data": "Integration metadata and secret-present state only.",
+      "backend": "Tools API and ToolRegistry.",
+      "security": "Owner auth; capability policy and approval; secret vault.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Loading, none connected, connected, auth required, unavailable, revoked.",
+      "responsive": "Search/filter and detail view; no secret values; mobile cards.",
+      "accessibility": "Clear read/write badges and screen-reader labels.",
+      "tests": "tool/capability tests exist; external live integrations not verified.",
+      "evidence": "pwa openModule tools → loadTools; NativeCapabilitiesView; ui/capability_manager.py.",
+      "status": "partial",
+      "missing": [
+        "Verify each listed tool registration, connection state and revoke mutation."
+      ],
+      "visual_spec": "Connected services first; permissions and risk in detail; clear connection status.",
+      "acceptance_criteria": [
+        "Unavailable integration is never represented as connected."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "CAP-001",
+      "name": "Capability management",
+      "domain": "Capabilities",
+      "purpose": "Import, govern and revoke OpenAPI/MCP capabilities",
+      "user_question": "Which APIs or MCP tools can act on my behalf?",
+      "required": true,
+      "exists": "PWA tools and native capability surfaces exist; provider/account sign-in is disabled in iOS internal-testing build.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Apps & Tools → capabilities/import; native Manage Universal Capabilities.",
+      "content": "Import/spec validation, operation list, credential status, scopes, approvals, audit.",
+      "actions": "Import, inspect, configure credential, test, approve/revoke.",
+      "data": "Capability ID, operations, source and state; never secret value.",
+      "backend": "OpenAPI/MCP owner APIs and ToolRegistry.",
+      "security": "Owner-only; write operations governed; network restrictions and secret vault.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Blocked"
+      },
+      "states": "Invalid spec, collision, credential required, approval, revoked, unavailable.",
+      "responsive": "Wizard steps and operation review; destructive revoke confirmation.",
+      "accessibility": "Form labels, schema errors, risk/read-write indication accessible.",
+      "tests": "Capability security/UI tests exist; live provider and native cloud path not verified.",
+      "evidence": "pwa loadTools; ui/capability_manager.py; Android ForgeV3Activity; iOS NativeCapabilities.swift.",
+      "status": "partial",
+      "missing": [
+        "Prove import→credential→approval→fixture execution→audit→revoke. Record iOS internal-build restriction."
+      ],
+      "visual_spec": "Guided import; review operations and permissions before enabling.",
+      "acceptance_criteria": [
+        "No credential is re-rendered after save.",
+        "Revocation prevents subsequent execution."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "DEV-001",
+      "name": "Trusted devices",
+      "domain": "Devices",
+      "purpose": "Inspect, enroll and revoke devices",
+      "user_question": "Which devices are trusted, and how can I stop one?",
+      "required": true,
+      "exists": "PWA trusted devices management; native companion connects/enrolls itself; full cross-platform owner management parity not verified.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "More / Apps & Tools / Settings → Devices; pairing action.",
+      "content": "Device identity, platform, trust, online/last-seen, scopes, pending enrollment.",
+      "actions": "Enroll, approve/deny, inspect, revoke/mark lost if available.",
+      "data": "Device metadata, trust, requested scopes and audit status.",
+      "backend": "Device owner APIs and DeviceRegistry.",
+      "security": "Owner authorization; device identity distinct from owner; revocation auditable.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Empty, pending approval, online, offline, revoked, API error.",
+      "responsive": "Cards on mobile; table/detail on desktop; confirm revoke.",
+      "accessibility": "Offline/trust status in text; destructive action confirmation.",
+      "tests": "Device tests exist; owner enrollment/revoke UI execution not verified.",
+      "evidence": "pwa loadDevices; native ConnectActivity / ConnectOnboardingView.",
+      "status": "partial",
+      "missing": [
+        "Run enrollment approval and revoke in isolated test environment, then verify device can no longer act."
+      ],
+      "visual_spec": "Device list with current-device marker and detail/permissions/revoke.",
+      "acceptance_criteria": [
+        "Revoked device is not presented active after refresh."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "DAT-001",
+      "name": "Data & Storage",
+      "domain": "Data",
+      "purpose": "Understand and control data location/synchronization",
+      "user_question": "Where does my data live and what syncs?",
+      "required": true,
+      "exists": "PWA settings include privacy/data controls; mobile companions describe local data; full four-policy controls not evidenced uniformly.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → Data/Privacy; companion local data section.",
+      "content": "Current location, policy choice, sync status, remote availability, conflict/recovery.",
+      "actions": "Change policy, inspect sync, export/delete where supported.",
+      "data": "Policy, local/remote state and sync health.",
+      "backend": "Data Plane APIs and local-first storage authority.",
+      "security": "Owner authorization; explicit confirmation before data movement; no silent sync.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Local-only, syncing, offline queue, conflict, provider unavailable, error.",
+      "responsive": "Plain language for policy; current location/status visible before mutation.",
+      "accessibility": "Policy choices explained; status announced; touch-safe controls.",
+      "tests": "Data-plane tests exist; complete UI policy matrix and transfer behavior not verified.",
+      "evidence": "pwa settings data/privacy; iOS MobileDataPlaneStore; Android MobileDataPlaneStore.",
+      "status": "partial",
+      "missing": [
+        "Trace each supported policy from UI mutation through storage/reload/sync on each intended platform."
+      ],
+      "visual_spec": "Single Data & Storage area with policy, location, sync status and export/recovery links.",
+      "acceptance_criteria": [
+        "UI never promises remote availability unless confirmed by data plane."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "MOD-001",
+      "name": "Models & AI providers",
+      "domain": "AI",
+      "purpose": "Choose active model/provider and understand data routing",
+      "user_question": "Which model is answering, and where does my request go?",
+      "required": true,
+      "exists": "PWA Settings renders AI/provider configuration; provider credential and live validity pathways require verification.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → AI & Models / owner controls model shortcut.",
+      "content": "Active provider/model, modality, local/cloud label, credential status, fallback.",
+      "actions": "Select model/provider, configure/validate credential, retry.",
+      "data": "Model metadata and non-secret credential presence.",
+      "backend": "Model routing and provider APIs.",
+      "security": "Owner auth; secrets via vault; disclose remote data routing.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "Partial"
+      },
+      "states": "No provider, invalid credential, unavailable, fallback, offline.",
+      "responsive": "Simple default first; advanced model details progressive.",
+      "accessibility": "Provider and local/cloud labels must be textual, not color-only.",
+      "tests": "Provider/unit tests exist; real-provider roundtrip not verified.",
+      "evidence": "pwa/index.html renderSettings(models); owner-controls.js; server model APIs.",
+      "status": "partial",
+      "missing": [
+        "Verify settings persist after reload and actual model routing reflects selected provider."
+      ],
+      "visual_spec": "Current model summary with provider, data routing and configure/test controls.",
+      "acceptance_criteria": [
+        "Selection persists and actual runtime reports selected model."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "VOC-001",
+      "name": "Voice",
+      "domain": "Voice",
+      "purpose": "Configure voice and operate voice sessions",
+      "user_question": "Can I speak to Vishnu and control microphone/output behavior?",
+      "required": true,
+      "exists": "PWA voice entry/settings; native Sensorium/voice session controls; hardware qualification is external.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Home microphone action; Settings → Voice; native companion voice section.",
+      "content": "Mic permission, listening/speaking/session state, voice preferences and errors.",
+      "actions": "Start/stop, interrupt, choose voice/settings, grant permission.",
+      "data": "Session state and consent/permission; no raw audio retained unless documented.",
+      "backend": "Voice APIs; Android AudioService; iOS SensoriumAudioFeatures.",
+      "security": "Explicit platform mic permission and session gate; indicator while active.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Permission denied, listening, transcribing, responding, speaking, interrupted, offline.",
+      "responsive": "Voice state remains visible; one-handed start/stop; background behavior explicit.",
+      "accessibility": "Announce state and permission; keyboard shortcut alternatives on desktop.",
+      "tests": "Voice qualification tests exist; physical mic/device behavior not verified.",
+      "evidence": "pwa micButton/voicePanel; Android SensoriumAudioService; iOS SensoriumAudioFeatures.",
+      "status": "partial",
+      "missing": [
+        "Run supported automated voice path; capture physical device/microphone qualification separately."
+      ],
+      "visual_spec": "Visible session state with large start/stop and clear permission explanation.",
+      "acceptance_criteria": [
+        "Stopping voice stops capture and updates state."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "SEC-001",
+      "name": "Security & approvals",
+      "domain": "Security",
+      "purpose": "Review identity/device protections and decide sensitive actions",
+      "user_question": "What is protected, and what is Vishnu asking permission to do?",
+      "required": true,
+      "exists": "PWA Settings security/approvals and in-conversation approval panel; native passkey/consent screens.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → Security/Approvals; conversation approval card.",
+      "content": "Passkeys/session state, approvals pending/history, device links, emergency stop if enabled.",
+      "actions": "Approve once, deny/cancel, manage auth/device permission, revoke.",
+      "data": "Risk, target, effects, duration, audit event; redact secrets.",
+      "backend": "Security owner APIs and per-capability approval services.",
+      "security": "Owner/session enforcement, exact scope, explicit confirmation, audit.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Pending, expired, denied, allowed, session expired, unavailable.",
+      "responsive": "Approval prompt names action, target, impact and one-time vs persistent scope.",
+      "accessibility": "Dialog focus trap/Escape; announce urgency and risk; large touch actions.",
+      "tests": "Security/capability tests exist; every approval presentation not UI-tested.",
+      "evidence": "pwa approval panel and settings/approvals; native passkey/sensor consent.",
+      "status": "partial",
+      "missing": [
+        "Exercise approve/deny/expiry/revocation and confirm exact action scope is enforced."
+      ],
+      "visual_spec": "Central security sections plus context approval card with risk and consequence.",
+      "acceptance_criteria": [
+        "Approval cannot be confused with a durable grant.",
+        "Secrets never appear in approval history."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "PRI-001",
+      "name": "Privacy & data controls",
+      "domain": "Privacy",
+      "purpose": "Manage memory, conversation, telemetry and account data controls",
+      "user_question": "What is saved or shared, and how can I change it?",
+      "required": true,
+      "exists": "PWA settings includes privacy page with explicit disabled/unavailable options.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → Privacy & Data.",
+      "content": "Memory toggle, review controls, retention, export, connected services, account delete.",
+      "actions": "Change, export, clear history, delete account with reauthentication.",
+      "data": "Persisted privacy settings and data export state.",
+      "backend": "Privacy APIs and owner profile storage.",
+      "security": "Owner auth/fresh verification for destructive actions; fail closed for unsupported options.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Saved, unavailable/disabled, saving, error, destructive confirmation.",
+      "responsive": "Disabled unavailable features have clear reason; no fake toggle.",
+      "accessibility": "Switch labels/state and destructive warnings are accessible.",
+      "tests": "Privacy page source says some controls disabled and certain services absent; complete mutations not verified.",
+      "evidence": "pwa/index.html privacy settings renderer.",
+      "status": "partial",
+      "missing": [
+        "Resolve or explicitly label each disabled control and verify delete/export persistence."
+      ],
+      "visual_spec": "Privacy summary and grouped memory/history/data controls.",
+      "acceptance_criteria": [
+        "Disabled controls state why and do not imply a setting changed."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "NOT-001",
+      "name": "Notifications",
+      "domain": "Notifications",
+      "purpose": "Control notification preferences and understand alerts",
+      "user_question": "Which events can interrupt me?",
+      "required": true,
+      "exists": "PWA settings and native registration/notification paths; delivery service stage may be incomplete.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → Notifications; OS permission prompts.",
+      "content": "Categories, quiet hours, OS permission, delivery/registration state.",
+      "actions": "Toggle preferences, request permission, open notification target.",
+      "data": "Preference state and provider registration status.",
+      "backend": "Preference API; Android/iOS native notifications.",
+      "security": "Owner authorization and platform OS permission; no success claim before provider delivery.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Denied permission, not configured, enabled, quiet, provider unavailable.",
+      "responsive": "Differentiate preference from OS/provider delivery state.",
+      "accessibility": "Native announcement and notification settings deep link behavior required.",
+      "tests": "Notification API tests exist; real APNs/provider delivery not verified.",
+      "evidence": "PWA renderSettings(notifications); iOS APNs registration notes; Android manifest.",
+      "status": "partial",
+      "missing": [
+        "Verify preference persistence and actual local/provider delivery or clearly mark unavailable."
+      ],
+      "visual_spec": "Category controls with OS permission and delivery-health explanation.",
+      "acceptance_criteria": [
+        "Changing preference persists and state is accurate after restart."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "SYS-001",
+      "name": "Dashboard",
+      "domain": "System",
+      "purpose": "Review aggregate system health and active components",
+      "user_question": "Is Vishnu healthy right now?",
+      "required": true,
+      "exists": "PWA Dashboard and desktop Dashboard exist; tests partly cover responsive.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Main navigation → Dashboard; Home shortcut.",
+      "content": "Health summaries, active work, provider/device/sync status and alerts.",
+      "actions": "Inspect component, refresh, navigate to owning settings page.",
+      "data": "Aggregated runtime health and timestamps.",
+      "backend": "Dashboard APIs; runtime health owner.",
+      "security": "Owner-only; status must be sourced and timestamped.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Not verified",
+        "ios": "Not verified"
+      },
+      "states": "Loading, healthy, degraded, unavailable, stale.",
+      "responsive": "Operational density separate from calm Home; responsive grid.",
+      "accessibility": "Status text and timestamps; keyboard access to detail links.",
+      "tests": "Dashboard APIs/tests exist; live page visual execution not performed.",
+      "evidence": "pwa loadDashboard; ui/main_window Dashboard.",
+      "status": "partial",
+      "missing": [
+        "Verify every dashboard claim against source service and stale/error state."
+      ],
+      "visual_spec": "Health cards with degraded reasons and direct remediation routes.",
+      "acceptance_criteria": [
+        "Stale data is identified with last-updated time."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "SYS-002",
+      "name": "System status",
+      "domain": "System",
+      "purpose": "Inspect runtime/model/tool service availability",
+      "user_question": "Why is a system feature unavailable?",
+      "required": true,
+      "exists": "PWA System Status module exists; desktop Dashboard summary is not equivalent.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "More/owner navigation → System Status.",
+      "content": "Runtime version, model/tool connectivity, service status, timestamp, safe diagnostics.",
+      "actions": "Refresh, open configured service settings, copy safe diagnostics if implemented.",
+      "data": "Health metadata and non-sensitive diagnostics.",
+      "backend": "System status API.",
+      "security": "Owner-only, redact secrets/host credentials.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Loading, healthy, degraded, unavailable, unauthorized.",
+      "responsive": "Compact grouped status; avoid raw logs in normal view.",
+      "accessibility": "Status uses text+icon; keyboard refresh.",
+      "tests": "System tests exist; owner route/UI click not verified.",
+      "evidence": "pwa openModule system → loadSystem.",
+      "status": "partial",
+      "missing": [
+        "Exercise live failure and ensure status matches actual dependency availability."
+      ],
+      "visual_spec": "System summary with last check and actionable linked remediation.",
+      "acceptance_criteria": [
+        "Unavailable components are not shown as healthy."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "SET-001",
+      "name": "Settings",
+      "domain": "Settings",
+      "purpose": "Reach all owner configuration in a coherent hierarchy",
+      "user_question": "How do I configure Vishnu?",
+      "required": true,
+      "exists": "PWA settings has subsections; desktop Settings; native companion uses integrated control form.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Primary nav or account menu → Settings.",
+      "content": "General, AI, voice, memory, data, apps, devices, notifications, privacy, security, advanced.",
+      "actions": "Select section and persist supported settings.",
+      "data": "Preference values, capability availability, save status.",
+      "backend": "PWA renderSettings; desktop settings panel.",
+      "security": "Owner-only; setting-specific authorization.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Loading, saved, unavailable, error, session expired.",
+      "responsive": "Desktop subnav; mobile section selector; no settings dump.",
+      "accessibility": "Heading hierarchy, current section, keyboard selection and status announcements.",
+      "tests": "Responsive settings workflow tests; full setting persistence not verified.",
+      "evidence": "pwa/index.html renderSettings; ui/settings_panel.py; native pairedHome Form.",
+      "status": "partial",
+      "missing": [
+        "Derive final section list from real working controls; test save/reload and authorization."
+      ],
+      "visual_spec": "Searchable/sectioned settings, grouped by intent with explicit unavailable states.",
+      "acceptance_criteria": [
+        "No inactive setting appears interactive."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "OWN-001",
+      "name": "Owner profile and account",
+      "domain": "Identity",
+      "purpose": "Inspect owner identity and account-level controls",
+      "user_question": "Which owner/account is active?",
+      "required": true,
+      "exists": "PWA owner menu/controls and native owner sign-in state; full profile edit flow not verified.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Account menu → owner/profile.",
+      "content": "Display name, identity status, sign-out, account links supported by API.",
+      "actions": "Edit supported fields, sign out, open security.",
+      "data": "Owner profile metadata and session state.",
+      "backend": "Owner APIs and profile preferences.",
+      "security": "Owner-only; reauthentication for sensitive identity changes.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Loading, profile missing, session expired, save error.",
+      "responsive": "Account menu on narrow screens; profile separate from security controls.",
+      "accessibility": "Accessible account menu semantics and keyboard dismissal.",
+      "tests": "Owner UI tests partly exist; all profile mutations not verified.",
+      "evidence": "pwa owner-controls.js; native connection home.",
+      "status": "partial",
+      "missing": [
+        "Verify each account action against owner API and persist edits."
+      ],
+      "visual_spec": "Compact owner menu leading to profile, settings and sign-out.",
+      "acceptance_criteria": [
+        "Sign-out clears local session and routes to access gate."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "ADV-001",
+      "name": "Advanced diagnostics",
+      "domain": "Advanced",
+      "purpose": "Expose owner-useful diagnostics without burdening daily screens",
+      "user_question": "How can I troubleshoot or inspect qualification details?",
+      "required": true,
+      "exists": "PWA advanced settings/evidence and qualification consoles; primarily owner/operator-gated.",
+      "reachable": "Partial",
+      "backend_connected": "Partial",
+      "navigation": "Settings → Advanced or qualification route.",
+      "content": "Safe diagnostic status, evidence links, version/schema, support bundle if available.",
+      "actions": "Run supported checks, export evidence, copy safe IDs.",
+      "data": "Qualification metadata and redacted diagnostic output.",
+      "backend": "Qualification/readiness/recovery APIs.",
+      "security": "Owner/operator authorization; redact secrets and personal content.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Not configured, running, passed/failed, unauthorized.",
+      "responsive": "Progressive disclosure; avoid raw debug output by default.",
+      "accessibility": "Keyboard focus; output copy labels; do not rely on color.",
+      "tests": "Qualification tests are backend-heavy; actual diagnostics UI not clicked.",
+      "evidence": "pwa advanced settings; qualification owner routes.",
+      "status": "partial",
+      "missing": [
+        "Verify gated routes, evidence links and redaction; split developer-only internals from owner diagnostics."
+      ],
+      "visual_spec": "Advanced section with concise checks and safe export, separated from daily tasks.",
+      "acceptance_criteria": [
+        "Sensitive values are redacted from displayed/exported diagnostics."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "SEN-001",
+      "name": "Sensorium permissions",
+      "domain": "Devices",
+      "purpose": "Control temporary sensor access on a trusted companion",
+      "user_question": "What sensors can a device use right now?",
+      "required": true,
+      "exists": "Android/iOS consent/privacy and sensor session UI; intended as device-specific controls, not full owner PWA page.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Native companion → Sensorium section or consent prompt.",
+      "content": "Sensor list, session scope/duration, privacy status, permission result.",
+      "actions": "Allow once/session, deny, stop session, inspect privacy status.",
+      "data": "Session and OS permission state; no sensor payload unless explicitly surfaced.",
+      "backend": "Android Sensorium activities/services; iOS Sensorium views/session bridge.",
+      "security": "Explicit per-session consent; OS permission and foreground restrictions.",
+      "platforms": {
+        "desktop": "N/A",
+        "pwa": "N/A",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Permission request, denied, active, expired, stopped, unavailable.",
+      "responsive": "Native per-platform patterns; visible active sensor indicator.",
+      "accessibility": "OS accessibility semantics; announce active session and stop action.",
+      "tests": "Sensorium unit/native tests; physical sensors and hardware not verified.",
+      "evidence": "Android SensoriumConsentActivity / PrivacyActivity; iOS SensoriumPrivacyView.",
+      "status": "partial",
+      "missing": [
+        "Verify consent→session→stop/revoke on real device; do not infer physical support from simulator."
+      ],
+      "visual_spec": "Sensor permission overview with temporary session controls and clear data-use statement.",
+      "acceptance_criteria": [
+        "Sensor session ends on stop/background/expiry as architecture specifies."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "UPD-001",
+      "name": "About and updates",
+      "domain": "System",
+      "purpose": "Check version, update status and release identity",
+      "user_question": "Which build am I using, and is an update available?",
+      "required": true,
+      "exists": "Packaging/update systems exist; a coherent owner-facing update page is not evidenced in active PWA/native navigation.",
+      "reachable": "No",
+      "backend_connected": "Partial",
+      "navigation": "Settings → About/Updates expected; no verified active route.",
+      "content": "Version/build, update availability, signature state, release notes, restart status.",
+      "actions": "Check, review, install/restart only where supported.",
+      "data": "Build version and signed update metadata.",
+      "backend": "Updates/package APIs.",
+      "security": "Signature verification and rollback; no production update executed.",
+      "platforms": {
+        "desktop": "Partial",
+        "pwa": "Missing",
+        "android": "Partial",
+        "ios": "Partial"
+      },
+      "states": "Current, available, downloading, verification failure, restart.",
+      "responsive": "Clear version and verified update state; no false-ready status.",
+      "accessibility": "Button and progress announcements; destructive/restart confirmation.",
+      "tests": "Packaging/update tests exist; owner UI and update path not verified.",
+      "evidence": "updates/, packaging/, installer/; no active page found in PWA nav.",
+      "status": "missing",
+      "missing": [
+        "Add a small About/update surface only if owner must check/update supported installation; connect to verified updater."
+      ],
+      "visual_spec": "About section with version, build, notices and update status; install control only when updater is active.",
+      "acceptance_criteria": [
+        "No update control shown unless actual update flow can verify and recover."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "TOD-001",
+      "name": "Today",
+      "domain": "Core",
+      "purpose": "See a date-scoped agenda of tasks, commitments and plans.",
+      "user_question": "What needs my attention today?",
+      "required": true,
+      "exists": "PWA Today/Visualize destination is source-backed; complete interactive path not re-executed.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Home → Today entry point/sidebar → Today screen.",
+      "content": "Date selector, tasks, meetings/commitments, plans, timeline and selected item details.",
+      "actions": "Change date, jump to timeline, create item, open source, start chat.",
+      "data": "Everyday timeline and project task metadata.",
+      "backend": "pwa/reference-pages.js loadToday uses /everyday/timeline and /projects/timeline; create/edit dialogs in pwa/index.html.",
+      "security": "Owner authorization; sensitive payload redaction.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Loading, no items, populated, create/edit, API error, offline.",
+      "responsive": "Date-first timeline with clear separation of task/commitment/plan and source context.",
+      "accessibility": "Date controls and timeline controls have labels; dialog focus/error semantics require runtime check.",
+      "tests": "test_work_attention_center_ui and activity API tests; runtime visual flow not verified.",
+      "evidence": "pwa/reference-pages.js loadToday/bindToday; Today dialog IDs in pwa/index.html.",
+      "status": "partial",
+      "missing": [
+        "Execute day changes, create/edit persistence, source jumps and error states."
+      ],
+      "visual_spec": "Date-first timeline with clear separation of task/commitment/plan and source context.",
+      "acceptance_criteria": [
+        "Selected date controls returned data.",
+        "Created item persists after reload."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    },
+    {
+      "id": "VIZ-001",
+      "name": "Visualize",
+      "domain": "System",
+      "purpose": "Explore generated architecture, workflow, lifecycle, sequence and dataflow visualizations.",
+      "user_question": "How does a system or project flow fit together?",
+      "required": true,
+      "exists": "PWA Today/Visualize destination is source-backed; complete interactive path not re-executed.",
+      "reachable": "Yes",
+      "backend_connected": "Partial",
+      "navigation": "Sidebar → Visualize (entry injected by pwa/visualize-workspace.js).",
+      "content": "Visualization gallery, type selector, layer/view filters, detail canvas and export/share controls where supported.",
+      "actions": "Open gallery item, choose type/view, filter layers, inspect nodes, navigate to source module.",
+      "data": "Visualization payloads, node/edge metadata and source references.",
+      "backend": "/iphone/api/visualizations and visualization workspace service.",
+      "security": "Owner-only; status must be sourced and timestamped.",
+      "platforms": {
+        "desktop": "Not verified",
+        "pwa": "Partial",
+        "android": "N/A",
+        "ios": "N/A"
+      },
+      "states": "Loading, empty gallery, populated graph, API error, invalid graph, offline.",
+      "responsive": "Scrollable graph canvas with textual summary and accessible alternative; avoid shrinking labels.",
+      "accessibility": "Graph must have text alternative and keyboard-accessible detail navigation.",
+      "tests": "Dashboard APIs/tests exist; live page visual execution not performed.",
+      "evidence": "pwa/visualize-workspace.js ensureNavEntry/openWorkspace; visualize APIs.",
+      "status": "partial",
+      "missing": [
+        "Run gallery and API-backed visualization through source navigation; screenshot wide and narrow canvas."
+      ],
+      "visual_spec": "Scrollable graph canvas with textual summary and accessible alternative; avoid shrinking labels.",
+      "acceptance_criteria": [
+        "Choosing an item renders its correct visualization.",
+        "Graph is navigable or has an equivalent text outline."
+      ],
+      "visual_verified": false,
+      "a11y_verified": false,
+      "visual_evidence_status": "not verified in this campaign",
+      "a11y_evidence_status": "not verified in this campaign"
+    }
+  ],
+  "counts": {
+    "canonical_required": 29,
+    "currently_present_or_partial": 28,
+    "complete": 0,
+    "partial": 28,
+    "missing": 1,
+    "orphaned": 0,
+    "disconnected": 0,
+    "secondary_surfaces_source_named": 11,
+    "major_visual_state_classes": 14,
+    "platform_implementation_entries": 116,
+    "visually_verified_screens_in_this_campaign": 0,
+    "platform_classification_cells": 116,
+    "platform_surface_implementations_present_or_partial": 89,
+    "platform_surface_not_applicable": 15,
+    "platform_surface_missing": 1,
+    "platform_surface_not_verified": 11
+  }
+}
