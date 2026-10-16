@@ -47,26 +47,71 @@ class EvidenceRecord:
         return hashlib.sha256(_json(body).encode()).hexdigest()
 
     @classmethod
-    def build(cls, *, experiment_id: str, provider: str, model: str, revision: str = "", device: str,
-              device_class: str = "unknown", os_name: str = "", language: str, route: str,
-              configuration: dict[str, str] | None = None, provenance: dict[str, str] | None = None,
-              metrics: dict[str, float] | None = None, gates: tuple[QualificationGate, ...],
-              artifact_digests: dict[str, str] | None = None, created_at: str | None = None) -> "EvidenceRecord":
+    def build(
+        cls,
+        *,
+        experiment_id: str,
+        provider: str,
+        model: str,
+        device: str,
+        language: str,
+        route: str,
+        gates: tuple[QualificationGate, ...],
+        revision: str = "",
+        device_class: str = "unknown",
+        os_name: str = "",
+        configuration: dict[str, str] | None = None,
+        provenance: dict[str, str] | None = None,
+        metrics: dict[str, float] | None = None,
+        artifact_digests: dict[str, str] | None = None,
+        created_at: str | None = None,
+    ) -> "EvidenceRecord":
         stamp = created_at or _utc_now()
-        seed = _json({"experiment": experiment_id, "created_at": stamp, "provider": provider, "model": model,
-                      "device": device, "gates": [asdict(g) for g in gates]})
+        seed = _json(
+            {
+                "experiment": experiment_id,
+                "created_at": stamp,
+                "provider": provider,
+                "model": model,
+                "device": device,
+                "gates": [asdict(gate) for gate in gates],
+            }
+        )
         evidence_id = "vle-" + hashlib.sha256(seed.encode()).hexdigest()[:24]
-        return cls(evidence_id, experiment_id, stamp, provider, model, revision, device, device_class, os_name,
-                   language, route, tuple(sorted((configuration or {}).items())), tuple(sorted((provenance or {}).items())),
-                   tuple(sorted((metrics or {}).items())), gates, tuple(sorted((artifact_digests or {}).items())))
+        return cls(
+            evidence_id,
+            experiment_id,
+            stamp,
+            provider,
+            model,
+            revision,
+            device,
+            device_class,
+            os_name,
+            language,
+            route,
+            tuple(sorted((configuration or {}).items())),
+            tuple(sorted((provenance or {}).items())),
+            tuple(sorted((metrics or {}).items())),
+            gates,
+            tuple(sorted((artifact_digests or {}).items())),
+        )
 
     def report(self, required_gate_ids: tuple[str, ...]) -> VoiceLabReport:
-        return VoiceLabReport(self.experiment_id, self.provider, self.model, self.device, self.language,
-                              self.gates, required_gate_ids)
+        return VoiceLabReport(
+            self.experiment_id,
+            self.provider,
+            self.model,
+            self.device,
+            self.language,
+            self.gates,
+            required_gate_ids,
+        )
 
 
 class EvidenceStore:
     """Explicitly-created local store. Raw audio bytes are not accepted or persisted."""
+
     def __init__(self, path: str | Path):
         self.path = Path(path).expanduser()
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -83,37 +128,48 @@ class EvidenceStore:
 
     def _initialize(self) -> None:
         with self._connect() as conn:
-            conn.executescript("""
-            CREATE TABLE IF NOT EXISTS voice_lab_evidence(
-              evidence_id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, created_at TEXT NOT NULL,
-              digest TEXT NOT NULL UNIQUE, payload TEXT NOT NULL);
-            CREATE INDEX IF NOT EXISTS idx_voice_lab_experiment ON voice_lab_evidence(experiment_id, created_at);
-            CREATE TABLE IF NOT EXISTS voice_lab_baselines(
-              baseline_id TEXT PRIMARY KEY, evidence_id TEXT NOT NULL, created_at TEXT NOT NULL,
-              FOREIGN KEY(evidence_id) REFERENCES voice_lab_evidence(evidence_id));
-            """)
+            conn.executescript(
+                """
+                CREATE TABLE IF NOT EXISTS voice_lab_evidence(
+                  evidence_id TEXT PRIMARY KEY, experiment_id TEXT NOT NULL, created_at TEXT NOT NULL,
+                  digest TEXT NOT NULL UNIQUE, payload TEXT NOT NULL);
+                CREATE INDEX IF NOT EXISTS idx_voice_lab_experiment
+                  ON voice_lab_evidence(experiment_id, created_at);
+                CREATE TABLE IF NOT EXISTS voice_lab_baselines(
+                  baseline_id TEXT PRIMARY KEY, evidence_id TEXT NOT NULL, created_at TEXT NOT NULL,
+                  FOREIGN KEY(evidence_id) REFERENCES voice_lab_evidence(evidence_id));
+                """
+            )
 
     @staticmethod
     def _payload(record: EvidenceRecord) -> str:
         data = asdict(record)
-        data["gates"] = [{**asdict(g), "status": g.status.value} for g in record.gates]
+        data["gates"] = [{**asdict(gate), "status": gate.status.value} for gate in record.gates]
         return _json(data)
 
     def append(self, record: EvidenceRecord) -> str:
         payload = self._payload(record)
         with self._connect() as conn:
-            row = conn.execute("SELECT digest,payload FROM voice_lab_evidence WHERE evidence_id=?", (record.evidence_id,)).fetchone()
+            row = conn.execute(
+                "SELECT digest,payload FROM voice_lab_evidence WHERE evidence_id=?",
+                (record.evidence_id,),
+            ).fetchone()
             if row:
                 if row != (record.digest, payload):
                     raise ValueError("immutable Voice Lab evidence ID collision")
                 return record.evidence_id
-            conn.execute("INSERT INTO voice_lab_evidence VALUES(?,?,?,?,?)",
-                         (record.evidence_id, record.experiment_id, record.created_at, record.digest, payload))
+            conn.execute(
+                "INSERT INTO voice_lab_evidence VALUES(?,?,?,?,?)",
+                (record.evidence_id, record.experiment_id, record.created_at, record.digest, payload),
+            )
         return record.evidence_id
 
     def get(self, evidence_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT payload,digest FROM voice_lab_evidence WHERE evidence_id=?", (evidence_id,)).fetchone()
+            row = conn.execute(
+                "SELECT payload,digest FROM voice_lab_evidence WHERE evidence_id=?",
+                (evidence_id,),
+            ).fetchone()
         if not row:
             return None
         payload = json.loads(row[0])
@@ -122,34 +178,56 @@ class EvidenceStore:
 
     def list_for_experiment(self, experiment_id: str) -> tuple[dict[str, Any], ...]:
         with self._connect() as conn:
-            rows = conn.execute("SELECT payload,digest FROM voice_lab_evidence WHERE experiment_id=? ORDER BY created_at",
-                                (experiment_id,)).fetchall()
+            rows = conn.execute(
+                "SELECT payload,digest FROM voice_lab_evidence WHERE experiment_id=? ORDER BY created_at",
+                (experiment_id,),
+            ).fetchall()
         result = []
         for payload, digest in rows:
-            item = json.loads(payload); item["digest"] = digest; result.append(item)
+            item = json.loads(payload)
+            item["digest"] = digest
+            result.append(item)
         return tuple(result)
 
     def list_recent(self, limit: int = 100) -> tuple[dict[str, Any], ...]:
         limit = max(1, min(int(limit), 1000))
         with self._connect() as conn:
-            rows = conn.execute("SELECT payload,digest FROM voice_lab_evidence ORDER BY created_at DESC LIMIT ?", (limit,)).fetchall()
-        result=[]
-        for payload,digest in rows:
-            item=json.loads(payload); item["digest"]=digest; result.append(item)
+            rows = conn.execute(
+                "SELECT payload,digest FROM voice_lab_evidence ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        result = []
+        for payload, digest in rows:
+            item = json.loads(payload)
+            item["digest"] = digest
+            result.append(item)
         return tuple(result)
 
     def accept_baseline(self, baseline_id: str, evidence_id: str) -> None:
         if not baseline_id.strip():
             raise ValueError("baseline_id is required")
         with self._connect() as conn:
-            if not conn.execute("SELECT 1 FROM voice_lab_evidence WHERE evidence_id=?", (evidence_id,)).fetchone():
+            exists = conn.execute(
+                "SELECT 1 FROM voice_lab_evidence WHERE evidence_id=?",
+                (evidence_id,),
+            ).fetchone()
+            if not exists:
                 raise KeyError(evidence_id)
-            existing = conn.execute("SELECT evidence_id FROM voice_lab_baselines WHERE baseline_id=?", (baseline_id,)).fetchone()
+            existing = conn.execute(
+                "SELECT evidence_id FROM voice_lab_baselines WHERE baseline_id=?",
+                (baseline_id,),
+            ).fetchone()
             if existing and existing[0] != evidence_id:
                 raise ValueError("accepted baselines are immutable; create a new baseline ID")
-            conn.execute("INSERT OR IGNORE INTO voice_lab_baselines VALUES(?,?,?)", (baseline_id, evidence_id, _utc_now()))
+            conn.execute(
+                "INSERT OR IGNORE INTO voice_lab_baselines VALUES(?,?,?)",
+                (baseline_id, evidence_id, _utc_now()),
+            )
 
     def baseline(self, baseline_id: str) -> dict[str, Any] | None:
         with self._connect() as conn:
-            row = conn.execute("SELECT evidence_id FROM voice_lab_baselines WHERE baseline_id=?", (baseline_id,)).fetchone()
+            row = conn.execute(
+                "SELECT evidence_id FROM voice_lab_baselines WHERE baseline_id=?",
+                (baseline_id,),
+            ).fetchone()
         return self.get(row[0]) if row else None
