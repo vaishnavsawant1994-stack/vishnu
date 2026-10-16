@@ -288,6 +288,11 @@ def attach_approved_mcp_tool(capability: dict, connection: dict, *, tools, integ
     risk = capability.get("approved_risk")
     if capability.get("type") != "mcp_tool" or risk not in {"read", "write", "destructive"}:
         raise ValueError("MCP tool must be explicitly owner-approved with a risk classification")
+    minimum_risk = capability.get("minimum_risk")
+    if minimum_risk in {"read", "write", "destructive"}:
+        rank = {"read": 0, "write": 1, "destructive": 2}
+        if rank[risk] < rank[minimum_risk]:
+            raise ValueError("MCP tool approval is below the provider-enforced minimum risk")
     read_only = risk == "read"
     if not connection or connection.get("status") != "connected":
         raise ValueError("MCP tool connection is not active")
