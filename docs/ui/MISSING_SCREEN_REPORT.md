@@ -1,75 +1,98 @@
-# Missing Screen Report
+# Vishnu Missing Screen Report
 
-**Baseline:** `4ec735de327f2bab6dccb774e2a9c28ef4fc44af`
+**Audited baseline:** `4ec735de327f2bab6dccb774e2a9c28ef4fc44af`  
+**Canonical screens required:** 63  
+**Genuinely missing canonical screens:** 6
 
-Seven canonical owner concepts are missing. These are not seven arbitrary new top-level navigation entries; each is placed in an existing flow/Settings/Advanced location.
+This report contains only owner concepts that were not represented sufficiently by any current visible implementation. A screen is not marked missing merely because one platform lacks parity.
 
-## ONB-005 — Data Placement Policy — P1
+## P1 — ONB-005 Data Placement Policy
 
-**Why required:** local-first placement is a core owner decision and four canonical policies already exist in the architecture. First-run currently chooses privacy/autonomy and model provider but not data placement.  
-**Parent:** Create Vishnu → Privacy & Autonomy → **Data Placement** → AI Provider.  
-**Backend available:** yes, Data Plane policy and storage settings architecture.  
-**Required UI:** four option cards for `device_only`, `progress_only`, `sync_everywhere`, `on_demand`; plain-language examples; local/cloud availability; no-silent-movement statement.  
-**Security:** owner-only; policy change cannot silently transfer existing data.  
-**Platforms:** Desktop, PWA, Android/iOS first-device creation.  
-**Implementation:** persist selection in canonical policy authority; add resume-safe migration for interrupted setup; test reload/restart.
+**Why required:** Vishnu already has canonical local-first placement policies: `device_only`, `progress_only`, `sync_everywhere`, `on_demand`. First-run should make that owner decision explicit rather than silently inheriting a default.
 
-## ONB-008 — Setup Review & Completion — P1
+**Parent/navigation:** First Run → Privacy & Autonomy → Data Placement → AI Provider.  
+**Features represented:** local-first ownership, sync policy, offline behavior, cloud optionality.  
+**Backend already available:** yes, data-plane/storage policy authority exists.  
+**Security:** policy changes must use canonical owner/device authority; no parallel preference store.  
+**Required components:** policy cards, plain-language consequences, local/cloud indicator, confirmation, offline explanation.  
+**Platforms:** Desktop, PWA first-device flow, iOS first-device flow, Android when native first-device creation is supported.  
+**Priority:** P1.  
+**Implementation recommendation:** bind directly to the existing canonical policy authority and persist before final setup review.
 
-**Why required:** current setup can finish without one clear owner summary.  
-**Parent:** Recovery Codes → **Review & Finish** → Home.  
-**Backend available:** identity, trusted device, data policy, recovery and provider state are individually available.  
-**Required UI:** owner/display name, first trusted device, auth method, recovery readiness, data policy, AI provider/model, deferred items, `Enter Vishnu`.  
-**Security:** no secrets/recovery code values in final summary.  
-**Platforms:** every first-device creation platform.  
-**Implementation:** read existing setup state, never duplicate creation; finalization must be idempotent.
+## P1 — ONB-008 Setup Review & Completion
 
-## DAT-002 — Connected Storage Provider Detail — P1
+**Why required:** first-run needs one final owner-verifiable summary before Home.
 
-**Why required:** the storage fabric can reason about providers/transfers, but owner needs visibility before real remote movement.  
-**Parent:** Settings → Data & Storage → Connected Storage → provider.  
-**Backend available:** provider capability/health/transfer/storage-fabric foundation.  
-**Required UI:** provider/account label, destination, capability/health, credential-present state, encryption statement, explicit sync/transfer status, last error, disconnect and retry/cancel.  
-**Security:** never reveal credential value; movement requires explicit policy/confirmation; provider failure cannot imply local-data loss.  
-**Platforms:** Desktop/PWA.  
-**Implementation:** start read-only health/detail first; only expose movement mutations already governed by Data Plane authority.
+**Parent/navigation:** First Run final step.  
+**Features represented:** Vishnu identity, first trusted device, authentication state, recovery readiness, chosen data policy, chosen AI provider/model.  
+**Backend already available:** mostly yes; values are created earlier in onboarding.  
+**Security:** must not display secrets/recovery material after acknowledgement; final commit must remain idempotent.  
+**Required components:** summary sections, warnings for unresolved mandatory setup, back/edit links, `Enter Vishnu` primary action.  
+**Platforms:** every supported first-device platform.  
+**Priority:** P1.  
+**Implementation recommendation:** make this a review/commit step, not another duplicate persistence authority.
 
-## SET-005 — Accessibility — P1
+## P1 — DAT-002 Connected Storage Provider Detail
 
-**Why required:** reduce-motion/high-contrast behavior exists but is not a coherent discoverable setting.  
-**Parent:** Settings → Accessibility.  
-**Backend available:** preferences/runtime and existing design tokens/CSS.  
-**Required UI:** follow-system where applicable, Reduce Motion, High Contrast and only other accommodations Vishnu truly supports.  
-**Security:** normal owner preference, no special privilege.  
-**Platforms:** Desktop/PWA; native apps should primarily honor OS settings.  
-**Implementation:** persist preference; assert visual classes/token changes after reload; add keyboard/screen-reader labels.
+**Why required:** if an owner connects remote/cloud storage, they must be able to understand the provider, destination, health, consent, movement and failure state.
 
-## SEN-002 — Sensorium Status & Providers — P2
+**Parent/navigation:** Settings → Data & Storage → Connected Storage → provider.  
+**Features represented:** provider connection, capability/health, selected destination, allowed data classes, transfer evidence, disconnect/revoke.  
+**Backend already available:** storage-fabric/provider and data-plane authorities exist, but owner-facing provider detail is incomplete.  
+**Security:** never redisplay secrets; destructive disconnect/movement must explain impact and use canonical confirmation/approval.  
+**Required components:** provider identity, connection/health status, data classes, location, last sync/transfer evidence, reconnect/disconnect actions, offline/degraded states.  
+**Platforms:** Desktop/PWA; native companion parity only if native provider management is intended.  
+**Priority:** P1.  
+**Implementation recommendation:** project canonical provider/storage evidence; do not infer successful movement from a UI click alone.
 
-**Why required:** advanced owners need to understand provider availability/qualification, while current native Sensorium UI focuses correctly on local consent.  
-**Parent:** Settings → Advanced → Sensorium.  
-**Backend available:** provider/status/evidence APIs for virtual/native/emulator/simulator/VM paths.  
-**Required UI:** provider type, availability, associated device, qualification level, evidence timestamp, limitations.  
-**Security:** read-only; no arbitrary ADB/simctl/shell command surface.  
-**Platforms:** Desktop/PWA Advanced.  
-**Implementation:** read-only projection with explicit `NOT VERIFIED` / simulator vs physical-device labels.
+## P2 — SEN-002 Sensorium Status & Providers
 
-## SYS-003 — Updates & Release — P3
+**Why required:** Sensorium has owner-relevant provider availability/status/evidence beyond per-sensor permission switches.
 
-**Why required:** owner should know installed version and update status without using repository tooling.  
-**Parent:** Settings → Updates.  
-**Backend available:** update/package/release verification infrastructure.  
-**Required UI:** current build, update available, release notes, signature/verification status, download/apply/restart state, failure recovery.  
-**Security:** update must preserve existing release verification; no automatic production promotion.  
-**Platforms:** Desktop/PWA as deployment architecture permits.  
-**Implementation:** begin as read-only version/update availability if self-update mutation is not yet canonical.
+**Parent/navigation:** Advanced → Sensorium → Status & Providers.  
+**Features represented:** provider type, availability, current device, degraded/unavailable state, evidence summary.  
+**Backend already available:** yes, including native-device-lab/provider status/evidence APIs.  
+**Security:** read-only owner projection; do not expose arbitrary ADB/simctl execution or sensitive sensor payloads.  
+**Required components:** provider rows, availability badges, evidence timestamp/summary, troubleshooting guidance.  
+**Platforms:** Desktop/PWA owner management.  
+**Priority:** P2.  
+**Implementation recommendation:** keep low-level lab mechanics in Advanced/Diagnostics.
 
-## SYS-004 — About / Version / Notices — P3
+## P3 — SYS-003 Updates & Release
 
-**Why required:** product/version/license identity should be discoverable.  
-**Parent:** Settings → About.  
-**Backend available:** build/version metadata, proprietary license posture and third-party dependency notices.  
-**Required UI:** Vishnu name/version/build, proprietary notice, third-party notices, Privacy/Security/Updates links.  
-**Security:** no secrets/host internals.  
-**Platforms:** Desktop/PWA.  
-**Implementation:** static/runtime metadata projection with copyable build identifier.
+**Why required:** update/release infrastructure should have one owner-facing lifecycle instead of scattered technical state.
+
+**Parent/navigation:** Settings → Updates or System → Updates.  
+**Features represented:** current version, update available, release notes, verification, install/restart status, failure/recovery.  
+**Backend already available:** update/release infrastructure exists, but owner projection is incomplete.  
+**Security:** verified artifacts only; never imply an update is installed until verification/install evidence says so.  
+**Required components:** version card, update state, release notes, verify/install/restart flow, error recovery.  
+**Platforms:** Desktop first; PWA/native only where update ownership actually belongs to Vishnu rather than the browser/app store.  
+**Priority:** P3.
+
+## P3 — SYS-004 About / Version / Notices
+
+**Why required:** owner should be able to discover installed version/build, proprietary license posture and third-party notices.
+
+**Parent/navigation:** Settings → About.  
+**Features represented:** Vishnu version/build, license, third-party notices, links to privacy/security/update status.  
+**Backend already available:** metadata/release files exist.  
+**Security:** no secret configuration or private diagnostics.  
+**Required components:** version/build rows, license summary, notices, update link.  
+**Platforms:** Desktop/PWA and native About surface where appropriate.  
+**Priority:** P3.
+
+## Corrected non-missing item — SET-005 Accessibility
+
+`SET-005` is **PARTIAL**, not missing. Desktop `SettingsPanel` already exposes and persists **Reduce motion** and **High contrast**. Reduced motion is applied to the active pulse immediately; high-contrast state is persisted for full application after restart. Remaining work is organization/discoverability, appropriate PWA parity, OS-managed native behavior and complete accessibility acceptance testing.
+
+## Implementation order
+
+1. ONB-005 Data Placement Policy.
+2. ONB-008 Setup Review & Completion.
+3. DAT-002 Connected Storage Provider Detail.
+4. SEN-002 Sensorium Status & Providers.
+5. SYS-003 Updates & Release.
+6. SYS-004 About / Version / Notices.
+
+Do not build these as duplicate authorities. Each missing UI must project or mutate the existing canonical backend/security/storage authority and prove persistence/action results after refresh/restart where applicable.
