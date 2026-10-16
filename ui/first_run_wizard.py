@@ -329,7 +329,7 @@ class FirstRunWizard(QDialog):
                 self.autonomy.setCurrentIndex(autonomy_index)
             self.memory_enabled.setChecked(bool(preferences.get('memory_enabled', True)))
         try:
-            settings = get_data_plane(self.runtime).get_settings()
+            settings = get_data_plane(self.runtime).settings()
             index = self.data_policy.findData(str(settings.get('default_policy') or 'device_only'))
             if index >= 0:
                 self.data_policy.setCurrentIndex(index)
@@ -501,7 +501,7 @@ class FirstRunWizard(QDialog):
         if not owner:
             owner = self.display_name.text().strip() or self.first_name.text().strip() or 'Vishnu Owner'
         try:
-            policy = str(get_data_plane(self.runtime).get_settings().get('default_policy') or self.data_policy.currentData())
+            policy = str(get_data_plane(self.runtime).settings().get('default_policy') or self.data_policy.currentData())
         except Exception:
             policy = str(self.data_policy.currentData())
         policy_label = {
