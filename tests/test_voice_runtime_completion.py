@@ -212,8 +212,8 @@ def test_progressive_streamer_reports_bounded_progress():
     progress = []
     output = list(
         streamer.synthesize(
-            "First sentence. Second sentence.",
-            max_chars=18,
+            "First sentence. Second sentence. Third sentence.",
+            max_chars=32,
             progress=progress.append,
             persona_id="vishnu-warm",
         )
