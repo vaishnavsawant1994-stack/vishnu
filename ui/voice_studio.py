@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QCheckBox,
     QComboBox,
     QDialog,
     QDoubleSpinBox,
@@ -24,12 +23,17 @@ from PyQt6.QtWidgets import (
 )
 
 from ui.design_tokens import fit_window_to_screen, stylesheet as design_system_stylesheet
-from voice.intelligence import SUPPORTED_VOICE_STYLES, VoicePersona, VoicePreferences
+from voice.intelligence import (
+    BUILTIN_VOICE_PACKS,
+    SUPPORTED_VOICE_STYLES,
+    VoicePersona,
+    VoicePreferences,
+)
 from voice.platform import VoiceIntelligenceService
 
 
 class VoiceStudioDialog(QDialog):
-    """Owner-facing configuration for persona, expression and governed voice profiles."""
+    """Owner UI for presentation policy and the existing governed voice registry."""
 
     def __init__(self, runtime, parent=None):
         super().__init__(parent)
@@ -44,24 +48,24 @@ class VoiceStudioDialog(QDialog):
         fit_window_to_screen(self, preferred=(920, 760), minimum=(720, 560))
         self.setStyleSheet(design_system_stylesheet())
 
-        outer = QVBoxLayout(self)
+        layout = QVBoxLayout(self)
         heading = QLabel("VISHNU VOICE STUDIO")
         heading.setStyleSheet("font-size:20px;font-weight:650")
-        outer.addWidget(heading)
-        summary = QLabel(
-            "Voice personas select presentation, language and expression. Enrolled voice profiles remain "
-            "consent-gated by the existing governed voice registry."
+        layout.addWidget(heading)
+        intro = QLabel(
+            "Personas control presentation, language and expression. Authorized voices remain "
+            "consent-gated by Vishnu's existing governed profile registry."
         )
-        summary.setWordWrap(True)
-        outer.addWidget(summary)
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
 
         self.tabs = QTabWidget()
-        outer.addWidget(self.tabs, 1)
         self.tabs.addTab(self._preferences_tab(), "Voice & expression")
         self.tabs.addTab(self._personas_tab(), "Personas")
         self.tabs.addTab(self._profiles_tab(), "Authorized voices")
         self.tabs.addTab(self._pronunciation_tab(), "Pronunciation")
         self.tabs.addTab(self._status_tab(), "Status")
+        layout.addWidget(self.tabs, 1)
         self.refresh_all()
 
     def _preferences_tab(self):
@@ -75,18 +79,9 @@ class VoiceStudioDialog(QDialog):
         self.default_style.addItem("Automatic", "")
         for style in SUPPORTED_VOICE_STYLES:
             self.default_style.addItem(style.title(), style)
-        self.speaking_rate = QDoubleSpinBox()
-        self.speaking_rate.setRange(0.65, 1.5)
-        self.speaking_rate.setSingleStep(0.05)
-        self.speaking_rate.setDecimals(2)
-        self.expression_intensity = QDoubleSpinBox()
-        self.expression_intensity.setRange(0.0, 2.0)
-        self.expression_intensity.setSingleStep(0.1)
-        self.expression_intensity.setDecimals(1)
-        self.formality = QDoubleSpinBox()
-        self.formality.setRange(0.0, 1.0)
-        self.formality.setSingleStep(0.1)
-        self.formality.setDecimals(1)
+        self.speaking_rate = self._number(0.65, 1.5, 0.05, 2)
+        self.expression_intensity = self._number(0.0, 2.0, 0.1, 1)
+        self.formality = self._number(0.0, 1.0, 0.1, 1)
         form.addRow("Default persona", self.default_persona)
         form.addRow("Preferred language", self.default_language)
         form.addRow("Expression style", self.default_style)
@@ -94,22 +89,17 @@ class VoiceStudioDialog(QDialog):
         form.addRow("Expression intensity", self.expression_intensity)
         form.addRow("Formality", self.formality)
         layout.addLayout(form)
-
         save = QPushButton("Save voice preferences")
         save.clicked.connect(self.save_preferences)
         layout.addWidget(save)
-
         layout.addWidget(QLabel("Test sentence"))
         self.test_text = QLineEdit("Hello. I am Vishnu, and this is my current voice persona.")
         layout.addWidget(self.test_text)
-        row = QHBoxLayout()
         test = QPushButton("Generate & play")
         test.clicked.connect(self.test_voice)
-        row.addWidget(test)
-        row.addStretch(1)
-        layout.addLayout(row)
+        layout.addWidget(test)
         self.test_result = QTextBrowser()
-        self.test_result.setMaximumHeight(150)
+        self.test_result.setMaximumHeight(160)
         layout.addWidget(self.test_result)
         layout.addStretch(1)
         return page
@@ -117,20 +107,20 @@ class VoiceStudioDialog(QDialog):
     def _personas_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(
-            QLabel(
-                "Built-in Vishnu packs cannot be overwritten or deleted. Custom personas may reference only "
-                "an already enrolled governed voice profile ID."
-            )
+        notice = QLabel(
+            "Built-in Vishnu packs cannot be overwritten or deleted. Custom personas can reference only "
+            "an already enrolled governed voice profile ID."
         )
+        notice.setWordWrap(True)
+        layout.addWidget(notice)
         self.persona_view = QTextBrowser()
         layout.addWidget(self.persona_view, 1)
         row = QHBoxLayout()
-        add = QPushButton("Create custom persona")
-        add.clicked.connect(self.create_persona)
+        create = QPushButton("Create custom persona")
+        create.clicked.connect(self.create_persona)
         delete = QPushButton("Delete custom persona")
         delete.clicked.connect(self.delete_persona)
-        row.addWidget(add)
+        row.addWidget(create)
         row.addWidget(delete)
         row.addStretch(1)
         layout.addLayout(row)
@@ -140,8 +130,8 @@ class VoiceStudioDialog(QDialog):
         page = QWidget()
         layout = QVBoxLayout(page)
         notice = QLabel(
-            "Voice enrollment is local-only and requires explicit consent attestation plus owner reauthentication. "
-            "Raw reference audio is never accepted as a synthesis-time URL or arbitrary clone path."
+            "Enrollment is local-only and requires explicit consent attestation plus owner reauthentication. "
+            "Synthesis never accepts an arbitrary clone URL or unmanaged reference path."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -164,12 +154,11 @@ class VoiceStudioDialog(QDialog):
     def _pronunciation_tab(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(
-            QLabel(
-                "Pronunciation entries are local presentation hints. Vishnu does not rewrite the semantic text "
-                "or retain the spoken transcript here."
-            )
+        notice = QLabel(
+            "Pronunciation entries are local presentation hints. They do not rewrite semantic text or retain transcripts."
         )
+        notice.setWordWrap(True)
+        layout.addWidget(notice)
         form = QFormLayout()
         self.pronunciation_term = QLineEdit()
         self.pronunciation_value = QLineEdit()
@@ -199,19 +188,28 @@ class VoiceStudioDialog(QDialog):
         layout.addWidget(refresh)
         return page
 
+    @staticmethod
+    def _number(minimum, maximum, step, decimals):
+        widget = QDoubleSpinBox()
+        widget.setRange(minimum, maximum)
+        widget.setSingleStep(step)
+        widget.setDecimals(decimals)
+        return widget
+
+    @staticmethod
+    def _set_combo_data(combo: QComboBox, value: str):
+        index = combo.findData(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
     def refresh_all(self):
         self.service.refresh()
         personas = self.service.list_personas()
-        current = self.default_persona.currentData() if self.default_persona.count() else None
         self.default_persona.blockSignals(True)
         self.default_persona.clear()
         self.default_persona.addItem("Automatic / Vishnu Original", "")
         for persona in personas:
             self.default_persona.addItem(persona["name"], persona["id"])
-        if current:
-            index = self.default_persona.findData(current)
-            if index >= 0:
-                self.default_persona.setCurrentIndex(index)
         self.default_persona.blockSignals(False)
 
         preferences = self.service.preferences()
@@ -222,50 +220,25 @@ class VoiceStudioDialog(QDialog):
         self.expression_intensity.setValue(preferences.expression_intensity)
         self.formality.setValue(preferences.formality if preferences.formality is not None else 0.5)
 
-        safe_personas = [
-            {
-                key: row[key]
-                for key in (
-                    "id",
-                    "name",
-                    "role",
-                    "voice_profile_id",
-                    "language",
-                    "style",
-                    "speaking_rate",
-                    "pitch",
-                    "energy",
-                    "formality",
-                    "avatar_expression",
-                    "character_id",
-                )
-            }
-            for row in personas
-        ]
-        self.persona_view.setPlainText(json.dumps(safe_personas, indent=2, default=str))
+        self.persona_view.setPlainText(json.dumps(personas, indent=2, default=str))
         self.profile_view.setPlainText(json.dumps(self.service.list_voice_profiles(), indent=2, default=str))
         self.pronunciation_view.setPlainText(json.dumps(dict(self.service.lexicon.items()), indent=2))
         self.status_view.setPlainText(json.dumps(self.service.status(), indent=2, default=str))
 
-    @staticmethod
-    def _set_combo_data(combo: QComboBox, value: str):
-        index = combo.findData(value)
-        if index >= 0:
-            combo.setCurrentIndex(index)
-
     def save_preferences(self):
         try:
-            preferences = VoicePreferences(
-                persona_id=self.default_persona.currentData() or None,
-                language=self.default_language.text().strip() or None,
-                style=self.default_style.currentData() or None,
-                speaking_rate=float(self.speaking_rate.value()),
-                expression_intensity=float(self.expression_intensity.value()),
-                formality=float(self.formality.value()),
+            self.service.set_preferences(
+                VoicePreferences(
+                    persona_id=self.default_persona.currentData() or None,
+                    language=self.default_language.text().strip() or None,
+                    style=self.default_style.currentData() or None,
+                    speaking_rate=float(self.speaking_rate.value()),
+                    expression_intensity=float(self.expression_intensity.value()),
+                    formality=float(self.formality.value()),
+                )
             )
-            self.service.set_preferences(preferences)
-            QMessageBox.information(self, "Voice preferences", "Voice preferences saved locally.")
             self.refresh_all()
+            QMessageBox.information(self, "Voice preferences", "Voice preferences saved locally.")
         except Exception as exc:
             QMessageBox.warning(self, "Voice preferences", str(exc))
 
@@ -297,7 +270,7 @@ class VoiceStudioDialog(QDialog):
                 QMessageBox.information(
                     self,
                     "Voice generated",
-                    "Audio was generated successfully, but this desktop could not start local playback.",
+                    "Audio was generated, but this desktop could not start local playback.",
                 )
         except Exception as exc:
             QMessageBox.warning(self, "Voice test failed", str(exc))
@@ -318,13 +291,12 @@ class VoiceStudioDialog(QDialog):
         )
         if not ok:
             return
-        profiles = [row for row in self.service.list_voice_profiles() if row.get("active")]
-        profile_options = ["(no conversion)"] + [row["profile_id"] for row in profiles]
-        voice_profile, ok = QInputDialog.getItem(
+        active_profiles = [row["profile_id"] for row in self.service.list_voice_profiles() if row.get("active")]
+        profile, ok = QInputDialog.getItem(
             self,
             "Authorized voice",
             "Governed enrolled voice profile:",
-            profile_options,
+            ["(no conversion)", *active_profiles],
             editable=False,
         )
         if not ok:
@@ -335,11 +307,11 @@ class VoiceStudioDialog(QDialog):
         try:
             self.service.put_persona(
                 VoicePersona(
-                    id=persona_id.strip(),
-                    name=name.strip(),
-                    style=style,
+                    persona_id.strip(),
+                    name.strip(),
+                    voice_profile_id=None if profile == "(no conversion)" else profile,
                     language=language.strip(),
-                    voice_profile_id=None if voice_profile == "(no conversion)" else voice_profile,
+                    style=style,
                 )
             )
             self.refresh_all()
@@ -347,7 +319,7 @@ class VoiceStudioDialog(QDialog):
             QMessageBox.warning(self, "Persona not created", str(exc))
 
     def delete_persona(self):
-        custom = [row for row in self.service.list_personas() if not row["id"].startswith("vishnu_")]
+        custom = [row for row in self.service.list_personas() if row["id"] not in BUILTIN_VOICE_PACKS]
         if not custom:
             QMessageBox.information(self, "Personas", "There are no custom personas to delete.")
             return
@@ -371,7 +343,12 @@ class VoiceStudioDialog(QDialog):
     def enroll_profile(self):
         if not self._reauthenticated("enroll an authorized voice"):
             return
-        path, _ = QFileDialog.getOpenFileName(self, "Select authorized reference WAV", str(Path.home()), "WAV audio (*.wav)")
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select authorized reference WAV",
+            str(Path.home()),
+            "WAV audio (*.wav)",
+        )
         if not path:
             return
         display_name, ok = QInputDialog.getText(self, "Voice name", "Display name:")
@@ -380,12 +357,11 @@ class VoiceStudioDialog(QDialog):
         purpose, ok = QInputDialog.getText(self, "Allowed purpose", "Purpose for this enrolled voice:")
         if not ok:
             return
-        consent = QMessageBox.question(
+        if QMessageBox.question(
             self,
             "Consent attestation",
-            "Do you attest that the voice subject explicitly authorized this enrollment and its stated purpose?",
-        )
-        if consent != QMessageBox.StandardButton.Yes:
+            "Do you attest that the voice subject explicitly authorized this enrollment and stated purpose?",
+        ) != QMessageBox.StandardButton.Yes:
             return
         try:
             self.service.enroll_voice_profile(
@@ -395,13 +371,13 @@ class VoiceStudioDialog(QDialog):
                 consent_attested=True,
             )
             self.refresh_all()
-            QMessageBox.information(self, "Voice enrolled", "The authorized voice profile was stored locally.")
+            QMessageBox.information(self, "Voice enrolled", "The authorized voice was stored locally.")
         except Exception as exc:
             QMessageBox.warning(self, "Voice not enrolled", str(exc))
 
     def revoke_profile(self):
-        active = [row for row in self.service.list_voice_profiles() if row.get("active") and not row.get("canonical")]
-        profile_id = self._choose_profile(active, "Revoke voice profile")
+        rows = [row for row in self.service.list_voice_profiles() if row.get("active") and not row.get("canonical")]
+        profile_id = self._choose_profile(rows, "Revoke voice profile")
         if not profile_id or not self._reauthenticated("revoke a voice profile"):
             return
         try:
@@ -411,8 +387,8 @@ class VoiceStudioDialog(QDialog):
             QMessageBox.warning(self, "Voice not revoked", str(exc))
 
     def delete_profile(self):
-        profiles = [row for row in self.service.list_voice_profiles() if not row.get("canonical")]
-        profile_id = self._choose_profile(profiles, "Delete voice profile")
+        rows = [row for row in self.service.list_voice_profiles() if not row.get("canonical")]
+        profile_id = self._choose_profile(rows, "Delete voice profile")
         if not profile_id or not self._reauthenticated("delete a voice profile"):
             return
         if QMessageBox.question(
@@ -427,15 +403,15 @@ class VoiceStudioDialog(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, "Voice not deleted", str(exc))
 
-    def _choose_profile(self, profiles: list[dict], title: str) -> str | None:
-        if not profiles:
+    def _choose_profile(self, rows: list[dict], title: str) -> str | None:
+        if not rows:
             QMessageBox.information(self, title, "No eligible voice profiles are available.")
             return None
         value, ok = QInputDialog.getItem(
             self,
             title,
             "Voice profile:",
-            [row["profile_id"] for row in profiles],
+            [row["profile_id"] for row in rows],
             editable=False,
         )
         return value if ok else None
