@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import queue
 import shutil
 import tempfile
@@ -54,6 +55,14 @@ class VoiceRuntime:
         self._running = False
 
         self.settings = settings or VoiceRuntimeSettings.from_env()
+        if stt_provider is None and tts_provider is None and _voicestudio_enabled():
+            # Import lazily so the optional integration has zero effect on the
+            # default startup path and never becomes a second voice authority.
+            from voice.voicestudio import build_voicestudio_providers
+
+            voicestudio = build_voicestudio_providers()
+            if voicestudio is not None:
+                stt_provider, tts_provider = voicestudio
         self.stt_provider = stt_provider
         self.tts_provider = tts_provider
         self.speech_intents = speech_intent_bridge or SpeechIntentBridge(events=events)
@@ -230,3 +239,12 @@ class VoiceRuntime:
             self.tts.speak(text)
         if self.events:
             self.events.emit("state", state="idle")
+
+
+def _voicestudio_enabled() -> bool:
+    value = os.getenv("VISHNU_VOICESTUDIO_ENABLED", "").strip().lower()
+    if value in {"", "0", "false", "no", "off"}:
+        return False
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    raise ValueError("VISHNU_VOICESTUDIO_ENABLED must be a boolean value")
