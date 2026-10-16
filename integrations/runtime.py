@@ -1,6 +1,5 @@
 from pathlib import Path
 import os
-import time
 from dataclasses import replace
 from integrations.registry import IntegrationRegistry,Integration
 from integrations.adapters import GmailAdapter,GoogleCalendarAdapter,SlackAdapter,HomeAssistantAdapter
@@ -35,39 +34,28 @@ def provider_catalog(settings):
     return out
 
 def _discover_configured_voicestudio_mcp(settings, state, vault):
-    """Discover configured VoiceStudio MCP metadata without granting tool authority."""
+    """Register configured VoiceStudio MCP metadata without contacting or authorizing it."""
     from integrations.discovery.catalog_store import CapabilityCatalogStore
-    from integrations.discovery.mcp_runtime import MCPHTTPClient
     from voice.voicestudio import VoiceStudioSettings
     from voice.voicestudio_mcp import register_voicestudio_mcp_server
 
-    voice_settings=VoiceStudioSettings.from_env()
+    try:
+        voice_settings=VoiceStudioSettings.from_env()
+    except (TypeError, ValueError) as exc:
+        state.audit('voicestudio.mcp.registration_failed', payload={'error_type':type(exc).__name__})
+        return
     if not voice_settings.enabled:
         return
     endpoint=voice_settings.base_url.rstrip('/')+'/mcp/'
     catalog=CapabilityCatalogStore(state.path.parent/'capability-catalog.sqlite3')
-    server_id=None
     try:
         server=register_voicestudio_mcp_server(catalog,endpoint=endpoint)
-        server_id=server['id']
-        token=vault.get('voicestudio.api_key') if voice_settings.is_remote and vault is not None else None
-        auth_type='bearer_token' if token else 'none'
-        remote_tools=MCPHTTPClient(endpoint,token,auth_type=auth_type,timeout=1.0,
-                                   allow_loopback=server.get('trusted_loopback') is True).list_tools()
-        entries=catalog.import_mcp_tools(server['id'],remote_tools,server_name=server['name'],server_url=server['url'])
-        connector_id='mcpserver_'+server['id'].split(':',1)[-1]
-        credential_ref=None
-        if token and vault is not None:
-            credential_ref='mcp-credential:'+server['id'].split(':',1)[-1]
-            vault.set(credential_ref,token)
-        catalog.connect(server['id'],server_url=server['url'],auth_type=auth_type,
-                        credential_ref=credential_ref,approved_by='configured-provider',
-                        approved_at=time.time(),connector_id=connector_id)
-        state.audit('voicestudio.mcp.discovered',connector_id=connector_id,
-                    payload={'server_id':server['id'],'tools_discovered':len(entries)})
+        state.audit('voicestudio.mcp.registered', payload={
+            'server_id':server['id'],
+            'trusted_loopback':server.get('trusted_loopback') is True,
+        })
     except Exception as exc:
-        state.audit('voicestudio.mcp.discovery_deferred',
-                    payload={'server_id':server_id,'error_type':type(exc).__name__})
+        state.audit('voicestudio.mcp.registration_failed', payload={'error_type':type(exc).__name__})
 
 def build_integrations(settings,vault=None):
     state=ConnectorStateStore(Path(settings.data_dir)/'connectors.sqlite3',vault=vault); gateway=ConnectorGateway(state); reg=IntegrationRegistry(state_store=state)
