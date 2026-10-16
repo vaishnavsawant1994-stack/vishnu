@@ -117,36 +117,6 @@ class VoicePersona:
             raise ValueError("persona formality must be between 0 and 1")
 
 
-BUILTIN_VOICE_PACKS: Final[dict[str, VoicePersona]] = {
-    "vishnu_original": VoicePersona("vishnu_original", "Vishnu Original"),
-    "vishnu_warm": VoicePersona(
-        "vishnu_warm", "Vishnu Warm", style="warm", energy=1.05, avatar_expression="friendly"
-    ),
-    "vishnu_professional": VoicePersona(
-        "vishnu_professional", "Vishnu Professional", style="serious", formality=0.9, avatar_expression="serious"
-    ),
-    "vishnu_storyteller": VoicePersona(
-        "vishnu_storyteller",
-        "Vishnu Storyteller",
-        style="storytelling",
-        speaking_rate=0.92,
-        energy=1.15,
-        avatar_expression="expressive",
-    ),
-    "vishnu_calm": VoicePersona(
-        "vishnu_calm", "Vishnu Calm", style="calm", speaking_rate=0.9, energy=0.8, avatar_expression="calm"
-    ),
-    "vishnu_energetic": VoicePersona(
-        "vishnu_energetic",
-        "Vishnu Energetic",
-        style="cheerful",
-        speaking_rate=1.08,
-        energy=1.25,
-        avatar_expression="happy",
-    ),
-}
-
-
 @dataclass(frozen=True)
 class VoicePreferences:
     persona_id: str | None = None
@@ -821,3 +791,33 @@ def _rough_viseme(token: str) -> str:
     if first in {"a", "e", "i", "y"}:
         return "open"
     return "mid"
+
+
+BUILTIN_VOICE_PACKS: Final[dict[str, VoicePersona]] = {
+    "vishnu_original": VoicePersona("vishnu_original", "Vishnu Original"),
+    "vishnu_warm": VoicePersona(
+        "vishnu_warm", "Vishnu Warm", style="warm", energy=1.05, avatar_expression="friendly"
+    ),
+    "vishnu_professional": VoicePersona(
+        "vishnu_professional", "Vishnu Professional", style="serious", formality=0.9, avatar_expression="serious"
+    ),
+    "vishnu_storyteller": VoicePersona(
+        "vishnu_storyteller",
+        "Vishnu Storyteller",
+        style="storytelling",
+        speaking_rate=0.92,
+        energy=1.15,
+        avatar_expression="expressive",
+    ),
+    "vishnu_calm": VoicePersona(
+        "vishnu_calm", "Vishnu Calm", style="calm", speaking_rate=0.9, energy=0.8, avatar_expression="calm"
+    ),
+    "vishnu_energetic": VoicePersona(
+        "vishnu_energetic",
+        "Vishnu Energetic",
+        style="cheerful",
+        speaking_rate=1.08,
+        energy=1.25,
+        avatar_expression="happy",
+    ),
+}
