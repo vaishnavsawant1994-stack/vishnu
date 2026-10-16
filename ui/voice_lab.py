@@ -29,6 +29,7 @@ from voice.lab.experiments import VoiceExperimentSpec
 from voice.lab.fixtures import FixtureRegistry
 from voice.lab.release import ReleaseManager
 from voice.lab.runner import LabRunControl, VoiceExperimentRunner
+from voice.lab.telephony import TelephonyLab, TelephonyPolicy
 
 
 _CATEGORY_MAP = {
@@ -42,7 +43,10 @@ _CATEGORY_MAP = {
     "Audio / Sensorium": {"sensorium", "content"},
     "Devices": {"devices", "qualification"},
     "Providers & Models": {"providers", "governance", "runtime"},
+    "Telephony": {"communications"},
 }
+
+_RELIABILITY_METRICS = {"success_rate", "failure_recovery_rate", "provider_failures"}
 
 
 class _ExperimentWorker(QThread):
@@ -77,6 +81,13 @@ class VoiceLabDialog(QDialog):
             evidence=self.store,
             adapters=runtime.get("voice_lab_adapters", {}),
         )
+        telephony_policy = runtime.get("voice_lab_telephony_policy")
+        if not isinstance(telephony_policy, TelephonyPolicy):
+            telephony_policy = TelephonyPolicy()
+        self.telephony = TelephonyLab(
+            policy=telephony_policy,
+            providers=runtime.get("voice_lab_telephony_providers", {}),
+        )
         self.release_manager = ReleaseManager(self.store)
         self._candidate = None
         self._approval = None
@@ -93,7 +104,8 @@ class VoiceLabDialog(QDialog):
         layout.addWidget(heading)
         notice = QLabel(
             "Isolated voice research, benchmarks and qualification. Production remains STT → Vishnu → TTS. "
-            "The Lab never auto-promotes a provider or treats simulator evidence as physical acoustic evidence."
+            "The Lab never auto-promotes a provider, never treats simulator evidence as physical acoustic evidence, "
+            "and keeps telephony default-off until an explicitly governed provider is injected."
         )
         notice.setWordWrap(True)
         layout.addWidget(notice)
@@ -205,6 +217,23 @@ class VoiceLabDialog(QDialog):
     def _csv(value: str) -> tuple[str, ...]:
         return tuple(item.strip() for item in value.split(",") if item.strip())
 
+    @staticmethod
+    def _candidate_from_evidence(row):
+        configuration = dict(row.get("configuration", ()))
+        provenance = dict(row.get("provenance", ()))
+        metrics = tuple((name, float(value)) for name, value in row.get("metrics", ()))
+        reliability = tuple((name, value) for name, value in metrics if name in _RELIABILITY_METRICS)
+        return ComparisonCandidate(
+            row["evidence_id"],
+            tuple(row.get("fixture_refs", ())),
+            metrics,
+            privacy=provenance.get("privacy") or configuration.get("metadata:privacy", "unspecified"),
+            hardware=provenance.get("hardware") or configuration.get("metadata:hardware", "unspecified"),
+            licensing=provenance.get("licensing") or configuration.get("metadata:licensing", "unspecified"),
+            cost=provenance.get("cost") or configuration.get("metadata:cost", "unspecified"),
+            reliability=reliability,
+        )
+
     def run_experiment(self):
         if self._worker is not None and self._worker.isRunning():
             return
@@ -234,7 +263,8 @@ class VoiceLabDialog(QDialog):
         if self._run_control is not None:
             self._run_control.cancel()
             self.experiment_view.setPlainText(
-                "Cancellation requested. The explicit Lab adapter must stop at its next control checkpoint."
+                "Cancellation requested. In-process adapters stop at a control checkpoint; "
+                "BoundedSubprocessAdapter can terminate an external child process at the deadline."
             )
 
     def _experiment_complete(self, result):
@@ -284,14 +314,7 @@ class VoiceLabDialog(QDialog):
         if len(ids) < 2 or any(row is None for row in rows):
             QMessageBox.warning(self, "Voice Lab comparison", "Provide at least two existing evidence IDs.")
             return
-        candidates = tuple(
-            ComparisonCandidate(
-                row["evidence_id"],
-                tuple(row.get("fixture_refs", ())),
-                tuple((name, float(value)) for name, value in row.get("metrics", ())),
-            )
-            for row in rows
-        )
+        candidates = tuple(self._candidate_from_evidence(row) for row in rows)
         result = ProviderComparison(
             candidates,
             self._csv(self.compare_metrics.text()),
@@ -368,6 +391,7 @@ class VoiceLabDialog(QDialog):
             "evidence_records": snap.evidence_count,
             "experiments": snap.experiment_count,
             "registered_lab_adapters": sorted(self.runner.adapters),
+            "registered_telephony_adapters": self.telephony.registered_providers(),
             "raw_audio_retained_by_evidence_store": False,
         }
         self.views["Overview"].setPlainText(json.dumps(overview, indent=2))
@@ -379,6 +403,32 @@ class VoiceLabDialog(QDialog):
                 if item.category in categories
             ]
             self.views[section].setPlainText(json.dumps(rows, indent=2))
+        telephony_capabilities = [
+            {"id": item.capability_id, "title": item.title, "state": item.state.value, "notes": item.qualification_notes}
+            for item in capabilities
+            if item.category == "communications"
+        ]
+        self.views["Telephony"].setPlainText(
+            json.dumps(
+                {
+                    "capabilities": telephony_capabilities,
+                    "policy": {
+                        "enabled": self.telephony.policy.enabled,
+                        "allow_outbound": self.telephony.policy.allow_outbound,
+                        "allow_inbound": self.telephony.policy.allow_inbound,
+                        "allow_recording": self.telephony.policy.allow_recording,
+                        "allow_live_provider": self.telephony.policy.allow_live_provider,
+                        "max_call_seconds": self.telephony.policy.max_call_seconds,
+                    },
+                    "registered_providers": self.telephony.registered_providers(),
+                    "owner_approval": "exact request required by default",
+                    "recording": "off unless policy + consent + exact approval allow it",
+                    "emergency_calls": "blocked in Voice Lab",
+                    "destination_evidence": "masked plus SHA-256 fingerprint; raw destination is not evidence metadata",
+                },
+                indent=2,
+            )
+        )
         self.benchmark_view.setPlainText(json.dumps(recent, indent=2, default=str))
         self.views["Qualification"].setPlainText(
             json.dumps(
@@ -386,6 +436,8 @@ class VoiceLabDialog(QDialog):
                     "qualification_required": [item.capability_id for item in qualification_required()],
                     "gaps": [item.capability_id for item in gaps()],
                     "automatic_regression": "runs whenever an immutable baseline exists for the experiment family",
+                    "hard_timeout_adapter": "BoundedSubprocessAdapter terminates external experiments on cancellation/deadline",
+                    "telephony": "software framework implemented; live provider/number/jurisdiction quality remains exact evidence",
                     "rule": "Missing, blocked or not-run evidence never becomes PASS.",
                 },
                 indent=2,
