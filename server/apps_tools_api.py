@@ -255,10 +255,13 @@ def apps_tools_router(runtime):
                 server.get('trusted_loopback') is True
                 and server.get('provider_policy') == 'voicestudio'
             )
-            remote_tools = MCPHTTPClient(
-                server['url'], token, auth_type=auth_type,
-                allow_loopback=trusted_voicestudio_loopback,
-            ).list_tools()
+            if trusted_voicestudio_loopback:
+                mcp_client = MCPHTTPClient(
+                    server['url'], token, auth_type=auth_type, allow_loopback=True,
+                )
+            else:
+                mcp_client = MCPHTTPClient(server['url'], token, auth_type=auth_type)
+            remote_tools = mcp_client.list_tools()
             entries = catalog.import_mcp_tools(server_id, remote_tools, server_name=server['name'], server_url=server['url'])
             connector_id = 'mcpserver_' + server_id.split(':', 1)[-1]
             catalog.connect(server_id, server_url=server['url'], auth_type=auth_type, credential_ref=credential_ref,
