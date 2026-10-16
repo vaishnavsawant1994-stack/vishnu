@@ -11,6 +11,20 @@ from .catalog import CapabilityState, find_capability
 from .evaluation import GateStatus, VoiceLabReport
 
 
+TELEPHONY_PROMOTION_GATES = (
+    "telephony-enabled",
+    "telephony-direction-policy",
+    "telephony-provider-boundary",
+    "telephony-owner-approval",
+    "telephony-recording-consent",
+    "telephony-emergency-boundary",
+    "telephony-connectivity",
+    "telephony-recording-state",
+    "telephony-duration-bound",
+    "telephony-hangup-control",
+)
+
+
 @dataclass(frozen=True, slots=True)
 class PromotionRequest:
     target_capability_ids: tuple[str, ...]
@@ -62,6 +76,14 @@ def evaluate_promotion(request: PromotionRequest, report: VoiceLabReport) -> Pro
 
     if request.uses_voice_profile_conversion and not _gate_passed(report, "consent-revocation-integrity"):
         reasons.append("voice profile conversion requires consent, revocation and integrity evidence")
+
+    if "telephony" in request.target_capability_ids:
+        missing_telephony = tuple(gate_id for gate_id in TELEPHONY_PROMOTION_GATES if not _gate_passed(report, gate_id))
+        if missing_telephony:
+            reasons.append(
+                "telephony promotion requires exact provider/call/consent/emergency/hangup evidence: "
+                + ", ".join(missing_telephony)
+            )
 
     if request.targets_physical_device:
         if "physical-device-acoustics" not in request.target_capability_ids:
