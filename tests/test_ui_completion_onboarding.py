@@ -30,6 +30,19 @@ def test_pwa_first_run_requires_review_before_completion() -> None:
     assert "api('/first-run/complete'" in source
 
 
+def test_pwa_first_run_review_is_invalidated_when_saved_choices_change() -> None:
+    source = (ROOT / "pwa" / "first-run-actions.js").read_text(encoding="utf-8")
+    assert "const invalidateReview=()=>review.classList.add('hidden')" in source
+    assert "const invalidateModel=()=>" in source
+    assert "s.modelSaved=false" in source
+    assert "provider.onchange=()=>" in source
+    assert "privacy.onchange=invalidateReview" in source
+    assert "model.oninput=()=>" in source
+    assert "apiKey.oninput=()=>" in source
+    assert "firstName.disabled=true" in source
+    assert "begin.disabled=identityCreated" in source
+
+
 def test_incomplete_first_run_allows_only_canonical_data_plane_settings_write() -> None:
     source = (ROOT / "server" / "pwa_session_middleware.py").read_text(encoding="utf-8")
     assert "'/iphone/api/data-plane/settings'" in source
