@@ -1,5 +1,6 @@
 /* Universal browser first-run adapter. All identity and security state remains
-   in FirstRunCoordinator, OwnerAccessStore, DeviceRegistry, and the model vault. */
+   in FirstRunCoordinator, OwnerAccessStore, DeviceRegistry, the Data Plane,
+   and the model vault. */
 (() => {
   const $ = id => document.getElementById(id);
   const originalLoadAccessOptions = window.loadAccessOptions;
@@ -7,6 +8,7 @@
   if (typeof originalLoadAccessOptions !== 'function' || typeof originalCheck !== 'function') return;
   let options = {};
   let modelSaved = false;
+  let policySaved = false;
   const choices = document.createElement('div');
   choices.id = 'firstRunChoices';
   choices.className = 'access-form hidden';
@@ -54,6 +56,12 @@
     value.htmlFor = control.id;
     return value;
   };
+  const heading = text => {
+    const value = document.createElement('h3');
+    value.textContent = text;
+    value.className = 'access-heading';
+    return value;
+  };
   const firstName = field('firstRunFirstName', 'First name', 'text', 'given-name');
   const lastName = field('firstRunLastName', 'Last name (optional)', 'text', 'family-name');
   const displayName = field('firstRunDisplayName', 'Display name (optional)', 'text', 'nickname');
@@ -80,6 +88,22 @@
   for (const [value, text] of [['local_only','Local only'],['local_preferred','Local preferred'],['external_allowed','External providers allowed']]) {
     const option = document.createElement('option'); option.value = value; option.textContent = text; privacy.append(option);
   }
+
+  const dataPolicy = document.createElement('select');
+  dataPolicy.id = 'firstRunDataPolicy';
+  for (const [value, text] of [
+    ['device_only','Device only — keep governed data on this device'],
+    ['progress_only','Progress only — share only continuation/progress data'],
+    ['sync_everywhere','Sync everywhere — sync permitted data to trusted locations'],
+    ['on_demand','On demand — move data only when explicitly required'],
+  ]) {
+    const option = document.createElement('option'); option.value = value; option.textContent = text; dataPolicy.append(option);
+  }
+  const savePolicy = button('firstRunSavePolicy','Save data placement',true);
+  const policyStatus = document.createElement('p');
+  policyStatus.className = 'access-note';
+  policyStatus.textContent = 'Changing this default never silently moves data that already exists.';
+
   const provider = document.createElement('select');
   provider.id = 'firstRunProvider';
   for (const [value, text] of [['skip','Configure later'],['local','Local model'],['openai','OpenAI'],['gemini','Gemini'],['openrouter','OpenRouter'],['deepseek','DeepSeek'],['xai','xAI'],['groq','Groq'],['cerebras','Cerebras'],['mistral','Mistral'],['custom','Custom provider']]) {
@@ -95,12 +119,27 @@
   const fallbackLabel = document.createElement('label'); fallbackLabel.className = 'access-note hidden';
   const fallback = document.createElement('input'); fallback.type = 'checkbox'; fallback.id = 'firstRunFallback';
   fallbackLabel.append(fallback, document.createTextNode(' This browser cannot create a passkey; continue with the owner password and saved recovery codes.'));
+
+  const reviewButton = button('firstRunReviewButton','Review setup');
+  const review = document.createElement('section');
+  review.id = 'firstRunReview';
+  review.className = 'hidden';
+  const reviewIntro = document.createElement('p');
+  reviewIntro.className = 'access-note';
+  reviewIntro.textContent = 'Review the owner, security, recovery, data placement, privacy and AI choices before Vishnu becomes ready.';
+  const reviewSummary = document.createElement('pre');
+  reviewSummary.id = 'firstRunReviewSummary';
+  reviewSummary.className = 'recovery-codes';
   const finish = button('firstRunFinish','Finish setup');
+  review.append(heading('Review and finish'), reviewIntro, reviewSummary, passkeyHint, fallbackLabel, finish);
+
   recovery.append(
-    recoveryIntro, codes, savedLabel,
-    label('Model privacy', privacy), privacy,
-    label('AI setup', provider), provider, model, apiKey, saveModel, modelStatus,
-    passkeyHint, fallbackLabel, finish,
+    heading('Recovery'), recoveryIntro, codes, savedLabel,
+    heading('Privacy and autonomy'), label('Model privacy', privacy), privacy,
+    heading('Data placement'), label('Where may newly governed data live?', dataPolicy), dataPolicy,
+    savePolicy, policyStatus,
+    heading('AI provider'), label('AI setup', provider), provider, model, apiKey, saveModel, modelStatus,
+    reviewButton, review,
   );
   createForm.append(
     document.createElement('p'), firstName, lastName, displayName, bootstrap, password,
@@ -144,9 +183,11 @@
   };
   window.vishnuFirstRun = {
     $, createChoice, joinChoice, restoreChoice, createForm, firstName, lastName, displayName, bootstrap,
-    password, passwordAgain, begin, codes, recovery, saved, privacy, provider, model,
-    apiKey, saveModel, modelStatus, fallback, finish, showError,
+    password, passwordAgain, begin, codes, recovery, saved, privacy, dataPolicy, savePolicy, policyStatus,
+    provider, model, apiKey, saveModel, modelStatus, fallback, reviewButton, review, reviewSummary,
+    finish, showError,
     get modelSaved() { return modelSaved; }, set modelSaved(value) { modelSaved = Boolean(value); },
+    get policySaved() { return policySaved; }, set policySaved(value) { policySaved = Boolean(value); },
   };
   window.loadAccessOptions().then(refreshChoices).catch(()=>{});
   window.check().catch(()=>{});
