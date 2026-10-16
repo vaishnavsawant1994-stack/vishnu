@@ -72,7 +72,7 @@ The catalog still records the expected visual purpose, route/location, actions a
 | SET-002 | General & Profile | Desktop/PWA | edit/save profile | preferences/profile APIs | NOT VERIFIED | PARTIAL |
 | SET-003 | Appearance | Desktop/PWA | theme/presentation | UI preferences | NOT VERIFIED | PARTIAL |
 | SET-004 | Language & Region | Desktop/PWA | locale preference | UI preferences | NOT VERIFIED | PARTIAL |
-| SET-005 | Accessibility | required Settings | reduce motion/high contrast etc. | preferences/design system | NOT AVAILABLE | MISSING |
+| SET-005 | Accessibility | Desktop SettingsPanel; broader settings organization required | reduce motion/high contrast | preferences/design system | NOT VERIFIED | PARTIAL |
 
 ## Screenshot acceptance plan
 
