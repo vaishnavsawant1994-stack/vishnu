@@ -57,6 +57,7 @@ class LocalVoiceModelManager:
         require_commercial: bool = False,
         require_redistribution: bool = False,
     ) -> LocalModelStatus:
+        local_path = self._local_path(path)
         self.registry.validate_license(
             metadata,
             require_commercial=require_commercial,
@@ -69,7 +70,7 @@ class LocalVoiceModelManager:
         else:
             if existing != metadata:
                 raise ValueError(f"voice model metadata changed for registered model: {metadata.model_id}")
-        self._paths[metadata.model_id] = self._local_path(path)
+        self._paths[metadata.model_id] = local_path
         status = self.verify(metadata.model_id)
         self._emit(status)
         return status
