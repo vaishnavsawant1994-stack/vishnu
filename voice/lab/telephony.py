@@ -329,6 +329,14 @@ class TelephonyLab:
                 threshold=f"<= {self.policy.max_call_seconds * 1000} ms",
             )
         )
+        if not bool(getattr(provider, "sandbox", False)):
+            post.append(
+                QualificationGate(
+                    "telephony-live-provider-evidence",
+                    GateStatus.PASS,
+                    notes="exact non-sandbox provider executed under live-provider policy",
+                )
+            )
         state = CallState.CONNECTED if result.connected else CallState.ENDED
         return TelephonyLabRun(
             request.request_id,

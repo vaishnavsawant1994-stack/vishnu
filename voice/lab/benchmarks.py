@@ -63,10 +63,10 @@ def retention_score(expected: Iterable[str], observed: str) -> float:
 def acoustic_quality_score(*, snr_db: float, clipping_ratio: float, dropped_ratio: float = 0.0) -> float:
     """Return a bounded 0..1 objective signal-quality score.
 
-    It is intentionally simple and dependency-light: SNR contributes 60%, low
-    clipping 25%, and low dropped-audio ratio 15%. This is a qualification
-    signal, not a claim of human-perceived naturalness or MOS.
+    SNR contributes 60%, low clipping 25%, and low dropped-audio ratio 15%.
+    This is a qualification signal, not a claim of human-perceived naturalness or MOS.
     """
+
     snr = max(0.0, min(1.0, float(snr_db) / 30.0))
     clipping = 1.0 - max(0.0, min(1.0, float(clipping_ratio) / 0.05))
     dropped = 1.0 - max(0.0, min(1.0, float(dropped_ratio) / 0.05))
@@ -106,6 +106,10 @@ DEFAULT_THRESHOLDS = (
     MetricThreshold("pronunciation-accuracy", "pronunciation_accuracy", 0.90, False),
     MetricThreshold("failure-recovery-rate", "failure_recovery_rate", 0.95, False),
     MetricThreshold("acoustic-quality-score", "acoustic_quality_score", 0.80, False),
+    MetricThreshold("telephony-connect-latency", "telephony_connect_latency_ms", 3000.0),
+    MetricThreshold("telephony-jitter", "telephony_jitter_ms", 30.0),
+    MetricThreshold("telephony-packet-loss", "telephony_packet_loss_rate", 0.02),
+    MetricThreshold("telephony-call-completion", "telephony_call_completion_rate", 0.99, False),
 )
 
 
@@ -168,6 +172,27 @@ class BenchmarkEngine:
                 dropped_ratio=dropped_ratio,
             ),
         }
+
+    def telephony_metrics(
+        self,
+        *,
+        connect_latency_ms: float,
+        connected: bool,
+        jitter_ms: float | None = None,
+        packet_loss_rate: float | None = None,
+    ) -> dict[str, float]:
+        metrics = {
+            "telephony_connect_latency_ms": _finite_non_negative("connect_latency_ms", connect_latency_ms),
+            "telephony_call_completion_rate": 1.0 if connected else 0.0,
+        }
+        if jitter_ms is not None:
+            metrics["telephony_jitter_ms"] = _finite_non_negative("jitter_ms", jitter_ms)
+        if packet_loss_rate is not None:
+            loss = float(packet_loss_rate)
+            if not math.isfinite(loss) or not 0.0 <= loss <= 1.0:
+                raise ValueError("packet_loss_rate must be between 0 and 1")
+            metrics["telephony_packet_loss_rate"] = loss
+        return metrics
 
     def numeric_gates(self, metrics: dict[str, float]) -> tuple[QualificationGate, ...]:
         return tuple(item.evaluate(metrics) for item in self.thresholds)

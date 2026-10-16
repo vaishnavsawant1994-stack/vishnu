@@ -228,6 +228,7 @@ def test_telephony_promotion_requires_telephony_specific_live_evidence() -> None
         "telephony-recording-state",
         "telephony-duration-bound",
         "telephony-hangup-control",
+        "telephony-live-provider-evidence",
     )
     with_telephony = evaluate_promotion(
         PromotionRequest(target_capability_ids=("telephony",), manual_owner_approval=True),

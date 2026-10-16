@@ -22,6 +22,7 @@ TELEPHONY_PROMOTION_GATES = (
     "telephony-recording-state",
     "telephony-duration-bound",
     "telephony-hangup-control",
+    "telephony-live-provider-evidence",
 )
 
 
@@ -81,7 +82,7 @@ def evaluate_promotion(request: PromotionRequest, report: VoiceLabReport) -> Pro
         missing_telephony = tuple(gate_id for gate_id in TELEPHONY_PROMOTION_GATES if not _gate_passed(report, gate_id))
         if missing_telephony:
             reasons.append(
-                "telephony promotion requires exact provider/call/consent/emergency/hangup evidence: "
+                "telephony promotion requires exact live provider/call/consent/emergency/hangup evidence: "
                 + ", ".join(missing_telephony)
             )
 

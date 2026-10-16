@@ -19,6 +19,10 @@ class FixtureKind(str, Enum):
     CODE_SWITCH = "code_switch"
     LONG_FORM = "long_form"
     INTERRUPTION = "interruption"
+    ACCENT = "accent"
+    ECHO = "echo"
+    BLUETOOTH = "bluetooth"
+    TELEPHONY = "telephony"
 
 
 @dataclass(frozen=True, slots=True)
@@ -59,11 +63,40 @@ _BUILTINS = (
     VoiceFixture("code-switch", FixtureKind.CODE_SWITCH, "Vishnu, kal meeting hai, please remind me.", ("en", "hi")),
     VoiceFixture("long-form", FixtureKind.LONG_FORM, "Explain the result in a structured long-form answer.", ("en",)),
     VoiceFixture("interruption", FixtureKind.INTERRUPTION, "Stop speaking when I interrupt and discard stale audio.", ("en",)),
+    VoiceFixture(
+        "accent-metadata",
+        FixtureKind.ACCENT,
+        "Preserve spoken words without treating accent as identity or correctness.",
+        ("en",),
+        ("recording-required-for-acoustic-qualification",),
+    ),
+    VoiceFixture(
+        "echo-metadata",
+        FixtureKind.ECHO,
+        "Check echo cancellation without retaining raw room audio.",
+        ("en",),
+        ("physical-route-required",),
+    ),
+    VoiceFixture(
+        "bluetooth-metadata",
+        FixtureKind.BLUETOOTH,
+        "Switch audio routes without losing the active conversation turn.",
+        ("en",),
+        ("physical-route-required",),
+    ),
+    VoiceFixture(
+        "telephony-loopback",
+        FixtureKind.TELEPHONY,
+        "This is a governed Vishnu Voice Lab telephony qualification call.",
+        ("en",),
+        ("simulation-safe", "live-provider-required-for-carrier-evidence"),
+    ),
 )
 
 
 class FixtureRegistry:
     """In-memory registry. Built-ins contain text metadata only, never owner audio."""
+
     def __init__(self, fixtures: tuple[VoiceFixture, ...] = _BUILTINS):
         self._items: dict[str, VoiceFixture] = {}
         for fixture in fixtures:

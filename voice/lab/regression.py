@@ -46,21 +46,50 @@ DEFAULT_REGRESSION_RULES = (
     RegressionRule("pronunciation_accuracy", MetricDirection.HIGHER, 0.05, 0.02),
 )
 
+EXTENDED_REGRESSION_RULES = (
+    RegressionRule("failure_recovery_rate", MetricDirection.HIGHER, 0.02, 0.01),
+    RegressionRule("acoustic_quality_score", MetricDirection.HIGHER, 0.05, 0.02),
+    RegressionRule("cpu_percent", MetricDirection.LOWER, 0.10, 5.0),
+    RegressionRule("memory_mb", MetricDirection.LOWER, 0.10, 32.0),
+    RegressionRule("peak_memory_mb", MetricDirection.LOWER, 0.10, 32.0),
+    RegressionRule("telephony_connect_latency_ms", MetricDirection.LOWER, 0.10, 100.0),
+    RegressionRule("telephony_jitter_ms", MetricDirection.LOWER, 0.10, 3.0),
+    RegressionRule("telephony_packet_loss_rate", MetricDirection.LOWER, 0.10, 0.005),
+    RegressionRule("telephony_call_completion_rate", MetricDirection.HIGHER, 0.02, 0.01),
+    RegressionRule("estimated_cost_per_minute", MetricDirection.LOWER, 0.10, 0.01),
+    RegressionRule("failure_rate", MetricDirection.LOWER, 0.05, 0.01),
+)
+
 
 class RegressionEngine:
+    @staticmethod
+    def _select_rules(
+        baseline: dict[str, float] | None,
+        current: dict[str, float],
+        rules: tuple[RegressionRule, ...] | None,
+    ) -> tuple[RegressionRule, ...]:
+        if rules is not None:
+            return rules
+        known = set(current)
+        if baseline:
+            known.update(baseline)
+        extended = tuple(rule for rule in EXTENDED_REGRESSION_RULES if rule.metric in known)
+        return (*DEFAULT_REGRESSION_RULES, *extended)
+
     def compare(
         self,
         baseline: dict[str, float] | None,
         current: dict[str, float],
-        rules: tuple[RegressionRule, ...] = DEFAULT_REGRESSION_RULES,
+        rules: tuple[RegressionRule, ...] | None = None,
     ) -> tuple[RegressionFinding, ...]:
+        selected = self._select_rules(baseline, current, rules)
         if baseline is None:
             return tuple(
                 RegressionFinding(rule.metric, "blocked", None, current.get(rule.metric), None, "baseline unavailable")
-                for rule in rules
+                for rule in selected
             )
         findings = []
-        for rule in rules:
+        for rule in selected:
             if rule.metric not in baseline or rule.metric not in current:
                 findings.append(
                     RegressionFinding(
@@ -92,7 +121,7 @@ class RegressionEngine:
         self,
         baseline: dict[str, float] | None,
         current: dict[str, float],
-        rules: tuple[RegressionRule, ...] = DEFAULT_REGRESSION_RULES,
+        rules: tuple[RegressionRule, ...] | None = None,
     ) -> tuple[QualificationGate, tuple[RegressionFinding, ...]]:
         findings = self.compare(baseline, current, rules)
         statuses = {item.status for item in findings}
