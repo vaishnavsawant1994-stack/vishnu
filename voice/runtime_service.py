@@ -12,6 +12,7 @@ import os
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from voice.chunking import chunk_speech_text
 from voice.model_registry import ModelCapability, VoiceModelRegistry
 from voice.providers import STTProvider, TTSProvider, SynthesisRequest, SynthesisResult, TranscriptionRequest, TranscriptionResult
 from voice.scheduler import VoiceInferenceScheduler, VoicePriority
@@ -165,6 +166,43 @@ class VoiceRuntimeService:
             return result
 
         return await self.scheduler.submit(priority, operation)
+
+    async def synthesize_long_form(
+        self,
+        request: SynthesisRequest,
+        *,
+        max_chunk_characters: int = 1_500,
+    ) -> tuple[SynthesisResult, ...]:
+        """Generate long text as bounded chunks through the same governed route.
+
+        Encoded audio is intentionally returned per chunk. Audio decoding,
+        crossfade, and re-encoding belong to the provider/audio pipeline rather
+        than this model-agnostic routing layer.
+        """
+
+        chunks = chunk_speech_text(request.text, max_characters=max_chunk_characters)
+        self._audit(
+            "voice.long_form_requested",
+            {"model_id": request.model_id, "chunk_count": len(chunks)},
+        )
+        results: list[SynthesisResult] = []
+        for index, chunk in enumerate(chunks):
+            intent = dict(request.intent)
+            intent["long_form_chunk_index"] = index
+            intent["long_form_chunk_count"] = len(chunks)
+            results.append(
+                await self.synthesize(
+                    SynthesisRequest(
+                        text=chunk,
+                        model_id=request.model_id,
+                        profile_id=request.profile_id,
+                        language=request.language,
+                        intent=intent,
+                    ),
+                    priority=VoicePriority.LONG_FORM,
+                )
+            )
+        return tuple(results)
 
     async def transcribe(
         self,
