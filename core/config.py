@@ -205,6 +205,30 @@ class Settings:
     tts_model: str = os.getenv('TTS_MODEL', 'tts-1')
     tts_voice: str = os.getenv('TTS_VOICE', 'alloy')
 
+    openvoice_enabled: bool = env_bool('VISHNU_OPENVOICE_ENABLED', False, strict=True)
+    openvoice_default_profile_id: str = os.getenv('VISHNU_OPENVOICE_DEFAULT_PROFILE_ID', 'vishnu').strip().lower()
+    openvoice_profile_store: str = os.getenv('VISHNU_OPENVOICE_PROFILE_STORE', '').strip()
+    openvoice_converter_config: str = os.getenv('VISHNU_OPENVOICE_CONVERTER_CONFIG', '').strip()
+    openvoice_converter_checkpoint: str = os.getenv('VISHNU_OPENVOICE_CONVERTER_CHECKPOINT', '').strip()
+    openvoice_source_se_path: str = os.getenv('VISHNU_OPENVOICE_SOURCE_SE_PATH', '').strip()
+    openvoice_device: str = os.getenv('VISHNU_OPENVOICE_DEVICE', 'cpu').strip()
+    openvoice_watermark_message: str = os.getenv('VISHNU_OPENVOICE_WATERMARK_MESSAGE', '@VISHNU')[:128]
+    openvoice_fallback_to_source: bool = env_bool('VISHNU_OPENVOICE_FALLBACK_TO_SOURCE', True, strict=True)
+    openvoice_max_reference_bytes: int = env_int(
+        'VISHNU_OPENVOICE_MAX_REFERENCE_BYTES',
+        20 * 1024 * 1024,
+        strict=True,
+        minimum=64 * 1024,
+        maximum=64 * 1024 * 1024,
+    )
+    openvoice_max_reference_seconds: float = env_float(
+        'VISHNU_OPENVOICE_MAX_REFERENCE_SECONDS',
+        120.0,
+        strict=True,
+        minimum=1.0,
+        maximum=600.0,
+    )
+
     autonomy_mode: str = os.getenv('AUTONOMY_MODE', 'ask').lower().strip()
     control_server_enabled: bool = env_bool('CONTROL_SERVER_ENABLED', False, strict=True)
     control_server_host: str = os.getenv('CONTROL_SERVER_HOST', '127.0.0.1')
