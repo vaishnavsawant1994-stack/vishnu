@@ -36,11 +36,9 @@ VISHNU_VOICESTUDIO_ALLOW_REMOTE=false
 VISHNU_VOICESTUDIO_REQUIRE_HTTPS_REMOTE=true
 ```
 
-When `VISHNU_VOICESTUDIO_ENABLED=false`, Vishnu does not parse or validate any other VoiceStudio setting and allocates no VoiceStudio provider or provider runtime. This keeps stale optional configuration from disturbing the existing startup path.
+When `VISHNU_VOICESTUDIO_ENABLED=false`, application composition does not parse or validate any other VoiceStudio setting and allocates no VoiceStudio provider or provider runtime. This keeps stale optional configuration from disturbing the existing startup path.
 
 When `VISHNU_VOICESTUDIO_ENABLED=true`, `app/main.py` composes one VoiceStudio provider behind the existing bounded `VoiceRuntime`. The provider is registered for both STT and TTS, the bounded runtime starts only after normal first-run setup succeeds, remains available for the Vishnu application lifetime, and stops through the existing application shutdown path. The current `RealtimeVoiceSession` remains separate and unchanged.
-
-The generic `VoiceRuntime` also retains its lazy VoiceStudio fallback for callers that explicitly enable the generic provider runtime and do not inject an STT or TTS provider. Explicitly injected providers always win.
 
 Credentials are intentionally not loaded by `VoiceStudioSettings`. For a remote endpoint, application composition reads only `voicestudio.api_key` from the already-authenticated canonical Vishnu `SecretVault` and injects it into `VoiceStudioProvider(api_key=...)`. Remote endpoints fail closed unless remote use is explicitly enabled; HTTPS is required by default and an injected bearer key is mandatory.
 
@@ -60,7 +58,7 @@ The adapter:
 
 - is disabled by default
 - allows loopback endpoints by default
-- ignores other VoiceStudio configuration while disabled
+- leaves optional VoiceStudio settings inert in normal application composition while disabled
 - requires explicit opt-in for remote hosts
 - requires HTTPS for remote hosts by default
 - requires an injected bearer credential for enabled remote use
