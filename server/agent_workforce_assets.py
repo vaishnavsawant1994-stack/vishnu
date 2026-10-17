@@ -42,6 +42,10 @@ def agent_workforce_assets_router(settings) -> APIRouter:
     def agents_page():
         return HTMLResponse(read("agents.html"), headers={"Cache-Control": "no-store"})
 
+    @router.get("/capabilities.html", response_class=HTMLResponse, include_in_schema=False)
+    def capabilities_page():
+        return HTMLResponse(read("capabilities.html"), headers={"Cache-Control": "no-store"})
+
     @router.get("/agents-workforce.css", include_in_schema=False)
     def agents_styles():
         return Response(read("agents-workforce.css"), media_type="text/css", headers={"Cache-Control": "no-cache"})
