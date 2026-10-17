@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0e13">
+  <title>What Vishnu Can Do</title>
+  <style>
+    :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",sans-serif;background:#0b0e13;color:#f2f5fa;--muted:#a1adbd;--line:rgba(180,198,225,.14);--card:#151a23;--blue:#8ec9ff;--green:#a8e0bd;--amber:#eacb8d;--violet:#c6a5ff}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;background:radial-gradient(ellipse at 50% 0,rgba(47,75,125,.22),transparent 44%),#0b0e13}.shell{width:min(1120px,100%);margin:auto;padding:max(20px,env(safe-area-inset-top)) clamp(16px,4vw,40px) max(40px,env(safe-area-inset-bottom))}
+    a{color:#b7d9ff;text-decoration:none}a:hover{text-decoration:underline}button,input{font:inherit;color:inherit}.top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:42px}.back{display:inline-flex;align-items:center;min-height:44px;padding:0 14px;border:1px solid var(--line);border-radius:13px;color:#e7edf6;background:#151a23}.brand{font-size:.77rem;letter-spacing:.24em;color:#b8c7dc}
+    .hero{max-width:820px;margin-bottom:28px}.eyebrow{color:var(--blue);font-size:.72rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase}.hero h1{font-weight:560;letter-spacing:-.035em;font-size:clamp(2rem,6vw,3.5rem);line-height:1.08;margin:12px 0}.hero p{max-width:720px;color:#bac4d3;font-size:1.02rem;line-height:1.65;margin:0}
+    .notice{margin:22px 0 28px;padding:15px 17px;border:1px solid rgba(142,201,255,.22);border-radius:15px;background:rgba(39,75,112,.17);color:#c7d5e7;line-height:1.55;font-size:.9rem}
+    .toolbar{position:sticky;top:0;z-index:2;display:flex;gap:10px;padding:10px 0 14px;background:linear-gradient(#0b0e13 80%,transparent)}.toolbar input{min-width:0;flex:1;height:46px;padding:0 14px;border:1px solid var(--line);border-radius:13px;background:#151a23;outline:none}.toolbar input:focus{border-color:#74b9f3;box-shadow:0 0 0 2px rgba(116,185,243,.14)}
+    .section{margin-top:34px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px}.section h2{font-size:1.22rem;font-weight:590;margin:0}.section-head p{margin:5px 0 0;color:var(--muted);font-size:.87rem;line-height:1.45}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{min-width:0;padding:18px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(150deg,rgba(24,31,43,.97),rgba(18,22,30,.97));box-shadow:0 12px 30px rgba(0,0,0,.12)}.card h3{margin:0;font-size:1rem;font-weight:590}.card p{color:#aeb9c9;font-size:.88rem;line-height:1.56;margin:9px 0 12px}.card ul{padding-left:19px;margin:0;color:#c6cfdd;font-size:.84rem;line-height:1.65}.card li+li{margin-top:3px}
+    .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:13px}.chip{display:inline-flex;align-items:center;min-height:25px;padding:3px 9px;border:1px solid var(--line);border-radius:999px;color:#bdc8d8;font-size:.68rem}.chip.ready{color:var(--green);border-color:rgba(168,224,189,.28)}.chip.config{color:var(--blue);border-color:rgba(142,201,255,.28)}.chip.experimental{color:var(--violet);border-color:rgba(198,165,255,.3)}.chip.pending{color:var(--amber);border-color:rgba(234,203,141,.3)}
+    .agent-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px}.agent{padding:12px;border:1px solid var(--line);border-radius:13px;background:rgba(255,255,255,.025)}.agent strong{font-size:.84rem;font-weight:580}.agent span{display:block;color:var(--muted);font-size:.75rem;line-height:1.45;margin-top:4px}
+    .status-key{display:flex;flex-wrap:wrap;gap:8px}.status-key span{padding:7px 10px;border:1px solid var(--line);border-radius:10px;color:#b9c4d4;font-size:.75rem}.footer{margin-top:42px;border-top:1px solid var(--line);padding-top:17px;color:#8f9bad;font-size:.77rem;line-height:1.55}
+    .empty{display:none;color:var(--muted);padding:20px;border:1px dashed var(--line);border-radius:14px}
+    @media(max-width:680px){.top{margin-bottom:30px}.grid{grid-template-columns:1fr}.agent-list{grid-template-columns:repeat(2,minmax(0,1fr))}.card{padding:15px}.section{margin-top:29px}}
+    @media(max-width:360px){.agent-list{grid-template-columns:1fr}.toolbar{top:0}.top{align-items:flex-start}.brand{padding-top:13px;font-size:.67rem}}
+    @media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;transition:none!important}}
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="top"><a class="back" href="/iphone/">← Home</a><span class="brand">VISHNU · CAPABILITY GUIDE</span></header>
+    <section class="hero">
+      <div class="eyebrow">Your personal AI platform</div>
+      <h1>What Vishnu can do</h1>
+      <p>Vishnu combines a conversational assistant with memory, knowledge, specialist agents, governed tools, devices, and research labs. This guide explains what is in the project and what each part needs before you can use it.</p>
+      <div class="notice"><strong>How to read this page:</strong> “In the codebase” means the system has an implementation. It does not guarantee the feature is enabled on this device. Some features need setup, owner approval, an external provider, or further platform testing. This page does not grant permissions or activate tools.</div>
+    </section>
+    <div class="toolbar"><input id="search" type="search" placeholder="Search capabilities, tools, agents, or labs" aria-label="Search Vishnu capabilities"></div>
+    <p id="empty" class="empty" role="status">No matching items. Try a different search.</p>
+
+    <section class="section" aria-labelledby="capabilitiesHeading">
+      <div class="section-head"><div><h2 id="capabilitiesHeading">Capabilities</h2><p>The main kinds of work Vishnu is designed to support.</p></div></div>
+      <div class="grid">
+        <article class="card" data-search="conversation chat models reasoning routing">
+          <h3>Conversation and model routing</h3><p>Talk with Vishnu, ask questions, plan a task, and route work to a configured model. Model choice and availability depend on owner settings and provider configuration.</p><div class="chips"><span class="chip config">Provider setup may be required</span></div>
+        </article>
+        <article class="card" data-search="memory knowledge files documents content intelligence search">
+          <h3>Memory, Knowledge, and files</h3><p>Keep personal Memory separate from project Knowledge; ingest supported files, search content, and produce answers grounded in retrieved sources.</p><div class="chips"><span class="chip ready">Implemented foundations</span><span class="chip pending">Format and UI coverage varies</span></div>
+        </article>
+        <article class="card" data-search="agents projects tasks work planning approval durable recovery">
+          <h3>Plan and carry out work</h3><p>Break work into plans and tasks, delegate to specialist agents, track progress, request approvals, cancel work, and preserve execution state for supported recovery paths.</p><div class="chips"><span class="chip ready">Governed work system</span><span class="chip pending">End-to-end coverage varies</span></div>
+        </article>
+        <article class="card" data-search="tools integrations openapi mcp browser computer control">
+          <h3>Use governed tools and integrations</h3><p>Use registered Vishnu tools and connect OpenAPI or MCP services through the capability catalog, risk checks, owner approvals, credential controls, and audit history.</p><div class="chips"><span class="chip ready">Governance is built in</span><span class="chip config">External services need setup</span></div>
+        </article>
+        <article class="card" data-search="devices identity pairing trust scopes revoke recovery">
+          <h3>Connect and manage devices</h3><p>Create or join an owner identity, pair trusted devices, scope access, and revoke devices. Recovery and mobile flows still need platform-specific qualification.</p><div class="chips"><span class="chip ready">Implemented foundations</span><span class="chip pending">Physical-device behavior not established</span></div>
+        </article>
+        <article class="card" data-search="storage data plane device only sync everywhere on demand cloud">
+          <h3>Choose where data lives</h3><p>Data policies include device_only, progress_only, sync_everywhere, and on_demand. Transfers and provider placement follow explicit policy; the design does not silently move owner data.</p><div class="chips"><span class="chip ready">Policy and transfer foundations</span><span class="chip config">Storage provider setup may be required</span></div>
+        </article>
+        <article class="card" data-search="voice speech audio persona telephony">
+          <h3>Voice</h3><p>Voice personas, speech provider adapters, voice tooling, and a Voice Lab are present. Speech, phone calls, and acoustic behavior depend on configured providers and hardware.</p><div class="chips"><span class="chip config">Provider and device dependent</span><span class="chip pending">Live acoustics not verified</span></div>
+        </article>
+        <article class="card" data-search="automation scheduled proactive reminders notifications background">
+          <h3>Automation and proactive work</h3><p>Scheduled workflows, reminders, notifications, and proactive work have runtime foundations. Availability depends on enabled services, permissions, and background execution support.</p><div class="chips"><span class="chip config">Runtime setup may be required</span></div>
+        </article>
+        <article class="card" data-search="content intelligence pdf docx xlsx pptx image audio video documents">
+          <h3>Content intelligence</h3><p>Document and media ingestion covers common office, text, data, image, audio, video, and code paths. Optional parsers, OCR, and models affect which formats work in a given installation.</p><div class="chips"><span class="chip ready">Multiple parsers implemented</span><span class="chip config">Installed dependencies determine coverage</span></div>
+        </article>
+        <article class="card" data-search="products build composer app package release">
+          <h3>Build Vishnu-powered products</h3><p>Product workspaces support composing product definitions, managing build lifecycle, and using platform-specific runners. Signing, distribution, and release acceptance remain separate gates.</p><div class="chips"><span class="chip ready">Build infrastructure exists</span><span class="chip pending">Distribution acceptance not implied</span></div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="toolsHeading">
+      <div class="section-head"><div><h2 id="toolsHeading">Built-in tool areas</h2><p>Tool modules are adapters inside Vishnu’s existing registry and permission system. Registration can depend on runtime configuration.</p></div></div>
+      <div class="grid">
+        <article class="card" data-search="files documents content intelligence"><h3>Files and content</h3><ul><li>Files, desktop files, and document handling</li><li>Content intelligence and supported-format parsing</li><li>Knowledge and project information access</li></ul><div class="chips"><span class="chip ready">Code present</span><span class="chip config">Parser availability varies</span></div></article>
+        <article class="card" data-search="web browser screen vision computer desktop control"><h3>Web, browser, and computer</h3><ul><li>Web access and browser actions</li><li>Screen inspection and vision adapters</li><li>Governed desktop/computer actions with risk checks</li></ul><div class="chips"><span class="chip config">Runtime and approval dependent</span></div></article>
+        <article class="card" data-search="memory recovery continuity storage device data"><h3>Memory, recovery, and data</h3><ul><li>Memory tools and recovery/continuity paths</li><li>Data access and local-first storage fabric</li><li>Device compute and trusted-device interfaces</li></ul><div class="chips"><span class="chip ready">Code present</span><span class="chip pending">Full cross-device flow not verified</span></div></article>
+        <article class="card" data-search="automation reminders proactive notifications integrations google"><h3>Automation and connections</h3><ul><li>Reminders, automation, proactive actions, notifications</li><li>Integration adapters and Google read/write adapters</li><li>External services remain governed and may require credentials</li></ul><div class="chips"><span class="chip config">Service and credential dependent</span></div></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="agentsHeading">
+      <div class="section-head"><div><h2 id="agentsHeading">Specialist agents</h2><p>These roles are part of the agent workforce. The workforce API determines which agents are registered and available in a given installation.</p></div><a href="/iphone/agents.html">Open agent workforce →</a></div>
+      <div class="agent-list">
+        <div class="agent" data-search="project manager coordination teams planning"><strong>Project Manager</strong><span>Coordinates project plans and specialist work.</span></div>
+        <div class="agent" data-search="coding software debugging tests review"><strong>Coding Agent</strong><span>Software implementation, debugging, and tests.</span></div>
+        <div class="agent" data-search="research sources analysis"><strong>Research Agent</strong><span>Research and source analysis.</span></div>
+        <div class="agent" data-search="browser web navigation extraction"><strong>Browser Agent</strong><span>Governed browser navigation and information extraction.</span></div>
+        <div class="agent" data-search="data analysis databases spreadsheets reporting"><strong>Data Agent</strong><span>Data analysis, databases, spreadsheets, and reports.</span></div>
+        <div class="agent" data-search="reviewer independent evidence"><strong>Reviewer</strong><span>Independent review and evidence checks.</span></div>
+        <div class="agent" data-search="qa quality assurance testing validation"><strong>QA Agent</strong><span>Testing and validation.</span></div>
+        <div class="agent" data-search="security vulnerability"><strong>Security Agent</strong><span>Security review and vulnerability analysis.</span></div>
+        <div class="agent" data-search="design ui ux accessibility"><strong>Design Agent</strong><span>UI/UX and accessibility work.</span></div>
+        <div class="agent" data-search="files documents project"><strong>Files Agent</strong><span>Project-scoped files and documents.</span></div>
+        <div class="agent" data-search="communications writing approval"><strong>Communications Agent</strong><span>Communication drafts under approval rules.</span></div>
+        <div class="agent" data-search="knowledge organize verified learnings"><strong>Knowledge Agent</strong><span>Organizes project knowledge and verified learnings.</span></div>
+      </div>
+      <div class="chips"><span class="chip config">Agents are scoped; tool permissions and approvals still apply</span></div>
+    </section>
+
+    <section class="section" aria-labelledby="skillsHeading">
+      <div class="section-head"><div><h2 id="skillsHeading">Skills</h2><p>Reusable action recipes, not extra permissions.</p></div></div>
+      <article class="card" data-search="skills learning recipes allowed actions declarative">
+        <h3>Skill-learning system · experimental</h3><p>The repository includes an experimental system that can represent a skill as a declarative plan from an explicit list of allowed actions, evaluate it, and route real actions through Vishnu’s normal governance. The audit does not establish a fixed, user-facing catalog of ready-made skills. A learned recipe cannot grant itself a new tool or bypass approval.</p><div class="chips"><span class="chip experimental">Experimental</span><span class="chip ready">No permission bypass</span></div>
+      </article>
+    </section>
+
+    <section class="section" aria-labelledby="labsHeading">
+      <div class="section-head"><div><h2 id="labsHeading">Labs and experimental areas</h2><p>Research and qualification work is separated from normal assistant authority.</p></div></div>
+      <div class="grid">
+        <article class="card" data-search="intelligence lab reasoning planning learning world models affect skills"><h3>Intelligence Lab</h3><p>Isolated research into reasoning, planning, learning, world models, affect estimates, simulations, and skill learning. Lab results do not independently authorize actions.</p><div class="chips"><span class="chip experimental">Experimental and gated</span></div></article>
+        <article class="card" data-search="voice lab providers speech audio devices languages interruption quality telephony"><h3>Voice Lab</h3><p>Tests voice providers, speech, device behavior, languages, interruption, quality, and telephony. Lab qualification does not automatically change production voice behavior.</p><div class="chips"><span class="chip experimental">Experimental and gated</span></div></article>
+        <article class="card" data-search="sensorium native device lab virtual android ios simulator vm physical device"><h3>Sensorium / Native Device Lab</h3><p>Includes virtual sensing and hardware-free qualification through Android Emulator, iOS Simulator, and hosted desktop VMs. These results do not prove behavior on physical phones or sensors.</p><div class="chips"><span class="chip ready">Emulator/simulator/VM paths</span><span class="chip pending">Physical-device qualification pending</span></div></article>
+        <article class="card" data-search="capability forge create design qualify capabilities approvals side effects"><h3>Capability Forge</h3><p>Infrastructure for designing and qualifying governed capabilities, with staged side effects and approval boundaries. It is gated and does not enable unrestricted self-modification.</p><div class="chips"><span class="chip experimental">Gated development surface</span></div></article>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="reaHeading">
+      <div class="section-head"><div><h2 id="reaHeading">Reverse engineering: REA</h2><p>Reverse Engineer Anything, connected through a bounded MCP integration.</p></div></div>
+      <article class="card" data-search="reverse engineering rea binaries firmware apps network decompile ghidra jadx ida mcp">
+        <h3>What the connection does</h3><p>When the pinned REA runtime is installed and running, Vishnu can read REA’s live MCP tool catalog and project its advertised operations through Vishnu’s ToolRegistry. The specific operations available depend on that live catalog and on REA’s provider prerequisites.</p>
+        <ul><li>Vishnu keeps its normal owner permissions, approvals, emergency stop, and audit around projected tools.</li><li>Read-only, destructive, and other side-effecting operations use their declared risk floor; unknown risk fails closed.</li><li>Target-derived code, logs, scripts, network data, and file content are treated as untrusted input.</li><li>Analysis engines may require separate software, hardware, isolation, or commercial licenses. Vishnu does not supply those automatically.</li></ul>
+        <div class="chips"><span class="chip config">REA installation/runtime required</span><span class="chip pending">Live provider qualification not implied</span></div>
+      </article>
+    </section>
+
+    <section class="section" aria-labelledby="limitsHeading">
+      <div class="section-head"><div><h2 id="limitsHeading">Status guide</h2><p>These labels prevent a source file or mock test from being mistaken for a fully working product path.</p></div></div>
+      <div class="status-key"><span>In code: implementation exists</span><span>Setup required: configuration/provider/device needed</span><span>Experimental: gated research or lab</span><span>Not verified: execution evidence is missing</span></div>
+    </section>
+    <footer class="footer">This page is a product guide, not a live health check. The current runtime, active providers, production deployment, physical-device behavior, and exact availability of every integration are not verified here. Features continue to use Vishnu’s existing ToolRegistry, ApprovalManager, DeviceRegistry, and data-placement controls.</footer>
+  </main>
+  <script>
+    const query=document.querySelector('#search'),cards=[...document.querySelectorAll('[data-search]')],empty=document.querySelector('#empty');
+    query.addEventListener('input',()=>{const q=query.value.trim().toLowerCase();let visible=0;for(const card of cards){const match=!q||(card.dataset.search+' '+card.textContent).toLowerCase().includes(q);card.hidden=!match;if(match)visible++}empty.style.display=visible?'none':'block'});
+  </script>
+</body>
+</html>
