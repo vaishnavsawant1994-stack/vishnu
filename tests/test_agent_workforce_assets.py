@@ -13,6 +13,7 @@ def test_workforce_assets_are_explicitly_served_and_shell_gets_single_entry_scri
     pwa.mkdir()
     (pwa / "index.html").write_text("<html><body><main>Vishnu</main></body></html>", encoding="utf-8")
     (pwa / "agents.html").write_text("<html><body>Agents</body></html>", encoding="utf-8")
+    (pwa / "capabilities.html").write_text("<html><body>Capability guide</body></html>", encoding="utf-8")
     (pwa / "agents-workforce.css").write_text(".aw-app{display:grid}", encoding="utf-8")
     (pwa / "agents-workforce.js").write_text("window.AGENTS=true", encoding="utf-8")
     (pwa / "agents-workforce-work-mode.js").write_text("window.WORK_MODE=true", encoding="utf-8")
@@ -32,6 +33,11 @@ def test_workforce_assets_are_explicitly_served_and_shell_gets_single_entry_scri
     assert agents.headers["cache-control"] == "no-store"
     assert "Agents" in agents.text
 
+    capabilities = client.get("/iphone/capabilities.html")
+    assert capabilities.status_code == 200
+    assert capabilities.headers["cache-control"] == "no-store"
+    assert "Capability guide" in capabilities.text
+
     css = client.get("/iphone/agents-workforce.css")
     js = client.get("/iphone/agents-workforce.js")
     work_mode = client.get("/iphone/agents-workforce-work-mode.js")
@@ -48,6 +54,7 @@ def test_asset_router_does_not_expose_generic_pwa_files(tmp_path):
     for name, content in {
         "index.html": "<body></body>",
         "agents.html": "Agents",
+        "capabilities.html": "Capability guide",
         "agents-workforce.css": "x{}",
         "agents-workforce.js": "x=1",
         "agents-workforce-work-mode.js": "z=1",
@@ -59,3 +66,4 @@ def test_asset_router_does_not_expose_generic_pwa_files(tmp_path):
     app.include_router(agent_workforce_assets_router(SimpleNamespace(base_dir=tmp_path)))
     client = TestClient(app)
     assert client.get("/iphone/private.txt").status_code == 404
+    assert client.get("/iphone/not-a-real-page.html").status_code == 404
