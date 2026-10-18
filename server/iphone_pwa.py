@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, SecretStr
+from data_plane.runtime import get_data_plane
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from webauthn import (
@@ -112,6 +113,7 @@ class NativeFirstRunCompleteBody(BaseModel):
     device_token: SecretStr = Field(min_length=32, max_length=256)
     recovery_saved: Literal[True]
     privacy_mode: Literal['local_only', 'local_preferred', 'external_allowed'] = 'local_only'
+    data_policy: Literal['device_only', 'progress_only', 'sync_everywhere', 'on_demand'] = 'progress_only'
     model_choice: Literal['configure_later', 'configured']
 
 
@@ -703,6 +705,13 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 autonomy_mode='ask',
                 memory_enabled=True,
             )
+            data_plane = get_data_plane(runtime)
+            if data_plane is not None:
+                saved_policy = data_plane.update_settings(default_policy=body.data_policy)
+                if str(saved_policy.get('default_policy') or '') != body.data_policy:
+                    raise RuntimeError('Vishnu did not confirm the selected data placement policy')
+            elif body.data_policy != 'progress_only':
+                raise RuntimeError('The selected data placement policy is unavailable on this runtime')
             if body.model_choice == 'configure_later':
                 first_run_setup.skip_model_configuration()
             elif 'model' not in state.get('completed_steps', []):

@@ -63,6 +63,8 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var modelName: EditText
     private lateinit var providerKey: EditText
     private lateinit var privacyChoice: Spinner
+    private lateinit var dataPolicyChoice: Spinner
+    private lateinit var authenticationChoice: Spinner
     private lateinit var firstName: EditText
     private lateinit var lastName: EditText
     private lateinit var displayName: EditText
@@ -76,6 +78,10 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var restoreBase: EditText
     private lateinit var recoveryCodeInput: EditText
     private lateinit var restoreStatus: TextView
+    private var genesisStep = 1
+    private lateinit var genesisProgress: TextView
+    private lateinit var genesisHeading: TextView
+    private lateinit var genesisSubtitle: TextView
 
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         val contents = result.contents
@@ -111,22 +117,30 @@ class ConnectActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(34), dp(28), dp(34))
-            setBackgroundColor(PersonalAITheme.ColorToken.background)
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
+                PersonalAITheme.ColorToken.deepBackground,
+                PersonalAITheme.ColorToken.background,
+            ))
         }
         val brand = TextView(this).apply {
             text = "V I S H N U"
-            textSize = 13f
-            setTextColor(PersonalAITheme.ColorToken.secondaryText)
+            textSize = 22f
+            gravity = android.view.Gravity.CENTER
+            letterSpacing = .28f
+            setTextColor(PersonalAITheme.ColorToken.text)
         }
+        val core = VishnuGenesisCoreView(this)
         val title = TextView(this).apply {
             text = "Welcome to Vishnu"
-            textSize = 30f
+            textSize = 36f
+            gravity = android.view.Gravity.CENTER
             setTextColor(PersonalAITheme.ColorToken.text)
             setPadding(0, dp(18), 0, dp(10))
         }
         val copy = TextView(this).apply {
-            text = "Create a new Vishnu on this phone, or connect this phone to the Vishnu you already have."
+            text = "Your personal intelligence. Your data. Your world."
             textSize = 15f
+            gravity = android.view.Gravity.CENTER
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, 0, 0, dp(24))
         }
@@ -216,6 +230,10 @@ class ConnectActivity : AppCompatActivity() {
         create.setOnClickListener {
             createBox.visibility = if (createBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
             joinBox.visibility = View.GONE
+            if (createBox.visibility == View.VISIBLE) {
+                genesisStep = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) 2 else 5
+                renderGenesisStep()
+            }
         }
         restoreBox = buildRestoreForm()
         restoreBox.visibility = View.GONE
@@ -239,6 +257,7 @@ class ConnectActivity : AppCompatActivity() {
         }
 
         root.addView(brand)
+        root.addView(core, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(220)))
         root.addView(title)
         root.addView(copy)
         root.addView(create)
@@ -270,31 +289,39 @@ class ConnectActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(0, dp(18), 0, dp(10))
         }
+        genesisProgress = TextView(this).apply { gravity = android.view.Gravity.CENTER; textSize = 12f; setTextColor(PersonalAITheme.ColorToken.brightAccent); tag = "genesis-common" }
+        genesisHeading = TextView(this).apply { gravity = android.view.Gravity.CENTER; textSize = 30f; setTextColor(PersonalAITheme.ColorToken.text); setPadding(0, dp(14), 0, dp(6)); tag = "genesis-common" }
+        genesisSubtitle = TextView(this).apply { gravity = android.view.Gravity.CENTER; textSize = 15f; setTextColor(PersonalAITheme.ColorToken.secondaryText); setPadding(0, 0, 0, dp(16)); tag = "genesis-common" }
         val explanation = TextView(this).apply {
-            text = "This phone will be your first trusted device. Connect to a securely configured Vishnu runtime; the runtime stores the canonical owner identity and data."
+            text = "Owner identity, security, recovery, and trusted-device creation are completed by your local Vishnu runtime."
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, 0, 0, dp(12))
+            tag = "genesis-4"
         }
         firstRunBase = EditText(this).apply {
             hint = "Secure Vishnu runtime URL (https://…)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setText(prefs.getString("base", "") ?: "")
+            tag = "genesis-4"
         }
         bootstrap = EditText(this).apply {
             hint = "One-time runtime setup code"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            tag = "genesis-4"
         }
-        firstName = EditText(this).apply { hint = "First name" }
-        lastName = EditText(this).apply { hint = "Last name (optional)" }
-        displayName = EditText(this).apply { hint = "Display name (optional)" }
+        firstName = EditText(this).apply { hint = "First name"; tag = "genesis-2" }
+        lastName = EditText(this).apply { hint = "Last name"; tag = "genesis-2" }
+        displayName = EditText(this).apply { hint = "Display name"; tag = "genesis-2" }
         ownerPassword = EditText(this).apply {
             hint = "Owner password (12 characters minimum)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            tag = "genesis-4"
         }
         ownerPasswordAgain = EditText(this).apply {
             hint = "Confirm owner password"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            tag = "genesis-4"
         }
         listOf(firstRunBase, bootstrap, firstName, lastName, displayName, ownerPassword, ownerPasswordAgain)
             .forEach(::styleField)
@@ -303,8 +330,9 @@ class ConnectActivity : AppCompatActivity() {
             textSize = 12f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(4), 0, dp(10))
+            tag = "genesis-4"
         }
-        createButton = Button(this).apply { text = "Create Vishnu on this phone" }
+        createButton = Button(this).apply { text = "Create owner security →"; tag = "genesis-4" }
         styleButton(createButton, true)
         createStatus = TextView(this).apply {
             textSize = 13f
@@ -317,35 +345,48 @@ class ConnectActivity : AppCompatActivity() {
             setTextColor(PersonalAITheme.ColorToken.text)
             background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border)
             setPadding(dp(14), dp(14), dp(14), dp(14))
-            visibility = View.GONE
+            tag = "genesis-5"
         }
         recoverySaved = CheckBox(this).apply {
             text = "I saved these recovery codes somewhere outside this phone."
             setTextColor(PersonalAITheme.ColorToken.text)
-            visibility = View.GONE
+            tag = "genesis-5"
         }
         val privacyLabel = TextView(this).apply {
             text = "Where may Vishnu use your data?"
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(14), 0, dp(5))
+            tag = "genesis-9"
         }
         privacyChoice = Spinner(this).apply {
             adapter = ArrayAdapter(this@ConnectActivity,
                 android.R.layout.simple_spinner_dropdown_item,
                 listOf("Local only", "Local preferred", "External providers allowed"))
-            visibility = View.GONE
+            tag = "genesis-9"
+        }
+        authenticationChoice = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ConnectActivity, android.R.layout.simple_spinner_dropdown_item,
+                listOf("Passkey — Recommended", "Password", "Passkey + Password"))
+            tag = "genesis-3"
+        }
+        dataPolicyChoice = Spinner(this).apply {
+            adapter = ArrayAdapter(this@ConnectActivity, android.R.layout.simple_spinner_dropdown_item,
+                listOf("Device Only", "Progress Only — Recommended", "Sync Everywhere", "On Demand"))
+            setSelection(1)
+            tag = "genesis-7"
         }
         modelProvider = Spinner(this).apply {
             adapter = ArrayAdapter(this@ConnectActivity,
                 android.R.layout.simple_spinner_dropdown_item,
                 listOf("Configure later", "Use a local model", "OpenAI", "Gemini", "OpenRouter", "DeepSeek", "xAI", "Groq", "Cerebras", "Mistral", "Custom provider"))
-            visibility = View.GONE
+            tag = "genesis-8"
         }
-        modelName = EditText(this).apply { hint = "Provider model name" }
+        modelName = EditText(this).apply { hint = "Provider model name"; tag = "genesis-8" }
         providerKey = EditText(this).apply {
             hint = "Provider API key"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            tag = "genesis-8"
         }
         listOf(modelName, providerKey).forEach(::styleField)
         modelName.visibility = View.GONE
@@ -359,16 +400,48 @@ class ConnectActivity : AppCompatActivity() {
             }
         }
         finishButton = Button(this).apply {
-            text = "Finish setup"
-            visibility = View.GONE
+            text = "Create my Vishnu →"
+            tag = "genesis-10"
         }
         styleButton(finishButton, true)
+        fun stepButton(step: Int, label: String, next: () -> Unit) = Button(this).apply {
+            text = "$label →"; tag = "genesis-$step"; styleButton(this, true); setOnClickListener { next() }
+        }
+        val identityNext = stepButton(2, "Continue") {
+            if (firstName.text.toString().trim().isEmpty()) createStatus.text = "First name is required."
+            else { genesisStep = 3; renderGenesisStep() }
+        }
+        val securityNext = stepButton(3, "Continue") { genesisStep = 4; renderGenesisStep() }
+        val recoveryNext = stepButton(5, "Continue") {
+            if (!recoverySaved.isChecked) createStatus.text = "Confirm that you safely stored the recovery codes."
+            else { genesisStep = 6; renderGenesisStep() }
+        }
+        val deviceSummary = TextView(this).apply {
+            text = "This Android device\nSecure device credential created\nCan be revoked later"
+            textSize = 15f; setTextColor(PersonalAITheme.ColorToken.text); setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border); tag = "genesis-6"
+        }
+        val deviceNext = stepButton(6, "Trust this device") { genesisStep = 7; renderGenesisStep() }
+        val dataNext = stepButton(7, "Continue") { genesisStep = 8; renderGenesisStep() }
+        val modelNext = stepButton(8, "Continue") { genesisStep = 9; renderGenesisStep() }
+        val privacyNext = stepButton(9, "Continue") { genesisStep = 10; renderGenesisStep() }
+        val reviewSummary = TextView(this).apply {
+            text = "Owner identity configured\nSecurity and recovery configured\nThis device trusted\nData placement selected\nIntelligence selected\nPrivacy owner controlled"
+            textSize = 15f; setTextColor(PersonalAITheme.ColorToken.text); setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border); tag = "genesis-10"
+        }
+        form.addView(genesisProgress)
+        form.addView(genesisHeading)
+        form.addView(genesisSubtitle)
         form.addView(explanation)
-        form.addView(firstRunBase)
-        form.addView(bootstrap)
         form.addView(firstName)
         form.addView(lastName)
         form.addView(displayName)
+        form.addView(identityNext)
+        form.addView(authenticationChoice)
+        form.addView(securityNext)
+        form.addView(firstRunBase)
+        form.addView(bootstrap)
         form.addView(ownerPassword)
         form.addView(ownerPasswordAgain)
         form.addView(securityNote)
@@ -376,11 +449,19 @@ class ConnectActivity : AppCompatActivity() {
         form.addView(createStatus)
         form.addView(recoveryCodes)
         form.addView(recoverySaved)
+        form.addView(recoveryNext)
+        form.addView(deviceSummary)
+        form.addView(deviceNext)
+        form.addView(dataPolicyChoice)
+        form.addView(dataNext)
         form.addView(privacyLabel)
         form.addView(privacyChoice)
         form.addView(modelProvider)
         form.addView(modelName)
         form.addView(providerKey)
+        form.addView(modelNext)
+        form.addView(privacyNext)
+        form.addView(reviewSummary)
         form.addView(finishButton)
 
         createButton.setOnClickListener { createNativeFirstRun() }
@@ -390,17 +471,41 @@ class ConnectActivity : AppCompatActivity() {
                 if (codes.length() >= 4) {
                     recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown only during setup.\n\n" +
                         (0 until codes.length()).joinToString("\n") { codes.optString(it) }
-                    recoveryCodes.visibility = View.VISIBLE
-                    recoverySaved.visibility = View.VISIBLE
-                    privacyChoice.visibility = View.VISIBLE
-                    modelProvider.visibility = View.VISIBLE
-                    finishButton.visibility = View.VISIBLE
-                    createButton.visibility = View.GONE
+                    genesisStep = 5
                     createStatus.text = "Resume setup by confirming you saved the recovery codes."
                 }
             }
         }
+        renderGenesisStep(form)
         return form
+    }
+
+    private fun renderGenesisStep(container: LinearLayout = createBox) {
+        val titles = mapOf(
+            2 to ("Create your Vishnu identity" to "This is how Vishnu will know and address you."),
+            3 to ("Secure your Vishnu" to "Choose how Vishnu should verify it’s you."),
+            4 to ("Configure your authentication" to "Set up the authentication method you selected."),
+            5 to ("Protect your Vishnu" to "Store recovery codes so Vishnu can be restored safely."),
+            6 to ("Register this device" to "Make this Android device part of your trusted Vishnu network."),
+            7 to ("Choose where your data lives" to "Choose the policy for newly governed data."),
+            8 to ("Set up Vishnu’s intelligence" to "Choose how Vishnu should think and which AI providers it may use."),
+            9 to ("Choose what Vishnu can access" to "You stay in control. Permissions remain owner governed."),
+            10 to ("Your Vishnu is ready to be created" to "Review your setup, then create your Vishnu."),
+        )
+        genesisProgress.text = "Step $genesisStep of 10\n" + (1..10).joinToString(" ") { if (it <= genesisStep) "●" else "○" }
+        genesisHeading.text = titles[genesisStep]?.first.orEmpty()
+        genesisSubtitle.text = titles[genesisStep]?.second.orEmpty()
+        for (index in 0 until container.childCount) {
+            val child = container.getChildAt(index)
+            val marker = child.tag as? String ?: continue
+            if (marker.startsWith("genesis-")) child.visibility = if (marker == "genesis-common" || marker == "genesis-$genesisStep") View.VISIBLE else View.GONE
+        }
+        if (genesisStep == 8) {
+            val needsCredentials = modelProvider.selectedItemPosition >= 2
+            modelName.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+            providerKey.visibility = if (needsCredentials) View.VISIBLE else View.GONE
+        }
+        createStatus.text = ""
     }
 
     private fun buildRestoreForm(): LinearLayout {
@@ -558,12 +663,8 @@ class ConnectActivity : AppCompatActivity() {
                             val text = (0 until codes.length()).joinToString("\n") { index -> codes.optString(index) }
                             prefs.edit().putString("pending_recovery_codes", codes.toString()).apply()
                             recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown here only during setup.\n\n$text"
-                            recoveryCodes.visibility = View.VISIBLE
-                            recoverySaved.visibility = View.VISIBLE
-                            privacyChoice.visibility = View.VISIBLE
-                            modelProvider.visibility = View.VISIBLE
-                            finishButton.visibility = View.VISIBLE
-                            createButton.visibility = View.GONE
+                            genesisStep = 5
+                            renderGenesisStep()
                             createStatus.text = "Your identity and first trusted device are ready. Save recovery codes before continuing."
                             bootstrap.setText("")
                             ownerPassword.setText("")
@@ -637,6 +738,7 @@ class ConnectActivity : AppCompatActivity() {
             .put("device_token", prefs.getString("pending_bearer", ""))
             .put("recovery_saved", true)
             .put("privacy_mode", listOf("local_only", "local_preferred", "external_allowed").getOrElse(privacyChoice.selectedItemPosition) { "local_only" })
+            .put("data_policy", listOf("device_only", "progress_only", "sync_everywhere", "on_demand").getOrElse(dataPolicyChoice.selectedItemPosition) { "progress_only" })
             .put("model_choice", if (modelConfigured) "configured" else "configure_later")
         createStatus.text = "Verifying your recovery and privacy choices…"
         val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/complete")
@@ -808,13 +910,15 @@ class ConnectActivity : AppCompatActivity() {
 
     private fun styleButton(button: Button, primary: Boolean) {
         val fill = if (primary) PersonalAITheme.ColorToken.primaryAction else PersonalAITheme.ColorToken.surface
-        val ink = if (primary) PersonalAITheme.ColorToken.background else PersonalAITheme.ColorToken.text
-        val stroke = if (primary) PersonalAITheme.ColorToken.primaryAction else PersonalAITheme.ColorToken.border
-        button.background = rounded(fill, stroke)
+        val ink = PersonalAITheme.ColorToken.text
+        val stroke = if (primary) PersonalAITheme.ColorToken.brightAccent else PersonalAITheme.ColorToken.border
+        button.background = rounded(fill, stroke).apply {
+            if (primary) cornerRadius = dp(28).toFloat()
+        }
         button.backgroundTintList = null
         button.setTextColor(ink)
         button.isAllCaps = false
-        button.minHeight = dp(50)
+        button.minHeight = dp(56)
         val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         params.bottomMargin = dp(10)
         button.layoutParams = params
@@ -822,7 +926,7 @@ class ConnectActivity : AppCompatActivity() {
 
     private fun rounded(fill: Int, stroke: Int): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
-        cornerRadius = dp(12).toFloat()
+        cornerRadius = dp(PersonalAITheme.cornerRadiusDp).toFloat()
         setColor(fill)
         setStroke(dp(1), stroke)
     }
