@@ -106,7 +106,7 @@ try {
     await page.goto(`http://127.0.0.1:${address.port}/iphone/`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => document.body.classList.contains('home-landing'));
     await page.locator('#historyButton').click();
-    await page.locator('[data-app-module="projects"]').click();
+    await page.locator('#appDrawer [data-app-module="projects"]').click();
     await page.locator('.project-list-page').waitFor();
     if (viewport.width <= 900) {
      await page.locator('#historyButton').click();
@@ -343,7 +343,7 @@ try {
   await preview.goto(`http://127.0.0.1:${address.port}/iphone/?uiDemo=1`, { waitUntil: 'domcontentloaded' });
   await preview.waitForFunction(() => document.body.classList.contains('home-landing'));
   await preview.locator('#historyButton').click();
-  await preview.locator('[data-app-module="projects"]').click();
+  await preview.locator('#appDrawer [data-app-module="projects"]').click();
   await preview.getByText('Preview data · sample projects only; these records are not saved to your account.').waitFor();
   assert.equal(await preview.locator('.project-card-rich').count(), 4, 'demo preview should show four clearly labeled sample projects');
   assert.ok((await preview.locator('.project-card-rich [data-project-open]').first().innerText()).includes('Preview'), 'demo project action must remain labeled as preview');
