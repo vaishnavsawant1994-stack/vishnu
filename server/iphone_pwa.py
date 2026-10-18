@@ -215,13 +215,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
 
     def device_cookie_kwargs():
         cookie_days = max(1, min(int(getattr(settings, 'iphone_device_cookie_days', 365)), 3650))
-        return dict(
+        cookie_kwargs = dict(
             httponly=True,
-            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            secure=True,
             samesite='strict',
             path='/iphone',
             max_age=60 * 60 * 24 * cookie_days,
         )
+        if getattr(settings, 'iphone_pwa_allow_insecure', False):
+            cookie_kwargs['secure'] = False
+        return cookie_kwargs
 
     def require_https(request: Request):
         forwarded = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
