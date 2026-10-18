@@ -3,6 +3,7 @@ from core.events import EventBus
 from knowledge.store import KnowledgeStore
 from memory.second_brain import MemoryCandidate, SecondBrain
 from memory.store import MemoryStore
+from models.router import InvalidModelResponse
 from tools.registry import Risk, Tool, ToolRegistry
 from types import SimpleNamespace
 
@@ -31,6 +32,27 @@ class Models:
 class Tools:
     def schema_text(self):
         return ''
+
+
+class ConversationalLocalModel(Models):
+    def json(self, prompt, *, system='', sensitivity='internal', private_context=''):
+        raise InvalidModelResponse('local model returned conversational text')
+
+    def chat(self, prompt, *, system='', history=None, sensitivity='internal', **kwargs):
+        return 'Local conversational answer'
+
+
+def test_invalid_local_planner_json_falls_back_to_safe_chat(tmp_path):
+    memory = MemoryStore(tmp_path / 'memory.sqlite3')
+    executor = AgentExecutor(
+        models=ConversationalLocalModel(),
+        tools=Tools(),
+        memory=memory,
+        events=EventBus(),
+    )
+
+    assert executor.chat('hello') == 'Local conversational answer'
+    assert memory.recent_messages(2)[-1]['content'] == 'Local conversational answer'
 
 
 def test_final_answer_receives_memory_and_cited_knowledge_context(tmp_path):

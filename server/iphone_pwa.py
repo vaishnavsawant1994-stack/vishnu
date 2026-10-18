@@ -217,7 +217,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         cookie_days = max(1, min(int(getattr(settings, 'iphone_device_cookie_days', 365)), 3650))
         return dict(
             httponly=True,
-            secure=True,
+            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
             samesite='strict',
             path='/iphone',
             max_age=60 * 60 * 24 * cookie_days,
@@ -398,6 +398,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def home_chat_redesign_script():
         return Response((web_dir / 'home-chat-redesign.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/reference-home.js', include_in_schema=False)
+    def reference_home_script():
+        return Response((web_dir / 'reference-home.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/reference-home.css', include_in_schema=False)
+    def reference_home_styles():
+        return Response((web_dir / 'reference-home.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
     @router.get('/reference-pages.js', include_in_schema=False)
     def reference_pages_script():
         return Response((web_dir / 'reference-pages.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
@@ -552,7 +560,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             raise HTTPException(409, str(exc)) from exc
         response.set_cookie(
             'pa_setup_claim', claim,
-            httponly=True, secure=True, samesite='strict', path='/iphone', max_age=900,
+            httponly=True, secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            samesite='strict', path='/iphone', max_age=900,
         )
         emit('owner.security.configured', device_id=device['id'], method='password')
         return {

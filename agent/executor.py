@@ -7,7 +7,7 @@ import time
 import uuid
 
 from agent.planner import Planner
-from models.router import ModelError
+from models.router import InvalidModelResponse, ModelError
 from security.action_audit import TrustedActionAudit
 from security.approvals import ApprovalManager, parameter_hash
 from security.projection_redaction import sanitize_external_value
@@ -223,6 +223,28 @@ class AgentExecutor:
             self._observe('agent.plan_ms', start)
         except ExecutionCancelled:
             raise
+        except InvalidModelResponse:
+            # Small/local models can answer conversationally while occasionally
+            # failing the planner's stricter JSON contract.  That is not a
+            # provider outage, so preserve ordinary chat by falling back to a
+            # direct response.  All tool execution remains unavailable unless
+            # a valid, validated plan was produced.
+            self._observe('agent.plan_ms', start)
+            self._check_cancel(cancel_event)
+            start = time.perf_counter()
+            answer = self.models.chat(
+                text,
+                history=history[:-1],
+                system=self._grounded_system('', response_detail, response_style, identity_context=identity_context),
+                sensitivity=sensitivity,
+                private_context=context,
+            )
+            self._observe('model.chat_ms', start)
+            self._check_cancel(cancel_event)
+            self.memory.add_message('assistant', answer, conversation_id=conversation_id, device_id=device_id)
+            self.events.emit('conversation.assistant', text=answer, device_id=device_id, conversation_id=conversation_id)
+            self.events.emit('state', state='speaking')
+            return answer
         except ModelError:
             self._observe('agent.plan_ms', start)
             raise

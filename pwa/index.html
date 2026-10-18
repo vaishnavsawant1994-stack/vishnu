@@ -3026,8 +3026,31 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
 <link rel="stylesheet" href="/iphone/knowledge-notes.css">
 <link rel="stylesheet" href="/iphone/owner-controls.css">
 <link rel="stylesheet" href="/iphone/chat-experience.css">
+<link rel="stylesheet" href="/iphone/reference-home.css">
 </head>
-<body>
+<body class="v-ref">
+<aside class="reference-desktop-sidebar" aria-label="Primary navigation">
+  <div class="reference-brand"><span class="reference-brand-orb"></span><span><strong>VISHNU</strong><small>Personal Intelligence OS</small></span></div>
+  <nav>
+    <button class="active" type="button" data-app-module="home"><span>⌂</span>Home</button>
+    <button type="button" data-app-module="labs"><span>▦</span>Workspaces</button>
+    <button type="button" data-app-module="projects"><span>□</span>Projects</button>
+    <button type="button" data-reference-agents><span>♧</span>Agents</button>
+    <button type="button" data-reference-create><span>＋</span>Create</button>
+    <button type="button" data-app-module="knowledge"><span>▤</span>Knowledge</button>
+    <button type="button" data-app-module="tools"><span>▦</span>Apps &amp; Tools</button>
+    <button type="button" data-app-module="devices"><span>▯</span>Devices</button>
+    <button type="button" data-app-module="activities"><span>⌁</span>Activity</button>
+    <button type="button" data-app-module="dashboard"><span>◉</span>Mission Control</button>
+    <button type="button" data-app-module="settings"><span>⚙</span>Settings</button>
+  </nav>
+  <div class="reference-owner"><span class="reference-avatar">V</span><span><strong data-reference-owner>Owner</strong><small>Free Thinker&nbsp; ∞ &nbsp;Builder</small></span></div>
+</aside>
+<div class="reference-desktop-tools">
+  <button type="button" data-reference-search aria-label="Search"><span>⌕</span> Search anything… <kbd>⌘ K</kbd></button>
+  <button type="button" data-app-module="activities" aria-label="Notifications">♧</button>
+  <button type="button" data-app-module="settings" class="reference-profile" aria-label="Profile">V</button>
+</div>
 <main class="app-shell">
   <header class="topbar">
     <button id="historyButton" class="history-button" type="button" aria-label="Open Vishnu menu" aria-expanded="false" aria-controls="appDrawer"><svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
@@ -3071,8 +3094,9 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
     <aside class="side-copy"><h1>A more<br/>capable you.</h1><div class="verbs"><span>Understand</span><span>Remember</span><span>Reason</span><span>Plan</span><span>Act with you</span></div></aside>
     <div class="presence">
       <div id="homeIntro" class="home-intro">
-        <div class="home-greeting"><h1 id="homeGreeting">Good morning</h1><p id="homeSubtitle">What would you like to work on?</p></div>
         <div id="homeSphereStage" class="home-sphere-stage" aria-label="Vishnu animated neural sphere"></div>
+        <div class="home-greeting"><h1 id="homeGreeting">Good morning</h1><p id="homeSubtitle">What would you like to work on?</p></div>
+        <div id="referenceComposerSlot" class="reference-composer-slot"></div>
         <div class="v-shortcuts" aria-label="Home actions">
           <button id="vProjects" class="v-card" type="button"><span class="v-icon"><svg viewBox="0 0 24 24"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span><span><strong>Projects</strong><small>Start or resume a workspace</small></span><span class="v-chev" aria-hidden="true">›</span></button>
           <button id="vAssign" class="v-card" type="button"><span class="v-icon"><svg viewBox="0 0 24 24"><path d="M12 3l1.6 4.2L18 9l-4.4 1.8L12 15l-1.6-4.2L6 9l4.4-1.8z"/></svg></span><span><strong>Assign work</strong><small>Give Vishnu a task</small></span><span class="v-chev" aria-hidden="true">›</span></button>
@@ -3135,6 +3159,13 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
     <button class="feature" data-module="knowledge"><svg viewBox="0 0 24 24"><path d="M4 5.5c3-1 5.7-.5 8 1.5v13c-2.3-2-5-2.5-8-1.5zM20 5.5c-3-1-5.7-.5-8 1.5v13c2.3-2 5-2.5 8-1.5z"/></svg><span><strong>Knowledge</strong><span>Documents kept separate from memory.</span></span><b>›</b></button>
   </section>
 </main>
+<nav class="reference-mobile-nav" aria-label="Mobile navigation">
+  <button class="active" type="button" data-app-module="home"><span>⌂</span><small>Home</small></button>
+  <button type="button" data-app-module="labs"><span>▱</span><small>Spaces</small></button>
+  <button class="reference-create-button" type="button" data-reference-create><span>＋</span><small>Create</small></button>
+  <button type="button" data-reference-agents><span>♧</span><small>Agents</small></button>
+  <button type="button" data-reference-more><span>•••</span><small>More</small></button>
+</nav>
 <div id="drawerOverlay" class="drawer-overlay hidden"></div>
 <aside id="appDrawer" class="app-drawer hidden" role="dialog" aria-modal="true" aria-label="Vishnu sidebar" aria-hidden="true">
   <div class="sidebar-top">
@@ -5043,5 +5074,6 @@ window.vishnuChatBridge={
 <script src="/iphone/knowledge-notes.js"></script>
 <script src="/iphone/owner-controls.js"></script>
 <script src="/iphone/chat-experience.js"></script>
+<script src="/iphone/reference-home.js"></script>
 </body>
 </html>

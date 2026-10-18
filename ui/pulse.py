@@ -58,6 +58,18 @@ class PulseWidget(QWidget):
         seed=self.seed[index]; phase=self.t*(.62+(index%4)*.07)+seed*2.4; breath=1.+math.sin(self.t*.72+index*.17)*amp*.34
         return QPointF(cx+nx*width*.78*breath+math.sin(phase)*width*amp*.070,cy+ny*height*.88*breath+math.cos(phase*.83)*height*amp*.076)
 
+    def _draw_sphere_shell(self,painter,cx,cy,size,primary,secondary):
+        """Draw a dimensionally stable spherical frame behind the neural graph."""
+        energy=self.STATE_ENERGY[self.state]; radius=size*.345
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.setPen(QPen(QColor(primary.red(),primary.green(),primary.blue(),int(72*energy)),1.15))
+        painter.drawEllipse(QPointF(cx,cy),radius,radius)
+        painter.setPen(QPen(QColor(secondary.red(),secondary.green(),secondary.blue(),int(42*energy)),.72))
+        painter.drawEllipse(QPointF(cx,cy),radius*.42,radius)
+        painter.drawEllipse(QPointF(cx,cy),radius,radius*.36)
+        tilt=QPainterPath(); tilt.moveTo(cx-radius*.86,cy-radius*.30); tilt.cubicTo(cx-radius*.30,cy-radius*.72,cx+radius*.45,cy+radius*.60,cx+radius*.86,cy+radius*.30)
+        painter.drawPath(tilt)
+
     def _curve_between(self,a,b,index,bend_scale=1.):
         mx=(a.x()+b.x())*.5; my=(a.y()+b.y())*.5; vx=b.x()-a.x(); vy=b.y()-a.y(); length=max(1.,math.hypot(vx,vy)); direction=-1. if index%2 else 1.; bend=(8.+(index%5)*3.)*direction*bend_scale
         path=QPainterPath(a); path.quadTo(QPointF(mx-vy/length*bend,my+vx/length*bend),b); return path
@@ -112,5 +124,8 @@ class PulseWidget(QWidget):
             source=self._node_position(cx,cy,width,height,source_index); reach=width*(.072+.009*math.sin(self.t*2.3+i)); end=QPointF(source.x()+math.cos(angle)*reach,source.y()+math.sin(angle)*height*.095); painter.setPen(QPen(QColor(primary.red(),primary.green(),primary.blue(),92+i*9),.96)); painter.setBrush(Qt.BrushStyle.NoBrush); painter.drawPath(self._curve_between(source,end,i+90,1.35)); painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(QColor(primary.red(),primary.green(),primary.blue(),82)); painter.drawEllipse(end,1.7,1.7)
 
     def paintEvent(self,_):
-        painter=QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing); width,height=self.width(),self.height(); cx,cy=width*.50,height*.50; primary,secondary=self._palette(); energy=self.STATE_ENERGY[self.state]; glow=QRadialGradient(QPointF(cx,cy),min(width,height)*.45); glow.setColorAt(0,QColor(primary.red(),primary.green(),primary.blue(),int(34*energy))); glow.setColorAt(.42,QColor(secondary.red(),secondary.green(),secondary.blue(),int(16*energy))); glow.setColorAt(1,QColor(0,0,0,0)); painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(glow); painter.drawEllipse(QPointF(cx,cy),min(width,height)*.43,min(width,height)*.33)
-        self._draw_lattice(painter,cx,cy,width,height,primary); self._draw_listening(painter,cx,cy,width,height,primary); self._draw_thinking(painter,cx,cy,width,height,primary); self._draw_memory(painter,cx,cy,width,height,primary); self._draw_knowledge(painter,cx,cy,width,height,primary); self._draw_action(painter,cx,cy,width,height,primary); self._draw_speaking(painter,cx,cy,width,height,primary)
+        painter=QPainter(self); painter.setRenderHint(QPainter.RenderHint.Antialiasing); width,height=self.width(),self.height(); size=float(min(width,height)); cx,cy=width*.50,height*.50; primary,secondary=self._palette(); energy=self.STATE_ENERGY[self.state]; glow=QRadialGradient(QPointF(cx,cy),size*.45); glow.setColorAt(0,QColor(primary.red(),primary.green(),primary.blue(),int(34*energy))); glow.setColorAt(.42,QColor(secondary.red(),secondary.green(),secondary.blue(),int(16*energy))); glow.setColorAt(1,QColor(0,0,0,0)); painter.setPen(Qt.PenStyle.NoPen); painter.setBrush(glow); painter.drawEllipse(QPointF(cx,cy),size*.43,size*.43)
+        self._draw_sphere_shell(painter,cx,cy,size,primary,secondary)
+        sphere_clip=QPainterPath(); sphere_clip.addEllipse(QPointF(cx,cy),size*.345,size*.345); painter.save(); painter.setClipPath(sphere_clip)
+        self._draw_lattice(painter,cx,cy,size,size,primary); self._draw_listening(painter,cx,cy,size,size,primary); self._draw_thinking(painter,cx,cy,size,size,primary); self._draw_memory(painter,cx,cy,size,size,primary); self._draw_knowledge(painter,cx,cy,size,size,primary); self._draw_action(painter,cx,cy,size,size,primary); self._draw_speaking(painter,cx,cy,size,size,primary)
+        painter.restore()
