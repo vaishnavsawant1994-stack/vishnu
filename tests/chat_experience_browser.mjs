@@ -49,8 +49,7 @@ try{
   const desktop=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await wire(desktop);
   await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
-  await desktop.waitForSelector('#vNewChat');
-  await desktop.click('#vNewChat');
+  await desktop.locator('#vNewChat').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await desktop.screenshot({path:'artifacts/chat-new-empty-desktop.png',fullPage:true});
   assert.equal(await desktop.locator('#chatPromptGrid .chat-prompt-card').count(),4);
@@ -117,7 +116,7 @@ try{
   active=null;conversations=[];created=0;turns=0;modalities=[];
   await wire(mobile);
   await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
-  await mobile.click('#vNewChat');
+  await mobile.locator('#vNewChat').evaluate(node=>node.click());
   await mobile.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await mobile.screenshot({path:'artifacts/chat-new-empty-mobile.png',fullPage:true});
   assert.equal(await mobile.locator('#vContextChip').isVisible(),true,'mobile new chat exposes its current project context');

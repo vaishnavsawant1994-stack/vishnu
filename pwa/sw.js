@@ -1,4 +1,4 @@
-const CACHE='personal-ai-iphone-v39';
+const CACHE='personal-ai-iphone-v40';
 const SHELL=[
   '/iphone/','/iphone/manifest.webmanifest','/iphone/projects-workspace.css','/iphone/projects-workspace.js',
   '/iphone/reference-home.css','/iphone/reference-home.js',
