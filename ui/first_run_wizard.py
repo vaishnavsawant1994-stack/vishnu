@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtCore import Qt, QUrl, QRectF
+from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -22,6 +22,44 @@ from data_plane.runtime import get_data_plane
 from onboarding.first_run import FirstRunCoordinator, SetupMode
 
 
+class VishnuCore(QWidget):
+    """Static accessible rendering of the canonical Core for native setup."""
+
+    def __init__(self, state: str = 'identity'):
+        super().__init__()
+        self.state = state
+        self.setFixedSize(184, 184)
+        self.setAccessibleName(f'Vishnu intelligence core, {state} state')
+
+    def paintEvent(self, event):  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        bounds = QRectF(17, 17, 150, 150)
+        glow = QRadialGradient(bounds.center(), 78)
+        glow.setColorAt(0, QColor(77, 220, 255, 230))
+        glow.setColorAt(.13, QColor(32, 184, 255, 75))
+        glow.setColorAt(.72, QColor(3, 18, 32, 210))
+        glow.setColorAt(1, QColor(77, 220, 255, 30))
+        painter.setBrush(glow)
+        painter.setPen(QPen(QColor(164, 226, 255, 210), 1.3))
+        painter.drawEllipse(bounds)
+        painter.setPen(QPen(QColor(77, 220, 255, 80), .8))
+        for offset in (0, 24, 48, 72, 96, 120):
+            painter.drawLine(34 + offset, 59, 52 + (offset * 3) % 96, 132)
+            painter.drawLine(43, 43 + offset, 139, 57 + (offset * 2) % 85)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for index in range(34):
+            x = 39 + (index * 37) % 108
+            y = 37 + (index * 53) % 112
+            radius = 1.5 + (index % 4 == 0) * 1.8
+            painter.setBrush(QColor(150, 239, 255, 220))
+            painter.drawEllipse(QRectF(x, y, radius * 2, radius * 2))
+        painter.setPen(QPen(QColor(77, 220, 255, 125), 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(QRectF(5, 61, 174, 60))
+        painter.drawEllipse(QRectF(45, 4, 94, 176))
+
+
 class FirstRunWizard(QDialog):
     """Owner-first setup UI for a fresh Vishnu desktop installation."""
 
@@ -35,15 +73,16 @@ class FirstRunWizard(QDialog):
         self.external_connect = False
         self.setWindowTitle('Welcome to Vishnu')
         self.setModal(True)
-        self.resize(760, 620)
-        self.setMinimumSize(680, 560)
+        self.resize(1040, 820)
+        self.setMinimumSize(760, 680)
         self.setStyleSheet(self._stylesheet())
 
         root = QVBoxLayout(self)
         root.setContentsMargins(38, 32, 38, 32)
         root.setSpacing(20)
-        brand = QLabel('VISHNU')
+        brand = QLabel('V I S H N U')
         brand.setObjectName('brand')
+        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(brand)
         self.title = QLabel('Welcome to Vishnu')
         self.title.setObjectName('title')
@@ -87,18 +126,20 @@ class FirstRunWizard(QDialog):
     def _stylesheet() -> str:
         return """
         QDialog, QWidget { background:#050709; color:#edf4f7; font-family:Inter,"Segoe UI",Arial; }
-        QLabel#brand { color:#81939d; font-size:12px; font-weight:700; letter-spacing:4px; }
-        QLabel#title { font-size:30px; font-weight:700; color:#f5fafc; }
-        QLabel#subtitle { color:#8fa0aa; font-size:14px; }
-        QLabel#section { font-size:19px; font-weight:650; color:#eef6f9; }
-        QLabel#hint { color:#7d8c94; font-size:12px; }
-        QPushButton { background:#0a1014; border:1px solid #1b2b34; border-radius:12px; padding:11px 16px; color:#d5e1e6; }
-        QPushButton:hover { border-color:#385463; background:#0c151a; }
-        QPushButton#primary { background:#deedf1; color:#071015; border:0; font-weight:700; }
-        QPushButton#choice { text-align:left; min-height:58px; font-size:14px; }
-        QLineEdit, QComboBox { background:#080d11; border:1px solid #1b2b34; border-radius:10px; padding:10px; color:#edf4f7; min-height:20px; }
-        QComboBox QAbstractItemView { background:#080d11; color:#edf4f7; selection-background-color:#17313d; }
-        QCheckBox { color:#afbdc4; spacing:10px; }
+        QDialog, QWidget { background:#02060b; color:#f5faff; font-family:Geist,Inter,"Segoe UI",Arial; }
+        QLabel#brand { color:#f5faff; font-size:22px; font-weight:450; letter-spacing:7px; }
+        QLabel#title { font-size:38px; font-weight:350; color:#f5faff; }
+        QLabel#subtitle { color:#a7bacb; font-size:15px; }
+        QLabel#section { font-size:25px; font-weight:450; color:#f5faff; }
+        QLabel#hint { color:#687f94; font-size:12px; }
+        QPushButton { background:rgba(5,18,30,184); border:1px solid rgba(61,174,235,90); border-radius:13px; padding:12px 18px; color:#f5faff; }
+        QPushButton:hover, QPushButton:focus { border-color:#4ddcff; background:#071d2d; }
+        QPushButton#primary { background:#073b61; color:#f5faff; border:1px solid #4ddcff; border-radius:26px; font-weight:600; min-height:28px; }
+        QPushButton#choice { text-align:left; min-height:64px; font-size:14px; border-radius:17px; }
+        QLineEdit, QComboBox { background:#03111e; border:1px solid rgba(61,174,235,100); border-radius:13px; padding:11px; color:#f5faff; min-height:24px; }
+        QLineEdit:focus, QComboBox:focus { border-color:#4ddcff; }
+        QComboBox QAbstractItemView { background:#071522; color:#f5faff; selection-background-color:#0b456a; }
+        QCheckBox { color:#a7bacb; spacing:10px; }
         """
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
@@ -106,6 +147,8 @@ class FirstRunWizard(QDialog):
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(14)
+        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity')
+        layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
         heading_label = QLabel(heading)
         heading_label.setObjectName('section')
         layout.addWidget(heading_label)

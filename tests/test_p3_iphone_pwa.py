@@ -159,9 +159,10 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     actions = client.get('/iphone/first-run-actions.js')
     assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
     assert 'Restore Vishnu' in adapter.text
-    assert 'accessMethods?.append(restoreChoice)' in adapter.text
+    assert 'data-genesis-restore' in adapter.text
+    assert 'Step ${s.step} of 10' in adapter.text
     assert actions.status_code == 200 and '/first-run/create' in actions.text
-    assert "$('recoveryCode').focus()" in actions.text
+    assert "api('/first-run/complete'" in actions.text
 
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)

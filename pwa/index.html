@@ -7,6 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <link rel="manifest" href="/iphone/manifest.webmanifest" />
+  <link rel="stylesheet" href="/iphone/genesis.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <title>Vishnu</title>
   <style>
@@ -1866,7 +1867,7 @@
     }
 
     /* Dedicated Today surface — approved reference. Scoped so Home/Conversations/Timeline remain unchanged. */
-    .today-screen{position:fixed;z-index:54;inset:0;display:flex;justify-content:center;overflow:auto;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));background:rgba(2,8,15,.66);backdrop-filter:blur(18px) saturate(118%)}
+    .today-screen{position:fixed;z-index:60;inset:0;display:flex;justify-content:center;overflow:auto;padding:max(18px,env(safe-area-inset-top)) max(18px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(18px,env(safe-area-inset-left));background:rgba(2,8,15,.66);backdrop-filter:blur(18px) saturate(118%)}
     .today-screen.hidden{display:none}.today-shell{width:min(100%,820px);min-height:calc(100dvh - 36px);align-self:flex-start;border:1px solid rgba(54,132,225,.22);border-radius:25px;background:linear-gradient(155deg,rgba(8,18,31,.97),rgba(5,12,21,.96));box-shadow:0 24px 70px rgba(0,0,0,.35);padding:18px 20px 20px;color:rgba(245,248,255,.96)}
     .today-screen-head{display:grid;grid-template-columns:48px minmax(0,1fr) 48px;gap:12px;align-items:center}.today-screen-head button{width:48px;height:48px;border-radius:50%;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.05);color:#eaf2ff;display:grid;place-items:center;cursor:pointer}.today-screen-head button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8}.today-screen-title h1{font-size:29px;line-height:1.1;font-weight:620;margin:0}.today-screen-title p{margin:4px 0 0;color:rgba(180,197,220,.7);font-size:15px}
     .today-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px;margin-top:24px;padding:4px;height:58px;border-radius:21px;border:1px solid rgba(95,145,210,.14);background:rgba(10,19,31,.65)}.today-tab{border:0;border-radius:18px;background:transparent;color:rgba(210,221,240,.72);font-size:15px;font-weight:520;cursor:pointer}.today-tab.active{background:linear-gradient(135deg,#0A8CFF,#166AF4);color:white;box-shadow:0 5px 18px rgba(18,116,255,.25)}

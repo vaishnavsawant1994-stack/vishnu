@@ -210,7 +210,7 @@ body.v-ref.home-landing .v-project {
   body.v-ref.home-landing .v-recent { margin-top: 30px; }
 
   .reference-mobile-nav {
-    display: grid; position: fixed; z-index: 58; left: 12px; right: 12px; bottom: max(8px, env(safe-area-inset-bottom));
+    display: grid; position: fixed; z-index: 38; left: 12px; right: 12px; bottom: max(8px, env(safe-area-inset-bottom));
     height: 75px; grid-template-columns: repeat(5,1fr); align-items: center;
     border: 1px solid rgba(184,200,222,.16); border-radius: 25px;
     background: rgba(12,16,21,.94); box-shadow: 0 14px 45px rgba(0,0,0,.56); backdrop-filter: blur(24px);
