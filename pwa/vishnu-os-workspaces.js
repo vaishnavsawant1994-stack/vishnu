@@ -212,7 +212,8 @@
   function startSpatialRenderer(){
     const canvas=root.querySelector('.vos-spatial-canvas');
     const viewport=root.querySelector('.vos-spatial-viewport');
-    if(!canvas||!viewport)return;
+    if(!canvas||!viewport||canvas.dataset.initialized)return;
+    canvas.dataset.initialized='true';
     const gl=canvas.getContext('webgl',{alpha:true,antialias:true,preserveDrawingBuffer:false});
     if(!gl){viewport.dataset.renderMode='fallback';return;}
     const vert='attribute vec3 position; uniform vec3 center; uniform float yaw; uniform float pitch; uniform float zoom; uniform float aspect; varying float shade; '+
