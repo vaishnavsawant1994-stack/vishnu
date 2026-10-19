@@ -1293,13 +1293,6 @@ try {
   for(const width of [...sweepWidths].sort((a,b)=>a-b)){
     await page.setViewportSize({width,height:844});
     await page.evaluate(()=>enterHomeLanding());
-    // Viewport and conversation state can settle on a later frame; assert the
-    // fully rendered Home rather than transient zero-size layout geometry.
-    await page.waitForFunction(()=>{
-      const shortcuts=document.querySelector('.v-shortcuts');
-      return document.body.classList.contains('home-landing') &&
-        shortcuts && shortcuts.getBoundingClientRect().width > 0;
-    },null,{timeout:5000});
     const sweep=await page.evaluate(()=>{
       const box=selector=>{const r=document.querySelector(selector).getBoundingClientRect();return {left:r.left,right:r.right,width:r.width,height:r.height,bottom:r.bottom}};
       return {viewport:innerWidth,document:document.documentElement.scrollWidth,composer:box('#composer'),home:box('.home-intro'),header:box('.topbar'),quick:box('.v-shortcuts')};
