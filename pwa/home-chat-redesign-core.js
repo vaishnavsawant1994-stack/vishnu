@@ -325,6 +325,9 @@
       // Home clears the visible transcript while keeping the saved system chat active.
       currentConversationId=activeId;
       personalizeGreeting(); placeSphere(); syncAttachIcon(); loadRecentProjects();
+      const homeIntro=$('homeIntro'),composer=$('composer'),composerSlot=$('referenceComposerSlot');
+      if(composer&&composerSlot&&composer.parentNode!==composerSlot)composerSlot.appendChild(composer);
+      if(homeIntro){homeIntro.scrollTop=0;requestAnimationFrame(()=>{homeIntro.scrollTop=0;});}
     };
     const originalConversation = enterConversationView;
     enterConversationView = function(){ originalConversation(); placeSphere(); syncAttachIcon(); };

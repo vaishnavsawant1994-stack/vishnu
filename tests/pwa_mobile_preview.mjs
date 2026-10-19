@@ -1259,7 +1259,7 @@ try {
     assert.equal(wideFixed.composer,"relative","wide reference Home composer must remain in the page flow at "+width+"x"+height);
     if(width>=1024){
       assert.ok(wide.home.width<=1000&&wide.header.width<=1000&&wide.composer.width<=1000,"Desktop Home content must remain within its 1000px design max width at "+width+"x"+height);
-      assert.ok(Math.abs(wide.home.left-(wide.inner-wide.home.width)/2)<=2,"Desktop Home content must remain centered at "+width+"x"+height);
+      assert.ok(Math.abs(wide.home.left-(wide.inner+264-wide.home.width)/2)<=2,"Desktop Home content must remain centered in the workspace beside its navigation at "+width+"x"+height);
     } else {
       assert.ok(wide.home.left>=0&&wide.home.right<=wide.inner+1&&wide.header.left>=0&&wide.header.right<=wide.inner+1&&wide.composer.left>=0&&wide.composer.right<=wide.inner+1,"Tablet Home regions must remain inside the viewport at "+width+"x"+height);
     }
@@ -1325,8 +1325,8 @@ try {
     assert.ok(shortOrTall.documentWidth<=width,"short, tall or landscape viewport must not create horizontal page overflow: "+JSON.stringify(shortOrTall));
     assert.ok(shortOrTall.composer.left>=-1&&shortOrTall.composer.right<=width+1&&shortOrTall.composer.bottom<=height+1,
       "composer must remain in view in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
-    assert.ok(shortOrTall.lastAction&&shortOrTall.lastAction.bottom<=shortOrTall.composer.top+1,
-      "The final Home action must remain reachable above the composer in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
+    assert.ok(shortOrTall.lastAction&&(shortOrTall.composer.bottom<=shortOrTall.lastAction.top+1||shortOrTall.lastAction.bottom<=shortOrTall.composer.top+1),
+      "Home actions and composer must remain separately reachable in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
   }
   const responsiveModuleWidths=[320,360,375,390,430,600,768,820,1024,1280,1440,1920,2560];
   const responsiveModules=["memory","knowledge","activities","tools","workflows","devices","dashboard","settings","owner","system"];
