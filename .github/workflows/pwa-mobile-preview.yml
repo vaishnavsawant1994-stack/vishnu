@@ -116,7 +116,7 @@ jobs:
           AGENT_WORKFORCE_SCREENSHOT_DIR=artifacts/agent-workforce node tests/agent_workforce_browser.mjs
           OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
-          node tests/vishnu_os_workspaces_browser.mjs
+          VISHNU_OS_SCREENSHOT_DIR=artifacts/vishnu-os node tests/vishnu_os_workspaces_browser.mjs
           node tests/pwa_mobile_preview_runner.mjs
           node tests/standalone_pwa_responsive.mjs
           ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
