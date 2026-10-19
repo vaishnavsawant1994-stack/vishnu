@@ -27,7 +27,7 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:''
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
@@ -40,7 +40,9 @@
   const tpl=(id)=>templates.find(t=>t[0]===id)||templates[0];
   const formattedDate=(x)=>x?new Date(x).toLocaleDateString(undefined,{month:'short',day:'numeric'}):'';
   const initials=(s)=>String(s||'').trim().slice(0,1).toUpperCase()||'◇';
-  function attention(){return '';/* owner Attention counts are not inferred from workspace membership */}
+  function attention(){
+    return state.attentionCount ? String(state.attentionCount)+' need attention' : 'Attention';
+  }
   function icon(symbol){return '<span class="vos-object-icon" aria-hidden="true">'+symbol+'</span>';}
   function nav(){
     const links=[['home','⌂','Home'],['workspaces','▦','Workspaces'],['work','▷','Work'],['projects','▱','Projects'],['agents','♧','Agents'],['create','✧','Create'],['memory','◫','Memory & Knowledge'],['tools','☷','Apps & Capabilities'],['devices','▣','Devices'],['activities','⌁','Activity']];
@@ -50,7 +52,7 @@
     return '<header class="vos-globalbar">'+btn('back','←','vos-icon-btn')+
       '<button class="vos-context" type="button" data-vos="workspaces">'+esc(state.workspace?.name||'Personal')+' ▾</button>'+
       btn('command','⌕ &nbsp;Search or command <kbd>Ctrl K</kbd>','vos-global-search')+
-      btn('attention','♢ &nbsp; Attention','vos-icon-btn')+
+      btn('attention','♢ &nbsp; '+esc(attention()),'vos-icon-btn')+
       '</header>';
   }
   function mobileNav(){
@@ -157,9 +159,13 @@
       '<button class="vos-list-row" data-vos="project:'+esc(p.id)+'" type="button"><strong>'+esc(p.name)+'</strong>'+
       '<span>'+esc(p.description||p.status)+'</span>'+badge(p.status)+'</button>').join(''):
       '<p class="vos-muted">No Projects linked yet. Add an existing Project to this Workspace.</p>')+
-      section('Current Work','<p class="vos-muted">Work status is available in the canonical Work view. Workspace-local Work aggregation is not yet connected.</p>'+
+      section('Current Work',state.workOrders.length ? state.workOrders.slice(0,5).map(w=>
+      '<button class="vos-list-row" type="button" data-vos="work-project:'+esc(w.project_id)+'"><strong>'+
+      esc(w.title||'Work item')+'</strong><span>'+esc(w.status||'Unknown')+'</span></button>').join(''):
+      '<p class="vos-muted">'+esc(state.workError||'No canonical Work orders for linked Projects.')+'</p>'+
+
       btn('external:work','Open Work'))+
-      section('Agents working','<p class="vos-muted">Open the canonical Agents view for verified live activity.</p>'+btn('external:agents','Open Agents'))+
+      section('Agents working','<p class="vos-muted">Agent work details are available from the canonical Agents view. This Workspace does not create simulated agent identities.</p>'+btn('external:agents','Open Agents'))+
       section('Files & Knowledge','<p class="vos-muted">Files and Knowledge remain with their canonical authorities.</p>'+
       btn('external:knowledge','Open Knowledge'))+
       section('Activity','<p class="vos-muted">View verified system activity in the Activity section.</p>'+
@@ -220,6 +226,18 @@
       '<p class="vos-muted">No matching command. Use Global Search or Ask Vishnu for an open-ended request.</p>')+
       '</div></div>';
   }
+  function attentionDialog(){
+    if(!state.attentionOpen)return '';
+    return '<div class="vos-command-backdrop" data-vos="close-attention"><div class="vos-command-panel" role="dialog" aria-modal="true" aria-labelledby="vosAttentionTitle">'+
+      '<div class="vos-command-title"><h2 id="vosAttentionTitle">Needs your attention</h2>'+btn('close-attention','×','vos-icon-btn')+
+      '<p>Verified pending items from Vishnu Work authority.</p></div>'+
+      (state.attentionItems.length?state.attentionItems.map((item,index)=>
+        '<button type="button" class="vos-list-row" data-vos="attention-item:'+index+'"><strong>'+
+        esc(item.title||item.summary||item.label||'Attention item')+'</strong>'+
+        '<span>'+esc(item.status||item.type||'Review')+'</span><span>→</span></button>').join(''):
+        '<p class="vos-muted">There are no pending attention items.</p>')+
+      '</div></div>';
+  }
   function render(){
     if(root.classList.contains('vos-hidden'))return;
     const content=state.page==='workspaces'?workspacesPage():state.page==='create'?createPage():
@@ -227,7 +245,7 @@
     root.innerHTML=nav()+'<div class="vos-main">'+
       '<div class="vos-mobile-header">'+btn('menu','☰','vos-icon-btn')+'<strong>V I S H N U</strong>'+
       btn('command','⌕','vos-icon-btn')+'</div>'+
-      header()+'<main class="vos-page">'+loading()+error()+content+'</main></div>'+mobileNav()+commandPalette();
+      header()+'<main class="vos-page">'+loading()+error()+content+'</main></div>'+mobileNav()+commandPalette()+attentionDialog();
     const focused=root.querySelector('[data-vos-input="command"]');
     if(state.command&&focused)focused.focus();
   }
@@ -257,6 +275,21 @@
     try{
       const result=await api('/'+encodeURIComponent(id)+'/summary');
       state.workspace=result.workspace;state.summary=result;
+      const related=new Set((state.workspace.links||[]).filter(l=>l.kind==='project').map(l=>l.resource_id));
+      state.workError='';
+      const [workResponse,attentionResponse]=await Promise.allSettled([
+        bridge().api('/work/summary'),bridge().api('/work/attention')
+      ]);
+      if(workResponse.status==='fulfilled'){
+        state.workOrders=(workResponse.value.work_orders||[]).filter(w=>related.has(w.project_id)&&
+          !['COMPLETED','CANCELLED'].includes(String(w.status||'').toUpperCase()));
+      }else{state.workOrders=[];state.workError='Live Work is currently unavailable.';}
+      if(attentionResponse.status==='fulfilled'){
+        const snapshot=attentionResponse.value;
+        state.attentionItems=Array.isArray(snapshot.items)?snapshot.items:[];
+        state.attentionCount=Number(snapshot.counts?.total||state.attentionItems.length);
+      }else{state.attentionItems=[];state.attentionCount=0;}
+
       if(page==='studio'){
         const loaded=await api('/'+encodeURIComponent(id)+'/studio/views');
         state.views=loaded.views||[];
@@ -274,8 +307,20 @@
     if(action==='create'){state.command=false;state.page='create';state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;render();return;}
     if(action==='overview'||action==='studio'){return openWorkspace(state.workspace.id,action);}
     if(action==='attention'){
-      hide();bridge()?.openModule?.('activities');
-      bridge()?.showToast?.('Review approvals in the canonical Attention Center / Work view.');
+      state.command=false;state.attentionOpen=true;render();return;
+    }
+    if(action==='close-attention'){state.attentionOpen=false;render();return;}
+    if(action.startsWith('attention-item:')){
+      const selected=state.attentionItems[Number(action.slice(15))];
+      state.attentionOpen=false;hide();
+      const opened=await window.__vishnuGlobalWorkAwareness?.openAttention?.(selected);
+      if(!opened)bridge()?.openModule?.('projects');
+      return;
+    }
+    if(action.startsWith('work-project:')){
+      hide();const projectId=action.slice(13);
+      if(typeof window.openProject==='function')window.openProject(projectId,'live');
+      else bridge()?.openModule?.('projects');
       return;
     }
     if(action==='menu'){hide();document.getElementById('historyButton')?.click();return;}
@@ -342,11 +387,11 @@
       state.command=false;const name=action.slice(4);
       if(name==='workspaces')return show('workspaces'),refresh();
       if(name==='create')return show('create');
-      hide();bridge()?.openModule?.(name==='more'?'home':name);
+      hide();bridge()?.openModule?.(name==='work'?'projects':name==='more'?'home':name);
       return;
     }
     if(action.startsWith('external:')){
-      hide();bridge()?.openModule?.(action.slice(9)==='projects'?'projects':action.slice(9));return;
+      hide();bridge()?.openModule?.(action.slice(9)==='work'?'projects':action.slice(9));return;
     }
     if(action.startsWith('open:')){state.command=false;return openWorkspace(action.slice(5));}
     if(action.startsWith('project:')){
@@ -422,7 +467,7 @@
     }
     if(event.key==='Escape'&&!root.classList.contains('vos-hidden')){
       event.preventDefault();event.stopImmediatePropagation();
-      if(state.command){state.command=false;render();}else hide();
+      if(state.command){state.command=false;render();}else if(state.attentionOpen){state.attentionOpen=false;render();}else hide();
     }
   },true);
   window.vishnuOsWorkspaces={open:()=>{show('workspaces');return refresh(true);},openWorkspace,
