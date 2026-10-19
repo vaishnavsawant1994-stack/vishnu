@@ -26,8 +26,27 @@ if (!source.includes(before)) {
 if (!source.includes(sphereBefore)) {
   throw new Error('Canonical responsive sphere synchronization point changed; update the runner explicitly.');
 }
+// Keep the named tablet/desktop snapshot in the same browser task as Home activation.
+// This prevents unrelated async conversation refreshes from changing the measured surface.
+const wideBefore = `    const wide=await page.evaluate(()=>({
+      doc:document.documentElement.scrollWidth,
+      inner:innerWidth,
+      home:document.querySelector(".home-intro").getBoundingClientRect(),
+      header:document.querySelector(".topbar").getBoundingClientRect(),
+      composer:document.querySelector("#composer").getBoundingClientRect(),
+      mobileNav:document.querySelector(".reference-mobile-nav").getBoundingClientRect(),
+      quick:[...document.querySelectorAll(".v-shortcuts .v-card")].map(node=>node.getBoundingClientRect()),
+    }));`;
+const wideAfter = wideBefore.replace('const wide=await page.evaluate(()=>({',
+  'const wide=await page.evaluate(()=>{enterHomeLanding();return {').replace('    }));','    };});');
+if (!source.includes(wideBefore)) {
+  throw new Error('Canonical named viewport evaluation changed; update Home synchronization runner explicitly.');
+}
+
 const sweepBefore = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    const sweep=await page.evaluate(()=>{";
-const sweepAfter = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    await page.waitForFunction(()=>{const node=document.querySelector('.v-shortcuts');if(!node)return false;const r=node.getBoundingClientRect();return r.width>0&&r.height>0;});\n    const sweep=await page.evaluate(()=>{"
+// A background conversation refresh can race between the layout-ready probe
+// and measurement; re-enter Home synchronously inside the measurement task.
+const sweepAfter = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    await page.waitForFunction(()=>{const node=document.querySelector('.v-shortcuts');if(!node)return false;const r=node.getBoundingClientRect();return r.width>0&&r.height>0;});\n    const sweep=await page.evaluate(()=>{enterHomeLanding();"
 
 if (!source.includes(sweepBefore)) {
   throw new Error('Canonical responsive sweep changed; update the Home-layout synchronization runner explicitly.');
@@ -37,6 +56,7 @@ let generated = source
   .replace(sourceBefore, sourceAfter)
   .replace(before, after)
   .replace(sphereBefore, sphereAfter)
+  .replace(wideBefore, wideAfter)
   .replace(sweepBefore, sweepAfter);
 await writeFile(generatedUrl, generated, 'utf8');
 try {

@@ -256,3 +256,45 @@ body.v-ref.home-landing .v-project {
 @media (prefers-reduced-motion: reduce) {
   body.v-ref.home-landing .home-sphere-stage::before { box-shadow: 0 0 16px rgba(132,179,235,.34), inset -10px -12px 24px #010203; }
 }
+
+
+/* Short landscape Home: keep shortcuts ABOVE the fixed composer.
+ * Retains the canonical composer bottom inset (24px) and avoids overlap.
+ */
+@media (orientation: landscape) and (max-width: 900px) and (max-height: 520px) {
+  body.v-ref.home-landing .home-sphere-stage,
+  body.v-ref.home-landing .home-greeting,
+  body.v-ref.home-landing .v-recent { display: none !important; }
+  body.v-ref.home-landing .reference-composer-slot {
+    position: static !important;
+    height: 0 !important;
+  }
+  body.v-ref.home-landing #composer {
+    position: fixed !important;
+    top: auto !important;
+    left: max(12px, env(safe-area-inset-left)) !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+    bottom: max(24px, env(safe-area-inset-bottom)) !important;
+    transform: none !important;
+    width: min(560px, calc(100% - 24px)) !important;
+    min-height: 110px !important;
+    max-height: 112px !important;
+    margin: 0 auto !important;
+    padding: 8px 12px !important;
+  }
+  body.v-ref.home-landing .v-shortcuts {
+    position: fixed !important;
+    top: 128px !important;
+    left: max(12px, env(safe-area-inset-left)) !important;
+    right: max(12px, env(safe-area-inset-right)) !important;
+    width: auto !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+  }
+  body.v-ref.home-landing .v-card {
+    min-height: 71px !important;
+    max-height: 86px !important;
+    grid-template-rows: 30px auto !important;
+    padding: 6px !important;
+  }
+}
