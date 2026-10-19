@@ -92,10 +92,14 @@ try{
   await page.locator('#vishnuOs1620 [data-vos="agents"]').first().click();
   await page.locator('#vishnuOs1620').getByText('Research Agent').first().waitFor();
   assert.equal(await page.locator('#vishnuOs1620 .vos-agent-row').count(),1);
+  await page.locator('#vishnuOs1620 .vos-agent-row').click();
+  if(viewport.width<=650){await page.locator('#vishnuOs1620 .vos-inspector.mobile-open').waitFor();await page.locator('#vishnuOs1620 [data-vos="close-inspector"]').last().click();}
   if(outputDir)await page.screenshot({path:outputDir+'/screen22-agents-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vishnuOs1620 [data-vos="assets"]').first().click();
   await page.locator('#vishnuOs1620 .vos-file-card').getByText('patient-schema.md').waitFor();
   assert.equal(await page.locator('#vishnuOs1620 .vos-file-card').count(),1);
+  await page.locator('#vishnuOs1620 .vos-file-card').click();
+  if(viewport.width<=650){await page.locator('#vishnuOs1620 .vos-inspector.mobile-open').waitFor();await page.locator('#vishnuOs1620 [data-vos="close-inspector"]').last().click();}
   await page.locator('#vishnuOs1620 [data-vos="asset-filter:pinned"]').click();
   assert.equal(await page.locator('#vishnuOs1620 .vos-file-card').count(),1);
   if(outputDir)await page.screenshot({path:outputDir+'/screen23-assets-'+viewport.width+'.png',fullPage:false});
