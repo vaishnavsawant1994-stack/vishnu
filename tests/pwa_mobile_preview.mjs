@@ -1081,6 +1081,22 @@ try {
     [393, 852], [402, 874], [414, 896], [430, 932], [600, 900],
     [768, 1024], [820, 1180], [1024, 768],
   ];
+  async function waitForStableHomeLayout(){
+    await page.evaluate(()=>new Promise(resolve=>{
+      const selectors=['.home-intro','.v-shortcuts','#composer','.reference-mobile-nav'];
+      let previous='',stableFrames=0;
+      const sample=()=>{
+        const current=selectors.map(selector=>{
+          const rect=document.querySelector(selector).getBoundingClientRect();
+          return [rect.x,rect.y,rect.width,rect.height].map(value=>Math.round(value*10)/10).join(',');
+        }).join('|');
+        stableFrames=current===previous?stableFrames+1:0;
+        previous=current;
+        if(stableFrames>=3)resolve();else requestAnimationFrame(sample);
+      };
+      requestAnimationFrame(sample);
+    }));
+  }
   const responsiveScreenshots = new Map([
     [320, "personal-ai-phone-small-320x568.png"],
     [390, "personal-ai-phone-standard-390x844.png"],
@@ -1093,6 +1109,7 @@ try {
     await page.setViewportSize({ width, height });
     await page.evaluate(() => enterHomeLanding());
     await page.waitForTimeout(180);
+    await waitForStableHomeLayout();
     const layout = await page.evaluate(() => {
       const rect = selector => {
         const node = document.querySelector(selector);
