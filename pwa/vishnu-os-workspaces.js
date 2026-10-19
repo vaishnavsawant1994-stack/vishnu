@@ -34,7 +34,7 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsMessage:'',savingSettings:false,todayData:null,todayAttention:null
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,todayData:null,todayAttention:null
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
@@ -377,7 +377,7 @@
       '<div class="vos-settings-favorite"><span>☆ Favorite<br><small class="vos-muted">Show this Workspace in favorites.</small></span>'+
       btn('toggle-favorite',ws.pinned?'On ✓':'Off',ws.pinned?'is-active':'')+'</div>'+
       '<p class="vos-muted">Workspace ID: '+esc(ws.id)+'</p>'+
-      (state.settingsMessage?'<p role="status" class="vos-save-message">'+esc(state.settingsMessage)+'</p>':'')+
+      (state.settingsDirty?'<p role="status" class="vos-save-message">Unsaved changes</p>':'')+(state.settingsMessage?'<p role="status" class="vos-save-message">'+esc(state.settingsMessage)+'</p>':'')+
       '<button class="vos-btn vos-primary" type="submit" '+(state.savingSettings?'disabled':'')+'>'+
       (state.savingSettings?'Saving…':'Save Changes')+'</button></form>':
       state.settingsSection===10?
@@ -541,7 +541,7 @@
        }
        if(page==='settings'){
          state.settingsDraft={name:state.workspace.name,description:state.workspace.description||''};
-         state.settingsMessage='';
+         state.settingsMessage='';state.settingsDirty=false;
        }
        if(page==='studio'){
         const loaded=await api('/'+encodeURIComponent(id)+'/studio/views');
@@ -553,6 +553,11 @@
     finally{state.loading=false;render();}
   }
   async function perform(action){
+    if(state.page==='settings'&&state.settingsDirty&&(
+      ['overview','studio','spatial','agents','assets','today','back','workspaces','workspace-list'].includes(action)||action.startsWith('nav:')||action.startsWith('external:')||action.startsWith('settings-section:'))){
+      if(!confirm('You have unsaved Workspace settings. Discard your changes?'))return;
+      state.settingsDirty=false;
+    }
     if(action==='reload'){if(state.page==='today')return openToday();if(['studio','overview','spatial','agents','assets','settings'].includes(state.page)&&state.workspace)return openWorkspace(state.workspace.id,state.page);return refresh();}
     if(action==='command'){openCommand();return;}
     if(action==='close-command'){closeCommand();return;}
@@ -574,10 +579,12 @@
     }
     if(action.startsWith('today-attention:')){
       const item=state.todayAttention?.items?.[Number(action.slice(16))];
-      if(item){hide();await window.__vishnuGlobalWorkAwareness?.openAttention?.(item);}return;
+      if(item){hide();const opened=await window.__vishnuGlobalWorkAwareness?.openAttention?.(item);if(!opened)await window.__vishnuWorkAttentionCenter?.open?.('all');}return;
     }
     if(action==='attention'){
-      state.command=false;state.attentionOpen=true;render();return;
+      state.command=false;
+      if(state.page==='today'&&window.__vishnuWorkAttentionCenter?.open){hide();return window.__vishnuWorkAttentionCenter.open('all');}
+      state.attentionOpen=true;render();return;
     }
     if(action==='close-attention'){state.attentionOpen=false;render();return;}
     if(action.startsWith('attention-item:')){
@@ -702,7 +709,7 @@
       state.settingsDraft={name:form.elements.name.value,description:form.elements.description.value};
       state.savingSettings=true;state.settingsMessage='';render();
       try{const response=await api('/'+encodeURIComponent(state.workspace.id),{method:'PATCH',body:JSON.stringify(state.settingsDraft)});
-        state.workspace=response.workspace;state.settingsDraft={name:response.workspace.name,description:response.workspace.description};state.settingsMessage='Changes saved.';
+        state.workspace=response.workspace;state.settingsDraft={name:response.workspace.name,description:response.workspace.description};state.settingsDirty=false;state.settingsMessage='Changes saved.';
       }catch(error){state.settingsMessage='Save failed: '+(error.message||'Unknown error');}
       finally{state.savingSettings=false;render();}return;
     }
@@ -722,6 +729,14 @@
     finally{state.createBusy=false;}
   });
   root.addEventListener('input',event=>{
+    if(event.target.closest('#vosWorkspaceSettingsForm')){
+      const form=event.target.form;
+      state.settingsDraft={name:form.elements.name.value,description:form.elements.description.value};
+      state.settingsDirty=true;
+      const prior=root.querySelector('.vos-save-message');
+      if(prior)prior.textContent='Unsaved changes';
+      return;
+    }
     if(event.target.dataset.vosInput==='people-search'){
       state.peopleQuery=event.target.value;const pos=event.target.selectionStart;render();
       const field=root.querySelector('[data-vos-input="people-search"]');field?.focus();field?.setSelectionRange(pos,pos);return;
