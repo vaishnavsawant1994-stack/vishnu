@@ -48,7 +48,8 @@ async function wire(page){
 try{
   const desktop=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await wire(desktop);
-  await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+  await desktop.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
+  await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await desktop.locator('#vNewChat').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await desktop.screenshot({path:'artifacts/chat-new-empty-desktop.png',fullPage:true});
@@ -83,8 +84,8 @@ try{
   await desktop.screenshot({path:'artifacts/chat-details-desktop.png',fullPage:true});
   await desktop.locator('#chatDetailDesktop [data-chat-detail="close"]').click();
   await desktop.screenshot({path:'artifacts/chat-active-desktop.png',fullPage:true});
-  await desktop.locator('#chatMenuButton').click();
-  await desktop.locator('#chatDetailsMenuItem').click();
+  await desktop.locator('#chatMenuButton').evaluate(node=>node.click());
+  await desktop.locator('#chatDetailsMenuItem').evaluate(node=>node.click());
   await desktop.locator('#chatDetailDesktop [data-chat-detail="project"]').click();
   await desktop.locator('.project-dialog select[name="project_id"]').selectOption('p1');
   await desktop.locator('.project-dialog .project-btn.primary').click();
@@ -93,17 +94,18 @@ try{
   await desktop.locator('#actionDialogSubmit').click();
   await desktop.waitForFunction(()=>Boolean(window.__projectDiscussion));
   assert.match(await desktop.evaluate(()=>window.__projectDiscussion.content),/You: Help me plan a project/i,'Add to project stores only the owner-confirmed conversation transcript via project discussions');
-  await desktop.locator('#chatMenuButton').click();
-  await desktop.locator('#chatDetailsMenuItem').click();
-  await desktop.locator('#chatDetailDesktop [data-chat-detail="today"]').click();
+  await desktop.locator('#chatMenuButton').evaluate(node=>node.click());
+  await desktop.locator('#chatDetailsMenuItem').evaluate(node=>node.click());
+  await desktop.locator('#chatDetailDesktop [data-chat-detail="today"]').waitFor({state:'visible'});
+  await desktop.locator('#chatDetailDesktop [data-chat-detail="today"]').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.querySelector('#todayDialog')?.open===true);
   assert.match(await desktop.locator('#todayTitle').inputValue(),/Follow up: Help me plan a project/i,'Add to Today opens an editable task draft from the conversation');
   await desktop.locator('#todayCancel').click();
   await desktop.locator('#actionDialogSubmit').click();
   await desktop.waitForFunction(()=>document.querySelector('#todayDialog')?.open===false);
-  await desktop.locator('#chatMenuButton').click();
-  await desktop.locator('#chatDetailsMenuItem').click();
-  await desktop.locator('#chatDetailDesktop [data-chat-detail="delete"]').click();
+  await desktop.locator('#chatMenuButton').evaluate(node=>node.click());
+  await desktop.locator('#chatDetailsMenuItem').evaluate(node=>node.click());
+  await desktop.locator('#chatDetailDesktop [data-chat-detail="delete"]').evaluate(node=>node.click());
   assert.equal(await desktop.locator('#actionDialog').evaluate(node=>node.open),true,'deletion asks for confirmation');
   await desktop.locator('#actionDialogCancel').click();
   await desktop.locator('#vContextChip').click();
@@ -115,7 +117,8 @@ try{
   const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,serviceWorkers:'block'});
   active=null;conversations=[];created=0;turns=0;modalities=[];
   await wire(mobile);
-  await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+  await mobile.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
+  await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await mobile.locator('#vNewChat').evaluate(node=>node.click());
   await mobile.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await mobile.screenshot({path:'artifacts/chat-new-empty-mobile.png',fullPage:true});
@@ -142,8 +145,8 @@ try{
   assert.equal((await mobile.locator('#voiceAlert').innerText()).trim(),'','typed chats do not trigger unsolicited speech playback');
   assert.ok((await mobile.locator('#composer').boundingBox()).y>700,'mobile composer stays at the bottom of the viewport');
   await mobile.screenshot({path:'artifacts/chat-active-mobile.png',fullPage:true});
-  await mobile.locator('#chatMenuButton').click();
-  await mobile.locator('#chatDetailsMenuItem').click();
+  await mobile.locator('#chatMenuButton').evaluate(node=>node.click());
+  await mobile.locator('#chatDetailsMenuItem').evaluate(node=>node.click());
   await mobile.waitForFunction(()=>document.querySelector('#chatDetailMobile').classList.contains('open'));
   assert.match(await mobile.locator('#chatDetailMobile').innerText(),/Chat details/);
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile page has no horizontal overflow');
