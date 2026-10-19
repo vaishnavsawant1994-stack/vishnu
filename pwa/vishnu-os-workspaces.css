@@ -361,3 +361,15 @@
 @media(max-width:1150px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:650px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
 #vishnuOs1620 .vos-file-art{height:83px}}
+
+
+#vishnuOs1620 .vos-mobile-close,#vishnuOs1620 .vos-inspector-scrim{display:none}
+@media(max-width:650px){
+ #vishnuOs1620 .vos-inspector-scrim{display:block;position:fixed;inset:0;background:rgba(0,5,13,.74);border:0;z-index:8}
+ #vishnuOs1620 .vos-new-page .vos-inspector.mobile-open{display:block;position:fixed;z-index:9;
+  left:8px;right:8px;top:auto;bottom:calc(74px + env(safe-area-inset-bottom));
+  max-height:min(76dvh,780px);overflow-y:auto;box-shadow:0 0 50px rgba(0,0,0,.55);
+  border-color:rgba(77,220,255,.73)}
+ #vishnuOs1620 .vos-new-page .vos-inspector .vos-mobile-close{display:block;float:right;
+  background:rgba(5,18,30,.8);border:1px solid var(--vos-border);border-radius:8px;color:#f5faff;padding:5px 11px}
+}
