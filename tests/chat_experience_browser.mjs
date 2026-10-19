@@ -99,6 +99,7 @@ try{
   await desktop.locator('#chatDetailDesktop [data-chat-detail="today"]').waitFor({state:'visible'});
   await desktop.locator('#chatDetailDesktop [data-chat-detail="today"]').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.querySelector('#todayDialog')?.open===true);
+  await desktop.waitForFunction(()=>/Follow up: Help me plan a project/i.test(document.querySelector('#todayTitle')?.value||''));
   assert.match(await desktop.locator('#todayTitle').inputValue(),/Follow up: Help me plan a project/i,'Add to Today opens an editable task draft from the conversation');
   await desktop.locator('#todayCancel').click();
   await desktop.locator('#actionDialogSubmit').click();
