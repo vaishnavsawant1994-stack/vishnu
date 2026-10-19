@@ -10,7 +10,7 @@ This change extends the authenticated PWA Workspace shell. It does not create a 
 
 | Screen | Real functionality in this slice | Material gaps / not claimed |
 |---|---|---|
-| 21 — Spatial View | Responsive spatial Project-object preview populated solely from verified linked canonical Projects; object selection opens the real Project; layout rotation/reset and accessible object buttons | **Not a genuine WebGL/mesh spatial engine.** No approved character source mesh, asset adapters, rig/animation/renders, true orbit camera, saved spatial views or full 3D compare. Preview intentionally labeled. |
+| 21 — Spatial View | Responsive GPU/WebGL rendering of Project-node geometry sourced only from verified linked canonical Projects; mouse/touch orbit and pinch/wheel zoom; accessible DOM object controls, Project links, reset and degraded fallback | **Not the approved character-production 3D scene.** WebGL currently renders only Project primitives, not the missing character source mesh, rig, animation or renders. No complete camera presets, saved spatial views or full 3D compare. Preview intentionally labeled. |
 | 22 — Team / Agents | Reads canonical global Agent catalogue with search, selection, identity/role/description Inspector, opens existing Agent manager | Workspace membership, Agent grants, real per-Workspace active assignments, local permission mutations, Agent creation and collaborator invites not provided by current Workspace API. No fake values shown. |
 | 23 — Files & Assets | Honest Workspace resource-link view and links to canonical Projects/Knowledge, no simulated resource cards | Workspace API currently rejects file/artifact link creation and does not provide authorized Resource listing/versions/availability/upload. Cannot produce reference card grid honestly. |
 | 24 — Workspace Settings | Real owner-authorized Workspace name/description PATCH with persistence, favorite toggle PATCH, archive/restore PATCH with confirmation; responsive settings index and preview | Data policy, capability grants, invitation sharing, module preferences, cover uploads, delete impact and Workspace-specific intelligence settings require canonical API support. Unsupported categories explicitly marked. |
@@ -23,7 +23,7 @@ This change extends the authenticated PWA Workspace shell. It does not create a 
 - Assets are not fabricated from approved reference images and no file locations/sync state are guessed.
 - Today reads canonical read-only Work/Attention projections and does not execute privileged actions.
 - Archive only changes Workspace status and preserves related canonical resources.
-- The 3D character in the reference is not a real linked mesh, so this UI must not be advertised as finished Screen 21.
+- The 3D character in the reference is not a real linked mesh. WebGL Project-node geometry is genuine but does not qualify the requested character scene. Do not advertise Screen 21 as complete.
 
 ## Next backend integration tasks
 
