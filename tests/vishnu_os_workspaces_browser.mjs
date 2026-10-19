@@ -97,11 +97,11 @@ try{
   await page.locator('#vishnuOs1620 h1').getByText('Workspaces').waitFor();
   if(outputDir)await page.screenshot({path:outputDir+'/screen17-library-'+viewport.width+'.png',fullPage:false});
   await page.keyboard.press('Escape');
-  await page.locator('#vishnuOs1620.vos-hidden').waitFor();
+  await page.waitForFunction(() => document.getElementById('vishnuOs1620')?.classList.contains('vos-hidden'));
   await page.evaluate(()=>window.vishnuOsWorkspaces.command());
   await page.locator('#vishnuOs1620.vos-command-only #vosCommandTitle').waitFor();
   await page.locator('#vishnuOs1620 .vos-command-panel [data-vos="close-command"]').click();
-  await page.locator('#vishnuOs1620.vos-hidden').waitFor();
+  await page.waitForFunction(() => document.getElementById('vishnuOs1620')?.classList.contains('vos-hidden'));
   await page.evaluate(()=>window.vishnuOsWorkspaces.open());
   await page.locator('#vishnuOs1620 h1').getByText('Workspaces').waitFor();
   const rect=await page.evaluate(()=>({viewport:innerWidth,
