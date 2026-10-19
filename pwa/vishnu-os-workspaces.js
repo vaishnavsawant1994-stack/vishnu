@@ -9,6 +9,13 @@
     if (!bridge()?.api) return Promise.reject(new Error('Vishnu session is not ready'));
     return bridge().api('/os/workspaces' + path, options);
   };
+  const newRequestId = () => {
+    if(globalThis.crypto?.randomUUID)return globalThis.crypto.randomUUID();
+    const random = new Uint8Array(16);
+    if(!globalThis.crypto?.getRandomValues)throw new Error('Secure randomness is required for Workspace creation');
+    globalThis.crypto.getRandomValues(random);
+    return Array.from(random, byte=>byte.toString(16).padStart(2,'0')).join('');
+  };
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c =>
     ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
   const templates = [
@@ -442,7 +449,7 @@
     event.preventDefault();
     const fd=new FormData(event.target);
     state.draft={name:String(fd.get('name')||''),description:String(fd.get('description')||'')};
-    if(!state.createRequestId)state.createRequestId=crypto.randomUUID();
+    if(!state.createRequestId)state.createRequestId=newRequestId();
     state.createBusy=true;state.error='';render();
     try{
       const created=await api('',{method:'POST',body:JSON.stringify({
