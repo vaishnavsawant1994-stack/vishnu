@@ -34,7 +34,7 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,todayData:null,todayAttention:null
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,assets:[],assetsError:'',assetsQuery:'',assetsFilter:'all',selectedAsset:null,todayData:null,todayAttention:null
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
@@ -349,15 +349,47 @@
       btn('external:agents','Open Agent Manager →','vos-primary vos-full'):
       '<p class="vos-muted">Select an available Agent to inspect it.</p>')+'</aside></div>';
   }
+
   function assetsPage(){
-    const links=(state.workspace?.links||[]).filter(l=>['file','artifact'].includes(l.kind));
+    const q=state.assetsQuery.trim().toLowerCase();
+    const filters=[['all','All'],['source','Sources'],['deliverable','Deliverables'],['pinned','Pinned']];
+    const files=state.assets.filter(row=>(state.assetsFilter==='all'||
+      state.assetsFilter==='pinned'&&row.is_pinned||state.assetsFilter===row.kind)&&
+      (!q||[row.title,row.kind,row.projectName,row.source_provider].join(' ').toLowerCase().includes(q)));
+    const current=state.assets.find(row=>row.key===state.selectedAsset)||files[0];
+    const iconFor=row=>row.kind==='link'?'↗':row.kind==='deliverable'?'▣':'▤';
+    const fmtSize=n=>Number.isFinite(Number(n))&&Number(n)>0?
+      new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(Number(n)/1024)+' KB':'Size unavailable';
+    const cards=files.map(row=>'<button class="vos-file-card '+(current?.key===row.key?'selected':'')+
+      '" type="button" data-vos="asset-select:'+esc(row.key)+'"><span class="vos-file-art" aria-hidden="true">'+iconFor(row)+'</span>'+
+      '<strong>'+esc(row.title||'Untitled source')+'</strong>'+
+      '<small>'+esc(row.kind||'source')+' · '+esc(row.projectName)+'</small>'+
+      '<small>'+esc(fmtSize(row.size_bytes))+'</small>'+
+      '<span class="vos-badge">'+esc(row.is_pinned?'Pinned':row.indexing_state==='indexed'?'Indexed':'Saved')+'</span></button>').join('');
     return workspaceHeader()+'<div class="vos-new-page"><div class="vos-new-page-main">'+
-      '<div class="vos-new-summary"><h2>Files & Assets</h2>'+btn('external:knowledge','Open Knowledge →')+'</div>'+
-      infoCard('Linked resource references', 'The Workspace registry currently authorizes Project links only. File and Artifact linking needs a permission-checked canonical Resource API before an asset library can display real data.')+
-      (links.length?section('Existing references',links.map(l=>'<div class="vos-list-row"><strong>'+esc(l.kind)+'</strong><span>'+esc(l.resource_id)+'</span></div>').join('')):
-      '<div class="vos-empty">No verified Workspace file or artifact links are available. Assets are not fabricated from the design reference.</div>')+
-      '<div class="vos-quick">'+btn('external:projects','Open Projects')+btn('external:knowledge','Open Knowledge')+'</div></div>'+
-      '<aside class="vos-inspector vos-new-inspector"><h2>Storage & provenance</h2><p class="vos-muted">Resource availability, source device, version, size, and data placement must come from authoritative records. No live storage assertions are made here.</p></aside></div>';
+      '<div class="vos-new-summary"><h2>Files & Assets</h2>'+
+      btn('asset-add','＋ Add from Project','vos-primary')+'</div>'+
+      '<label class="vos-search">⌕ <input data-vos-input="assets-search" aria-label="Search linked Project files" placeholder="Search files, sources, or deliverables…" value="'+esc(state.assetsQuery)+'"></label>'+
+      '<div class="vos-filters">'+filters.map(([key,label])=>btn('asset-filter:'+key,esc(label),state.assetsFilter===key?'is-active':'')).join('')+'</div>'+
+      (state.assetsError?'<div role="alert" class="vos-error">'+esc(state.assetsError)+'</div>':'')+
+      section('Linked Project resources ('+files.length+')',
+      files.length?'<div class="vos-files-grid">'+cards+'</div>':
+      '<div class="vos-empty">No accessible files or deliverables are present in the linked Projects for this filter.</div>')+
+      '<p class="vos-muted">These resources stay under their canonical Project authority. Workspace display does not move or copy bytes.</p></div>'+
+      '<aside class="vos-inspector vos-new-inspector"><h2>Selected Asset</h2>'+
+      (current?'<div class="vos-file-preview" aria-hidden="true">'+iconFor(current)+'</div>'+
+      '<h3>'+esc(current.title)+'</h3>'+badge(current.kind)+
+      '<div class="vos-detail-rows">'+
+      '<div><span>Project</span><strong>'+esc(current.projectName)+'</strong></div>'+
+      '<div><span>Size</span><strong>'+esc(fmtSize(current.size_bytes))+'</strong></div>'+
+      '<div><span>Text index</span><strong>'+esc(current.indexing_state||'Unknown')+'</strong></div>'+
+      '<div><span>Versions</span><strong>'+esc(current.version_count||current.current_version||'Not reported')+'</strong></div>'+
+      '<div><span>Provider</span><strong>'+esc(current.source_provider||'Project')+'</strong></div></div>'+
+      '<p class="vos-muted">Storage-device reachability and local-first data policy are not provided by this Project response; they are not assumed.</p>'+
+      btn('asset-open:'+esc(current.key),'Open in Project Files →','vos-primary vos-full')+
+      btn('asset-versions:'+esc(current.key),'View version history →','vos-full'):
+      '<p class="vos-muted">Select a linked Project resource to inspect it.</p>')+
+      '</aside></div>';
   }
   function settingsPage(){
     const ws=state.workspace||{};
@@ -539,6 +571,14 @@
          try{const results=await bridge().api('/agents');state.people=Array.isArray(results.agents)?results.agents:[];state.peopleError='';}
          catch(e){state.people=[];state.peopleError=e.message||'Agent directory unavailable';}
        }
+       if(page==='assets'){
+         const listed=await Promise.allSettled((result.projects||[]).map(async p=>{
+           const details=await bridge().api('/projects/'+encodeURIComponent(p.id));
+           return (details.project?.files||[]).map(file=>({...file,key:p.id+':'+file.id,projectId:p.id,projectName:p.name}));
+         }));
+         state.assets=listed.filter(x=>x.status==='fulfilled').flatMap(x=>x.value);
+         state.assetsError=listed.some(x=>x.status==='rejected')?'Some linked Project files could not be loaded; only authorized available results are shown.':'';
+       }
        if(page==='settings'){
          state.settingsDraft={name:state.workspace.name,description:state.workspace.description||''};
          state.settingsMessage='';state.settingsDirty=false;
@@ -565,6 +605,16 @@
     if(action==='create'){state.command=false;state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;show('create');return;}
     if(['overview','studio','spatial','agents','assets','settings'].includes(action)){return openWorkspace(state.workspace.id,action);}
     if(action==='today'||action==='reload-today')return openToday();
+    if(action==='asset-add'){
+      const projects=relatedProjects();if(!projects.length){state.error='Link a Project before adding Project files.';render();return;}
+      hide();if(window.openProject)window.openProject(projects[0].id,'files');else bridge()?.openModule?.('projects');return;
+    }
+    if(action.startsWith('asset-filter:')){state.assetsFilter=action.slice(13);render();return;}
+    if(action.startsWith('asset-select:')){state.selectedAsset=action.slice(13);render();return;}
+    if(action.startsWith('asset-open:')||action.startsWith('asset-versions:')){
+      const key=action.slice(action.indexOf(':')+1),row=state.assets.find(a=>a.key===key);
+      if(!row)return;hide();if(window.openProject)window.openProject(row.projectId,'files');else bridge()?.openModule?.('projects');return;
+    }
     if(action==='spatial-orbit'){state.spatialAngle=(state.spatialAngle+35)%360;render();return;}
     if(action==='spatial-reset'||action==='spatial-focus'){state.spatialAngle=0;state.spatialPitch=0;state.spatialZoom=1;render();return;}
     if(action.startsWith('choose-agent:')){state.selectedAgent=action.slice(13);render();return;}
@@ -736,6 +786,10 @@
       const prior=root.querySelector('.vos-save-message');
       if(prior)prior.textContent='Unsaved changes';
       return;
+    }
+    if(event.target.dataset.vosInput==='assets-search'){
+      state.assetsQuery=event.target.value;const pos=event.target.selectionStart;render();
+      const f=root.querySelector('[data-vos-input="assets-search"]');f?.focus();f?.setSelectionRange(pos,pos);return;
     }
     if(event.target.dataset.vosInput==='people-search'){
       state.peopleQuery=event.target.value;const pos=event.target.selectionStart;render();
