@@ -106,7 +106,7 @@ try{
   await page.locator('#vishnuOs1620 [data-vos="today"]').click();
   await page.locator('#vishnuOs1620 .vos-today-hero').waitFor();
   if(outputDir)await page.screenshot({path:outputDir+'/screen25-today-'+viewport.width+'.png',fullPage:false});
-  await page.locator('#vishnuOs1620 [data-vos="workspaces"]').first().click();
+  await page.evaluate(()=>window.vishnuOsWorkspaces.open());
   await page.locator('#vishnuOs1620 [data-vos="open:space-1"]').first().click();
   await page.locator('#vishnuOs1620 [data-vos="studio"]').first().click();
   await page.locator('#vishnuOs1620').getByText('Open panels (0)').waitFor();
