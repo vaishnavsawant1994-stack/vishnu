@@ -132,7 +132,7 @@ class FloatingPresence(QWidget):
         self.resize(self.CORE_SIZE, self.CORE_SIZE)
         self.shell = QFrame(self)
         self.shell.setObjectName('presenceShell')
-        self.shell.setStyleSheet('QFrame#presenceShell{background:rgba(3,4,5,224);border:1px solid rgba(85,125,140,95);border-radius:22px;}QLineEdit{background:#070a0d;border:1px solid #17252d;border-radius:12px;padding:8px;color:#edf3f6;}QPushButton{background:#090d10;border:1px solid #17252d;border-radius:10px;padding:7px;color:#aab9c0;}QLabel{color:#dbe6ea;}')
+        self._apply_shell_style()
         outer = QVBoxLayout(self); outer.setContentsMargins(0, 0, 0, 0); outer.addWidget(self.shell)
         layout = QVBoxLayout(self.shell); layout.setContentsMargins(8, 8, 8, 8); layout.setSpacing(6)
         self.core = PulseWidget(); self.core.setAccessibleName('Vishnu core state'); self.core.setAccessibleDescription('Press Enter or Space to open quick controls'); self.core.setFixedSize(self.CORE_SIZE - 16, self.CORE_SIZE - 16)
@@ -184,6 +184,7 @@ class FloatingPresence(QWidget):
 
     def toggle_panel(self):
         self._expanded = not self._expanded
+        self._apply_shell_style()
         self.panel.setVisible(self._expanded)
         self.resize(self.PANEL_WIDTH if self._expanded else self.CORE_SIZE, 230 if self._expanded else self.CORE_SIZE)
         self._clamp_to_screen()
@@ -193,6 +194,16 @@ class FloatingPresence(QWidget):
         else:
             self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             self.core.setFocus(Qt.FocusReason.ShortcutFocusReason)
+
+    def _apply_shell_style(self):
+        shell = ('background:rgba(3,4,5,224);border:1px solid rgba(85,125,140,95);border-radius:22px;'
+                 if self._expanded else 'background:transparent;border:none;')
+        self.shell.setStyleSheet(
+            'QFrame#presenceShell{' + shell + '}'
+            'QLineEdit{background:#070a0d;border:1px solid #17252d;border-radius:12px;padding:8px;color:#edf3f6;}'
+            'QPushButton{background:#090d10;border:1px solid #17252d;border-radius:10px;padding:7px;color:#aab9c0;}'
+            'QLabel{color:#dbe6ea;}'
+        )
 
     def _core_key_press(self, event):
         if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Space):

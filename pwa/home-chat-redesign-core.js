@@ -24,7 +24,7 @@
       body.v-ref.home-landing #vChatDock{background:transparent!important;background-image:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important}
       body.v-ref.home-landing #composer{background:transparent!important;background-image:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;box-shadow:none!important;border-color:rgba(146,157,175,.3)!important}
       body.v-ref.home-landing .topbar-actions{display:flex!important}
-      body.v-ref.home-landing .topbar-actions .chat-menu-button{display:none!important}
+      body.v-ref.home-landing:not(.has-conversation) .topbar-actions .chat-menu-button{display:none!important}
       body.v-ref.home-landing .topbar-actions .owner-status{display:grid!important;grid-column:3;grid-row:1;justify-self:end;width:44px;height:44px;min-width:44px;min-height:44px;padding:0;place-items:center}
       body.v-ref.home-landing .topbar-actions .owner-status .trust{display:none!important}
     }
@@ -325,6 +325,9 @@
       // Home clears the visible transcript while keeping the saved system chat active.
       currentConversationId=activeId;
       personalizeGreeting(); placeSphere(); syncAttachIcon(); loadRecentProjects();
+      const homeIntro=$('homeIntro'),composer=$('composer'),composerSlot=$('referenceComposerSlot');
+      if(composer&&composerSlot&&composer.parentNode!==composerSlot)composerSlot.appendChild(composer);
+      if(homeIntro){homeIntro.scrollTop=0;requestAnimationFrame(()=>{homeIntro.scrollTop=0;});}
     };
     const originalConversation = enterConversationView;
     enterConversationView = function(){ originalConversation(); placeSphere(); syncAttachIcon(); };

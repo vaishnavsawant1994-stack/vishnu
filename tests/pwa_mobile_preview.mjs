@@ -24,6 +24,11 @@ const assertSharedComposerBottomInset=(bottom,viewport,label)=>{
   const gap=viewport-bottom;
   assert.ok(gap>=23&&gap<=25,`${label} must keep the shared 24px bottom inset: ${gap}px`);
 };
+const openNavigation=async page=>{
+  const more=page.locator('[data-reference-more]:visible');
+  if(await more.count())await more.first().click();
+  else await page.locator('#historyButton').click();
+};
 
 const conversations = [
   { id: "c1", title: "Project Planning", preview: "Continue planning the project", updated_at: atToday(10,33) },
@@ -374,12 +379,14 @@ try {
   assert.equal(await page.locator("#chatMenuButton").isVisible(), false, "three-dot conversation menu must be absent on Home");
   assert.equal(await page.locator("#messageStream .message").count(), 0, "Home must clear the resumed chat from the new-chat draft surface");
   assert.equal(homeState.quickActions.length,4,"Home should render its four current action cards");
-  assert.deepEqual(homeState.actionTitles,["Projects","Assign work","Today","Memory"],"Home actions must use the current Projects, work, Today and Memory destinations");
+  assert.deepEqual(homeState.actionTitles,["Code","Create","Research","Files"],"Home actions must match the unified Vishnu design destinations");
   assert.ok(homeState.cardRects.every(card=>Math.abs(card.height-homeState.cardRects[0].height)<1&&Math.abs(card.width-homeState.cardRects[0].width)<1),"the four current Home action cards should be equal sized");
   assert.ok(homeState.cardRects.every(card=>card.height>=58&&card.height<=100),"Home action cards should remain compact");
-  assert.ok(homeState.menuButton.width>=44&&homeState.menuButton.height>=44,"Home hamburger must preserve an accessible touch target");
+  const mobileHomeButton=await page.locator('.reference-mobile-nav [data-app-module="home"]').boundingBox();
+  assert.ok(mobileHomeButton&&mobileHomeButton.width>=44&&mobileHomeButton.height>=44,"Mobile Home navigation must preserve an accessible touch target");
   assert.ok(homeState.timelineButton.width>=44&&homeState.timelineButton.height>=44,"Home timeline control must preserve an accessible touch target");
-  assertSharedComposerBottomInset(homeState.composer.bottom,homeState.innerHeight,"Home composer");
+  const mobileNavBox=await page.locator('.reference-mobile-nav').boundingBox();
+  assert.ok(mobileNavBox&&homeState.composer.bottom<mobileNavBox.y,"Home composer must remain fully above the mobile navigation");
   const recentSectionVisible=await page.locator("#homeRecentSection").isVisible();
   if(recentSectionVisible){
     assert.deepEqual(homeState.recentTitles,conversations.map(item=>item.title),"visible Home Recent must use canonical conversation data");
@@ -512,7 +519,7 @@ try {
   }
 
   // The conversation-first sidebar keeps owner security behind its anchored account footer.
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.waitForFunction(() => document.querySelectorAll("#sidebarChatList .sidebar-chat-row").length === 3);
   assert.ok(await page.locator("#sidebarAccountButton").isVisible(), "account controls must be anchored to bottom");
   await page.waitForTimeout(300);
@@ -551,7 +558,7 @@ try {
   // Reload the app shell before checking its Home-only Timeline control.
   await page.reload();
   await page.waitForFunction(() => document.querySelector("#ownerButton") && !document.body.classList.contains("focused-module"));
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.click("#sidebarAccountButton");
   await page.locator("#sidebarAccountMenu [data-app-module=\"settings\"]").click();
   await page.waitForFunction(() => document.querySelector("#modulePanel")?.classList.contains("open") && document.querySelector("#moduleTitle")?.textContent === "Settings" && document.querySelector("#moduleBody")?.innerText.toLowerCase().includes("ai & intelligence"));
@@ -656,7 +663,7 @@ try {
   await page.waitForFunction(() => document.querySelector("#conversationDrawer").classList.contains("hidden"));
   assert.equal(await page.locator("#appDrawer").isVisible(),false,"closing directly-opened Timeline must not show the main sidebar");
 
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.waitForFunction(() => !document.querySelector("#appDrawer").classList.contains("hidden"));
   await page.waitForFunction(() => document.querySelectorAll("#sidebarChatList .sidebar-chat-row").length === 3);
   await page.waitForFunction(() => document.querySelector("#appDrawer").getBoundingClientRect().left >= -1);
@@ -1105,6 +1112,7 @@ try {
         documentWidth: document.documentElement.scrollWidth,
         core: rect(".core-stage"),
         composer: rect("#composer"),
+        mobileNav: rect(".reference-mobile-nav"),
         header: rect(".topbar"),
         quick: rect(".v-shortcuts"),
         home: rect(".home-intro"),
@@ -1116,21 +1124,22 @@ try {
     assert.ok(layout.core.width > 0 && layout.core.height > 0, "sphere missing at " + width + "x" + height);
     assert.ok(layout.sphereInk > 90, "mini sphere animation did not repaint after chat at " + width + "x" + height);
     assert.ok(layout.composer.bottom <= layout.viewportHeight + 1, "composer clipped at " + width + "x" + height);
-    assertSharedComposerBottomInset(layout.composer.bottom,layout.viewportHeight,"Home composer at "+width+"x"+height);
+    if(width<=900)assert.ok(layout.composer.bottom<layout.mobileNav.top,"Home composer must stay above mobile navigation at "+width+"x"+height);
     const fixedPositions=await page.evaluate(()=>({
       header:getComputedStyle(document.querySelector(".topbar")).position,
       composer:getComputedStyle(document.querySelector("#composer")).position
     }));
     assert.equal(fixedPositions.header,"fixed","Home topbar must stay fixed at "+width+"x"+height);
-    assert.equal(fixedPositions.composer,"fixed","Home composer must stay fixed at "+width+"x"+height);
+    assert.equal(fixedPositions.composer,"relative","Reference Home composer must remain in the page flow at "+width+"x"+height);
     assert.ok(layout.header.left >= -1 && layout.header.right <= layout.viewportWidth + 1, "header clipped at " + width + "x" + height);
     const edgeControls=await page.evaluate(()=>({
       header:document.querySelector(".topbar").getBoundingClientRect(),
       left:document.querySelector("#historyButton").getBoundingClientRect(),
+      title:document.querySelector(".v-home-title").getBoundingClientRect(),
       right:document.querySelector("#ownerButton").getBoundingClientRect()
     }));
-    if(width<=600){
-      assert.ok(Math.abs(edgeControls.left.left-edgeControls.header.left)<=1,"hamburger gained extra left inset at "+width+"x"+height);
+    if(width<=900){
+      assert.ok(edgeControls.title.left>=edgeControls.header.left-1,"Vishnu title gained extra left inset at "+width+"x"+height);
       assert.ok(Math.abs(edgeControls.right.right-edgeControls.header.right)<=1,"Timeline control gained extra right inset at "+width+"x"+height);
     }else{
       assert.ok(edgeControls.left.left>=edgeControls.header.left-1&&edgeControls.right.right<=edgeControls.header.right+1,"header controls must stay inside the tablet/desktop header at "+width+"x"+height);
@@ -1146,10 +1155,11 @@ try {
     if(width<=600)assert.ok(Math.abs(layout.composer.width-layout.home.width)<=4, "Home composer must share the same outer grid at " + width + "x" + height);
     assert.ok(layout.composer.left>=-1 && layout.composer.right<=layout.viewportWidth+1, "composer clips horizontally at " + width + "x" + height);
     assert.ok(layout.controls.filter(control => control.width>0).every(control => control.width>=43 && control.height>=43), "composer action hit targets too small at " + width + "x" + height);
-    assert.ok(layout.composer.height>=52 && layout.composer.height<=60, "idle Home composer height drifted from the approved design at " + width + "x" + height);
+    if(width<=900)assert.ok(layout.composer.height>=120&&layout.composer.height<=150,"mobile Home composer height drifted from the reference design at "+width+"x"+height);
+    else assert.ok(layout.composer.height>=84&&layout.composer.height<=110,"desktop Home composer height drifted from the reference design at "+width+"x"+height);
     if (width === 320) {
       await page.screenshot({ path: "artifacts/personal-ai-home-320x568.png", fullPage: true });
-      await page.click("#historyButton");
+      await openNavigation(page);
       await page.waitForFunction(() => document.querySelector("#appDrawer").getBoundingClientRect().left >= -1);
       const narrowSidebar = await page.evaluate(() => ({
         screenWidth:innerWidth, screenHeight:innerHeight,
@@ -1216,7 +1226,7 @@ try {
       await page.screenshot({path:"artifacts/personal-ai-timeline-approved-large-iphone-430x932.png",fullPage:true});
       await page.click("#timelineCloseDrawer");
       await page.waitForFunction(()=>document.querySelector("#conversationDrawer").classList.contains("hidden"));
-      await page.click("#historyButton");
+      await openNavigation(page);
       assert.ok(await page.locator("#sidebarAccountButton").isVisible());
       await page.screenshot({ path: "artifacts/personal-ai-sidebar-430x932.png", fullPage: true });
       await page.click("#closeAppDrawer");
@@ -1235,19 +1245,21 @@ try {
       home:document.querySelector(".home-intro").getBoundingClientRect(),
       header:document.querySelector(".topbar").getBoundingClientRect(),
       composer:document.querySelector("#composer").getBoundingClientRect(),
+      mobileNav:document.querySelector(".reference-mobile-nav").getBoundingClientRect(),
       quick:[...document.querySelectorAll(".v-shortcuts .v-card")].map(node=>node.getBoundingClientRect()),
     }));
     assert.ok(wide.doc<=wide.inner,"wide Home must not horizontally overflow at "+width+"x"+height);
-    assertSharedComposerBottomInset(wide.composer.bottom,height,"wide Home composer at "+width+"x"+height);
+    assert.ok(wide.composer.bottom<=height+1,"wide Home composer must remain inside the viewport at "+width+"x"+height);
+    if(width<=900)assert.ok(wide.composer.bottom<wide.mobileNav.top,"tablet Home composer must remain above mobile navigation at "+width+"x"+height);
     const wideFixed=await page.evaluate(()=>({
       header:getComputedStyle(document.querySelector(".topbar")).position,
       composer:getComputedStyle(document.querySelector("#composer")).position
     }));
     assert.equal(wideFixed.header,"fixed","wide Home topbar must remain fixed at "+width+"x"+height);
-    assert.equal(wideFixed.composer,"fixed","wide Home composer must remain fixed at "+width+"x"+height);
+    assert.equal(wideFixed.composer,"relative","wide reference Home composer must remain in the page flow at "+width+"x"+height);
     if(width>=1024){
       assert.ok(wide.home.width<=1000&&wide.header.width<=1000&&wide.composer.width<=1000,"Desktop Home content must remain within its 1000px design max width at "+width+"x"+height);
-      assert.ok(Math.abs(wide.home.left-(wide.inner-wide.home.width)/2)<=2,"Desktop Home content must remain centered at "+width+"x"+height);
+      assert.ok(Math.abs(wide.home.left-(wide.inner+264-wide.home.width)/2)<=2,"Desktop Home content must remain centered in the workspace beside its navigation at "+width+"x"+height);
     } else {
       assert.ok(wide.home.left>=0&&wide.home.right<=wide.inner+1&&wide.header.left>=0&&wide.header.right<=wide.inner+1&&wide.composer.left>=0&&wide.composer.right<=wide.inner+1,"Tablet Home regions must remain inside the viewport at "+width+"x"+height);
     }
@@ -1313,8 +1325,8 @@ try {
     assert.ok(shortOrTall.documentWidth<=width,"short, tall or landscape viewport must not create horizontal page overflow: "+JSON.stringify(shortOrTall));
     assert.ok(shortOrTall.composer.left>=-1&&shortOrTall.composer.right<=width+1&&shortOrTall.composer.bottom<=height+1,
       "composer must remain in view in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
-    assert.ok(shortOrTall.lastAction&&shortOrTall.lastAction.bottom<=shortOrTall.composer.top+1,
-      "The final Home action must remain reachable above the composer in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
+    assert.ok(shortOrTall.lastAction&&(shortOrTall.composer.bottom<=shortOrTall.lastAction.top+1||shortOrTall.lastAction.bottom<=shortOrTall.composer.top+1),
+      "Home actions and composer must remain separately reachable in short, tall and landscape layouts: "+JSON.stringify(shortOrTall));
   }
   const responsiveModuleWidths=[320,360,375,390,430,600,768,820,1024,1280,1440,1920,2560];
   const responsiveModules=["memory","knowledge","activities","tools","workflows","devices","dashboard","settings","owner","system"];
@@ -1358,10 +1370,10 @@ try {
 
   // Keyboard and creation controls use the existing application bindings.
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.click("#sidebarNewChat");
   await page.waitForFunction(() => document.querySelector("#appDrawer").classList.contains("hidden") && !document.body.classList.contains("home-landing") && document.querySelectorAll("#messageStream .message").length === 0);
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.click("#appConversations");
   await page.click("#newConversation");
   await page.waitForFunction(() => !document.body.classList.contains("home-landing") && document.querySelectorAll("#messageStream .message").length === 0);
@@ -1663,7 +1675,7 @@ try {
   // Signing out clears previously loaded private rows, and the drawer must not
   // leave an unauthorized request stuck in its loading state.
   revokeSession=true;
-  await page.click("#historyButton");
+  await openNavigation(page);
   await page.click("#sidebarAccountButton");
   await page.click("#drawerSignOut");await page.click("#actionDialogSubmit");
   await page.waitForFunction(()=>!document.querySelector("#enrollPanel").classList.contains("hidden"));

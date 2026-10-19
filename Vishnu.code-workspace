@@ -1,0 +1,12 @@
+{
+  "folders": [
+    {
+      "name": "Vishnu",
+      "path": "."
+    }
+  ],
+  "settings": {
+    "python.defaultInterpreterPath": "${workspaceFolder}\\.venv\\Scripts\\python.exe",
+    "terminal.integrated.cwd": "${workspaceFolder}"
+  }
+}

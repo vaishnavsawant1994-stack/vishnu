@@ -8,6 +8,8 @@ venv/
 data/
 *.log
 .pytest_cache/
+.gradle/
 dist/
 build/
 *.egg-info/
+.reset-archives/

@@ -25,10 +25,10 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     assert "projects-work-visualization-runtime.js" in loader
     sw = Path("pwa/sw.js").read_text()
     assert "project-autonomy-controls.js" in sw
-    # v38 advances the offline shell to include the adaptive universal composer
+    # v45 refreshes installed PWAs with the canonical Genesis imagery and CSS
     # while retaining the bounded local-first data-plane continuation cache.
-    # Keeping v37 would leave installed PWAs without the new composer shell asset.
-    assert "personal-ai-iphone-v38" in sw
+    # Keeping v44 would leave installed clients on the earlier onboarding shell.
+    assert "personal-ai-iphone-v45" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw

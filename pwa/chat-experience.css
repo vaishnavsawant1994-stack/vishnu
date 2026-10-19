@@ -1,11 +1,13 @@
 /* Responsive chat surface built on Vishnu's existing home, message stream, and drawers. */
 body.chat-experience{overflow:hidden;background:#07111c!important}
+body.v-ref.chat-experience .topbar{display:grid!important}
 body.chat-experience .app-shell{display:flex!important;flex-direction:column!important;height:100dvh;min-height:0!important;gap:0!important;background:radial-gradient(850px 520px at 55% 22%,rgba(29,74,134,.16),transparent 66%),#07111c!important}
 body.chat-experience .topbar{flex:0 0 56px}
 body.chat-experience #voicePanel{display:grid!important;flex:1 1 auto!important;min-height:0!important;height:auto!important}
 body.chat-experience #modulePanel,body.chat-experience #features{display:none!important}
 body.chat-experience .state,body.chat-experience .conversation-title{display:none!important}
 body.chat-experience .side-copy,body.chat-experience .side-quote{display:none!important}
+body.chat-experience .reference-desktop-tools,body.chat-experience .reference-mobile-nav{display:none!important}
 body.chat-experience #vNewChat{display:none!important}
 body.chat-experience #micButton{display:none!important}
 body.chat-experience #composer #sendButton{display:grid!important;visibility:visible!important;opacity:1!important}

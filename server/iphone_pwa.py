@@ -13,6 +13,7 @@ from typing import Literal
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field, SecretStr
+from data_plane.runtime import get_data_plane
 from google.auth.transport.requests import Request as GoogleAuthRequest
 from google.oauth2 import id_token as google_id_token
 from webauthn import (
@@ -112,6 +113,7 @@ class NativeFirstRunCompleteBody(BaseModel):
     device_token: SecretStr = Field(min_length=32, max_length=256)
     recovery_saved: Literal[True]
     privacy_mode: Literal['local_only', 'local_preferred', 'external_allowed'] = 'local_only'
+    data_policy: Literal['device_only', 'progress_only', 'sync_everywhere', 'on_demand'] = 'progress_only'
     model_choice: Literal['configure_later', 'configured']
 
 
@@ -215,13 +217,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
 
     def device_cookie_kwargs():
         cookie_days = max(1, min(int(getattr(settings, 'iphone_device_cookie_days', 365)), 3650))
-        return dict(
+        cookie_kwargs = dict(
             httponly=True,
             secure=True,
             samesite='strict',
             path='/iphone',
             max_age=60 * 60 * 24 * cookie_days,
         )
+        if getattr(settings, 'iphone_pwa_allow_insecure', False):
+            cookie_kwargs['secure'] = False
+        return cookie_kwargs
 
     def require_https(request: Request):
         forwarded = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
@@ -382,6 +387,28 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                         media_type='application/javascript',
                         headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/genesis.css', include_in_schema=False)
+    def genesis_stylesheet():
+        return Response((web_dir / 'genesis.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/assets/genesis/{asset_name}', include_in_schema=False)
+    def genesis_asset(asset_name: str):
+        allowed = {
+            'vishnu-core.png': 'image/png',
+            'cosmic-desktop.png': 'image/png',
+            'cosmic-mobile.png': 'image/png',
+        }
+        media_type = allowed.get(asset_name)
+        if media_type is None:
+            raise HTTPException(404, 'Genesis asset not found')
+        asset = web_dir / 'assets' / 'genesis' / asset_name
+        if not asset.is_file():
+            raise HTTPException(404, 'Genesis asset not found')
+        return Response(asset.read_bytes(), media_type=media_type,
+                        headers={'Cache-Control': 'public, max-age=86400'})
+
     @router.get('/manifest.webmanifest', include_in_schema=False)
     def manifest():
         return Response((web_dir / 'manifest.webmanifest').read_text(encoding='utf-8'), media_type='application/manifest+json')
@@ -397,6 +424,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('/home-chat-redesign.js', include_in_schema=False)
     def home_chat_redesign_script():
         return Response((web_dir / 'home-chat-redesign.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/reference-home.js', include_in_schema=False)
+    def reference_home_script():
+        return Response((web_dir / 'reference-home.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/reference-home.css', include_in_schema=False)
+    def reference_home_styles():
+        return Response((web_dir / 'reference-home.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
     @router.get('/reference-pages.js', include_in_schema=False)
     def reference_pages_script():
@@ -552,7 +587,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             raise HTTPException(409, str(exc)) from exc
         response.set_cookie(
             'pa_setup_claim', claim,
-            httponly=True, secure=True, samesite='strict', path='/iphone', max_age=900,
+            httponly=True, secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            samesite='strict', path='/iphone', max_age=900,
         )
         emit('owner.security.configured', device_id=device['id'], method='password')
         return {
@@ -685,6 +721,13 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 autonomy_mode='ask',
                 memory_enabled=True,
             )
+            data_plane = get_data_plane(runtime)
+            if data_plane is not None:
+                saved_policy = data_plane.update_settings(default_policy=body.data_policy)
+                if str(saved_policy.get('default_policy') or '') != body.data_policy:
+                    raise RuntimeError('Vishnu did not confirm the selected data placement policy')
+            elif body.data_policy != 'progress_only':
+                raise RuntimeError('The selected data placement policy is unavailable on this runtime')
             if body.model_choice == 'configure_later':
                 first_run_setup.skip_model_configuration()
             elif 'model' not in state.get('completed_steps', []):

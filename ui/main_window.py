@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from agent.executor import ConfirmationRequired
+from core.config import settings
 from ui.control_panel import ControlPanel
 from ui.memory_panel import MemoryPanel
 from ui.pulse import PulseWidget
@@ -224,9 +225,33 @@ class MainWindow(QMainWindow):
                 border-radius: 16px;
             }}
             QFrame#menuDrawer {{
-                background: #05080a;
-                border-left: 1px solid #111b21;
-                border-radius: 18px;
+                background: #080c10;
+                border-right: 1px solid #1b222a;
+                border-radius: 0;
+            }}
+            QFrame#menuDrawer QPushButton {{
+                min-height: 28px;
+                border-radius: 10px;
+                padding: 8px 13px;
+                text-align: left;
+                font-size: 14px;
+            }}
+            QFrame#menuDrawer QPushButton:checked {{
+                background: #20262d;
+                border-color: #343c46;
+                color: #f6f8fb;
+            }}
+            QLabel#sidebarBrand {{ color:#f3f5f8;font-size:17px;font-weight:500;letter-spacing:6px; }}
+            QLabel#sidebarSubtitle {{ color:#8e97a2;font-size:10px; }}
+            QLabel#homeBrand {{ color:#e8edf4;font-size:22px;letter-spacing:10px; }}
+            QLabel#homeTagline {{ color:#a1a9b4;font-size:13px;letter-spacing:3px; }}
+            QLabel#homeGreeting {{ color:#eef2f7;font-size:29px;font-weight:600; }}
+            QLabel#homeQuestion {{ color:#7d8795;font-size:20px; }}
+            QPushButton#homeAction {{
+                min-height: 68px;background:#0c1116;border:1px solid #27303a;
+                border-radius:14px;color:#edf1f6;font-size:14px;text-align:left;padding:12px 16px;
+            }}
+            QPushButton#homeAction:hover {{ background:#141b22;border-color:#475667; }}
             }}
 
             QPushButton:focus, QLineEdit:focus, QTextBrowser:focus, QPlainTextEdit:focus,
@@ -302,14 +327,20 @@ class MainWindow(QMainWindow):
 
         root = QWidget()
         self.setCentralWidget(root)
-        outer = QVBoxLayout(root)
-        outer.setContentsMargins(26, 18, 26, 20)
-        outer.setSpacing(12)
-        outer.addLayout(self._build_top_nav())
+        outer = QHBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        shell = QHBoxLayout()
-        shell.setContentsMargins(0, 0, 0, 0)
-        shell.setSpacing(12)
+        self.menu_drawer = self._build_main_menu()
+        self.menu_drawer.setMinimumWidth(264)
+        self.menu_drawer.setMaximumWidth(264)
+        outer.addWidget(self.menu_drawer)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(26, 18, 26, 20)
+        content_layout.setSpacing(12)
+        content_layout.addLayout(self._build_top_nav())
 
         self.stack = QStackedWidget()
         self.pages = {}
@@ -317,14 +348,8 @@ class MainWindow(QMainWindow):
             page = self._build_page(name)
             self.pages[name] = page
             self.stack.addWidget(page)
-        shell.addWidget(self.stack, 1)
-
-        self.menu_drawer = self._build_main_menu()
-        self.menu_drawer.setMinimumWidth(0)
-        self.menu_drawer.setMaximumWidth(0)
-        shell.addWidget(self.menu_drawer)
-
-        outer.addLayout(shell, 1)
+        content_layout.addWidget(self.stack, 1)
+        outer.addWidget(content, 1)
 
         self.menu_anim = QPropertyAnimation(self.menu_drawer, b"maximumWidth", self)
         self.menu_anim.setDuration(260)
@@ -347,24 +372,24 @@ class MainWindow(QMainWindow):
 
     def _build_top_nav(self):
         nav = QHBoxLayout()
-        brand = QLabel("VISHNU")
-        brand.setObjectName("brand")
+        brand = QLabel("Vishnu · Personal Intelligence OS")
+        brand.setObjectName("muted")
         nav.addWidget(brand)
         nav.addStretch(1)
 
-        self.dashboard_btn = QPushButton("Dashboard")
+        self.dashboard_btn = QPushButton("Search anything…   Ctrl K")
         self.dashboard_btn.setObjectName("navAction")
         self.dashboard_btn.setCheckable(True)
         self.dashboard_btn.clicked.connect(lambda _checked=False: self._show_page("Dashboard"))
         nav.addWidget(self.dashboard_btn)
 
-        self.cloud_btn = QPushButton("Cloud Vishnu  ↗")
+        self.cloud_btn = QPushButton("Web Vishnu  ↗")
         self.cloud_btn.setObjectName("navAction")
         self.cloud_btn.setToolTip("Open your shared conversations, voice and trusted cloud session")
         self.cloud_btn.clicked.connect(self.open_cloud)
         nav.addWidget(self.cloud_btn)
 
-        self.menu_btn = QPushButton("Main Menu  ☰")
+        self.menu_btn = QPushButton("●")
         self.menu_btn.setObjectName("navAction")
         self.menu_btn.setCheckable(True)
         self.menu_btn.clicked.connect(self._toggle_main_menu)
@@ -379,14 +404,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(18, 18, 18, 18)
         layout.setSpacing(5)
 
-        caption = QLabel("VISHNU")
-        caption.setObjectName("menuCaption")
+        caption = QLabel("◯  VISHNU")
+        caption.setObjectName("sidebarBrand")
         layout.addWidget(caption)
+        subtitle = QLabel("     Personal Intelligence OS")
+        subtitle.setObjectName("sidebarSubtitle")
+        layout.addWidget(subtitle)
         layout.addSpacing(8)
 
         self.menu_buttons = {}
+        icons = {
+            "Home": "⌂", "Conversation": "◫", "Memory": "◎", "Knowledge": "▤",
+            "Activities": "⌁", "Dashboard": "◉", "Apps & Tools": "▦",
+            "Our Products": "□", "Settings": "⚙",
+        }
         for name in self.NAV:
-            button = QPushButton(name)
+            button = QPushButton(f"{icons.get(name, '·')}    {name}")
             button.setCheckable(True)
             button.setMinimumWidth(220)
             button.clicked.connect(lambda checked=False, target=name: self._show_page(target))
@@ -394,23 +427,17 @@ class MainWindow(QMainWindow):
             layout.addWidget(button)
 
         layout.addStretch(1)
-        footer = QLabel("One intelligence · one continuous environment")
+        footer = QLabel("●  Vaishnav\n    Free Thinker  ·  Builder")
         footer.setObjectName("muted")
         footer.setWordWrap(True)
         layout.addWidget(footer)
         return drawer
 
     def _toggle_main_menu(self, checked):
-        self.menu_anim.stop()
-        self.menu_anim.setStartValue(self.menu_drawer.maximumWidth())
-        self.menu_anim.setEndValue(280 if checked else 0)
-        self.menu_anim.start()
+        self.menu_drawer.setVisible(True)
 
     def _close_main_menu(self):
-        if not self.menu_btn.isChecked() and self.menu_drawer.maximumWidth() == 0:
-            return
-        self.menu_btn.setChecked(False)
-        self._toggle_main_menu(False)
+        self.menu_drawer.setVisible(True)
 
     def _build_page(self, name):
         if name == "Home":
@@ -459,20 +486,43 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.needs_label)
 
         self.pulse = PulseWidget()
-        self.pulse.setMinimumHeight(350)
+        self.pulse.setMinimumHeight(170)
+        self.pulse.setMaximumHeight(210)
         prefs = self.runtime.get("preferences")
         if prefs and hasattr(self.pulse, "set_reduce_motion"):
             self.pulse.set_reduce_motion(bool(prefs.get("reduce_motion")))
-        layout.addWidget(self.pulse, 1)
+        layout.addWidget(self.pulse)
+
+        home_brand = QLabel("V I S H N U")
+        home_brand.setObjectName("homeBrand")
+        home_brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(home_brand)
+
+        tagline = QLabel("Your Personal Intelligence OS")
+        tagline.setObjectName("homeTagline")
+        tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(tagline)
+
+        greeting = QLabel("Good afternoon, Vaishnav.")
+        greeting.setObjectName("homeGreeting")
+        greeting.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(greeting)
+
+        question = QLabel("What shall we work on today?")
+        question.setObjectName("homeQuestion")
+        question.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(question)
 
         self.state = QLabel("Idle")
         self.state.setObjectName("heroState")
         self.state.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.state.setVisible(False)
         layout.addWidget(self.state)
 
         self.state_hint = QLabel("I am here.")
         self.state_hint.setObjectName("heroHint")
         self.state_hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.state_hint.setVisible(False)
         layout.addWidget(self.state_hint)
 
         self.chat = QTextBrowser()
@@ -505,6 +555,19 @@ class MainWindow(QMainWindow):
         send_btn.clicked.connect(lambda _checked=False: self.submit(self.input))
         composer_row.addWidget(send_btn)
         layout.addWidget(composer)
+
+        actions = QHBoxLayout()
+        for label, target in (
+            ("</>  Work with code\n      Build, debug and refactor", "Conversation"),
+            ("✦  Create something\n      Generate content and designs", "Conversation"),
+            ("▤  Use your knowledge\n      Find and connect information", "Knowledge"),
+            ("▥  Plan and research\n      Turn questions into insights", "Activities"),
+        ):
+            action = QPushButton(label)
+            action.setObjectName("homeAction")
+            action.clicked.connect(lambda _checked=False, page_name=target: self._show_page(page_name))
+            actions.addWidget(action, 1)
+        layout.addLayout(actions)
 
         indicators = QHBoxLayout()
         indicators.addStretch(1)
@@ -859,11 +922,15 @@ class MainWindow(QMainWindow):
         Browser handoff preserves Google authentication, secure device cookies,
         microphone permissions and cross-device conversation continuity.
         """
-        if not QDesktopServices.openUrl(QUrl(self.CLOUD_URL)):
+        target = self.runtime.get("cloud_url") or self.CLOUD_URL
+        if settings.control_server_enabled:
+            host = "127.0.0.1" if settings.control_server_host in {"0.0.0.0", "::"} else settings.control_server_host
+            target = f"http://{host}:{settings.control_server_port}/iphone/"
+        if not QDesktopServices.openUrl(QUrl(target)):
             QMessageBox.warning(
                 self,
                 "Vishnu cloud",
-                f"Could not open your browser. Open this address manually:\n{self.CLOUD_URL}",
+                f"Could not open your browser. Open this address manually:\n{target}",
             )
 
     def open_control(self):

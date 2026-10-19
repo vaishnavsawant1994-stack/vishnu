@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices
+from pathlib import Path
+
+from PyQt6.QtCore import Qt, QUrl, QRectF
+from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -22,6 +24,24 @@ from data_plane.runtime import get_data_plane
 from onboarding.first_run import FirstRunCoordinator, SetupMode
 
 
+class VishnuCore(QWidget):
+    """Render the exact transparent Core asset shared by every Vishnu client."""
+
+    def __init__(self, state: str = 'identity', size: int = 220):
+        super().__init__()
+        self.state = state
+        self.setFixedSize(size, size)
+        asset = Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'vishnu-core.png'
+        self.pixmap = QPixmap(str(asset))
+        self.setAccessibleName(f'Vishnu intelligence core, {state} state')
+
+    def paintEvent(self, event):  # noqa: N802 - Qt API
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        if not self.pixmap.isNull():
+            painter.drawPixmap(self.rect(), self.pixmap)
+
+
 class FirstRunWizard(QDialog):
     """Owner-first setup UI for a fresh Vishnu desktop installation."""
 
@@ -34,43 +54,56 @@ class FirstRunWizard(QDialog):
         self.restart_required = False
         self.external_connect = False
         self.setWindowTitle('Welcome to Vishnu')
+        self.setObjectName('firstRunWizard')
         self.setModal(True)
-        self.resize(760, 620)
-        self.setMinimumSize(680, 560)
+        self.resize(1280, 800)
+        self.setMinimumSize(900, 680)
         self.setStyleSheet(self._stylesheet())
 
         root = QVBoxLayout(self)
         root.setContentsMargins(38, 32, 38, 32)
         root.setSpacing(20)
-        brand = QLabel('VISHNU')
+        brand = QLabel('V I S H N U')
         brand.setObjectName('brand')
+        brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(brand)
+        self.genesis_progress = QLabel('Screen 1 of 10   ● ○ ○ ○ ○ ○ ○ ○ ○ ○')
+        self.genesis_progress.setObjectName('progress')
+        self.genesis_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        root.addWidget(self.genesis_progress)
         self.title = QLabel('Welcome to Vishnu')
         self.title.setObjectName('title')
-        root.addWidget(self.title)
         self.subtitle = QLabel('Create your owner intelligence, connect to an existing Vishnu, or restore a backup.')
         self.subtitle.setObjectName('subtitle')
         self.subtitle.setWordWrap(True)
-        root.addWidget(self.subtitle)
 
         self.stack = QStackedWidget()
         root.addWidget(self.stack, 1)
         self.stack.addWidget(self._welcome_page())       # 0
-        self.stack.addWidget(self._owner_page())         # 1
-        self.stack.addWidget(self._security_page())      # 2
-        self.stack.addWidget(self._recovery_page())      # 3
-        self.stack.addWidget(self._privacy_page())       # 4
-        self.stack.addWidget(self._data_page())          # 5
-        self.stack.addWidget(self._model_page())         # 6
-        self.stack.addWidget(self._review_page())        # 7
-        self.stack.addWidget(self._restore_page())       # 8
-        self.stack.addWidget(self._connect_page())       # 9
+        self.stack.addWidget(self._owner_page())            # 1 / Genesis 02
+        self.stack.addWidget(self._security_choice_page())  # 2 / Genesis 03
+        self.stack.addWidget(self._security_page())         # 3 / Genesis 04
+        self.stack.addWidget(self._recovery_page())         # 4 / Genesis 05
+        self.stack.addWidget(self._device_page())           # 5 / Genesis 06
+        self.stack.addWidget(self._data_page())             # 6 / Genesis 07
+        self.stack.addWidget(self._model_page())            # 7 / Genesis 08
+        self.stack.addWidget(self._privacy_page())          # 8 / Genesis 09
+        self.stack.addWidget(self._review_page())           # 9 / Genesis 10
+        self.stack.addWidget(self._restore_page())          # 10
+        self.stack.addWidget(self._connect_page())          # 11
+        self.stack.currentChanged.connect(self._update_progress)
 
         footer = QHBoxLayout()
         self.back_button = QPushButton('Back')
         self.back_button.clicked.connect(self._back)
         self.back_button.setVisible(False)
         footer.addWidget(self.back_button)
+        privacy = QPushButton('Privacy')
+        privacy.setObjectName('footerLink')
+        footer.addWidget(privacy)
+        accessibility = QPushButton('Accessibility')
+        accessibility.setObjectName('footerLink')
+        footer.addWidget(accessibility)
         footer.addStretch(1)
         self.cancel_button = QPushButton('Exit setup')
         self.cancel_button.clicked.connect(self.reject)
@@ -80,37 +113,47 @@ class FirstRunWizard(QDialog):
         state = self.coordinator.snapshot()
         self._restore_form_values()
         self._resume_state(state)
+        self._update_progress(self.stack.currentIndex())
         if state.get('status') == 'restore_failed' and state.get('last_error'):
             QMessageBox.warning(self, 'Restore needs attention', str(state['last_error']))
 
-    @staticmethod
-    def _stylesheet() -> str:
+    def _stylesheet(self) -> str:
+        background = (Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'cosmic-desktop.png').as_posix()
         return """
-        QDialog, QWidget { background:#050709; color:#edf4f7; font-family:Inter,"Segoe UI",Arial; }
-        QLabel#brand { color:#81939d; font-size:12px; font-weight:700; letter-spacing:4px; }
-        QLabel#title { font-size:30px; font-weight:700; color:#f5fafc; }
-        QLabel#subtitle { color:#8fa0aa; font-size:14px; }
-        QLabel#section { font-size:19px; font-weight:650; color:#eef6f9; }
-        QLabel#hint { color:#7d8c94; font-size:12px; }
-        QPushButton { background:#0a1014; border:1px solid #1b2b34; border-radius:12px; padding:11px 16px; color:#d5e1e6; }
-        QPushButton:hover { border-color:#385463; background:#0c151a; }
-        QPushButton#primary { background:#deedf1; color:#071015; border:0; font-weight:700; }
-        QPushButton#choice { text-align:left; min-height:58px; font-size:14px; }
-        QLineEdit, QComboBox { background:#080d11; border:1px solid #1b2b34; border-radius:10px; padding:10px; color:#edf4f7; min-height:20px; }
-        QComboBox QAbstractItemView { background:#080d11; color:#edf4f7; selection-background-color:#17313d; }
-        QCheckBox { color:#afbdc4; spacing:10px; }
-        """
+        QDialog#firstRunWizard { background-color:#02060b; border-image:url('__BACKGROUND__') 0 0 0 0 stretch stretch; color:#f5faff; font-family:"Segoe UI"; }
+        QDialog#firstRunWizard QWidget { background:transparent; color:#f5faff; font-family:"Segoe UI"; }
+        QLabel#brand { color:#f5faff; font-size:22px; font-weight:450; letter-spacing:7px; }
+        QLabel#title { font-size:38px; font-weight:350; color:#f5faff; }
+        QLabel#subtitle { color:#a7bacb; font-size:15px; }
+        QLabel#progress { color:#4ddcff; font-size:12px; letter-spacing:2px; }
+        QLabel#section { font-size:25px; font-weight:450; color:#f5faff; }
+        QLabel#hint { color:#687f94; font-size:12px; }
+        QPushButton { background:rgba(5,18,30,184); border:1px solid rgba(61,174,235,90); border-radius:13px; padding:12px 18px; color:#f5faff; }
+        QPushButton:hover, QPushButton:focus { border-color:#4ddcff; background:#071d2d; }
+        QPushButton#primary { background:#073b61; color:#f5faff; border:1px solid #4ddcff; border-radius:26px; font-weight:600; min-height:28px; }
+        QPushButton#choice { text-align:left; min-height:64px; font-size:14px; border-radius:17px; }
+        QPushButton#footerLink { border:0; background:transparent; color:#687f94; padding:8px; }
+        QLineEdit, QComboBox { background:#03111e; border:1px solid rgba(61,174,235,100); border-radius:13px; padding:11px; color:#f5faff; min-height:24px; }
+        QLineEdit:focus, QComboBox:focus { border-color:#4ddcff; }
+        QComboBox QAbstractItemView { background:#071522; color:#f5faff; selection-background-color:#0b456a; }
+        QCheckBox { color:#a7bacb; spacing:10px; }
+        """.replace('__BACKGROUND__', background)
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(14)
+        core_size = 300 if heading == 'Welcome to Vishnu' else 190
+        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity', core_size)
+        layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
         heading_label = QLabel(heading)
         heading_label.setObjectName('section')
+        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(heading_label)
         copy_label = QLabel(copy)
         copy_label.setObjectName('subtitle')
+        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copy_label.setWordWrap(True)
         layout.addWidget(copy_label)
         return page, layout
@@ -121,25 +164,39 @@ class FirstRunWizard(QDialog):
         button.clicked.connect(callback)
         return button
 
+    def _update_progress(self, index: int):
+        if 0 <= index <= 9:
+            step = index + 1
+            dots = ' '.join('●' if item <= step else '○' for item in range(1, 11))
+            self.genesis_progress.setText(f'Screen {step} of 10   {dots}')
+            self.genesis_progress.setVisible(index > 0)
+        else:
+            self.genesis_progress.setVisible(False)
+
     def _welcome_page(self):
-        page, layout = self._page('Welcome to Vishnu', 'Vishnu belongs to you. This device can create your Vishnu, connect to one you already use, or restore it from a backup.')
-        create = QPushButton('Create my Vishnu\nCreate your Vishnu on this device. It will be your first trusted device.')
-        create.setObjectName('choice')
+        page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
+        create = QPushButton('Create my Vishnu  →')
+        create.setObjectName('primary')
+        create.setMinimumWidth(470)
         create.clicked.connect(lambda: self._choose_mode(SetupMode.CREATE))
-        layout.addWidget(create)
-        connect = QPushButton('I already have Vishnu\nConnect this device to your existing Vishnu.')
-        connect.setObjectName('choice')
+        layout.addWidget(create, 0, Qt.AlignmentFlag.AlignHCenter)
+        secondary = QHBoxLayout()
+        connect = QPushButton('I already have Vishnu')
+        connect.setObjectName('footerLink')
         connect.clicked.connect(lambda: self._choose_mode(SetupMode.CONNECT))
-        layout.addWidget(connect)
-        restore = QPushButton('Restore Vishnu\nRecover owner data from an authenticated encrypted backup')
-        restore.setObjectName('choice')
+        restore = QPushButton('Restore Vishnu')
+        restore.setObjectName('footerLink')
         restore.clicked.connect(lambda: self._choose_mode(SetupMode.RESTORE))
-        layout.addWidget(restore)
+        secondary.addStretch(1)
+        secondary.addWidget(connect)
+        secondary.addWidget(restore)
+        secondary.addStretch(1)
+        layout.addLayout(secondary)
         layout.addStretch(1)
         return page
 
     def _owner_page(self):
-        page, layout = self._page('Let’s create your Vishnu', 'Your owner identity is independent of this device and any external account. You can edit your profile later.')
+        page, layout = self._page('Create your Vishnu identity', 'This is how Vishnu will know and address you.')
         form = QFormLayout()
         self.first_name = QLineEdit()
         self.last_name = QLineEdit()
@@ -153,8 +210,23 @@ class FirstRunWizard(QDialog):
         layout.addWidget(self._next_button('Continue', self._save_owner))
         return page
 
+    def _security_choice_page(self):
+        page, layout = self._page('Secure your Vishnu', 'Choose how Vishnu should verify it is you.')
+        self.authentication_choice = QComboBox()
+        self.authentication_choice.addItem('Passkey — recommended', 'passkey')
+        self.authentication_choice.addItem('Password', 'password')
+        self.authentication_choice.addItem('Passkey + password', 'both')
+        layout.addWidget(self.authentication_choice)
+        hint = QLabel('A private owner password initializes recovery security. When Windows passkey support is available, Vishnu will offer the selected passkey option without changing your owner identity.')
+        hint.setObjectName('hint')
+        hint.setWordWrap(True)
+        layout.addWidget(hint)
+        layout.addStretch(1)
+        layout.addWidget(self._next_button('Continue', lambda: self.stack.setCurrentIndex(3)))
+        return page
+
     def _security_page(self):
-        page, layout = self._page('Secure your Vishnu', 'Create the owner password now. Passkeys / Face ID / Touch ID / Windows Hello can be added later from Settings → Security.')
+        page, layout = self._page('Configure your authentication', 'Create the private owner credential and recovery security for this Vishnu.')
         form = QFormLayout()
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
@@ -183,8 +255,18 @@ class FirstRunWizard(QDialog):
         layout.addWidget(self._next_button('Continue', self._confirm_recovery_codes))
         return page
 
+    def _device_page(self):
+        page, layout = self._page('Register this device', 'Make this computer part of your trusted Vishnu network.')
+        device = QLabel('This Windows computer\nSecure device credential will be created\nThis device can be reviewed or revoked later')
+        device.setWordWrap(True)
+        device.setStyleSheet('background:#071522;border:1px solid rgba(61,174,235,90);border-radius:17px;padding:18px;')
+        layout.addWidget(device)
+        layout.addStretch(1)
+        layout.addWidget(self._next_button('Trust this device', lambda: self.stack.setCurrentIndex(6)))
+        return page
+
     def _privacy_page(self):
-        page, layout = self._page('Privacy and autonomy', 'Choose the default boundaries. Consequential actions still pass through Vishnu’s canonical risk, approval, verification and recovery systems.')
+        page, layout = self._page('Choose what Vishnu can access', 'You stay in control. Vishnu only uses permissions and information you allow.')
         form = QFormLayout()
         self.privacy = QComboBox()
         self.privacy.addItem('Local only — never use external models', 'local_only')
@@ -208,7 +290,7 @@ class FirstRunWizard(QDialog):
         return page
 
     def _data_page(self):
-        page, layout = self._page('Where may your data live?', 'Choose the canonical Data Plane policy for newly governed data. Changing this default never silently moves data that already exists.')
+        page, layout = self._page('Choose where your data lives', 'Decide how Vishnu stores and reaches information across your trusted devices. Changing this default never silently moves data that already exists.')
         form = QFormLayout()
         self.data_policy = QComboBox()
         self.data_policy.addItem('Device only — keep governed data on this device', 'device_only')
@@ -226,7 +308,7 @@ class FirstRunWizard(QDialog):
         return page
 
     def _model_page(self):
-        page, layout = self._page('Choose your AI', 'Local AI is the privacy-first default. Owner-entered external credentials are live-validated and stored in the existing encrypted Vishnu vault.')
+        page, layout = self._page('Set up Vishnu’s intelligence', 'Choose how Vishnu should think and which AI providers it may use. Owner-entered credentials are encrypted in the Vishnu vault.')
         form = QFormLayout()
         self.provider = QComboBox()
         for label, value in (
@@ -253,13 +335,14 @@ class FirstRunWizard(QDialog):
         self.model_hint.setWordWrap(True)
         layout.addWidget(self.model_hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Review setup', self._save_model_setup))
+        layout.addWidget(self._next_button('Continue', self._save_model_setup))
         self._provider_changed()
         return page
 
     def _review_page(self):
-        page, layout = self._page('Review your Vishnu', 'Confirm the owner, security, recovery, data placement, privacy and AI choices before this installation becomes ready.')
+        page, layout = self._page('Your Vishnu is ready to be created', 'Review your setup, then create your Vishnu.')
         self.review_label = QLabel('Your setup summary will appear here.')
+        self.review_label.setAccessibleName('Review setup')
         self.review_label.setWordWrap(True)
         self.review_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.review_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;')
@@ -269,7 +352,7 @@ class FirstRunWizard(QDialog):
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Finish setup', self._finish_review))
+        layout.addWidget(self._next_button('Create my Vishnu', self._finish_review))
         return page
 
     def _restore_page(self):
@@ -345,13 +428,13 @@ class FirstRunWizard(QDialog):
         if status == 'connect_pending':
             self.mode = SetupMode.CONNECT
             self.connect_url.setText(str(state.get('connect_url') or ''))
-            self.stack.setCurrentIndex(9)
+            self.stack.setCurrentIndex(11)
             self.back_button.setVisible(True)
             self.title.setText('Connect to Vishnu')
             return
         if status == 'restore_failed':
             self.mode = SetupMode.RESTORE
-            self.stack.setCurrentIndex(8)
+            self.stack.setCurrentIndex(10)
             self.back_button.setVisible(True)
             self.title.setText('Restore Vishnu')
             return
@@ -366,15 +449,15 @@ class FirstRunWizard(QDialog):
         elif stage == 'security':
             self.stack.setCurrentIndex(2)
         elif stage == 'recovery' and 'recovery_saved' not in completed:
-            self.stack.setCurrentIndex(2)
+            self.stack.setCurrentIndex(3)
             self.subtitle.setText('Setup was interrupted before recovery codes were confirmed. Re-enter an owner password to generate a fresh recovery-code set.')
         elif stage == 'privacy' or ('recovery_saved' in completed and 'privacy' not in completed):
-            self.stack.setCurrentIndex(4)
+            self.stack.setCurrentIndex(5)
         elif {'model', 'model_skipped'} & completed:
             self._refresh_review()
-            self.stack.setCurrentIndex(7)
+            self.stack.setCurrentIndex(8 if 'privacy' not in completed else 9)
         else:
-            self.stack.setCurrentIndex(5)
+            self.stack.setCurrentIndex(6)
 
     def _choose_mode(self, mode: SetupMode):
         self.mode = mode
@@ -384,21 +467,21 @@ class FirstRunWizard(QDialog):
             self.stack.setCurrentIndex(1)
             self.title.setText('Set up your Vishnu')
         elif mode is SetupMode.RESTORE:
-            self.stack.setCurrentIndex(8)
+            self.stack.setCurrentIndex(10)
             self.title.setText('Restore Vishnu')
         else:
-            self.stack.setCurrentIndex(9)
+            self.stack.setCurrentIndex(11)
             self.title.setText('Connect to Vishnu')
 
     def _back(self):
         index = self.stack.currentIndex()
-        if index in {1, 8, 9}:
+        if index in {1, 10, 11}:
             self.stack.setCurrentIndex(0)
             self.back_button.setVisible(False)
             self.title.setText('Welcome to Vishnu')
             return
         if self.mode is SetupMode.CREATE:
-            previous = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6}.get(index)
+            previous = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8}.get(index)
             if previous is not None:
                 self.stack.setCurrentIndex(previous)
 
@@ -427,7 +510,7 @@ class FirstRunWizard(QDialog):
         self.password_confirm.clear()
         self.saved_codes.setChecked(False)
         self.recovery_label.setText('\n'.join(self.recovery_codes))
-        self.stack.setCurrentIndex(3)
+        self.stack.setCurrentIndex(4)
 
     def _confirm_recovery_codes(self):
         if not self.saved_codes.isChecked():
@@ -440,7 +523,7 @@ class FirstRunWizard(QDialog):
             return
         self.recovery_codes = []
         self.recovery_label.setText('Recovery codes saved and hidden. Regenerate them from Settings → Security if they are ever lost.')
-        self.stack.setCurrentIndex(4)
+        self.stack.setCurrentIndex(5)
 
     def _save_preferences(self):
         try:
@@ -452,7 +535,8 @@ class FirstRunWizard(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, 'Privacy and autonomy', str(exc))
             return
-        self.stack.setCurrentIndex(5)
+        self._refresh_review()
+        self.stack.setCurrentIndex(9)
 
     def _save_data_policy(self):
         try:
@@ -462,7 +546,7 @@ class FirstRunWizard(QDialog):
         except Exception as exc:
             QMessageBox.warning(self, 'Data placement', str(exc))
             return
-        self.stack.setCurrentIndex(6)
+        self.stack.setCurrentIndex(7)
 
     def _provider_changed(self):
         local = self.provider.currentData() == 'local'
@@ -488,8 +572,7 @@ class FirstRunWizard(QDialog):
             QMessageBox.warning(self, 'AI configuration', str(exc))
             return
         self.api_key.clear()
-        self._refresh_review()
-        self.stack.setCurrentIndex(7)
+        self.stack.setCurrentIndex(8)
 
     def _refresh_review(self):
         preferences = self.runtime.get('preferences')

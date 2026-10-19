@@ -131,6 +131,7 @@
       @keyframes vAdaptiveIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
       @media(max-width:760px){
         .v-adaptive-preview{position:fixed;left:max(14px,env(safe-area-inset-left));right:max(14px,env(safe-area-inset-right));bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px);min-height:50px;padding:8px 9px;border-radius:15px}
+        body.v-ref.home-landing .v-adaptive-preview{position:absolute;left:0;right:0;bottom:calc(100% + 9px)}
         body.chat-experience:not(.home-landing) .v-adaptive-preview{bottom:calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px)}
         body.keyboard-open .v-adaptive-preview{bottom:max(calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px),calc(100dvh - var(--keyboard-visible-height,100dvh) + var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 11px))}
         body.chat-experience.keyboard-open:not(.home-landing) .v-adaptive-preview{bottom:max(calc(var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px),calc(100dvh - var(--keyboard-visible-height,100dvh) + var(--shared-composer-bottom,24px) + var(--shared-composer-h,54px) + 60px))}

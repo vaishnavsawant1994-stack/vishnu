@@ -19,6 +19,11 @@ PUBLIC_PATHS = {
     '/iphone/native/authorize',
     '/iphone/manifest.webmanifest',
     '/iphone/sw.js',
+    '/iphone/reference-home.css',
+    '/iphone/reference-home.js',
+    '/iphone/genesis.css',
+    '/iphone/first-run.js',
+    '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
     '/iphone/api/first-run/create',
     '/iphone/api/first-run/native/create',
@@ -50,7 +55,7 @@ LOGIN_PATHS = {
 
 
 def _is_public(path: str) -> bool:
-    return path in PUBLIC_PATHS
+    return path in PUBLIC_PATHS or path.startswith('/iphone/assets/genesis/')
 
 
 def _cookie_from_response(response, name: str) -> str | None:
@@ -71,19 +76,21 @@ def _cookie_from_response(response, name: str) -> str | None:
 class PwaSessionMiddleware(BaseHTTPMiddleware):
     """Require a revocable server-side session in addition to the device bearer."""
 
-    def __init__(self, app, *, sessions, device_registry, cookie_max_age: int, first_run_setup=None):
+    def __init__(self, app, *, sessions, device_registry, cookie_max_age: int,
+                 first_run_setup=None, cookie_secure: bool = True):
         super().__init__(app)
         self.sessions = sessions
         self.device_registry = device_registry
         self.cookie_max_age = max(300, int(cookie_max_age))
         self.first_run_setup = first_run_setup
+        self.cookie_secure = bool(cookie_secure)
 
     def _set_session_cookie(self, response, token: str):
         response.set_cookie(
             'pa_session',
             token,
             httponly=True,
-            secure=True,
+            secure=self.cookie_secure,
             samesite='strict',
             path='/iphone',
             max_age=self.cookie_max_age,

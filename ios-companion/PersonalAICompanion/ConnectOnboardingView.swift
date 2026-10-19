@@ -18,6 +18,9 @@ struct ConnectOnboardingView: View {
     @State private var recoveryCodes: [String] = []
     @State private var recoverySaved = false
     @State private var privacyMode = "local_only"
+    @State private var dataPolicy = "progress_only"
+    @State private var authenticationChoice = "passkey"
+    @State private var genesisStep = 1
     @State private var modelProvider = "skip"
     @State private var modelName = ""
     @State private var providerKey = ""
@@ -28,19 +31,24 @@ struct ConnectOnboardingView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
+            ZStack {
+                VishnuGenesisBackground()
+                ScrollView {
+                VStack(alignment: .center, spacing: 18) {
                     Text("V I S H N U")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .tracking(3)
+                        .font(.title3.weight(.medium)).foregroundStyle(PersonalAITheme.ColorToken.primaryText).tracking(8)
+                    if selection == .create && genesisStep > 1 {
+                        Text("Step \(genesisStep) of 10").font(.caption).foregroundStyle(PersonalAITheme.ColorToken.secondaryText)
+                        HStack(spacing: 6) { ForEach(1...10, id: \.self) { step in Circle().fill(step <= genesisStep ? PersonalAITheme.ColorToken.brightAccent : PersonalAITheme.ColorToken.mutedText).frame(width: 7, height: 7) } }
+                    }
+                    VishnuGenesisCore(state: selection == nil ? "initializing" : "Genesis step \(genesisStep)", size: selection == nil ? 260 : 175)
                     if selection == nil {
                         Text("Welcome to Vishnu")
-                            .font(.largeTitle.weight(.semibold))
-                        Text("Your Vishnu belongs to you. Create a new identity, connect a device, or recover access.")
+                            .font(.largeTitle.weight(.light))
+                        Text("Your personal intelligence. Your data. Your world.")
                             .font(PersonalAITheme.Typography.body)
-                            .foregroundStyle(.secondary)
-                        Button { selection = .create } label: {
+                            .foregroundStyle(PersonalAITheme.ColorToken.secondaryText)
+                        Button { selection = .create; genesisStep = recoveryCodes.isEmpty ? 2 : 5 } label: {
                             Label("Create my Vishnu", systemImage: "person.crop.circle.badge.plus")
                                 .frame(maxWidth: .infinity)
                         }
@@ -56,7 +64,7 @@ struct ConnectOnboardingView: View {
                         }
                         .buttonStyle(.bordered).controlSize(.large)
                     } else {
-                        Button("‹ Back") { selection = nil; setupMessage = "" }
+                        Button("‹ Back") { if selection == .create && genesisStep > 2 { genesisStep -= 1 } else { selection = nil }; setupMessage = "" }
                             .buttonStyle(.plain)
                         if selection == .create {
                             createForm
@@ -69,8 +77,8 @@ struct ConnectOnboardingView: View {
                 }
                 .padding(24)
                 .frame(maxWidth: 640, alignment: .leading)
+                }
             }
-            .background(PersonalAITheme.ColorToken.background)
             .tint(PersonalAITheme.ColorToken.accent)
             .sheet(isPresented: $showScanner) {
                 NavigationStack {
@@ -96,6 +104,7 @@ struct ConnectOnboardingView: View {
                let codes = try? JSONDecoder().decode([String].self, from: data), !codes.isEmpty {
                 recoveryCodes = codes
                 selection = .create
+                genesisStep = 5
                 setupMessage = "Resume setup by confirming that you saved the recovery codes."
             }
         }
@@ -104,79 +113,63 @@ struct ConnectOnboardingView: View {
     @ViewBuilder
     private var createForm: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("Create my Vishnu").font(.largeTitle.weight(.semibold))
-            Text("This iPhone will be your first trusted device. The secure runtime holds the canonical identity and data; this app stores only this device's credential in Keychain.")
-                .font(.subheadline).foregroundStyle(.secondary)
-            TextField("Secure Vishnu runtime URL (https://…)", text: $store.baseURL)
-                .textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
-            SecureField("One-time runtime setup code", text: $bootstrapCode)
-                .textInputAutocapitalization(.never).textFieldStyle(.roundedBorder)
-            TextField("First name", text: $firstName).textFieldStyle(.roundedBorder)
-                .textContentType(.givenName)
-            TextField("Last name (optional)", text: $lastName).textFieldStyle(.roundedBorder)
-                .textContentType(.familyName)
-            TextField("Display name (optional)", text: $displayName).textFieldStyle(.roundedBorder)
-                .textContentType(.nickname)
-            SecureField("Owner password (12 characters minimum)", text: $ownerPassword)
-                .textFieldStyle(.roundedBorder).textContentType(.newPassword)
-            SecureField("Confirm owner password", text: $confirmPassword)
-                .textFieldStyle(.roundedBorder).textContentType(.newPassword)
-            Text("This first-device ceremony starts with your owner password and recovery codes. After setup, add a native passkey from Vishnu Security when the signed runtime domain is associated with this app.")
-                .font(.caption).foregroundStyle(.secondary)
-
-            if recoveryCodes.isEmpty {
-                Button {
-                    Task { await beginNativeCreation() }
-                } label: {
-                    if setupWorking { ProgressView().frame(maxWidth: .infinity) }
-                    else { Text("Create Vishnu on this iPhone").frame(maxWidth: .infinity) }
-                }
-                .buttonStyle(.borderedProminent).disabled(setupWorking)
+            if genesisStep == 2 {
+                genesisHeading("Create your Vishnu identity", "This is how Vishnu will know and address you.")
+                TextField("First name", text: $firstName).textFieldStyle(.roundedBorder).textContentType(.givenName)
+                TextField("Last name", text: $lastName).textFieldStyle(.roundedBorder).textContentType(.familyName)
+                TextField("Display name", text: $displayName).textFieldStyle(.roundedBorder).textContentType(.nickname)
+                genesisContinue("Continue") { guard !firstName.trimmingCharacters(in: .whitespaces).isEmpty else { setupMessage = "First name is required."; return }; genesisStep = 3 }
+            } else if genesisStep == 3 {
+                genesisHeading("Secure your Vishnu", "Choose how Vishnu should verify it’s you.")
+                Picker("Authentication", selection: $authenticationChoice) { Text("Passkey — Recommended").tag("passkey"); Text("Password").tag("password"); Text("Passkey + Password").tag("both") }.pickerStyle(.inline).vishnuGenesisCard()
+                genesisContinue("Continue") { genesisStep = 4 }
+            } else if genesisStep == 4 {
+                genesisHeading("Configure your authentication", "Set up the authentication method you selected.")
+                TextField("Secure Vishnu runtime URL (https://…)", text: $store.baseURL).textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
+                SecureField("One-time runtime setup code", text: $bootstrapCode).textFieldStyle(.roundedBorder)
+                SecureField("Owner password (12 characters minimum)", text: $ownerPassword).textFieldStyle(.roundedBorder)
+                SecureField("Confirm owner password", text: $confirmPassword).textFieldStyle(.roundedBorder)
+                Button { Task { await beginNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create owner security →").frame(maxWidth: .infinity) } }.buttonStyle(.borderedProminent).disabled(setupWorking)
+            } else if genesisStep == 5 {
+                genesisHeading("Protect your Vishnu", "Store recovery codes so Vishnu can be restored safely.")
+                Text(recoveryCodes.joined(separator: "\n")).font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
+                Toggle("I have safely stored my recovery codes", isOn: $recoverySaved)
+                genesisContinue("Continue") { if recoverySaved { genesisStep = 6 } else { setupMessage = "Confirm that you saved the recovery codes." } }
+            } else if genesisStep == 6 {
+                genesisHeading("Register this device", "Make this iPhone part of your trusted Vishnu network.")
+                Label(UIDevice.current.name, systemImage: "iphone").frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
+                genesisContinue("Trust this device") { genesisStep = 7 }
+            } else if genesisStep == 7 {
+                genesisHeading("Choose where your data lives", "Choose the policy for newly governed data.")
+                Picker("Data placement", selection: $dataPolicy) { Text("Device Only").tag("device_only"); Text("Progress Only — Recommended").tag("progress_only"); Text("Sync Everywhere").tag("sync_everywhere"); Text("On Demand").tag("on_demand") }.pickerStyle(.inline).vishnuGenesisCard()
+                genesisContinue("Continue") { genesisStep = 8 }
+            } else if genesisStep == 8 {
+                genesisHeading("Set up Vishnu’s intelligence", "Choose how Vishnu should think and which AI providers it may use.")
+                Picker("AI setup", selection: $modelProvider) { Text("Recommended Setup").tag("skip"); Text("Local Intelligence").tag("local"); Text("OpenAI").tag("openai"); Text("Gemini").tag("gemini"); Text("OpenRouter").tag("openrouter") }.pickerStyle(.inline).vishnuGenesisCard()
+                if !["skip", "local"].contains(modelProvider) { TextField("Model name", text: $modelName).textFieldStyle(.roundedBorder); SecureField("Provider API key", text: $providerKey).textFieldStyle(.roundedBorder) }
+                genesisContinue("Continue") { genesisStep = 9 }
+            } else if genesisStep == 9 {
+                genesisHeading("Choose what Vishnu can access", "You stay in control. Permissions remain owner governed.")
+                Picker("Personal Intelligence", selection: $privacyMode) { Text("Local only").tag("local_only"); Text("Local preferred").tag("local_preferred"); Text("External providers allowed").tag("external_allowed") }.pickerStyle(.inline).vishnuGenesisCard()
+                Label("Ask before important actions", systemImage: "checkmark.shield").frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
+                genesisContinue("Continue") { genesisStep = 10 }
             } else {
-                Text("Save these one-time recovery codes somewhere outside this iPhone. Each code works once.")
-                    .font(.subheadline.weight(.medium))
-                Text(recoveryCodes.joined(separator: "\n"))
-                    .font(.system(.body, design: .monospaced)).textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading).padding()
-                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12))
-                Toggle("I saved these recovery codes", isOn: $recoverySaved)
-                Picker("Data privacy", selection: $privacyMode) {
-                    Text("Local only").tag("local_only")
-                    Text("Local preferred").tag("local_preferred")
-                    Text("External providers allowed").tag("external_allowed")
-                }
-                Picker("AI setup", selection: $modelProvider) {
-                    Text("Configure later").tag("skip")
-                    Text("Use a local model").tag("local")
-                    Text("OpenAI").tag("openai")
-                    Text("Gemini").tag("gemini")
-                    Text("OpenRouter").tag("openrouter")
-                    Text("DeepSeek").tag("deepseek")
-                    Text("xAI").tag("xai")
-                    Text("Groq").tag("groq")
-                    Text("Cerebras").tag("cerebras")
-                    Text("Mistral").tag("mistral")
-                    Text("Custom provider").tag("custom")
-                }
-                .pickerStyle(.menu)
-                if !["skip", "local"].contains(modelProvider) {
-                    TextField("Model name", text: $modelName)
-                        .textInputAutocapitalization(.never).textFieldStyle(.roundedBorder)
-                    SecureField("Provider API key", text: $providerKey)
-                        .textFieldStyle(.roundedBorder)
-                }
-                Button {
-                    Task { await finishNativeCreation() }
-                } label: {
-                    if setupWorking { ProgressView().frame(maxWidth: .infinity) }
-                    else { Text("Finish setup").frame(maxWidth: .infinity) }
-                }
-                .buttonStyle(.borderedProminent).disabled(setupWorking || !recoverySaved)
+                genesisHeading("Your Vishnu is ready to be created", "Review your setup, then create your Vishnu.")
+                VStack(alignment: .leading, spacing: 10) { Text("Owner: \(displayName.isEmpty ? firstName : displayName)"); Text("Security: \(authenticationChoice)"); Text("Trusted Device: \(UIDevice.current.name)"); Text("Data: \(dataPolicy)"); Text("Intelligence: \(modelProvider)"); Text("Privacy: owner controlled") }.frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
+                Button { Task { await finishNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create my Vishnu →").frame(maxWidth: .infinity) } }.buttonStyle(.borderedProminent).disabled(setupWorking || !recoverySaved)
             }
             if !setupMessage.isEmpty {
-                Text(setupMessage).font(.footnote).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently)
+                Text(setupMessage).font(.footnote).foregroundStyle(PersonalAITheme.ColorToken.secondaryText).accessibilityAddTraits(.updatesFrequently)
             }
         }
+    }
+
+    private func genesisHeading(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .center, spacing: 7) { Text(title).font(.largeTitle.weight(.light)).multilineTextAlignment(.center); Text(subtitle).foregroundStyle(PersonalAITheme.ColorToken.secondaryText).multilineTextAlignment(.center) }.frame(maxWidth: .infinity)
+    }
+
+    private func genesisContinue(_ label: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { Text("\(label) →").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large)
     }
 
     @ViewBuilder
@@ -292,6 +285,7 @@ struct ConnectOnboardingView: View {
                 throw NativeSetupError.message("The runtime did not return recovery codes. Retry setup to create a fresh set.")
             }
             recoveryCodes = codes
+            genesisStep = 5
             if let data = try? JSONEncoder().encode(codes),
                let encoded = String(data: data, encoding: .utf8) {
                 try KeychainStore.shared.set(encoded, for: "pending_first_recovery_codes")
@@ -339,7 +333,7 @@ struct ConnectOnboardingView: View {
             }
             let result = try await postNativeJSON(path: "/iphone/api/first-run/native/complete", body: [
                 "setup_claim": claim, "device_id": deviceID, "device_token": token,
-                "recovery_saved": true, "privacy_mode": privacyMode,
+                "recovery_saved": true, "privacy_mode": privacyMode, "data_policy": dataPolicy,
                 "model_choice": modelProvider == "skip" ? "configure_later" : "configured",
             ])
             guard result["status"] as? String == "ready" else {
