@@ -27,7 +27,9 @@ if (!source.includes(sphereBefore)) {
   throw new Error('Canonical responsive sphere synchronization point changed; update the runner explicitly.');
 }
 const sweepBefore = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    const sweep=await page.evaluate(()=>{";
-// A background conversation refresh can race between the layout-ready probe\n// and measurement; re-enter Home synchronously inside the measurement task.\nconst sweepAfter = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    await page.waitForFunction(()=>{const node=document.querySelector('.v-shortcuts');if(!node)return false;const r=node.getBoundingClientRect();return r.width>0&&r.height>0;});\n    const sweep=await page.evaluate(()=>{enterHomeLanding();"
+// A background conversation refresh can race between the layout-ready probe
+// and measurement; re-enter Home synchronously inside the measurement task.
+const sweepAfter = "    await page.setViewportSize({width,height:844});\n    await page.evaluate(()=>enterHomeLanding());\n    await page.waitForFunction(()=>{const node=document.querySelector('.v-shortcuts');if(!node)return false;const r=node.getBoundingClientRect();return r.width>0&&r.height>0;});\n    const sweep=await page.evaluate(()=>{enterHomeLanding();"
 
 if (!source.includes(sweepBefore)) {
   throw new Error('Canonical responsive sweep changed; update the Home-layout synchronization runner explicitly.');
