@@ -34,7 +34,7 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,assets:[],assetsError:'',assetsQuery:'',assetsFilter:'all',selectedAsset:null,todayData:null,todayAttention:null
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,mobileInspectorOpen:false,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,assets:[],assetsError:'',assetsQuery:'',assetsFilter:'all',selectedAsset:null,todayData:null,todayAttention:null
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
@@ -340,7 +340,7 @@
       '<small>AI Agent · '+esc(a.role||'Unspecified role')+'</small>'+
       '<small>'+esc(a.description||'No description provided')+'</small></span><span class="vos-badge">Inspect →</span></button>').join(''):
       '<div class="vos-empty">No available Agent records matched. No simulated Agents have been created.</div>')+'</div>'+
-      '<aside class="vos-inspector vos-new-inspector"><h2>Selected Agent</h2>'+
+      '<aside class="vos-inspector vos-new-inspector '+(state.mobileInspectorOpen?'mobile-open':'')+'">'+btn('close-inspector','×','vos-mobile-close','aria-label="Close Agent details"')+'<h2>Selected Agent</h2>'+ 
       (selected?'<div class="vos-detail-heading">'+icon('✦')+'<div><h3>'+esc(selected.name||selected.id)+'</h3><span class="vos-badge">AI Agent</span></div></div>'+
       '<div class="vos-detail-rows"><div><span>Role</span><strong>'+esc(selected.role||'—')+'</strong></div>'+
       '<div><span>Workspace access</span><strong>Not qualified</strong></div></div>'+
@@ -376,7 +376,7 @@
       files.length?'<div class="vos-files-grid">'+cards+'</div>':
       '<div class="vos-empty">No accessible files or deliverables are present in the linked Projects for this filter.</div>')+
       '<p class="vos-muted">These resources stay under their canonical Project authority. Workspace display does not move or copy bytes.</p></div>'+
-      '<aside class="vos-inspector vos-new-inspector"><h2>Selected Asset</h2>'+
+      '<aside class="vos-inspector vos-new-inspector '+(state.mobileInspectorOpen?'mobile-open':'')+'">'+btn('close-inspector','×','vos-mobile-close','aria-label="Close asset details"')+'<h2>Selected Asset</h2>'+ 
       (current?'<div class="vos-file-preview" aria-hidden="true">'+iconFor(current)+'</div>'+
       '<h3>'+esc(current.title)+'</h3>'+badge(current.kind)+
       '<div class="vos-detail-rows">'+
@@ -511,6 +511,10 @@
       '<div class="vos-mobile-header">'+btn('menu','☰','vos-icon-btn')+'<strong>V I S H N U</strong>'+
       btn('command','⌕','vos-icon-btn')+'</div>'+
       header()+'<main class="vos-page">'+loading()+error()+content+'</main></div>'+mobileNav()+commandPalette()+attentionDialog();
+    if(state.mobileInspectorOpen&&['agents','assets'].includes(state.page)){
+      const scrim=document.createElement('button');scrim.type='button';scrim.className='vos-inspector-scrim';scrim.dataset.vos='close-inspector';scrim.setAttribute('aria-label','Close details');
+      root.querySelector('.vos-main')?.appendChild(scrim);
+    }
     const focused=root.querySelector('[data-vos-input="command"]');
     if(state.command&&focused)focused.focus();
     if(state.page==='spatial')requestAnimationFrame(startSpatialRenderer);
@@ -547,7 +551,7 @@
   }
   async function openWorkspace(id, page='overview'){
     state.error='';state.loading=true;state.selected=id;
-    state.page=page;root.classList.remove('vos-command-only','vos-hidden');
+    state.page=page;state.mobileInspectorOpen=false;root.classList.remove('vos-command-only','vos-hidden');
     document.body.classList.add('vos-active');render();
     try{
       const result=await api('/'+encodeURIComponent(id)+'/summary');
@@ -610,14 +614,15 @@
       hide();if(window.openProject)window.openProject(projects[0].id,'files');else bridge()?.openModule?.('projects');return;
     }
     if(action.startsWith('asset-filter:')){state.assetsFilter=action.slice(13);render();return;}
-    if(action.startsWith('asset-select:')){state.selectedAsset=action.slice(13);render();return;}
+    if(action.startsWith('asset-select:')){state.selectedAsset=action.slice(13);state.mobileInspectorOpen=true;render();return;}
     if(action.startsWith('asset-open:')||action.startsWith('asset-versions:')){
       const key=action.slice(action.indexOf(':')+1),row=state.assets.find(a=>a.key===key);
       if(!row)return;hide();if(window.openProject)window.openProject(row.projectId,'files');else bridge()?.openModule?.('projects');return;
     }
     if(action==='spatial-orbit'){state.spatialAngle=(state.spatialAngle+35)%360;render();return;}
     if(action==='spatial-reset'||action==='spatial-focus'){state.spatialAngle=0;state.spatialPitch=0;state.spatialZoom=1;render();return;}
-    if(action.startsWith('choose-agent:')){state.selectedAgent=action.slice(13);render();return;}
+    if(action.startsWith('choose-agent:')){state.selectedAgent=action.slice(13);state.mobileInspectorOpen=true;render();return;}
+    if(action==='close-inspector'){state.mobileInspectorOpen=false;render();return;}
     if(action.startsWith('settings-section:')){state.settingsSection=Number(action.slice(17));render();return;}
     if(action==='toggle-favorite'){
       try{const updated=await api('/'+encodeURIComponent(state.workspace.id),{method:'PATCH',body:JSON.stringify({pinned:!state.workspace.pinned})});state.workspace=updated.workspace;state.settingsMessage='Favorite preference saved.';render();}
