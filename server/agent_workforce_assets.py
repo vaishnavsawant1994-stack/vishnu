@@ -11,6 +11,8 @@ ENTRY_SCRIPTS = (
     '<script src="/iphone/first-run-actions.js" defer></script>',
     '<script src="/iphone/agent-workforce-entry.js" defer></script>',
     '<script src="/iphone/our-products-entry.js" defer></script>',
+    '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">',
+    '<script src="/iphone/vishnu-os-workspaces.js" defer></script>',
 )
 
 
