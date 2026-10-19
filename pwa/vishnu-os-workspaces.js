@@ -25,7 +25,7 @@
   const state = {
     page:'workspaces', previous:'workspaces', workspaces:[], selected:null,
     workspace:null, summary:null, views:[], view:null, template:'blank',
-    query:'', filter:'all', draft:null, loading:false, error:'', command:false,
+    query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
     layoutMode:'grid', createBusy:false
   };
@@ -119,8 +119,8 @@
       '<p>Ask Vishnu to help propose a Workspace structure.</p><textarea data-vos-input="description-ai" placeholder="Describe your Workspace…"></textarea>'+
       btn('ask-template','Ask Vishnu to suggest a template →')+'</div>'+
       '<form id="vosWorkspaceForm" class="vos-create-form"><h2>2. Workspace details</h2>'+
-      '<label>Workspace name *<input name="name" maxlength="120" required placeholder="My new Workspace"></label>'+
-      '<label>Description (optional)<textarea name="description" maxlength="2000" placeholder="What will you build here?"></textarea></label>'+
+      '<label>Workspace name *<input name="name" value="'+esc(state.draft?.name||'')+'" maxlength="120" required placeholder="My new Workspace"></label>'+
+      '<label>Description (optional)<textarea name="description" maxlength="2000" placeholder="What will you build here?">'+esc(state.draft?.description||'')+'</textarea></label>'+
       '<p class="vos-muted">Template: '+esc(tpl(state.template)[1])+'</p>'+
       '<button class="vos-btn vos-primary" type="submit" '+(state.createBusy?'disabled':'')+'>'+
       (state.createBusy?'Creating…':'Create Workspace →')+'</button></form></div>'+
@@ -185,7 +185,7 @@
       btn('views','Views ▾')+btn('save-view','Save View')+
       (state.focusPanel!==null?btn('unfocus','Exit Focus'):'')+'</div>'+
       section('Open panels ('+panels.length+')',
-      narrowed.length?'<div class="vos-studio-grid '+(state.focusPanel!==null?'focused':'')+'">'+
+      narrowed.length?'<div class="vos-studio-grid '+(state.focusPanel!==null?'focused':state.layoutMode==='list'?'vos-list':'')+'">'+
       narrowed.map((panel,index)=>studioPanel(panel,state.focusPanel===null?index:state.focusPanel)).join('')+'</div>':
       '<div class="vos-empty">Your Studio is ready. Add an existing Project to the workbench.</div>')+
       '<p class="vos-muted">Layouts save references to Projects, not copies of their content. Full document/code editors are not yet integrated in this slice.</p>';
@@ -271,7 +271,7 @@
     if(action==='command'){state.command=true;state.commandText='';state.commandFilter='all';render();return;}
     if(action==='close-command'){state.command=false;render();return;}
     if(action==='back'||action==='workspace-list'||action==='workspaces'){state.command=false;show('workspaces');return refresh();}
-    if(action==='create'){state.command=false;state.page='create';state.template='blank';render();return;}
+    if(action==='create'){state.command=false;state.page='create';state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;render();return;}
     if(action==='overview'||action==='studio'){return openWorkspace(state.workspace.id,action);}
     if(action==='attention'){
       hide();bridge()?.openModule?.('activities');
@@ -308,7 +308,7 @@
         const edit=Boolean(state.view?.id);
         const result=await api(path+(edit?'/'+encodeURIComponent(state.view.id):''),{
           method:edit?'PUT':'POST',body:JSON.stringify(body)});
-        state.view=result.view;state.error='';render();
+        state.view=result.view;state.views=state.views.filter(v=>v.id!==result.view.id);state.views.unshift(result.view);state.error='';render();
       }catch(error){state.error=error.message;render();}
       return;
     }
@@ -385,13 +385,15 @@
     if(event.target.id!=='vosWorkspaceForm')return;
     event.preventDefault();
     const fd=new FormData(event.target);
+    state.draft={name:String(fd.get('name')||''),description:String(fd.get('description')||'')};
+    if(!state.createRequestId)state.createRequestId=crypto.randomUUID();
     state.createBusy=true;state.error='';render();
     try{
       const created=await api('',{method:'POST',body:JSON.stringify({
-        name:String(fd.get('name')||''),description:String(fd.get('description')||''),
-        template_id:state.template,request_id:crypto.randomUUID()
+        name:state.draft.name,description:state.draft.description,
+        template_id:state.template,request_id:state.createRequestId
       })});
-      await refresh();await openWorkspace(created.workspace.id);
+      state.createRequestId=null;await refresh();await openWorkspace(created.workspace.id);
     }catch(error){state.error=error.message||'Workspace could not be created';state.createBusy=false;render();}
     finally{state.createBusy=false;}
   });
@@ -400,6 +402,10 @@
       state.query=event.target.value;
       const position=event.target.selectionStart;render();
       const field=root.querySelector('[data-vos-input="workspace-search"]');field?.focus();field?.setSelectionRange(position,position);
+    }
+    if(event.target.closest('#vosWorkspaceForm')){
+      const f=event.target.closest('form');
+      state.draft={name:f.elements.name?.value||'', description:f.elements.description?.value||''};
     }
     if(event.target.dataset.vosInput==='command'){
       state.commandText=event.target.value;
