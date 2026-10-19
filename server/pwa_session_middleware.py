@@ -21,6 +21,7 @@ PUBLIC_PATHS = {
     '/iphone/sw.js',
     '/iphone/reference-home.css',
     '/iphone/reference-home.js',
+    '/iphone/genesis.css',
     '/iphone/first-run.js',
     '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
@@ -54,7 +55,7 @@ LOGIN_PATHS = {
 
 
 def _is_public(path: str) -> bool:
-    return path in PUBLIC_PATHS
+    return path in PUBLIC_PATHS or path.startswith('/iphone/assets/genesis/')
 
 
 def _cookie_from_response(response, name: str) -> str | None:

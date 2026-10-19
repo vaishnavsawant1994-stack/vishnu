@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt, QUrl, QRectF
-from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QRadialGradient
+from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -23,41 +25,21 @@ from onboarding.first_run import FirstRunCoordinator, SetupMode
 
 
 class VishnuCore(QWidget):
-    """Static accessible rendering of the canonical Core for native setup."""
+    """Render the exact transparent Core asset shared by every Vishnu client."""
 
-    def __init__(self, state: str = 'identity'):
+    def __init__(self, state: str = 'identity', size: int = 220):
         super().__init__()
         self.state = state
-        self.setFixedSize(184, 184)
+        self.setFixedSize(size, size)
+        asset = Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'vishnu-core.png'
+        self.pixmap = QPixmap(str(asset))
         self.setAccessibleName(f'Vishnu intelligence core, {state} state')
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        bounds = QRectF(17, 17, 150, 150)
-        glow = QRadialGradient(bounds.center(), 78)
-        glow.setColorAt(0, QColor(77, 220, 255, 230))
-        glow.setColorAt(.13, QColor(32, 184, 255, 75))
-        glow.setColorAt(.72, QColor(3, 18, 32, 210))
-        glow.setColorAt(1, QColor(77, 220, 255, 30))
-        painter.setBrush(glow)
-        painter.setPen(QPen(QColor(164, 226, 255, 210), 1.3))
-        painter.drawEllipse(bounds)
-        painter.setPen(QPen(QColor(77, 220, 255, 80), .8))
-        for offset in (0, 24, 48, 72, 96, 120):
-            painter.drawLine(34 + offset, 59, 52 + (offset * 3) % 96, 132)
-            painter.drawLine(43, 43 + offset, 139, 57 + (offset * 2) % 85)
-        painter.setPen(Qt.PenStyle.NoPen)
-        for index in range(34):
-            x = 39 + (index * 37) % 108
-            y = 37 + (index * 53) % 112
-            radius = 1.5 + (index % 4 == 0) * 1.8
-            painter.setBrush(QColor(150, 239, 255, 220))
-            painter.drawEllipse(QRectF(x, y, radius * 2, radius * 2))
-        painter.setPen(QPen(QColor(77, 220, 255, 125), 1))
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawEllipse(QRectF(5, 61, 174, 60))
-        painter.drawEllipse(QRectF(45, 4, 94, 176))
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        if not self.pixmap.isNull():
+            painter.drawPixmap(self.rect(), self.pixmap)
 
 
 class FirstRunWizard(QDialog):
@@ -72,9 +54,10 @@ class FirstRunWizard(QDialog):
         self.restart_required = False
         self.external_connect = False
         self.setWindowTitle('Welcome to Vishnu')
+        self.setObjectName('firstRunWizard')
         self.setModal(True)
-        self.resize(1040, 820)
-        self.setMinimumSize(760, 680)
+        self.resize(1280, 800)
+        self.setMinimumSize(900, 680)
         self.setStyleSheet(self._stylesheet())
 
         root = QVBoxLayout(self)
@@ -90,11 +73,9 @@ class FirstRunWizard(QDialog):
         root.addWidget(self.genesis_progress)
         self.title = QLabel('Welcome to Vishnu')
         self.title.setObjectName('title')
-        root.addWidget(self.title)
         self.subtitle = QLabel('Create your owner intelligence, connect to an existing Vishnu, or restore a backup.')
         self.subtitle.setObjectName('subtitle')
         self.subtitle.setWordWrap(True)
-        root.addWidget(self.subtitle)
 
         self.stack = QStackedWidget()
         root.addWidget(self.stack, 1)
@@ -117,6 +98,12 @@ class FirstRunWizard(QDialog):
         self.back_button.clicked.connect(self._back)
         self.back_button.setVisible(False)
         footer.addWidget(self.back_button)
+        privacy = QPushButton('Privacy')
+        privacy.setObjectName('footerLink')
+        footer.addWidget(privacy)
+        accessibility = QPushButton('Accessibility')
+        accessibility.setObjectName('footerLink')
+        footer.addWidget(accessibility)
         footer.addStretch(1)
         self.cancel_button = QPushButton('Exit setup')
         self.cancel_button.clicked.connect(self.reject)
@@ -130,11 +117,11 @@ class FirstRunWizard(QDialog):
         if state.get('status') == 'restore_failed' and state.get('last_error'):
             QMessageBox.warning(self, 'Restore needs attention', str(state['last_error']))
 
-    @staticmethod
-    def _stylesheet() -> str:
+    def _stylesheet(self) -> str:
+        background = (Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'cosmic-desktop.png').as_posix()
         return """
-        QDialog, QWidget { background:#050709; color:#edf4f7; font-family:Inter,"Segoe UI",Arial; }
-        QDialog, QWidget { background:#02060b; color:#f5faff; font-family:Geist,Inter,"Segoe UI",Arial; }
+        QDialog#firstRunWizard { background-color:#02060b; border-image:url('__BACKGROUND__') 0 0 0 0 stretch stretch; color:#f5faff; font-family:"Segoe UI"; }
+        QDialog#firstRunWizard QWidget { background:transparent; color:#f5faff; font-family:"Segoe UI"; }
         QLabel#brand { color:#f5faff; font-size:22px; font-weight:450; letter-spacing:7px; }
         QLabel#title { font-size:38px; font-weight:350; color:#f5faff; }
         QLabel#subtitle { color:#a7bacb; font-size:15px; }
@@ -145,24 +132,28 @@ class FirstRunWizard(QDialog):
         QPushButton:hover, QPushButton:focus { border-color:#4ddcff; background:#071d2d; }
         QPushButton#primary { background:#073b61; color:#f5faff; border:1px solid #4ddcff; border-radius:26px; font-weight:600; min-height:28px; }
         QPushButton#choice { text-align:left; min-height:64px; font-size:14px; border-radius:17px; }
+        QPushButton#footerLink { border:0; background:transparent; color:#687f94; padding:8px; }
         QLineEdit, QComboBox { background:#03111e; border:1px solid rgba(61,174,235,100); border-radius:13px; padding:11px; color:#f5faff; min-height:24px; }
         QLineEdit:focus, QComboBox:focus { border-color:#4ddcff; }
         QComboBox QAbstractItemView { background:#071522; color:#f5faff; selection-background-color:#0b456a; }
         QCheckBox { color:#a7bacb; spacing:10px; }
-        """
+        """.replace('__BACKGROUND__', background)
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 8, 0, 0)
         layout.setSpacing(14)
-        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity')
+        core_size = 300 if heading == 'Welcome to Vishnu' else 190
+        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity', core_size)
         layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
         heading_label = QLabel(heading)
         heading_label.setObjectName('section')
+        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(heading_label)
         copy_label = QLabel(copy)
         copy_label.setObjectName('subtitle')
+        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         copy_label.setWordWrap(True)
         layout.addWidget(copy_label)
         return page, layout
@@ -178,24 +169,29 @@ class FirstRunWizard(QDialog):
             step = index + 1
             dots = ' '.join('●' if item <= step else '○' for item in range(1, 11))
             self.genesis_progress.setText(f'Screen {step} of 10   {dots}')
-            self.genesis_progress.setVisible(True)
+            self.genesis_progress.setVisible(index > 0)
         else:
             self.genesis_progress.setVisible(False)
 
     def _welcome_page(self):
-        page, layout = self._page('Welcome to Vishnu', 'Vishnu belongs to you. This device can create your Vishnu, connect to one you already use, or restore it from a backup.')
-        create = QPushButton('Create my Vishnu\nCreate your Vishnu on this device. It will be your first trusted device.')
-        create.setObjectName('choice')
+        page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
+        create = QPushButton('Create my Vishnu  →')
+        create.setObjectName('primary')
+        create.setMinimumWidth(470)
         create.clicked.connect(lambda: self._choose_mode(SetupMode.CREATE))
-        layout.addWidget(create)
-        connect = QPushButton('I already have Vishnu\nConnect this device to your existing Vishnu.')
-        connect.setObjectName('choice')
+        layout.addWidget(create, 0, Qt.AlignmentFlag.AlignHCenter)
+        secondary = QHBoxLayout()
+        connect = QPushButton('I already have Vishnu')
+        connect.setObjectName('footerLink')
         connect.clicked.connect(lambda: self._choose_mode(SetupMode.CONNECT))
-        layout.addWidget(connect)
-        restore = QPushButton('Restore Vishnu\nRecover owner data from an authenticated encrypted backup')
-        restore.setObjectName('choice')
+        restore = QPushButton('Restore Vishnu')
+        restore.setObjectName('footerLink')
         restore.clicked.connect(lambda: self._choose_mode(SetupMode.RESTORE))
-        layout.addWidget(restore)
+        secondary.addStretch(1)
+        secondary.addWidget(connect)
+        secondary.addWidget(restore)
+        secondary.addStretch(1)
+        layout.addLayout(secondary)
         layout.addStretch(1)
         return page
 

@@ -1,12 +1,15 @@
 package ai.personal.companion
 
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.graphics.Color
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.InputType
 import android.util.Base64
 import android.view.View
+import android.view.Gravity
 import android.widget.Button
 import android.widget.CheckBox
 import android.widget.EditText
@@ -117,10 +120,9 @@ class ConnectActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(34), dp(28), dp(34))
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(
-                PersonalAITheme.ColorToken.deepBackground,
-                PersonalAITheme.ColorToken.background,
-            ))
+            background = BitmapDrawable(resources, BitmapFactory.decodeResource(resources, R.drawable.vishnu_genesis_cosmic_mobile)).apply {
+                gravity = Gravity.FILL
+            }
         }
         val brand = TextView(this).apply {
             text = "V I S H N U"

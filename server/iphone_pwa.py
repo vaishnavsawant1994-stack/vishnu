@@ -393,6 +393,22 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                         media_type='text/css',
                         headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/assets/genesis/{asset_name}', include_in_schema=False)
+    def genesis_asset(asset_name: str):
+        allowed = {
+            'vishnu-core.png': 'image/png',
+            'cosmic-desktop.png': 'image/png',
+            'cosmic-mobile.png': 'image/png',
+        }
+        media_type = allowed.get(asset_name)
+        if media_type is None:
+            raise HTTPException(404, 'Genesis asset not found')
+        asset = web_dir / 'assets' / 'genesis' / asset_name
+        if not asset.is_file():
+            raise HTTPException(404, 'Genesis asset not found')
+        return Response(asset.read_bytes(), media_type=media_type,
+                        headers={'Cache-Control': 'public, max-age=86400'})
+
     @router.get('/manifest.webmanifest', include_in_schema=False)
     def manifest():
         return Response((web_dir / 'manifest.webmanifest').read_text(encoding='utf-8'), media_type='application/manifest+json')

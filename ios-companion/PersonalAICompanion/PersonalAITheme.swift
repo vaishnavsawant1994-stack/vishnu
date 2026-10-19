@@ -47,15 +47,11 @@ struct VishnuGenesisBackground: View {
     var body: some View {
         ZStack {
             PersonalAITheme.ColorToken.background
-            RadialGradient(colors: [PersonalAITheme.ColorToken.accent.opacity(0.22), .clear], center: .topLeading, startRadius: 20, endRadius: 420)
-            RadialGradient(colors: [PersonalAITheme.ColorToken.accent.opacity(0.18), .clear], center: .topTrailing, startRadius: 20, endRadius: 430)
-            Canvas { context, size in
-                for index in 0..<52 {
-                    let x = CGFloat((index * 83) % 997) / 997 * size.width
-                    let y = CGFloat((index * 137) % 991) / 991 * size.height
-                    context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: index % 7 == 0 ? 2 : 1, height: index % 7 == 0 ? 2 : 1)), with: .color(PersonalAITheme.ColorToken.softAccent.opacity(0.6)))
-                }
-            }.accessibilityHidden(true)
+            Image("vishnu-genesis-cosmic-mobile")
+                .resizable()
+                .scaledToFill()
+                .accessibilityHidden(true)
+            LinearGradient(colors: [.clear, PersonalAITheme.ColorToken.background.opacity(0.24)], startPoint: .top, endPoint: .bottom)
         }.ignoresSafeArea()
     }
 }
@@ -67,25 +63,12 @@ struct VishnuGenesisCore: View {
     @State private var rotation = 0.0
 
     var body: some View {
-        ZStack {
-            Circle().fill(RadialGradient(colors: [.white, PersonalAITheme.ColorToken.brightAccent.opacity(0.65), PersonalAITheme.ColorToken.deepBackground.opacity(0.86)], center: .center, startRadius: 1, endRadius: size / 2))
-            Canvas { context, canvas in
-                for index in 0..<42 {
-                    let x = CGFloat((index * 37) % 101) / 101 * canvas.width
-                    let y = CGFloat((index * 53) % 103) / 103 * canvas.height
-                    let dot = CGRect(x: x, y: y, width: index % 5 == 0 ? 5 : 3, height: index % 5 == 0 ? 5 : 3)
-                    context.fill(Path(ellipseIn: dot), with: .color(PersonalAITheme.ColorToken.softAccent))
-                    if index > 0 {
-                        var path = Path(); path.move(to: CGPoint(x: x, y: y)); path.addLine(to: CGPoint(x: canvas.width - x, y: canvas.height - y))
-                        context.stroke(path, with: .color(PersonalAITheme.ColorToken.brightAccent.opacity(0.22)), lineWidth: 0.55)
-                    }
-                }
-            }.clipShape(Circle()).rotationEffect(.degrees(rotation))
-            Ellipse().stroke(PersonalAITheme.ColorToken.brightAccent.opacity(0.75), lineWidth: 1).frame(width: size * 1.1, height: size * 0.38).rotationEffect(.degrees(16))
-            Ellipse().stroke(PersonalAITheme.ColorToken.brightAccent.opacity(0.5), lineWidth: 1).frame(width: size * 1.06, height: size * 0.34).rotationEffect(.degrees(-48))
-        }
+        Image("vishnu-genesis-core")
+        .resizable()
+        .interpolation(.high)
+        .scaledToFit()
         .frame(width: size, height: size)
-        .overlay(Circle().stroke(PersonalAITheme.ColorToken.softAccent.opacity(0.88), lineWidth: 1))
+        .rotationEffect(.degrees(rotation))
         .shadow(color: PersonalAITheme.ColorToken.accent.opacity(0.38), radius: 22)
         .accessibilityLabel("Vishnu intelligence core. \(state).")
         .onAppear { guard !reduceMotion else { return }; withAnimation(.linear(duration: 30).repeatForever(autoreverses: false)) { rotation = 360 } }
