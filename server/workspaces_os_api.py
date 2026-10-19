@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime, timezone
+from contextlib import contextmanager
 from pathlib import Path
 from threading import RLock
 from typing import Literal
@@ -94,8 +95,14 @@ class WorkspaceStore:
                 migrations=[Migration(1, 'owner workspaces, links and Studio views', _migrate_v1)],
             )
 
+    @contextmanager
     def _con(self):
-        return connect_sqlite(self.path)
+        con = connect_sqlite(self.path)
+        try:
+            with con:
+                yield con
+        finally:
+            con.close()
 
     def _row(self, con, ident: str, owner_id: str):
         row = con.execute(
