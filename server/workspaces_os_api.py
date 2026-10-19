@@ -29,7 +29,7 @@ def _now() -> str:
 
 
 def _migrate_v1(con) -> None:
-    con.executescript("""
+    statements = """
         CREATE TABLE IF NOT EXISTS os_workspaces(
             id TEXT PRIMARY KEY, owner_id TEXT NOT NULL, name TEXT NOT NULL,
             description TEXT NOT NULL DEFAULT '', template_id TEXT NOT NULL,
@@ -54,7 +54,10 @@ def _migrate_v1(con) -> None:
         );
         CREATE INDEX IF NOT EXISTS os_studio_workspace
             ON os_studio_views(workspace_id, updated_at);
-    """)
+    """
+    for statement in statements.split(';'):
+        if statement.strip():
+            con.execute(statement)
 
 
 class WorkspaceCreate(BaseModel):
@@ -149,7 +152,7 @@ class WorkspaceStore:
                 (ident, owner_id, name, body.description.strip(),
                  body.template_id, body.request_id, stamp, stamp),
             )
-            return self.get(ident, owner_id)
+            return self._expand(con, self._row(con, ident, owner_id))
 
     def patch(self, ident: str, owner_id: str, body: WorkspacePatch):
         changes = body.model_dump(exclude_unset=True, exclude_none=True)
