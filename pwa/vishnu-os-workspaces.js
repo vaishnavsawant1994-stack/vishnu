@@ -251,14 +251,24 @@
   }
   function show(page){
     state.page=page;
-    root.classList.remove('vos-hidden');
+    root.classList.remove('vos-hidden','vos-command-only');
     document.body.classList.add('vos-active');
     render();
   }
   function hide(){
     root.classList.add('vos-hidden');
+    root.classList.remove('vos-command-only');
     document.body.classList.remove('vos-active');
     state.command=false;
+  }
+  function openCommand(){
+    const hidden=root.classList.contains('vos-hidden');
+    if(hidden){root.classList.remove('vos-hidden');root.classList.add('vos-command-only');}
+    state.command=true;state.commandText='';state.commandFilter='all';render();
+  }
+  function closeCommand(){
+    state.command=false;
+    if(root.classList.contains('vos-command-only'))hide();else render();
   }
   async function refresh(selectFirst=false){
     state.loading=true;state.error='';render();
@@ -271,7 +281,8 @@
   }
   async function openWorkspace(id, page='overview'){
     state.error='';state.loading=true;state.selected=id;
-    state.page=page;render();
+    state.page=page;root.classList.remove('vos-command-only','vos-hidden');
+    document.body.classList.add('vos-active');render();
     try{
       const result=await api('/'+encodeURIComponent(id)+'/summary');
       state.workspace=result.workspace;state.summary=result;
@@ -301,10 +312,10 @@
   }
   async function perform(action){
     if(action==='reload'){if(['studio','overview'].includes(state.page)&&state.workspace)return openWorkspace(state.workspace.id,state.page);return refresh();}
-    if(action==='command'){state.command=true;state.commandText='';state.commandFilter='all';render();return;}
-    if(action==='close-command'){state.command=false;render();return;}
+    if(action==='command'){openCommand();return;}
+    if(action==='close-command'){closeCommand();return;}
     if(action==='back'||action==='workspace-list'||action==='workspaces'){state.command=false;show('workspaces');return refresh();}
-    if(action==='create'){state.command=false;state.page='create';state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;render();return;}
+    if(action==='create'){state.command=false;state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;show('create');return;}
     if(action==='overview'||action==='studio'){return openWorkspace(state.workspace.id,action);}
     if(action==='attention'){
       state.command=false;state.attentionOpen=true;render();return;
@@ -462,14 +473,13 @@
     if((event.metaKey||event.ctrlKey)&&event.key.toLowerCase()==='k'){
       if(document.querySelector('.enroll:not(.hidden)'))return;
       event.preventDefault();event.stopImmediatePropagation();
-      if(root.classList.contains('vos-hidden'))show('workspaces');
-      state.command=!state.command;render();return;
+      if(state.command){closeCommand();}else openCommand();return;
     }
     if(event.key==='Escape'&&!root.classList.contains('vos-hidden')){
       event.preventDefault();event.stopImmediatePropagation();
-      if(state.command){state.command=false;render();}else if(state.attentionOpen){state.attentionOpen=false;render();}else hide();
+      if(state.command){closeCommand();}else if(state.attentionOpen){state.attentionOpen=false;render();}else hide();
     }
   },true);
   window.vishnuOsWorkspaces={open:()=>{show('workspaces');return refresh(true);},openWorkspace,
-    command:()=>{if(root.classList.contains('vos-hidden'))show('workspaces');state.command=true;render();}};
+    command:()=>openCommand()};
 })();
