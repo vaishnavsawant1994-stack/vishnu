@@ -34,7 +34,7 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,settingsSection:0,settingsDraft:null,settingsMessage:'',savingSettings:false,todayData:null,todayAttention:null
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsMessage:'',savingSettings:false,todayData:null,todayAttention:null
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
@@ -206,6 +206,102 @@
 
   // Screens 21–25: deliberately use verified Workspace/Project, Agent, Work and Attention records.
   // Full mesh assets, Agent workspace grants and resource indexing are NOT inferred from screenshots.
+
+  // A genuine WebGL projection of authorized linked Project objects.
+  // The accessible HTML objects remain available if WebGL is unsupported.
+  function startSpatialRenderer(){
+    const canvas=root.querySelector('.vos-spatial-canvas');
+    const viewport=root.querySelector('.vos-spatial-viewport');
+    if(!canvas||!viewport)return;
+    const gl=canvas.getContext('webgl',{alpha:true,antialias:true,preserveDrawingBuffer:false});
+    if(!gl){viewport.dataset.renderMode='fallback';return;}
+    const vert='attribute vec3 position; uniform vec3 center; uniform float yaw; uniform float pitch; uniform float zoom; uniform float aspect; varying float shade; '+
+      'void main(){vec3 p=position*.48+center; float c=cos(yaw),s=sin(yaw); p=vec3(p.x*c-p.z*s,p.y,p.x*s+p.z*c);'+
+      'float cp=cos(pitch),sp=sin(pitch);p=vec3(p.x,p.y*cp-p.z*sp,p.y*sp+p.z*cp);'+
+      'float depth=1.0+max(-.8,p.z+3.0)*.055;gl_Position=vec4(p.x*aspect/zoom,p.y/zoom,p.z*.12,depth); shade=.67+.25*abs(position.y); }';
+    const frag='precision mediump float; uniform vec3 color; varying float shade; void main(){gl_FragColor=vec4(color*shade,.94);}';
+    function shader(type,source){
+      const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);
+      if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){gl.deleteShader(sh);return null;}return sh;
+    }
+    const v=shader(gl.VERTEX_SHADER,vert),f=shader(gl.FRAGMENT_SHADER,frag);
+    if(!v||!f){viewport.dataset.renderMode='fallback';return;}
+    const program=gl.createProgram();gl.attachShader(program,v);gl.attachShader(program,f);gl.linkProgram(program);
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){viewport.dataset.renderMode='fallback';return;}
+    gl.useProgram(program);
+    const position=gl.getAttribLocation(program,'position');
+    const center=gl.getUniformLocation(program,'center');
+    const yaw=gl.getUniformLocation(program,'yaw');
+    const pitch=gl.getUniformLocation(program,'pitch');
+    const zoom=gl.getUniformLocation(program,'zoom');
+    const aspect=gl.getUniformLocation(program,'aspect');
+    const color=gl.getUniformLocation(program,'color');
+    const quad=(a,b,c,d)=>[...a,...b,...c,...a,...c,...d];
+    const geometry=new Float32Array([
+      ...quad([-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]),
+      ...quad([1,-1,-1],[-1,-1,-1],[-1,1,-1],[1,1,-1]),
+      ...quad([-1,1,1],[1,1,1],[1,1,-1],[-1,1,-1]),
+      ...quad([-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1]),
+      ...quad([1,-1,1],[1,-1,-1],[1,1,-1],[1,1,1]),
+      ...quad([-1,-1,-1],[-1,-1,1],[-1,1,1],[-1,1,-1])
+    ]);
+    const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,geometry,gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);
+    gl.enable(gl.DEPTH_TEST);
+    function draw(){
+      if(!canvas.isConnected)return;
+      const bounds=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio||1,2);
+      canvas.width=Math.max(1,Math.round(bounds.width*ratio));canvas.height=Math.max(1,Math.round(bounds.height*ratio));
+      gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.uniform1f(yaw,state.spatialAngle*Math.PI/180);
+      gl.uniform1f(pitch,state.spatialPitch||0);
+      gl.uniform1f(zoom,Math.max(.65,Math.min(2.5,state.spatialZoom||1)));
+      gl.uniform1f(aspect,Math.min(1,canvas.height/Math.max(1,canvas.width))*0.8);
+      const objects=relatedProjects().slice(0,25);
+      objects.forEach((obj,i)=>{
+        gl.uniform3f(center,(i%3-1)*1.6,1.05-Math.floor(i/3)*.88,-2.3-(i%2)*.55);
+        gl.uniform3f(color,.06,.42+(i%3)*.11,.75);
+        gl.drawArrays(gl.TRIANGLES,0,geometry.length/3);
+      });
+    }
+    state.drawSpatial=draw;
+    viewport.dataset.renderMode='webgl';
+    const touches=new Map();let lastPoint=null,lastDistance=0;
+    viewport.addEventListener('pointerdown',e=>{
+      if(e.target.closest('button'))return;
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      viewport.setPointerCapture?.(e.pointerId);
+      lastPoint={x:e.clientX,y:e.clientY};lastDistance=0;
+    });
+    viewport.addEventListener('pointermove',e=>{
+      if(!touches.has(e.pointerId))return;
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(touches.size>=2){
+        const p=[...touches.values()],distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+        if(lastDistance)state.spatialZoom=Math.max(.65,Math.min(2.5,(state.spatialZoom||1)*(distance/lastDistance)));
+        lastDistance=distance;
+      }else if(lastPoint){
+        state.spatialAngle=(state.spatialAngle+(e.clientX-lastPoint.x)*.45)%360;
+        state.spatialPitch=Math.max(-.5,Math.min(.5,(state.spatialPitch||0)+(e.clientY-lastPoint.y)*.004));
+        const overlay=root.querySelector('.vos-spatial-scene');
+        if(overlay)overlay.style.setProperty('--angle',state.spatialAngle+'deg');
+      }
+      lastPoint={x:e.clientX,y:e.clientY};draw();
+    });
+    const release=e=>{touches.delete(e.pointerId);lastPoint=null;lastDistance=0;};
+    viewport.addEventListener('pointerup',release);viewport.addEventListener('pointercancel',release);
+    viewport.addEventListener('wheel',e=>{
+      if(!e.target.closest('.vos-spatial-viewport'))return;
+      e.preventDefault();state.spatialZoom=Math.max(.65,Math.min(2.5,(state.spatialZoom||1)*(e.deltaY>0?1.08:.92)));draw();
+    },{passive:false});
+    if(typeof ResizeObserver!=='undefined'){
+      const observer=new ResizeObserver(()=>{if(!canvas.isConnected)observer.disconnect();else draw();});
+      observer.observe(canvas);
+    }
+    draw();
+  }
+
   const infoCard=(title,text,action)=>'<section class="vos-detail-card"><h2>'+esc(title)+'</h2><p class="vos-muted">'+esc(text)+'</p>'+(action||'')+'</section>';
   const relatedProjects=()=>state.summary?.projects||[];
   const roomObjects=()=>relatedProjects().map((p,i)=>'<button type="button" class="vos-spatial-object" style="--x:'+((i%3)-1)+';--y:'+Math.floor(i/3)+'" data-vos="project:'+esc(p.id)+'"><span class="vos-spatial-mark" aria-hidden="true">⬡</span><strong>'+esc(p.name)+'</strong><small>'+esc(p.status||'Project')+'</small></button>').join('');
@@ -215,13 +311,13 @@
       '<div class="vos-spatial-toolbar">'+btn('spatial-orbit','↻ Orbit')+btn('spatial-focus','◎ Focus')+
       btn('spatial-reset','↶ Reset View')+btn('external:projects','Open Projects')+'</div>'+
       '<div class="vos-spatial-viewport" role="region" aria-label="Spatial preview of linked Workspace Projects">'+
-      '<div class="vos-spatial-horizon" aria-hidden="true"></div>'+
+      '<canvas class="vos-spatial-canvas" aria-hidden="true"></canvas><div class="vos-spatial-horizon" aria-hidden="true"></div>'+
       '<div class="vos-spatial-scene" style="--angle:'+state.spatialAngle+'deg">'+
       '<div class="vos-spatial-platform" aria-hidden="true">VISHNU</div>'+
       roomObjects()+'</div>'+
       (!projects.length?'<div class="vos-spatial-note">No linked Projects. Link an existing Project to populate this view.</div>':'')+
       '</div><div class="vos-spatial-footer">'+btn('link-project','＋ Link Project','vos-primary')+
-      '<span class="vos-muted">Spatial Project preview; production 3D character mesh and asset adapters are not connected.</span></div></div>'+
+      '<span class="vos-muted">WebGL spatial Project nodes; the approved 3D character mesh and asset adapters are not yet connected.</span></div></div>'+
       '<aside class="vos-inspector vos-new-inspector"><h2>Spatial objects</h2>'+
       '<p class="vos-muted">These are existing, authorized Project references—not copies of Project data.</p>'+
       (projects.map(p=>'<button class="vos-list-row" type="button" data-vos="project:'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>Open →</span></button>').join('')||
@@ -384,6 +480,7 @@
       header()+'<main class="vos-page">'+loading()+error()+content+'</main></div>'+mobileNav()+commandPalette()+attentionDialog();
     const focused=root.querySelector('[data-vos-input="command"]');
     if(state.command&&focused)focused.focus();
+    if(state.page==='spatial')requestAnimationFrame(startSpatialRenderer);
   }
   function show(page){
     state.page=page;
@@ -463,7 +560,7 @@
     if(['overview','studio','spatial','agents','assets','settings'].includes(action)){return openWorkspace(state.workspace.id,action);}
     if(action==='today'||action==='reload-today')return openToday();
     if(action==='spatial-orbit'){state.spatialAngle=(state.spatialAngle+35)%360;render();return;}
-    if(action==='spatial-reset'||action==='spatial-focus'){state.spatialAngle=0;render();return;}
+    if(action==='spatial-reset'||action==='spatial-focus'){state.spatialAngle=0;state.spatialPitch=0;state.spatialZoom=1;render();return;}
     if(action.startsWith('choose-agent:')){state.selectedAgent=action.slice(13);render();return;}
     if(action.startsWith('settings-section:')){state.settingsSection=Number(action.slice(17));render();return;}
     if(action==='toggle-favorite'){
