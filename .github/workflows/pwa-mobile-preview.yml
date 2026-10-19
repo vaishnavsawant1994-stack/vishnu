@@ -19,6 +19,7 @@ on:
       - 'tests/engineering_ui/**'
       - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
+      - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
       - 'tests/global_work_awareness_browser.mjs'
@@ -47,6 +48,7 @@ on:
       - 'tests/engineering_ui/**'
       - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
+      - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
       - 'tests/global_work_awareness_browser.mjs'
@@ -114,6 +116,7 @@ jobs:
           AGENT_WORKFORCE_SCREENSHOT_DIR=artifacts/agent-workforce node tests/agent_workforce_browser.mjs
           OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
+          node tests/vishnu_os_workspaces_browser.mjs
           node tests/pwa_mobile_preview_runner.mjs
           node tests/standalone_pwa_responsive.mjs
           ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
