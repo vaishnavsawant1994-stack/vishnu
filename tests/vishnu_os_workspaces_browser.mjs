@@ -32,6 +32,7 @@ try{
      if(path==='/work/attention')return {items:[],counts:{total:0},authority:'read_only_projection'};
      if(path==='/projects')return {projects:[f.project]};
      if(path==='/agents')return {agents:[{id:'agent-1',name:'Research Agent',role:'research',description:'Canonical demo agent'}]};
+     if(path==='/projects/project-1')return {project:{...f.project,files:[{id:'file-1',title:'patient-schema.md',kind:'source',size_bytes:2048,indexing_state:'indexed',is_pinned:true,version_count:1}]}};
      if(!path.startsWith('/os/workspaces'))throw Error('Unexpected API '+path);
      const suffix=path.slice('/os/workspaces'.length);
      const expanded=w=>({...w,linked_counts:{project:w.links.length,work:0,agent:0,file:0,knowledge:0,product:0,artifact:0,conversation:0}});
@@ -93,7 +94,10 @@ try{
   assert.equal(await page.locator('#vishnuOs1620 .vos-agent-row').count(),1);
   if(outputDir)await page.screenshot({path:outputDir+'/screen22-agents-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vishnuOs1620 [data-vos="assets"]').first().click();
-  await page.locator('#vishnuOs1620').getByText('No verified Workspace file or artifact links').waitFor();
+  await page.locator('#vishnuOs1620 .vos-file-card').getByText('patient-schema.md').waitFor();
+  assert.equal(await page.locator('#vishnuOs1620 .vos-file-card').count(),1);
+  await page.locator('#vishnuOs1620 [data-vos="asset-filter:pinned"]').click();
+  assert.equal(await page.locator('#vishnuOs1620 .vos-file-card').count(),1);
   if(outputDir)await page.screenshot({path:outputDir+'/screen23-assets-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vishnuOs1620 [data-vos="settings"]').first().click();
   await page.locator('#vosWorkspaceSettingsForm input[name="name"]').fill('Vishnu Character Workshop');
