@@ -29,7 +29,7 @@ try{
      if(path==='/work/summary')return {work_orders:[],authority:'read_only_projection'};
      if(path==='/work/attention')return {items:[],counts:{total:0},authority:'read_only_projection'};
      if(path==='/projects')return {projects:[f.project]};
-     assert.ok(path.startsWith('/os/workspaces'),'Unexpected API '+path);
+     if(!path.startsWith('/os/workspaces'))throw Error('Unexpected API '+path);
      const suffix=path.slice('/os/workspaces'.length);
      const expanded=w=>({...w,linked_counts:{project:w.links.length,work:0,agent:0,file:0,knowledge:0,product:0,artifact:0,conversation:0}});
      if(suffix===''&&method==='GET')return {workspaces:f.rows.map(expanded),templates:['blank','3d']};
