@@ -236,3 +236,16 @@
 @media(prefers-reduced-motion:reduce){
  #vishnuOs1620 .vos-btn{transition:none}
 }
+
+
+/* Command Center is a temporary overlay on the actual current Vishnu screen,
+ * not navigation to another Workspace page. */
+#vishnuOs1620.vos-command-only{
+  background:transparent!important;
+  grid-template-columns:minmax(0,1fr)!important;
+  pointer-events:none!important;
+}
+#vishnuOs1620.vos-command-only>.vos-sidebar,
+#vishnuOs1620.vos-command-only>.vos-main,
+#vishnuOs1620.vos-command-only>.vos-mobile-nav{display:none!important}
+#vishnuOs1620.vos-command-only>.vos-command-backdrop{pointer-events:auto!important}
