@@ -594,7 +594,7 @@
     if(root.classList.contains('vos-hidden'))return;
     const button=event.target.closest('[data-vos]');
     if(!button||!root.contains(button))return;
-    if(button.dataset.vos==='close-command'&&event.target.closest('.vos-command-panel'))return;
+    if(button.classList.contains('vos-command-backdrop')&&event.target.closest('.vos-command-panel'))return;
     event.preventDefault();event.stopPropagation();
     perform(button.dataset.vos);
   },true);
