@@ -249,3 +249,127 @@
 #vishnuOs1620.vos-command-only>.vos-main,
 #vishnuOs1620.vos-command-only>.vos-mobile-nav{display:none!important}
 #vishnuOs1620.vos-command-only>.vos-command-backdrop{pointer-events:auto!important}
+
+
+/* Screens 21–25: canonical Vishnu OS shell extensions. No screenshot raster overlays. */
+#vishnuOs1620 .vos-new-page{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:13px;align-items:start;min-width:0}
+#vishnuOs1620 .vos-new-page-main{min-width:0}
+#vishnuOs1620 .vos-new-summary{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0}
+#vishnuOs1620 .vos-new-summary h2{margin:0}
+#vishnuOs1620 .vos-new-inspector{align-self:start}
+#vishnuOs1620 .vos-detail-card{margin:12px 0;border:1px solid var(--vos-border);background:rgba(5,18,30,.82);padding:17px;border-radius:14px}
+#vishnuOs1620 .vos-detail-card p{font-size:13px}
+#vishnuOs1620 .vos-agent-row{width:100%;display:flex;align-items:center;text-align:left;gap:12px;
+ border:1px solid var(--vos-border);background:rgba(5,18,30,.82);padding:13px;margin:9px 0;border-radius:13px}
+#vishnuOs1620 .vos-agent-row:hover,#vishnuOs1620 .vos-agent-row.selected{border-color:var(--vos-bright);box-shadow:0 0 12px rgba(32,184,255,.16)}
+#vishnuOs1620 .vos-agent-row>span:nth-child(2){display:flex;flex-direction:column;flex:1;min-width:0;gap:2px}
+#vishnuOs1620 .vos-agent-row strong{font-size:14px}
+#vishnuOs1620 .vos-agent-row small{font-size:12px;color:var(--vos-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#vishnuOs1620 .vos-spatial-layout{display:grid;grid-template-columns:minmax(0,1fr) 265px;gap:13px;min-width:0}
+#vishnuOs1620 .vos-spatial-main{min-width:0}
+#vishnuOs1620 .vos-spatial-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0}
+#vishnuOs1620 .vos-spatial-viewport{height:clamp(310px,53vh,640px);min-width:0;position:relative;overflow:hidden;
+ border:1px solid rgba(77,220,255,.58);border-radius:16px;background:
+ radial-gradient(ellipse at 50% 85%,rgba(12,93,165,.31),transparent 42%),
+ radial-gradient(ellipse at 60% 10%,rgba(6,44,89,.37),transparent 53%),
+ linear-gradient(150deg,#02080f,#061423 65%,#02060b);perspective:720px}
+#vishnuOs1620 .vos-spatial-horizon{position:absolute;inset:34% -40% -70%;
+ background:linear-gradient(rgba(32,184,255,.15) 1px,transparent 1px),linear-gradient(90deg,rgba(32,184,255,.13) 1px,transparent 1px);
+ background-size:55px 55px;transform:rotateX(68deg);transform-origin:center top;
+ opacity:.55;pointer-events:none}
+#vishnuOs1620 .vos-spatial-scene{position:absolute;inset:0;transform-style:preserve-3d;transform:rotateY(var(--angle));transition:transform .45s}
+#vishnuOs1620 .vos-spatial-platform{position:absolute;width:240px;height:105px;left:50%;top:66%;transform:translate(-50%,-50%) rotateX(63deg);
+ display:grid;place-items:center;letter-spacing:.6em;padding-left:.6em;font-size:17px;color:#81dcff;
+ border-radius:50%;border:2px solid #27b8ff;box-shadow:0 0 23px rgba(32,184,255,.48),inset 0 0 25px rgba(32,184,255,.26);background:rgba(5,50,89,.28)}
+#vishnuOs1620 .vos-spatial-object{position:absolute;left:calc(50% + var(--x)*29%);top:calc(24% + var(--y)*19%);
+ transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:6px;
+ width:145px;max-width:32%;padding:12px 9px;background:rgba(5,20,36,.91);
+ border:1px solid rgba(46,184,250,.61);border-radius:12px;box-shadow:0 0 18px rgba(32,184,255,.19)}
+#vishnuOs1620 .vos-spatial-object:hover,#vishnuOs1620 .vos-spatial-object:focus-visible{border-color:#8deaff;box-shadow:0 0 22px rgba(32,184,255,.49)}
+#vishnuOs1620 .vos-spatial-mark{font-size:27px;color:#4ddcff}
+#vishnuOs1620 .vos-spatial-object strong{font-size:12px;text-align:center;white-space:normal;overflow-wrap:anywhere}
+#vishnuOs1620 .vos-spatial-object small{color:var(--vos-muted);font-size:11px}
+#vishnuOs1620 .vos-spatial-note{position:absolute;bottom:24px;left:20px;right:20px;text-align:center;font-size:13px;color:#a4e2ff}
+#vishnuOs1620 .vos-spatial-footer{display:flex;align-items:center;gap:12px;margin:12px 0}
+#vishnuOs1620 .vos-spatial-footer span{font-size:12px}
+#vishnuOs1620 .vos-settings-title{margin:8px 0 16px}
+#vishnuOs1620 .vos-settings-title h2{font-size:24px;margin:0 0 4px}
+#vishnuOs1620 .vos-settings-title p{margin:0}
+#vishnuOs1620 .vos-settings-grid{display:grid;grid-template-columns:minmax(165px,205px) minmax(0,1fr) 235px;gap:12px;align-items:start}
+#vishnuOs1620 .vos-settings-menu{display:flex;flex-direction:column;gap:3px;padding:10px;border:1px solid var(--vos-border);border-radius:14px;background:rgba(5,18,30,.78)}
+#vishnuOs1620 .vos-settings-menu .vos-btn{border-color:transparent;background:transparent;justify-content:flex-start;text-align:left;font-size:12px;white-space:normal;min-height:40px}
+#vishnuOs1620 .vos-settings-menu .vos-btn.is-active{border-color:#4ddcff;background:rgba(14,104,175,.26)}
+#vishnuOs1620 .vos-settings-menu .vos-btn.vos-danger-link,#vishnuOs1620 .vos-danger-link{border-color:rgba(218,68,95,.55);color:#ff9bab}
+#vishnuOs1620 .vos-settings-menu .vos-btn.vos-danger-link{margin-top:12px}
+#vishnuOs1620 .vos-settings-body{border:1px solid var(--vos-border);border-radius:14px;background:rgba(5,18,30,.83);padding:17px;min-height:350px;min-width:0}
+#vishnuOs1620 .vos-settings-form label{display:block;font-size:13px;color:#c2d8e8;margin:19px 0 12px}
+#vishnuOs1620 .vos-settings-form input,#vishnuOs1620 .vos-settings-form textarea{display:block;margin-top:6px;font-size:14px;resize:vertical}
+#vishnuOs1620 .vos-settings-form input:disabled{color:#849cb2;cursor:not-allowed}
+#vishnuOs1620 .vos-settings-form button[type=submit]{float:right;margin:10px 0}
+#vishnuOs1620 .vos-settings-favorite{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 0;border-bottom:1px solid var(--vos-border)}
+#vishnuOs1620 .vos-settings-favorite small{font-size:11px}
+#vishnuOs1620 .vos-save-message{font-size:13px;color:#92e7de}
+#vishnuOs1620 .vos-today-hero{padding:18px 13px 20px;border-radius:16px;margin-bottom:15px;
+ background:radial-gradient(ellipse at 76% 0%,rgba(29,127,239,.31),transparent 48%),linear-gradient(120deg,rgba(5,19,33,.2),rgba(4,12,22,.75))}
+#vishnuOs1620 .vos-today-hero h1{font-weight:570;line-height:1.2;font-size:clamp(26px,3vw,40px);margin:6px 0}
+#vishnuOs1620 .vos-today-hero p{color:#bed3e5;margin:0 0 17px}
+#vishnuOs1620 .vos-today-hero small{font-size:14px;color:#afcee6}
+#vishnuOs1620 .vos-today .vos-section{padding:14px 15px;background:rgba(5,18,30,.63);border:1px solid var(--vos-border);border-radius:13px}
+@media(max-width:1150px){
+ #vishnuOs1620 .vos-settings-grid{grid-template-columns:165px minmax(0,1fr)}
+ #vishnuOs1620 .vos-settings-grid>.vos-inspector{display:none}
+}
+@media(max-width:840px){
+ #vishnuOs1620 .vos-new-page,#vishnuOs1620 .vos-spatial-layout{grid-template-columns:minmax(0,1fr)}
+ #vishnuOs1620 .vos-new-page .vos-inspector,#vishnuOs1620 .vos-spatial-layout .vos-inspector{display:block;position:static}
+}
+@media(max-width:650px){
+ #vishnuOs1620 .vos-settings-grid{grid-template-columns:minmax(0,1fr)}
+ #vishnuOs1620 .vos-settings-menu{padding:4px;max-height:275px;overflow-y:auto}
+ #vishnuOs1620 .vos-settings-menu .vos-btn{min-height:38px}
+ #vishnuOs1620 .vos-settings-body{padding:15px}
+ #vishnuOs1620 .vos-spatial-viewport{height:43dvh;min-height:260px}
+ #vishnuOs1620 .vos-spatial-object{width:100px;padding:6px;gap:2px}
+ #vishnuOs1620 .vos-spatial-object strong{font-size:10px}
+ #vishnuOs1620 .vos-spatial-mark{font-size:20px}
+ #vishnuOs1620 .vos-spatial-footer{flex-wrap:wrap}
+ #vishnuOs1620 .vos-new-page .vos-inspector{display:none}
+ #vishnuOs1620 .vos-agent-row{padding:10px}
+ #vishnuOs1620 .vos-today-hero{padding:14px 6px}
+ #vishnuOs1620 .vos-today .vos-section{padding:12px}
+}
+@media(prefers-reduced-motion:reduce){#vishnuOs1620 .vos-spatial-scene{transition:none}}
+
+
+#vishnuOs1620 .vos-spatial-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:.67}
+#vishnuOs1620 .vos-spatial-viewport{touch-action:none}
+#vishnuOs1620 .vos-spatial-viewport[data-render-mode="fallback"] .vos-spatial-note{color:#ffc994}
+#vishnuOs1620 .vos-spatial-scene{pointer-events:none}
+#vishnuOs1620 .vos-spatial-object{pointer-events:auto}
+
+
+#vishnuOs1620 .vos-files-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#vishnuOs1620 .vos-file-card{display:flex;flex-direction:column;text-align:left;align-items:flex-start;gap:5px;min-width:0;padding:9px;
+ border:1px solid var(--vos-border);border-radius:13px;background:rgba(5,18,30,.82)}
+#vishnuOs1620 .vos-file-card.selected,#vishnuOs1620 .vos-file-card:hover{border-color:#4ddcff;box-shadow:0 0 13px rgba(32,184,255,.23)}
+#vishnuOs1620 .vos-file-card strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#vishnuOs1620 .vos-file-card small{font-size:11px;color:var(--vos-muted)}
+#vishnuOs1620 .vos-file-art{display:grid;place-items:center;border:1px solid rgba(77,220,255,.32);border-radius:9px;width:100%;height:94px;
+ color:#4ddcff;font-size:44px;background:radial-gradient(circle at center,rgba(32,184,255,.18),rgba(3,10,18,.87) 80%)}
+#vishnuOs1620 .vos-file-preview{height:140px;border-radius:11px;display:grid;place-items:center;font-size:60px;color:#4ddcff;
+ background:radial-gradient(circle at center,rgba(32,184,255,.21),rgba(3,10,18,.95));border:1px solid var(--vos-border)}
+@media(max-width:1150px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#vishnuOs1620 .vos-file-art{height:83px}}
+
+
+#vishnuOs1620 .vos-mobile-close,#vishnuOs1620 .vos-inspector-scrim{display:none}
+@media(max-width:650px){
+ #vishnuOs1620 .vos-inspector-scrim{display:block;position:fixed;inset:0;background:rgba(0,5,13,.74);border:0;z-index:8}
+ #vishnuOs1620 .vos-new-page .vos-inspector.mobile-open{display:block;position:fixed;z-index:9;
+  left:8px;right:8px;top:auto;bottom:calc(74px + env(safe-area-inset-bottom));
+  max-height:min(76dvh,780px);overflow-y:auto;box-shadow:0 0 50px rgba(0,0,0,.55);
+  border-color:rgba(77,220,255,.73)}
+ #vishnuOs1620 .vos-new-page .vos-inspector .vos-mobile-close{display:block;float:right;
+  background:rgba(5,18,30,.8);border:1px solid var(--vos-border);border-radius:8px;color:#f5faff;padding:5px 11px}
+}

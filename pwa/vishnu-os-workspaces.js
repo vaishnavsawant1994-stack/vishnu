@@ -34,14 +34,14 @@
     workspace:null, summary:null, views:[], view:null, template:'blank',
     query:'', filter:'all', draft:{name:'',description:''}, createRequestId:null, loading:false, error:'', command:false,
     commandText:'', commandFilter:'all', focusPanel:null,
-    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:''
+    layoutMode:'grid', createBusy:false, workOrders:[], attentionItems:[], attentionCount:0, attentionOpen:false, workError:'',people:[],peopleError:'',peopleQuery:'',selectedAgent:null,mobileInspectorOpen:false,spatialAngle:0,spatialPitch:0,spatialZoom:1,settingsSection:0,settingsDraft:null,settingsDirty:false,settingsMessage:'',savingSettings:false,assets:[],assetsError:'',assetsQuery:'',assetsFilter:'all',selectedAsset:null,todayData:null,todayAttention:null
   };
   const root=document.createElement('div');
   root.id='vishnuOs1620';
   root.className='vos-hidden';
   root.setAttribute('aria-label','Vishnu OS workspace interface');
   document.body.appendChild(root);
-  const shellTitle=()=>state.page==='workspaces'?'Workspaces':state.page==='create'?'Create a Workspace':state.page==='overview'?'Workspace Overview':'Workspace Studio';
+  const shellTitle=()=>({workspaces:'Workspaces',create:'Create a Workspace',overview:'Workspace Overview',studio:'Workspace Studio',spatial:'3D Space',agents:'Team & Agents',assets:'Files & Assets',settings:'Workspace Settings',today:'Today'})[state.page]||'Vishnu OS';
   const btn=(act,label,cls='',extra='')=>'<button type="button" class="vos-btn '+cls+'" data-vos="'+esc(act)+'" '+extra+'>'+label+'</button>';
   const count=(num)=>Number.isFinite(+num)?Number(num):0;
   const tpl=(id)=>templates.find(t=>t[0]===id)||templates[0];
@@ -53,7 +53,7 @@
   function icon(symbol){return '<span class="vos-object-icon" aria-hidden="true">'+symbol+'</span>';}
   function nav(){
     const links=[['home','⌂','Home'],['workspaces','▦','Workspaces'],['work','▷','Work'],['projects','▱','Projects'],['agents','♧','Agents'],['create','✧','Create'],['memory','◫','Memory & Knowledge'],['tools','☷','Apps & Capabilities'],['devices','▣','Devices'],['activities','⌁','Activity']];
-    return '<aside class="vos-sidebar"><div class="vos-wordmark">V I S H N U</div><nav aria-label="Main navigation">'+links.map(([id,i,name])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span> '+name,id===state.page||['create','overview','studio'].includes(state.page)&&id==='workspaces'?'is-active':'')).join('')+'</nav><div class="vos-secondary">'+btn('nav:settings','⚙ Settings')+'</div></aside>';
+    return '<aside class="vos-sidebar"><div class="vos-wordmark">V I S H N U</div><nav aria-label="Main navigation">'+links.map(([id,i,name])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span> '+name,id===state.page||(state.page==='today'&&id==='home')||(['create','overview','studio','spatial','agents','assets','settings'].includes(state.page)&&id==='workspaces')?'is-active':'')).join('')+'</nav><div class="vos-secondary">'+btn('nav:settings','⚙ Settings')+'</div></aside>';
   }
   function header(){
     return '<header class="vos-globalbar">'+btn('back','←','vos-icon-btn')+
@@ -66,7 +66,7 @@
     return '<nav class="vos-mobile-nav" aria-label="Mobile navigation">'+
       [['home','⌂','Home'],['workspaces','▦','Spaces'],['create','✧','Create'],['work','▷','Work'],['more','•••','More']]
       .map(([id,i,label])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span><small>'+label+'</small>',
-        state.page===id||['overview','studio','create'].includes(state.page)&&id==='workspaces'?'is-active':'')).join('')+'</nav>';
+        state.page===id||(state.page==='today'&&id==='home')||(['overview','studio','spatial','agents','assets','settings','create'].includes(state.page)&&id==='workspaces')?'is-active':'')).join('')+'</nav>';
   }
   function loading(){return state.loading?'<p class="vos-muted" role="status">Loading Workspace information…</p>':''}
   function error(){return state.error?'<div class="vos-error" role="alert">'+esc(state.error)+' '+btn('reload','Retry')+'</div>':''}
@@ -140,8 +140,8 @@
       '<p class="vos-muted">Templates suggest organization; they never create fabricated Projects or Agents.</p></aside></div>';
   }
   function workspaceTabs(){
-    return '<div class="vos-tabs">'+[['overview','Overview'],['studio','Studio'],['projects','Projects'],['work','Work'],['agents','Agents'],['files','Files & Assets'],['knowledge','Knowledge'],['activity','Activity'],['settings','Settings']].map(([id,label])=>
-      btn(['overview','studio'].includes(id)?id:'external:'+id,esc(label),state.page===id?'is-active':'')).join('')+'</div>';
+    return '<div class="vos-tabs">'+[['overview','Overview'],['studio','Studio'],['spatial','3D Space'],['projects','Projects'],['work','Work'],['agents','Agents'],['assets','Assets'],['knowledge','Knowledge'],['activity','Activity'],['settings','Settings']].map(([id,label])=>
+      btn(['overview','studio','spatial','agents','assets','settings'].includes(id)?id:'external:'+id,esc(label),state.page===id?'is-active':'')).join('')+'</div>';
   }
   function workspaceHeader(){
     const ws=state.workspace;
@@ -157,7 +157,7 @@
     const list=(state.summary?.projects||[]);
     const counts=state.workspace?.linked_counts||{};
     return workspaceHeader()+'<div class="vos-quick">'+
-      btn('studio','◈ Open Workspace Studio')+btn('external:projects','＋ Create Project')+
+      btn('studio','◈ Open Workspace Studio')+btn('today','◷ Today')+btn('external:projects','＋ Create Project')+
       btn('link-project','↗ Link Existing Project')+'</div>'+
       '<div class="vos-overview-top">'+section('Workspace resources','<div class="vos-metrics">'+
       '<span>'+count(counts.project)+' Projects</span><span>'+count(counts.work)+' Work links</span><span>'+count(counts.agent)+' Agents linked</span>'+
@@ -203,6 +203,266 @@
       '<div class="vos-empty">Your Studio is ready. Add an existing Project to the workbench.</div>')+
       '<p class="vos-muted">Layouts save references to Projects, not copies of their content. Full document/code editors are not yet integrated in this slice.</p>';
   }
+
+  // Screens 21–25: deliberately use verified Workspace/Project, Agent, Work and Attention records.
+  // Full mesh assets, Agent workspace grants and resource indexing are NOT inferred from screenshots.
+
+  // A genuine WebGL projection of authorized linked Project objects.
+  // The accessible HTML objects remain available if WebGL is unsupported.
+  function startSpatialRenderer(){
+    const canvas=root.querySelector('.vos-spatial-canvas');
+    const viewport=root.querySelector('.vos-spatial-viewport');
+    if(!canvas||!viewport||canvas.dataset.initialized)return;
+    canvas.dataset.initialized='true';
+    const gl=canvas.getContext('webgl',{alpha:true,antialias:true,preserveDrawingBuffer:false});
+    if(!gl){viewport.dataset.renderMode='fallback';return;}
+    const vert='attribute vec3 position; uniform vec3 center; uniform float yaw; uniform float pitch; uniform float zoom; uniform float aspect; varying float shade; '+
+      'void main(){vec3 p=position*.48+center; float c=cos(yaw),s=sin(yaw); p=vec3(p.x*c-p.z*s,p.y,p.x*s+p.z*c);'+
+      'float cp=cos(pitch),sp=sin(pitch);p=vec3(p.x,p.y*cp-p.z*sp,p.y*sp+p.z*cp);'+
+      'float depth=1.0+max(-.8,p.z+3.0)*.055;gl_Position=vec4(p.x*aspect/zoom,p.y/zoom,p.z*.12,depth); shade=.67+.25*abs(position.y); }';
+    const frag='precision mediump float; uniform vec3 color; varying float shade; void main(){gl_FragColor=vec4(color*shade,.94);}';
+    function shader(type,source){
+      const sh=gl.createShader(type);gl.shaderSource(sh,source);gl.compileShader(sh);
+      if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){gl.deleteShader(sh);return null;}return sh;
+    }
+    const v=shader(gl.VERTEX_SHADER,vert),f=shader(gl.FRAGMENT_SHADER,frag);
+    if(!v||!f){viewport.dataset.renderMode='fallback';return;}
+    const program=gl.createProgram();gl.attachShader(program,v);gl.attachShader(program,f);gl.linkProgram(program);
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){viewport.dataset.renderMode='fallback';return;}
+    gl.useProgram(program);
+    const position=gl.getAttribLocation(program,'position');
+    const center=gl.getUniformLocation(program,'center');
+    const yaw=gl.getUniformLocation(program,'yaw');
+    const pitch=gl.getUniformLocation(program,'pitch');
+    const zoom=gl.getUniformLocation(program,'zoom');
+    const aspect=gl.getUniformLocation(program,'aspect');
+    const color=gl.getUniformLocation(program,'color');
+    const quad=(a,b,c,d)=>[...a,...b,...c,...a,...c,...d];
+    const geometry=new Float32Array([
+      ...quad([-1,-1,1],[1,-1,1],[1,1,1],[-1,1,1]),
+      ...quad([1,-1,-1],[-1,-1,-1],[-1,1,-1],[1,1,-1]),
+      ...quad([-1,1,1],[1,1,1],[1,1,-1],[-1,1,-1]),
+      ...quad([-1,-1,-1],[1,-1,-1],[1,-1,1],[-1,-1,1]),
+      ...quad([1,-1,1],[1,-1,-1],[1,1,-1],[1,1,1]),
+      ...quad([-1,-1,-1],[-1,-1,1],[-1,1,1],[-1,1,-1])
+    ]);
+    const buffer=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,buffer);gl.bufferData(gl.ARRAY_BUFFER,geometry,gl.STATIC_DRAW);
+    gl.enableVertexAttribArray(position);gl.vertexAttribPointer(position,3,gl.FLOAT,false,0,0);
+    gl.enable(gl.DEPTH_TEST);
+    function draw(){
+      if(!canvas.isConnected)return;
+      const bounds=canvas.getBoundingClientRect(),ratio=Math.min(devicePixelRatio||1,2);
+      canvas.width=Math.max(1,Math.round(bounds.width*ratio));canvas.height=Math.max(1,Math.round(bounds.height*ratio));
+      gl.viewport(0,0,canvas.width,canvas.height);gl.clearColor(0,0,0,0);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(program);gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+      gl.uniform1f(yaw,state.spatialAngle*Math.PI/180);
+      gl.uniform1f(pitch,state.spatialPitch||0);
+      gl.uniform1f(zoom,Math.max(.65,Math.min(2.5,state.spatialZoom||1)));
+      gl.uniform1f(aspect,Math.min(1,canvas.height/Math.max(1,canvas.width))*0.8);
+      const objects=relatedProjects().slice(0,25);
+      objects.forEach((obj,i)=>{
+        gl.uniform3f(center,(i%3-1)*1.6,1.05-Math.floor(i/3)*.88,-2.3-(i%2)*.55);
+        gl.uniform3f(color,.06,.42+(i%3)*.11,.75);
+        gl.drawArrays(gl.TRIANGLES,0,geometry.length/3);
+      });
+    }
+    state.drawSpatial=draw;
+    viewport.dataset.renderMode='webgl';
+    const touches=new Map();let lastPoint=null,lastDistance=0;
+    viewport.addEventListener('pointerdown',e=>{
+      if(e.target.closest('button'))return;
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      viewport.setPointerCapture?.(e.pointerId);
+      lastPoint={x:e.clientX,y:e.clientY};lastDistance=0;
+    });
+    viewport.addEventListener('pointermove',e=>{
+      if(!touches.has(e.pointerId))return;
+      touches.set(e.pointerId,{x:e.clientX,y:e.clientY});
+      if(touches.size>=2){
+        const p=[...touches.values()],distance=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y);
+        if(lastDistance)state.spatialZoom=Math.max(.65,Math.min(2.5,(state.spatialZoom||1)*(distance/lastDistance)));
+        lastDistance=distance;
+      }else if(lastPoint){
+        state.spatialAngle=(state.spatialAngle+(e.clientX-lastPoint.x)*.45)%360;
+        state.spatialPitch=Math.max(-.5,Math.min(.5,(state.spatialPitch||0)+(e.clientY-lastPoint.y)*.004));
+        const overlay=root.querySelector('.vos-spatial-scene');
+        if(overlay)overlay.style.setProperty('--angle',state.spatialAngle+'deg');
+      }
+      lastPoint={x:e.clientX,y:e.clientY};draw();
+    });
+    const release=e=>{touches.delete(e.pointerId);lastPoint=null;lastDistance=0;};
+    viewport.addEventListener('pointerup',release);viewport.addEventListener('pointercancel',release);
+    viewport.addEventListener('wheel',e=>{
+      if(!e.target.closest('.vos-spatial-viewport'))return;
+      e.preventDefault();state.spatialZoom=Math.max(.65,Math.min(2.5,(state.spatialZoom||1)*(e.deltaY>0?1.08:.92)));draw();
+    },{passive:false});
+    if(typeof ResizeObserver!=='undefined'){
+      const observer=new ResizeObserver(()=>{if(!canvas.isConnected)observer.disconnect();else draw();});
+      observer.observe(canvas);
+    }
+    draw();
+  }
+
+  const infoCard=(title,text,action)=>'<section class="vos-detail-card"><h2>'+esc(title)+'</h2><p class="vos-muted">'+esc(text)+'</p>'+(action||'')+'</section>';
+  const relatedProjects=()=>state.summary?.projects||[];
+  const roomObjects=()=>relatedProjects().map((p,i)=>'<button type="button" class="vos-spatial-object" style="--x:'+((i%3)-1)+';--y:'+Math.floor(i/3)+'" data-vos="project:'+esc(p.id)+'"><span class="vos-spatial-mark" aria-hidden="true">⬡</span><strong>'+esc(p.name)+'</strong><small>'+esc(p.status||'Project')+'</small></button>').join('');
+  function spatialPage(){
+    const projects=relatedProjects();
+    return workspaceHeader()+'<div class="vos-spatial-layout"><div class="vos-spatial-main">'+
+      '<div class="vos-spatial-toolbar">'+btn('spatial-orbit','↻ Orbit')+btn('spatial-focus','◎ Focus')+
+      btn('spatial-reset','↶ Reset View')+btn('external:projects','Open Projects')+'</div>'+
+      '<div class="vos-spatial-viewport" role="region" aria-label="Spatial preview of linked Workspace Projects">'+
+      '<canvas class="vos-spatial-canvas" aria-hidden="true"></canvas><div class="vos-spatial-horizon" aria-hidden="true"></div>'+
+      '<div class="vos-spatial-scene" style="--angle:'+state.spatialAngle+'deg">'+
+      '<div class="vos-spatial-platform" aria-hidden="true">VISHNU</div>'+
+      roomObjects()+'</div>'+
+      (!projects.length?'<div class="vos-spatial-note">No linked Projects. Link an existing Project to populate this view.</div>':'')+
+      '</div><div class="vos-spatial-footer">'+btn('link-project','＋ Link Project','vos-primary')+
+      '<span class="vos-muted">WebGL spatial Project nodes; the approved 3D character mesh and asset adapters are not yet connected.</span></div></div>'+
+      '<aside class="vos-inspector vos-new-inspector"><h2>Spatial objects</h2>'+
+      '<p class="vos-muted">These are existing, authorized Project references—not copies of Project data.</p>'+
+      (projects.map(p=>'<button class="vos-list-row" type="button" data-vos="project:'+esc(p.id)+'"><strong>'+esc(p.name)+'</strong><span>Open →</span></button>').join('')||
+      '<p class="vos-muted">No Project objects yet.</p>')+
+      '<div class="vos-divider"></div><h3>3D model availability</h3><p class="vos-muted">No canonical 3D character source has been linked. A rendered screenshot is not a mesh.</p></aside></div>';
+  }
+  function agentPage(){
+    const q=state.peopleQuery.trim().toLowerCase();
+    const people=state.people.filter(a=>[a.name,a.role,a.description,a.id].join(' ').toLowerCase().includes(q));
+    const selected=state.people.find(a=>String(a.id)===String(state.selectedAgent))||people[0];
+    return workspaceHeader()+'<div class="vos-new-page"><div class="vos-new-page-main">'+
+      '<label class="vos-search">⌕ <input data-vos-input="people-search" aria-label="Search available Agents" placeholder="Search team members, agents, roles, or tools…" value="'+esc(state.peopleQuery)+'"></label>'+
+      '<div class="vos-new-summary"><strong>Available canonical Agents ('+state.people.length+')</strong>'+
+      btn('external:agents','Manage Agents →')+'</div>'+
+      '<p class="vos-muted">Global Agent catalogue. Workspace membership and grants are not yet implemented in the Workspace API; these records are not presented as assigned collaborators.</p>'+
+      (state.peopleError?'<div class="vos-error" role="alert">'+esc(state.peopleError)+'</div>':'')+
+      (people.length?people.map(a=>'<button class="vos-agent-row '+(selected?.id===a.id?'selected':'')+'" type="button" data-vos="choose-agent:'+esc(a.id)+'">'+
+      '<span class="vos-object-icon" aria-hidden="true">✦</span><span><strong>'+esc(a.name||a.id)+'</strong>'+
+      '<small>AI Agent · '+esc(a.role||'Unspecified role')+'</small>'+
+      '<small>'+esc(a.description||'No description provided')+'</small></span><span class="vos-badge">Inspect →</span></button>').join(''):
+      '<div class="vos-empty">No available Agent records matched. No simulated Agents have been created.</div>')+'</div>'+
+      '<aside class="vos-inspector vos-new-inspector '+(state.mobileInspectorOpen?'mobile-open':'')+'">'+btn('close-inspector','×','vos-mobile-close','aria-label="Close Agent details"')+'<h2>Selected Agent</h2>'+ 
+      (selected?'<div class="vos-detail-heading">'+icon('✦')+'<div><h3>'+esc(selected.name||selected.id)+'</h3><span class="vos-badge">AI Agent</span></div></div>'+
+      '<div class="vos-detail-rows"><div><span>Role</span><strong>'+esc(selected.role||'—')+'</strong></div>'+
+      '<div><span>Workspace access</span><strong>Not qualified</strong></div></div>'+
+      '<p>'+esc(selected.description||'No description provided.')+'</p>'+
+      '<p class="vos-muted">Actual capability grants, Work assignments and access changes must be managed through their canonical authority.</p>'+
+      btn('external:agents','Open Agent Manager →','vos-primary vos-full'):
+      '<p class="vos-muted">Select an available Agent to inspect it.</p>')+'</aside></div>';
+  }
+
+  function assetsPage(){
+    const q=state.assetsQuery.trim().toLowerCase();
+    const filters=[['all','All'],['source','Sources'],['deliverable','Deliverables'],['pinned','Pinned']];
+    const files=state.assets.filter(row=>(state.assetsFilter==='all'||
+      state.assetsFilter==='pinned'&&row.is_pinned||state.assetsFilter==='source'&&row.kind!=='deliverable'||state.assetsFilter===row.kind)&&
+      (!q||[row.title,row.kind,row.projectName,row.source_provider].join(' ').toLowerCase().includes(q)));
+    const current=state.assets.find(row=>row.key===state.selectedAsset)||files[0];
+    const iconFor=row=>row.kind==='link'?'↗':row.kind==='deliverable'?'▣':'▤';
+    const fmtSize=n=>{const b=Number(n);if(!Number.isFinite(b)||b<=0)return 'Size unavailable';
+      const unit=b>=1073741824?'GB':b>=1048576?'MB':b>=1024?'KB':'B';
+      const value=unit==='GB'?b/1073741824:unit==='MB'?b/1048576:unit==='KB'?b/1024:b;
+      return new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(value)+' '+unit;};
+    const cards=files.map(row=>'<button class="vos-file-card '+(current?.key===row.key?'selected':'')+
+      '" type="button" data-vos="asset-select:'+esc(row.key)+'"><span class="vos-file-art" aria-hidden="true">'+iconFor(row)+'</span>'+
+      '<strong>'+esc(row.title||'Untitled source')+'</strong>'+
+      '<small>'+esc(row.kind||'source')+' · '+esc(row.projectName)+'</small>'+
+      '<small>'+esc(fmtSize(row.size_bytes))+'</small>'+
+      '<span class="vos-badge">'+esc(row.is_pinned?'Pinned':row.indexing_state==='indexed'?'Indexed':'Saved')+'</span></button>').join('');
+    return workspaceHeader()+'<div class="vos-new-page"><div class="vos-new-page-main">'+
+      '<div class="vos-new-summary"><h2>Files & Assets</h2>'+
+      btn('asset-add','＋ Add from Project','vos-primary')+'</div>'+
+      '<label class="vos-search">⌕ <input data-vos-input="assets-search" aria-label="Search linked Project files" placeholder="Search files, sources, or deliverables…" value="'+esc(state.assetsQuery)+'"></label>'+
+      '<div class="vos-filters">'+filters.map(([key,label])=>btn('asset-filter:'+key,esc(label),state.assetsFilter===key?'is-active':'')).join('')+'</div>'+
+      (state.assetsError?'<div role="alert" class="vos-error">'+esc(state.assetsError)+'</div>':'')+
+      section('Linked Project resources ('+files.length+')',
+      files.length?'<div class="vos-files-grid">'+cards+'</div>':
+      '<div class="vos-empty">No accessible files or deliverables are present in the linked Projects for this filter.</div>')+
+      '<p class="vos-muted">These resources stay under their canonical Project authority. Workspace display does not move or copy bytes.</p></div>'+
+      '<aside class="vos-inspector vos-new-inspector '+(state.mobileInspectorOpen?'mobile-open':'')+'">'+btn('close-inspector','×','vos-mobile-close','aria-label="Close asset details"')+'<h2>Selected Asset</h2>'+ 
+      (current?'<div class="vos-file-preview" aria-hidden="true">'+iconFor(current)+'</div>'+
+      '<h3>'+esc(current.title)+'</h3>'+badge(current.kind)+
+      '<div class="vos-detail-rows">'+
+      '<div><span>Project</span><strong>'+esc(current.projectName)+'</strong></div>'+
+      '<div><span>Size</span><strong>'+esc(fmtSize(current.size_bytes))+'</strong></div>'+
+      '<div><span>Text index</span><strong>'+esc(current.indexing_state||'Unknown')+'</strong></div>'+
+      '<div><span>Versions</span><strong>'+esc(current.version_count||current.current_version||'Not reported')+'</strong></div>'+
+      '<div><span>Provider</span><strong>'+esc(current.source_provider||'Project')+'</strong></div></div>'+
+      '<p class="vos-muted">Storage-device reachability and local-first data policy are not provided by this Project response; they are not assumed.</p>'+
+      btn('asset-open:'+esc(current.key),'Open in Project Files →','vos-primary vos-full')+
+      btn('asset-versions:'+esc(current.key),'View version history →','vos-full'):
+      '<p class="vos-muted">Select a linked Project resource to inspect it.</p>')+
+      '</aside></div>';
+  }
+  function settingsPage(){
+    const ws=state.workspace||{};
+    const draft=state.settingsDraft||{name:ws.name||'',description:ws.description||''};
+    const options=['General','Workspace Modules','Intelligence & Context','Team & Agents','Data & Storage',
+      'Apps & Capabilities','Notifications & Attention','Sharing & Access','Defaults','Advanced','Danger Zone'];
+    return workspaceHeader()+'<div class="vos-settings-title"><h2>Workspace Settings</h2>'+
+      '<p class="vos-muted">Configure how this Workspace works, what it can access, and how Vishnu and your agents use it.</p></div>'+
+      '<div class="vos-settings-grid"><nav class="vos-settings-menu" aria-label="Workspace settings sections">'+
+      options.map((option,i)=>btn('settings-section:'+i,esc(option),i===state.settingsSection?'is-active':i===10?'vos-danger-link':'')).join('')+'</nav>'+
+      '<div class="vos-settings-body">'+
+      (state.settingsSection===0?
+      '<form id="vosWorkspaceSettingsForm" class="vos-settings-form"><h2>General</h2><p class="vos-muted">Basic information about this Workspace.</p>'+
+      '<label>Workspace name<input name="name" maxlength="120" required value="'+esc(draft.name)+'"></label>'+
+      '<label>Description<textarea name="description" maxlength="2000" rows="4">'+esc(draft.description)+'</textarea></label>'+
+      '<label>Workspace type / template<input disabled value="'+esc(tpl(ws.template_id)[1])+'"></label>'+
+      '<div class="vos-settings-favorite"><span>☆ Favorite<br><small class="vos-muted">Show this Workspace in favorites.</small></span>'+
+      btn('toggle-favorite',ws.pinned?'On ✓':'Off',ws.pinned?'is-active':'')+'</div>'+
+      '<p class="vos-muted">Workspace ID: '+esc(ws.id)+'</p>'+
+      (state.settingsDirty?'<p role="status" class="vos-save-message">Unsaved changes</p>':'')+(state.settingsMessage?'<p role="status" class="vos-save-message">'+esc(state.settingsMessage)+'</p>':'')+
+      '<button class="vos-btn vos-primary" type="submit" '+(state.savingSettings?'disabled':'')+'>'+
+      (state.savingSettings?'Saving…':'Save Changes')+'</button></form>':
+      state.settingsSection===10?
+      infoCard('Danger Zone','Archive removes a Workspace from active navigation without deleting associated canonical resources.',
+      btn('archive-current',ws.status==='archived'?'Restore Workspace':'Archive Workspace','vos-danger-link'))+
+      '<p class="vos-muted">Workspace deletion is unavailable until relationship-impact analysis and durable recovery are implemented.</p>':
+      infoCard(options[state.settingsSection], 'This settings category is not yet backed by qualified Workspace configuration APIs. No fake preference values or save actions are exposed.',
+      state.settingsSection===3?btn('agents','Inspect available Agents →'):state.settingsSection===5?btn('external:tools','Open Capabilities →'):'')+
+      (state.settingsSection===4?'<div class="vos-detail-card"><strong>Required data policies</strong><p class="vos-muted">Device Only · Progress Only · Sync Everywhere · On Demand. Current policy is not exposed by this Workspace API, so it cannot be changed here.</p></div>':''))+
+      '</div><aside class="vos-inspector vos-new-inspector"><h2>Workspace Preview</h2>'+icon(esc(ws.icon||initials(ws.name)))+
+      '<h3>'+esc(ws.name)+'</h3><p>'+esc(ws.description||'No description')+'</p>'+badge(ws.status||'active')+
+      btn('overview','View Workspace →','vos-primary vos-full')+
+      '<div class="vos-divider"></div><h3>Quick Actions</h3>'+
+      btn('agents','Agents','vos-full')+btn('assets','Files & Assets','vos-full')+
+      '<p class="vos-muted">Current Workspace values are provided by the owner-authorized API.</p></aside></div>';
+  }
+  function todayPage(){
+    const data=state.todayData||{work_orders:[],counts:{}};
+    const rows=Array.isArray(data.work_orders)?data.work_orders:[];
+    const att=state.todayAttention||{items:[],counts:{}};
+    const items=Array.isArray(att.items)?att.items:[];
+    const present=rows.filter(w=>!['COMPLETED','CANCELLED'].includes(String(w.status||'').toUpperCase()));
+    const complete=rows.filter(w=>String(w.status||'').toUpperCase()==='COMPLETED');
+    const day=new Intl.DateTimeFormat(undefined,{weekday:'long',month:'long',day:'numeric'}).format(new Date());
+    const hour=new Date().getHours(),greeting=hour<12?'Good morning':hour<17?'Good afternoon':'Good evening';
+    const attentionRows=items.slice(0,4).map((a,i)=>'<button class="vos-list-row" data-vos="today-attention:'+i+'"><strong>'+esc(a.title||a.reason||a.type||'Action required')+'</strong><span>'+esc(a.priority||a.kind||'Attention')+'</span></button>').join('');
+    const workRows=present.slice(0,6).map(w=>'<button class="vos-list-row" data-vos="work-project:'+esc(w.project_id||'')+'"><strong>'+esc(w.title||'Work')+'</strong><span>'+esc(w.project_name||w.status||'Work')+'</span>'+badge(w.status||'unknown')+'</button>').join('');
+    return '<div class="vos-today"><div class="vos-today-hero"><small>'+esc(day)+'</small>'+
+      '<h1>'+esc(greeting)+'.</h1><p>Here is what matters today.</p>'+
+      '<div class="vos-context-composer"><span aria-hidden="true">⌕</span><input data-vos-input="ask" placeholder="Ask Vishnu about my day, my work, or anything…" aria-label="Ask Vishnu about my day">'+btn('ask','➤','vos-primary')+'</div>'+
+      '<div class="vos-quick">'+btn('attention','What needs my attention?')+btn('nav:work','Show active Work')+'</div></div>'+
+      '<div class="vos-new-page"><div class="vos-new-page-main">'+
+      section('Needs Your Attention ('+Number(att.counts?.total||items.length)+')',attentionRows||'<div class="vos-empty">Nothing currently needs your action.</div>')+
+      section('Active Work ('+present.length+')',workRows||'<div class="vos-empty">No current canonical Work is available.</div>')+
+      section('Recently Completed',complete.slice(0,5).map(w=>'<div class="vos-list-row"><strong>'+esc(w.title||'Completed Work')+'</strong>'+badge('completed')+'</div>').join('')||'<p class="vos-muted">No completed Work in this response.</p>')+
+      '</div><aside class="vos-inspector vos-new-inspector"><h2>Today Summary</h2>'+
+      '<div class="vos-detail-rows"><div><span>Active Work</span><strong>'+present.length+'</strong></div>'+
+      '<div><span>Needs Attention</span><strong>'+Number(att.counts?.total||items.length)+'</strong></div></div>'+
+      '<h3>Source transparency</h3><p class="vos-muted">Today reads canonical Work and Attention projections. Calendar events, continuation history, and recommendation data are omitted until an authorized source is connected.</p>'+
+      btn('reload-today','Refresh Today','vos-primary vos-full')+'</aside></div></div>';
+  }
+  async function openToday(){
+    state.page='today';state.error='';state.loading=true;show('today');
+    const [work,attentionResult]=await Promise.allSettled([bridge().api('/work/summary'),bridge().api('/work/attention')]);
+    state.todayData=work.status==='fulfilled'?work.value:{work_orders:[],counts:{}};
+    state.todayAttention=attentionResult.status==='fulfilled'?attentionResult.value:{items:[],counts:{}};
+    state.loading=false;state.error=work.status==='rejected'||attentionResult.status==='rejected'?
+      'One or more Today sources could not be loaded; unavailable sections show no simulated data.':'';
+    render();
+  }
+
   function commandPalette(){
     if(!state.command)return '';
     const commands=[
@@ -248,13 +508,18 @@
   function render(){
     if(root.classList.contains('vos-hidden'))return;
     const content=state.page==='workspaces'?workspacesPage():state.page==='create'?createPage():
-      state.page==='overview'?summaryPage():studioPage();
+      state.page==='overview'?summaryPage():state.page==='studio'?studioPage():state.page==='spatial'?spatialPage():state.page==='agents'?agentPage():state.page==='assets'?assetsPage():state.page==='settings'?settingsPage():todayPage();
     root.innerHTML=nav()+'<div class="vos-main">'+
       '<div class="vos-mobile-header">'+btn('menu','☰','vos-icon-btn')+'<strong>V I S H N U</strong>'+
       btn('command','⌕','vos-icon-btn')+'</div>'+
       header()+'<main class="vos-page">'+loading()+error()+content+'</main></div>'+mobileNav()+commandPalette()+attentionDialog();
+    if(state.mobileInspectorOpen&&['agents','assets'].includes(state.page)){
+      const scrim=document.createElement('button');scrim.type='button';scrim.className='vos-inspector-scrim';scrim.dataset.vos='close-inspector';scrim.setAttribute('aria-label','Close details');
+      root.querySelector('.vos-main')?.appendChild(scrim);
+    }
     const focused=root.querySelector('[data-vos-input="command"]');
     if(state.command&&focused)focused.focus();
+    if(state.page==='spatial')requestAnimationFrame(startSpatialRenderer);
   }
   function show(page){
     state.page=page;
@@ -288,7 +553,7 @@
   }
   async function openWorkspace(id, page='overview'){
     state.error='';state.loading=true;state.selected=id;
-    state.page=page;root.classList.remove('vos-command-only','vos-hidden');
+    state.page=page;state.mobileInspectorOpen=false;root.classList.remove('vos-command-only','vos-hidden');
     document.body.classList.add('vos-active');render();
     try{
       const result=await api('/'+encodeURIComponent(id)+'/summary');
@@ -308,7 +573,23 @@
         state.attentionCount=Number(snapshot.counts?.total||state.attentionItems.length);
       }else{state.attentionItems=[];state.attentionCount=0;}
 
-      if(page==='studio'){
+      if(page==='agents'){
+         try{const results=await bridge().api('/agents');state.people=Array.isArray(results.agents)?results.agents:[];state.peopleError='';}
+         catch(e){state.people=[];state.peopleError=e.message||'Agent directory unavailable';}
+       }
+       if(page==='assets'){
+         const listed=await Promise.allSettled((result.projects||[]).map(async p=>{
+           const details=await bridge().api('/projects/'+encodeURIComponent(p.id));
+           return (details.project?.files||[]).map(file=>({...file,key:p.id+':'+file.id,projectId:p.id,projectName:p.name}));
+         }));
+         state.assets=listed.filter(x=>x.status==='fulfilled').flatMap(x=>x.value);
+         state.assetsError=listed.some(x=>x.status==='rejected')?'Some linked Project files could not be loaded; only authorized available results are shown.':'';
+       }
+       if(page==='settings'){
+         state.settingsDraft={name:state.workspace.name,description:state.workspace.description||''};
+         state.settingsMessage='';state.settingsDirty=false;
+       }
+       if(page==='studio'){
         const loaded=await api('/'+encodeURIComponent(id)+'/studio/views');
         state.views=loaded.views||[];
         state.view=state.views[0]||null;
@@ -318,14 +599,49 @@
     finally{state.loading=false;render();}
   }
   async function perform(action){
-    if(action==='reload'){if(['studio','overview'].includes(state.page)&&state.workspace)return openWorkspace(state.workspace.id,state.page);return refresh();}
+    if(state.page==='settings'&&state.settingsDirty&&(
+      ['overview','studio','spatial','agents','assets','today','back','workspaces','workspace-list'].includes(action)||action.startsWith('nav:')||action.startsWith('external:')||action.startsWith('settings-section:'))){
+      if(!confirm('You have unsaved Workspace settings. Discard your changes?'))return;
+      state.settingsDirty=false;
+    }
+    if(action==='reload'){if(state.page==='today')return openToday();if(['studio','overview','spatial','agents','assets','settings'].includes(state.page)&&state.workspace)return openWorkspace(state.workspace.id,state.page);return refresh();}
     if(action==='command'){openCommand();return;}
     if(action==='close-command'){closeCommand();return;}
     if(action==='back'||action==='workspace-list'||action==='workspaces'){state.command=false;show('workspaces');return refresh();}
     if(action==='create'){state.command=false;state.template='blank';state.draft={name:'',description:''};state.createRequestId=null;show('create');return;}
-    if(action==='overview'||action==='studio'){return openWorkspace(state.workspace.id,action);}
+    if(['overview','studio','spatial','agents','assets','settings'].includes(action)){return openWorkspace(state.workspace.id,action);}
+    if(action==='today'||action==='reload-today')return openToday();
+    if(action==='asset-add'){
+      const projects=relatedProjects();if(!projects.length){state.error='Link a Project before adding Project files.';render();return;}
+      hide();if(window.openProject)window.openProject(projects[0].id,'files');else bridge()?.openModule?.('projects');return;
+    }
+    if(action.startsWith('asset-filter:')){state.assetsFilter=action.slice(13);render();return;}
+    if(action.startsWith('asset-select:')){state.selectedAsset=action.slice(13);state.mobileInspectorOpen=true;render();return;}
+    if(action.startsWith('asset-open:')||action.startsWith('asset-versions:')){
+      const key=action.slice(action.indexOf(':')+1),row=state.assets.find(a=>a.key===key);
+      if(!row)return;hide();if(window.openProject)window.openProject(row.projectId,'files');else bridge()?.openModule?.('projects');return;
+    }
+    if(action==='spatial-orbit'){state.spatialAngle=(state.spatialAngle+35)%360;render();return;}
+    if(action==='spatial-reset'||action==='spatial-focus'){state.spatialAngle=0;state.spatialPitch=0;state.spatialZoom=1;render();return;}
+    if(action.startsWith('choose-agent:')){state.selectedAgent=action.slice(13);state.mobileInspectorOpen=true;render();return;}
+    if(action==='close-inspector'){state.mobileInspectorOpen=false;render();return;}
+    if(action.startsWith('settings-section:')){state.settingsSection=Number(action.slice(17));render();return;}
+    if(action==='toggle-favorite'){
+      try{const updated=await api('/'+encodeURIComponent(state.workspace.id),{method:'PATCH',body:JSON.stringify({pinned:!state.workspace.pinned})});state.workspace=updated.workspace;state.settingsMessage='Favorite preference saved.';render();}
+      catch(e){state.error=e.message;render();}return;
+    }
+    if(action==='archive-current'){
+      if(!confirm('Archive this Workspace? Project and resource records will be preserved.'))return;
+      try{const updated=await api('/'+encodeURIComponent(state.workspace.id),{method:'PATCH',body:JSON.stringify({status:state.workspace.status==='archived'?'active':'archived'})});state.workspace=updated.workspace;render();}catch(e){state.error=e.message;render();}return;
+    }
+    if(action.startsWith('today-attention:')){
+      const item=state.todayAttention?.items?.[Number(action.slice(16))];
+      if(item){hide();const opened=await window.__vishnuGlobalWorkAwareness?.openAttention?.(item);if(!opened)await window.__vishnuWorkAttentionCenter?.open?.('all');}return;
+    }
     if(action==='attention'){
-      state.command=false;state.attentionOpen=true;render();return;
+      state.command=false;
+      if(state.page==='today'&&window.__vishnuWorkAttentionCenter?.open){hide();return window.__vishnuWorkAttentionCenter.open('all');}
+      state.attentionOpen=true;render();return;
     }
     if(action==='close-attention'){state.attentionOpen=false;render();return;}
     if(action.startsWith('attention-item:')){
@@ -445,6 +761,15 @@
     perform(button.dataset.vos);
   },true);
   root.addEventListener('submit',async event=>{
+    if(event.target.id==='vosWorkspaceSettingsForm'){
+      event.preventDefault();const form=event.target;
+      state.settingsDraft={name:form.elements.name.value,description:form.elements.description.value};
+      state.savingSettings=true;state.settingsMessage='';render();
+      try{const response=await api('/'+encodeURIComponent(state.workspace.id),{method:'PATCH',body:JSON.stringify(state.settingsDraft)});
+        state.workspace=response.workspace;state.settingsDraft={name:response.workspace.name,description:response.workspace.description};state.settingsDirty=false;state.settingsMessage='Changes saved.';
+      }catch(error){state.settingsMessage='Save failed: '+(error.message||'Unknown error');}
+      finally{state.savingSettings=false;render();}return;
+    }
     if(event.target.id!=='vosWorkspaceForm')return;
     event.preventDefault();
     const fd=new FormData(event.target);
@@ -461,6 +786,22 @@
     finally{state.createBusy=false;}
   });
   root.addEventListener('input',event=>{
+    if(event.target.closest('#vosWorkspaceSettingsForm')){
+      const form=event.target.form;
+      state.settingsDraft={name:form.elements.name.value,description:form.elements.description.value};
+      state.settingsDirty=true;
+      const prior=root.querySelector('.vos-save-message');
+      if(prior)prior.textContent='Unsaved changes';
+      return;
+    }
+    if(event.target.dataset.vosInput==='assets-search'){
+      state.assetsQuery=event.target.value;const pos=event.target.selectionStart;render();
+      const f=root.querySelector('[data-vos-input="assets-search"]');f?.focus();f?.setSelectionRange(pos,pos);return;
+    }
+    if(event.target.dataset.vosInput==='people-search'){
+      state.peopleQuery=event.target.value;const pos=event.target.selectionStart;render();
+      const field=root.querySelector('[data-vos-input="people-search"]');field?.focus();field?.setSelectionRange(pos,pos);return;
+    }
     if(event.target.dataset.vosInput==='workspace-search'){
       state.query=event.target.value;
       const position=event.target.selectionStart;render();
@@ -488,5 +829,5 @@
     }
   },true);
   window.vishnuOsWorkspaces={open:()=>{show('workspaces');return refresh(true);},openWorkspace,
-    command:()=>openCommand()};
+    command:()=>openCommand(),today:()=>openToday()};
 })();
