@@ -339,3 +339,10 @@
  #vishnuOs1620 .vos-today .vos-section{padding:12px}
 }
 @media(prefers-reduced-motion:reduce){#vishnuOs1620 .vos-spatial-scene{transition:none}}
+
+
+#vishnuOs1620 .vos-spatial-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;pointer-events:none;opacity:.67}
+#vishnuOs1620 .vos-spatial-viewport{touch-action:none}
+#vishnuOs1620 .vos-spatial-viewport[data-render-mode="fallback"] .vos-spatial-note{color:#ffc994}
+#vishnuOs1620 .vos-spatial-scene{pointer-events:none}
+#vishnuOs1620 .vos-spatial-object{pointer-events:auto}
