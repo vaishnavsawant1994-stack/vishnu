@@ -354,12 +354,14 @@
     const q=state.assetsQuery.trim().toLowerCase();
     const filters=[['all','All'],['source','Sources'],['deliverable','Deliverables'],['pinned','Pinned']];
     const files=state.assets.filter(row=>(state.assetsFilter==='all'||
-      state.assetsFilter==='pinned'&&row.is_pinned||state.assetsFilter===row.kind)&&
+      state.assetsFilter==='pinned'&&row.is_pinned||state.assetsFilter==='source'&&row.kind!=='deliverable'||state.assetsFilter===row.kind)&&
       (!q||[row.title,row.kind,row.projectName,row.source_provider].join(' ').toLowerCase().includes(q)));
     const current=state.assets.find(row=>row.key===state.selectedAsset)||files[0];
     const iconFor=row=>row.kind==='link'?'↗':row.kind==='deliverable'?'▣':'▤';
-    const fmtSize=n=>Number.isFinite(Number(n))&&Number(n)>0?
-      new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(Number(n)/1024)+' KB':'Size unavailable';
+    const fmtSize=n=>{const b=Number(n);if(!Number.isFinite(b)||b<=0)return 'Size unavailable';
+      const unit=b>=1073741824?'GB':b>=1048576?'MB':b>=1024?'KB':'B';
+      const value=unit==='GB'?b/1073741824:unit==='MB'?b/1048576:unit==='KB'?b/1024:b;
+      return new Intl.NumberFormat(undefined,{maximumFractionDigits:1}).format(value)+' '+unit;};
     const cards=files.map(row=>'<button class="vos-file-card '+(current?.key===row.key?'selected':'')+
       '" type="button" data-vos="asset-select:'+esc(row.key)+'"><span class="vos-file-art" aria-hidden="true">'+iconFor(row)+'</span>'+
       '<strong>'+esc(row.title||'Untitled source')+'</strong>'+
