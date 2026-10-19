@@ -346,3 +346,18 @@
 #vishnuOs1620 .vos-spatial-viewport[data-render-mode="fallback"] .vos-spatial-note{color:#ffc994}
 #vishnuOs1620 .vos-spatial-scene{pointer-events:none}
 #vishnuOs1620 .vos-spatial-object{pointer-events:auto}
+
+
+#vishnuOs1620 .vos-files-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+#vishnuOs1620 .vos-file-card{display:flex;flex-direction:column;text-align:left;align-items:flex-start;gap:5px;min-width:0;padding:9px;
+ border:1px solid var(--vos-border);border-radius:13px;background:rgba(5,18,30,.82)}
+#vishnuOs1620 .vos-file-card.selected,#vishnuOs1620 .vos-file-card:hover{border-color:#4ddcff;box-shadow:0 0 13px rgba(32,184,255,.23)}
+#vishnuOs1620 .vos-file-card strong{font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+#vishnuOs1620 .vos-file-card small{font-size:11px;color:var(--vos-muted)}
+#vishnuOs1620 .vos-file-art{display:grid;place-items:center;border:1px solid rgba(77,220,255,.32);border-radius:9px;width:100%;height:94px;
+ color:#4ddcff;font-size:44px;background:radial-gradient(circle at center,rgba(32,184,255,.18),rgba(3,10,18,.87) 80%)}
+#vishnuOs1620 .vos-file-preview{height:140px;border-radius:11px;display:grid;place-items:center;font-size:60px;color:#4ddcff;
+ background:radial-gradient(circle at center,rgba(32,184,255,.21),rgba(3,10,18,.95));border:1px solid var(--vos-border)}
+@media(max-width:1150px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:650px){#vishnuOs1620 .vos-files-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+#vishnuOs1620 .vos-file-art{height:83px}}
