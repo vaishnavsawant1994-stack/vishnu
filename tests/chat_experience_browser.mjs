@@ -12,6 +12,23 @@ let turns = 0;
 let modalities = [],turnRequests=[];
 
 function bundle(){ return active || { conversation: { id: '', title: 'New conversation' }, events: [] }; }
+async function verifyGenesisNavigationIsolation(){
+  const page=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
+  await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
+  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false}'}));
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.locator('#enrollPanel .genesis-screen[data-step="1"]').waitFor({state:'visible'});
+  assert.equal(await page.locator('#enrollPanel').getAttribute('aria-modal'),'true','Genesis is exposed as a modal first-run experience');
+  for(const selector of ['.reference-desktop-sidebar','.reference-desktop-tools','.reference-mobile-nav','#appDrawer','#conversationDrawer'])
+    assert.equal(await page.locator(selector).isVisible(),false,`onboarding must isolate app navigation: ${selector}`);
+  await page.screenshot({path:'artifacts/genesis-isolated-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.waitForTimeout(100);
+  assert.equal(await page.locator('.reference-mobile-nav').isVisible(),false,'mobile navigation stays hidden during onboarding');
+  await page.screenshot({path:'artifacts/genesis-isolated-mobile.png',fullPage:true});
+  await page.close();
+}
 async function wire(page){
   page.on('pageerror', e => errors.push(e.message));
   await page.route('**/iphone/api/**', async route => {
@@ -46,6 +63,7 @@ async function wire(page){
 }
 
 try{
+  await verifyGenesisNavigationIsolation();
   const desktop=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await wire(desktop);
   await desktop.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));

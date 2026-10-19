@@ -13,6 +13,12 @@
 }
 
 body.genesis-active { overflow: hidden; background: var(--genesis-bg); }
+body.genesis-active > .reference-desktop-sidebar,
+body.genesis-active > .reference-desktop-tools,
+body.genesis-active > .reference-mobile-nav,
+body.genesis-active > #drawerOverlay,
+body.genesis-active > #appDrawer,
+body.genesis-active > #conversationDrawer { display: none !important; }
 body.genesis-active > .app-shell > .topbar,
 body.genesis-active > .app-shell > #voicePanel,
 body.genesis-active > .app-shell > #features,

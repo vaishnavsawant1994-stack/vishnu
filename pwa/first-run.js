@@ -25,7 +25,11 @@
   };
   const panel = $('enrollPanel');
   panel.className = 'genesis hidden';
+  panel.setAttribute('role', 'dialog');
+  panel.setAttribute('aria-modal', 'true');
   panel.setAttribute('aria-label', 'Vishnu Genesis onboarding');
+  const backgroundNavigation = [...document.querySelectorAll('.reference-desktop-sidebar,.reference-desktop-tools,.reference-mobile-nav,#drawerOverlay,#appDrawer,#conversationDrawer')];
+  let priorNavigationState = [];
 
   const paths = {
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -104,8 +108,21 @@
 
   function setError(message = '') { const element = $('genesisStatus'); if (element) element.textContent = message; }
   function showLegacy(kind) { sessionStorage.setItem('vishnuAccessIntent', kind); location.reload(); }
-  function show() { document.body.classList.add('genesis-active'); panel.className = 'genesis'; render(s.step); }
-  function hide() { document.body.classList.remove('genesis-active'); panel.classList.add('hidden'); }
+  function show() {
+    if (!document.body.classList.contains('genesis-active')) {
+      priorNavigationState = backgroundNavigation.map(element => ({ element, ariaHidden: element.getAttribute('aria-hidden'), inert: element.inert }));
+      backgroundNavigation.forEach(element => { element.setAttribute('aria-hidden', 'true'); element.inert = true; });
+    }
+    document.body.classList.add('genesis-active'); panel.className = 'genesis'; render(s.step);
+  }
+  function hide() {
+    document.body.classList.remove('genesis-active'); panel.classList.add('hidden');
+    for (const { element, ariaHidden, inert } of priorNavigationState) {
+      if (ariaHidden === null) element.removeAttribute('aria-hidden'); else element.setAttribute('aria-hidden', ariaHidden);
+      element.inert = inert;
+    }
+    priorNavigationState = [];
+  }
 
   window.vishnuFirstRun = { state: s, render, setError, showLegacy, $ };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
