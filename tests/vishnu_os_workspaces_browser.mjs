@@ -2,13 +2,15 @@
  * Isolated fake transport verifies UI wiring, not live owner/device authentication.
  */
 import assert from 'node:assert/strict';
-import {readFile} from 'node:fs/promises';
+import {readFile,mkdir} from 'node:fs/promises';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const {chromium}=require('playwright');
 const root=new URL('../',import.meta.url);
 const css=await readFile(new URL('pwa/vishnu-os-workspaces.css',root),'utf8');
 const js=await readFile(new URL('pwa/vishnu-os-workspaces.js',root),'utf8');
+const outputDir=process.env.VISHNU_OS_SCREENSHOT_DIR;
+if(outputDir)await mkdir(outputDir,{recursive:true});
 const browser=await chromium.launch({headless:true});
 try{
  for(const viewport of [{width:390,height:844},{width:820,height:1024},{width:1440,height:900}]){
@@ -67,6 +69,7 @@ try{
   await page.locator('#vishnuOs1620 [data-vos="create"]').first().click();
   await page.locator('#vishnuOs1620 h1').getByText('Create a Workspace').waitFor();
   await page.locator('#vishnuOs1620 [data-vos="template:3d"]').click();
+  if(outputDir)await page.screenshot({path:outputDir+'/screen18-create-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vosWorkspaceForm [name="name"]').fill('Vishnu Character');
   await page.locator('#vosWorkspaceForm [name="description"]').fill('Sources and revisions');
   await page.locator('#vosWorkspaceForm button[type="submit"]').click();
@@ -74,6 +77,7 @@ try{
   const created=await page.evaluate(()=>window.osFixture.rows[0]);
   assert.equal(created.template_id,'3d');
   assert.equal(created.description,'Sources and revisions');
+  if(outputDir)await page.screenshot({path:outputDir+'/screen19-overview-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vishnuOs1620 [data-vos="link-project"]').click();
   await page.locator('#vishnuOs1620').getByText('Patient CRM').waitFor();
   await page.locator('#vishnuOs1620 [data-vos="studio"]').first().click();
@@ -82,11 +86,16 @@ try{
   await page.locator('#vishnuOs1620 .vos-studio-panel').getByText('Patient CRM').waitFor();
   await page.locator('#vishnuOs1620 [data-vos="save-view"]').click();
   await page.waitForFunction(()=>window.osFixture.views['space-1']?.length===1);
+  if(outputDir)await page.screenshot({path:outputDir+'/screen20-studio-'+viewport.width+'.png',fullPage:false});
   await page.evaluate(()=>window.vishnuOsWorkspaces.command());
   await page.locator('#vosCommandTitle').waitFor();
+  if(outputDir)await page.screenshot({path:outputDir+'/screen16-command-'+viewport.width+'.png',fullPage:false});
   await page.locator('#vishnuOs1620 [data-vos-input="command"]').fill('Workspaces');
   assert.ok((await page.locator('#vishnuOs1620 .vos-command-panel .vos-list-row').count())>0);
   await page.locator('#vishnuOs1620 .vos-command-panel [data-vos="close-command"]').click();
+  await page.evaluate(()=>window.vishnuOsWorkspaces.open());
+  await page.locator('#vishnuOs1620 h1').getByText('Workspaces').waitFor();
+  if(outputDir)await page.screenshot({path:outputDir+'/screen17-library-'+viewport.width+'.png',fullPage:false});
   const rect=await page.evaluate(()=>({viewport:innerWidth,
    documentWidth:document.documentElement.scrollWidth,
    rootWidth:document.getElementById('vishnuOs1620').getBoundingClientRect().width}));
