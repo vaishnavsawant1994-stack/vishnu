@@ -53,7 +53,7 @@
   function icon(symbol){return '<span class="vos-object-icon" aria-hidden="true">'+symbol+'</span>';}
   function nav(){
     const links=[['home','⌂','Home'],['workspaces','▦','Workspaces'],['work','▷','Work'],['projects','▱','Projects'],['agents','♧','Agents'],['create','✧','Create'],['memory','◫','Memory & Knowledge'],['tools','☷','Apps & Capabilities'],['devices','▣','Devices'],['activities','⌁','Activity']];
-    return '<aside class="vos-sidebar"><div class="vos-wordmark">V I S H N U</div><nav aria-label="Main navigation">'+links.map(([id,i,name])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span> '+name,id===state.page||['create','overview','studio','spatial','agents','assets','settings'].includes(state.page)&&id==='workspaces'?'is-active':'')).join('')+'</nav><div class="vos-secondary">'+btn('nav:settings','⚙ Settings')+'</div></aside>';
+    return '<aside class="vos-sidebar"><div class="vos-wordmark">V I S H N U</div><nav aria-label="Main navigation">'+links.map(([id,i,name])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span> '+name,id===state.page||(state.page==='today'&&id==='home')||(['create','overview','studio','spatial','agents','assets','settings'].includes(state.page)&&id==='workspaces')?'is-active':'')).join('')+'</nav><div class="vos-secondary">'+btn('nav:settings','⚙ Settings')+'</div></aside>';
   }
   function header(){
     return '<header class="vos-globalbar">'+btn('back','←','vos-icon-btn')+
@@ -66,7 +66,7 @@
     return '<nav class="vos-mobile-nav" aria-label="Mobile navigation">'+
       [['home','⌂','Home'],['workspaces','▦','Spaces'],['create','✧','Create'],['work','▷','Work'],['more','•••','More']]
       .map(([id,i,label])=>btn('nav:'+id,'<span aria-hidden="true">'+i+'</span><small>'+label+'</small>',
-        state.page===id||['overview','studio','spatial','agents','assets','settings','create'].includes(state.page)&&id==='workspaces'?'is-active':'')).join('')+'</nav>';
+        state.page===id||(state.page==='today'&&id==='home')||(['overview','studio','spatial','agents','assets','settings','create'].includes(state.page)&&id==='workspaces')?'is-active':'')).join('')+'</nav>';
   }
   function loading(){return state.loading?'<p class="vos-muted" role="status">Loading Workspace information…</p>':''}
   function error(){return state.error?'<div class="vos-error" role="alert">'+esc(state.error)+' '+btn('reload','Retry')+'</div>':''}
