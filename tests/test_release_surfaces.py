@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/iphone/"
+CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/web/"
 
 
 def test_android_release_surface_fails_closed_without_internal_target():

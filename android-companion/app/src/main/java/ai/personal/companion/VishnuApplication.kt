@@ -11,10 +11,12 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import androidx.appcompat.app.AppCompatDelegate
 
 class VishnuApplication : Application(), Application.ActivityLifecycleCallbacks {
     override fun onCreate() {
         super.onCreate()
+        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
         registerActivityLifecycleCallbacks(this)
     }
 

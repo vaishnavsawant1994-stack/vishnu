@@ -1,18 +1,24 @@
 :root {
   --genesis-bg: #02060b;
-  --genesis-panel: rgba(3, 15, 27, .82);
-  --genesis-panel-strong: rgba(4, 19, 34, .94);
+  --genesis-panel: rgba(8, 22, 35, .72);
+  --genesis-panel-strong: rgba(7, 21, 34, .94);
   --genesis-cyan: #20b8ff;
   --genesis-bright: #4ddcff;
-  --genesis-soft: #a9dfff;
-  --genesis-text: #f6faff;
-  --genesis-muted: #a5b7c8;
-  --genesis-dim: #64798d;
-  --genesis-line: rgba(91, 188, 240, .38);
-  --genesis-active: rgba(77, 220, 255, .95);
+  --genesis-soft: #9ddbff;
+  --genesis-text: #f5faff;
+  --genesis-muted: #a7b9ca;
+  --genesis-dim: #667d91;
+  --genesis-line: rgba(120, 190, 230, .18);
+  --genesis-active: rgba(77, 220, 255, .75);
 }
 
 body.genesis-active { overflow: hidden; background: var(--genesis-bg); }
+body.genesis-active > .reference-desktop-sidebar,
+body.genesis-active > .reference-desktop-tools,
+body.genesis-active > .reference-mobile-nav,
+body.genesis-active > #drawerOverlay,
+body.genesis-active > #appDrawer,
+body.genesis-active > #conversationDrawer { display: none !important; }
 body.genesis-active > .app-shell > .topbar,
 body.genesis-active > .app-shell > #voicePanel,
 body.genesis-active > .app-shell > #features,
@@ -116,6 +122,7 @@ button.genesis-card { width: 100%; }
 .genesis-card.selected, .genesis-card:has(input:checked) {
   border-color: var(--genesis-active); box-shadow: 0 0 20px rgba(32, 184, 255, .14), inset 0 0 25px rgba(32, 184, 255, .055);
 }
+.genesis-card[role=radio]:focus-visible { outline: 2px solid var(--genesis-active); outline-offset: 3px; }
 .genesis-card-head { display: grid; grid-template-columns: 56px 1fr auto; align-items: start; gap: 14px; }
 .genesis-card-icon {
   width: 54px; height: 54px; display: grid; place-items: center; border: 1px solid rgba(92, 186, 238, .42);
@@ -163,6 +170,31 @@ button.genesis-card { width: 100%; }
 .genesis-screen[data-step="2"] .genesis-core { --core-size: clamp(240px, 35vh, 355px); }
 .genesis-screen[data-step="3"] .genesis-content { width: min(100%, 760px); }
 
+/* Canonical returning-owner authentication / restore shell. */
+.returning-shell { background-image: url('/iphone/assets/genesis/cosmic-desktop.png'); }
+.returning-shell .genesis-stage { width: min(100%, 1000px); gap: 0; }
+.returning-shell .genesis-core { --core-size: clamp(300px, 39vh, 430px); margin: -1.5vh 0 -1vh; }
+.returning-shell .genesis-copy { margin: 0 0 20px; }
+.returning-shell .genesis-copy h1 { font-size: clamp(2.6rem, 4vw, 3.4rem); font-weight: 600; }
+.returning-shell .genesis-copy h1 em { color: var(--genesis-bright); font-style: normal; }
+.returning-actions { width: min(100%, 430px); display: grid; gap: 12px; }
+.returning-action { display: grid; grid-template-columns: 42px minmax(0, 1fr) 22px; align-items: center; gap: 14px; width: 100%; min-height: 66px; padding: 10px 18px; text-align: left; color: var(--genesis-text); border: 1px solid rgba(32, 184, 255, .52); border-radius: 999px; background: rgba(2, 13, 24, .78); cursor: pointer; }
+.returning-action:hover, .returning-action:focus-visible { outline: none; border-color: var(--genesis-active); box-shadow: 0 0 19px rgba(32, 184, 255, .2); }
+.returning-action.primary { border-color: var(--genesis-active); box-shadow: 0 0 19px rgba(32, 184, 255, .25), inset 0 0 18px rgba(32, 184, 255, .08); }
+.returning-action-icon { width: 36px; height: 36px; display: grid; place-items: center; color: var(--genesis-bright); }
+.returning-action-icon svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.returning-action-copy { display: grid; gap: 3px; }
+.returning-action-copy strong { font-size: .98rem; font-weight: 600; }
+.returning-action-copy small { color: var(--genesis-muted); font-size: .78rem; line-height: 1.3; }
+.returning-arrow { justify-self: end; color: var(--genesis-bright); font-size: 1.3rem; }
+.returning-recovery { width: min(100%, 430px); margin-top: 25px; padding-top: 16px; border-top: 1px solid var(--genesis-line); display: grid; justify-items: center; gap: 5px; color: var(--genesis-muted); font-size: .9rem; }
+.returning-text-action { border: 0; padding: 8px; background: transparent; color: var(--genesis-bright); cursor: pointer; }
+.returning-notice { width: min(100%, 600px); box-sizing: border-box; margin: 0 0 16px; padding: 16px 20px; display: grid; gap: 6px; text-align: center; border: 1px solid var(--genesis-line); border-radius: 16px; background: rgba(2, 13, 24, .78); color: var(--genesis-muted); }
+.returning-notice strong { color: var(--genesis-text); }
+.returning-form { max-width: 460px; }
+.returning-password-label { color: var(--genesis-soft); font-size: .9rem; }
+.returning-shell .genesis-footer { text-align: center; }
+
 @media (max-width: 700px) {
   .genesis-shell {
     padding: max(22px, env(safe-area-inset-top)) 20px max(14px, env(safe-area-inset-bottom));
@@ -202,6 +234,22 @@ button.genesis-card { width: 100%; }
   .genesis-screen[data-step="8"] .genesis-core,
   .genesis-screen[data-step="9"] .genesis-core,
   .genesis-screen[data-step="10"] .genesis-core { --core-size: min(42vw, 245px); }
+  .returning-shell { min-height: 100dvh; background-image: url('/iphone/assets/genesis/cosmic-mobile.png'); }
+  .returning-shell .genesis-top { min-height: 64px; }
+  .returning-shell .genesis-brand { align-self: start; }
+  .returning-shell .genesis-stage { justify-content: flex-start; padding: 8px 0 20px; }
+  .returning-shell .genesis-core { --core-size: min(67vw, 310px); margin: 0 0 -1px; }
+  .returning-shell .genesis-copy { margin: 2px 0 18px; }
+  .returning-shell .genesis-copy h1 { font-size: clamp(1.75rem, 7.1vw, 2.25rem); }
+  .returning-actions { width: 100%; gap: 10px; }
+  .returning-action { min-height: 64px; padding: 9px 14px; grid-template-columns: 35px minmax(0, 1fr) 18px; gap: 10px; }
+  .returning-action-icon { width: 32px; height: 32px; }
+  .returning-action-icon svg { width: 23px; height: 23px; }
+  .returning-action-copy strong { font-size: .9rem; }
+  .returning-action-copy small { font-size: .73rem; }
+  .returning-recovery { margin-top: 18px; }
+  .returning-notice { padding: 13px 15px; font-size: .9rem; }
+  .returning-shell .genesis-footer { padding: 18px 0 6px; }
 }
 
 @media (max-height: 780px) and (min-width: 701px) {

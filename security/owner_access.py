@@ -155,6 +155,26 @@ class OwnerAccessStore:
             result = con.execute('DELETE FROM first_run_claim WHERE singleton=1')
             return result.rowcount == 1
 
+    def rotate_first_run_claim(self, *, ttl: int = 900) -> str:
+        """Issue a new short-lived claim for the already trusted first device.
+
+        The caller must independently authenticate that device and confirm the
+        setup is still pending. Rotation lets an interrupted local setup recover
+        after its browser claim cookie expires without rerunning owner creation.
+        """
+        token = secrets.token_urlsafe(32)
+        salt = secrets.token_hex(16)
+        now = int(time.time())
+        with self._con() as con:
+            con.execute(
+                '''INSERT INTO first_run_claim(singleton,salt,claim_hash,expires_at,created_at)
+                   VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET
+                   salt=excluded.salt,claim_hash=excluded.claim_hash,
+                   expires_at=excluded.expires_at,created_at=excluded.created_at''',
+                (salt, hash_secret(token, salt), now + max(60, min(int(ttl), 1800)), _now()),
+            )
+        return token
+
     def initialize_identity(
         self,
         *,

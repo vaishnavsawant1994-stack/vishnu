@@ -4,6 +4,9 @@ import asyncio
 import hmac
 import ipaddress
 import json
+import os
+import secrets
+import shutil
 import time
 import threading
 import uuid
@@ -11,7 +14,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, SecretStr
 from data_plane.runtime import get_data_plane
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -41,12 +44,21 @@ from security.request_context import current_trusted_request
 
 class OwnerEnrollBody(BaseModel):
     code: str
-    name: str = 'Owner iPhone'
+    name: str = 'Owner web browser'
 
 
 class OwnerPasswordBody(BaseModel):
     password: str = Field(min_length=1, max_length=256)
     name: str = Field(default='Owner browser', max_length=120)
+
+
+class OwnerJoinStatusBody(BaseModel):
+    request_id: str = Field(min_length=36, max_length=36)
+
+
+class OwnerJoinDecisionBody(BaseModel):
+    password: SecretStr = Field(min_length=1, max_length=256)
+    approve: bool
 
 
 class OwnerPasswordSetupBody(BaseModel):
@@ -70,12 +82,33 @@ class PasskeyCompleteBody(BaseModel):
 
 
 class FirstRunCreateBody(BaseModel):
-    bootstrap_secret: SecretStr = Field(min_length=32, max_length=256)
+    # Empty is accepted by the schema only so an explicitly loopback-only
+    # development runtime can bootstrap without asking the developer to copy
+    # a secret. The route below still requires a real secret everywhere else.
+    bootstrap_secret: SecretStr = Field(default=SecretStr(''), min_length=0, max_length=256)
     first_name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(default='', max_length=80)
     display_name: str = Field(default='', max_length=120)
     password: SecretStr = Field(min_length=12, max_length=256)
     device_name: str = Field(default='First trusted browser', max_length=120)
+
+
+class FirstRunRestoreOwnerBody(BaseModel):
+    bootstrap_secret: SecretStr = Field(default=SecretStr(''), min_length=0, max_length=256)
+    password: SecretStr = Field(min_length=12, max_length=256)
+    device_name: str = Field(default='Recovered web browser', min_length=1, max_length=120)
+
+
+class FirstRunRestoreScheduleBody(BaseModel):
+    session_id: str = Field(min_length=24, max_length=80)
+    bootstrap_secret: SecretStr = Field(default=SecretStr(''), min_length=0, max_length=256)
+    passphrase: SecretStr = Field(min_length=12, max_length=1024)
+
+
+class FirstRunResumeBody(BaseModel):
+    password: SecretStr | None = Field(default=None, min_length=12, max_length=256)
+    bootstrap_secret: SecretStr = Field(default=SecretStr(''), min_length=0, max_length=256)
+    device_name: str = Field(default='Recovered web browser', min_length=1, max_length=120)
 
 
 class FirstRunCompleteBody(BaseModel):
@@ -92,6 +125,14 @@ class FirstRunModelBody(BaseModel):
     ]
     model: str = Field(default='', max_length=200)
     api_key: SecretStr = Field(default=SecretStr(''), max_length=2048)
+
+
+class FirstRunDataPolicyBody(BaseModel):
+    default_policy: Literal['device_only', 'progress_only', 'sync_everywhere', 'on_demand']
+
+
+class FirstRunRecoverySavedBody(BaseModel):
+    saved: Literal[True]
 
 
 class NativeFirstRunCreateBody(BaseModel):
@@ -232,14 +273,100 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         forwarded = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
         scheme = forwarded or request.url.scheme.lower()
         if scheme != 'https' and not getattr(settings, 'iphone_pwa_allow_insecure', False):
-            raise HTTPException(400, 'iPhone owner enrollment requires HTTPS')
+            raise HTTPException(400, 'Web owner enrollment requires HTTPS.')
+
+    def local_development_bootstrap_allowed(request: Request) -> bool:
+        """Allow secretless setup only for an explicitly loopback-bound dev server."""
+        if not getattr(settings, 'iphone_pwa_allow_insecure', False):
+            return False
+        bind_host = str(getattr(settings, 'control_server_host', '') or '').strip().casefold()
+        if bind_host == 'localhost':
+            bind_is_loopback = True
+        else:
+            try:
+                bind_is_loopback = ipaddress.ip_address(bind_host).is_loopback
+            except ValueError:
+                bind_is_loopback = False
+        client_host = request.client.host if request.client else ''
+        try:
+            client_is_loopback = ipaddress.ip_address(client_host).is_loopback
+        except ValueError:
+            client_is_loopback = str(client_host).casefold() == 'localhost'
+        return bind_is_loopback and client_is_loopback
+
+    def validate_setup_bootstrap(presented: str, request: Request):
+        if local_development_bootstrap_allowed(request):
+            return
+        expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        if len(expected) < 32:
+            raise HTTPException(503, 'Secure first-device bootstrap is not configured')
+        if not hmac.compare_digest(str(presented or ''), expected):
+            raise HTTPException(401, 'The Vishnu setup code is invalid')
+
+    def fresh_recovery_setup():
+        if first_run_setup is None:
+            raise HTTPException(503, 'Portable recovery is unavailable on this runtime')
+        state_value = first_run_setup.snapshot()
+        if first_run_setup.ready or state_value.get('status') == 'ready':
+            raise HTTPException(409, 'Restore requires a fresh Vishnu runtime')
+        if state_value.get('status') not in {'uninitialized', 'restore_failed'}:
+            raise HTTPException(409, 'Finish the current first-run operation before restoring')
+        if owner_access.identity() is not None or owner_access.password_configured():
+            raise HTTPException(409, 'This runtime already has owner security. Sign in or connect this browser instead.')
+        return state_value
+
+    def recovery_staging_root():
+        root = owner_access.path.parent / '.web-recovery-staging'
+        root.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            os.chmod(root, 0o700)
+        except OSError:
+            pass
+        cutoff = time.time() - 3600
+        for child in root.iterdir():
+            try:
+                if child.is_dir() and child.stat().st_mtime < cutoff:
+                    shutil.rmtree(child, ignore_errors=True)
+            except OSError:
+                continue
+        return root
+
+    async def stream_recovery_upload(request: Request, target: Path, *, limit: int, magic: bytes):
+        temporary = target.with_suffix(target.suffix + '.tmp')
+        prefix = bytearray()
+        total = 0
+        try:
+            with temporary.open('wb') as handle:
+                try:
+                    os.chmod(temporary, 0o600)
+                except OSError:
+                    pass
+                async for chunk in request.stream():
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > limit:
+                        raise HTTPException(413, 'Recovery upload exceeds the allowed size')
+                    if len(prefix) < len(magic):
+                        prefix.extend(chunk[:len(magic) - len(prefix)])
+                    handle.write(chunk)
+                handle.flush()
+                os.fsync(handle.fileno())
+            if bytes(prefix) != magic:
+                raise HTTPException(422, 'This is not a supported encrypted Vishnu recovery file')
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            raise
+        return total
 
     def request_identity(request: Request):
         forwarded_host = request.headers.get('x-forwarded-host', '').split(',')[0].strip()
         host = forwarded_host or request.headers.get('host', '').strip()
         forwarded_proto = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
         proto = forwarded_proto or request.url.scheme.lower()
-        if not host or proto != 'https':
+        if not host or (proto != 'https' and not local_development_bootstrap_allowed(request)):
             raise HTTPException(400, 'Secure HTTPS origin required')
         rp_id = host.rsplit(':', 1)[0] if host.count(':') == 1 else host.strip('[]')
         return rp_id, f'{proto}://{host}'
@@ -298,11 +425,38 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         emit('owner.access.trusted', device_id=device['id'], platform=platform)
         return device
 
+    def trust_existing_browser(response: Response, device_id: str, token: str):
+        device = next((item for item in registry.list() if item['id'] == device_id), None)
+        if not device or not registry.is_active(device_id) or not registry.authenticate(device_id, token):
+            raise HTTPException(401, 'This trusted device is no longer available. Choose another sign-in method.')
+        cookie_kwargs = device_cookie_kwargs()
+        response.set_cookie('pa_device', device_id, **cookie_kwargs)
+        response.set_cookie('pa_token', token, **cookie_kwargs)
+        return device
+
+    def begin_or_unlock_browser(response: Response, name: str, platform: str,
+                                device_id: str | None, device_token: str | None):
+        if (device_id and device_token and registry.is_active(device_id)
+                and registry.authenticate(device_id, device_token)):
+            device = trust_existing_browser(response, device_id, device_token)
+            return {'ok': True, 'device_id': device['id']}
+        join = registry.request_join(name, platform)
+        cookie_kwargs = device_cookie_kwargs()
+        response.set_cookie('pa_join', join['device_token'], **{**cookie_kwargs,
+                            'path': '/iphone/api/access/join', 'max_age': 600})
+        return {'status': 'approval_required', **{key: value for key, value in join.items() if key != 'device_token'}}
+
     def auth_device(device_id: str | None, device_token: str | None):
         if not device_id or not device_token or not registry.authenticate(device_id, device_token):
-            raise HTTPException(401, 'iPhone session is not enrolled or has been revoked')
+            raise HTTPException(
+                401,
+                'This web browser is not currently trusted by Vishnu, or its saved sign-in credential is no longer valid. Sign in again from the welcome screen to restore access. Your account and stored data have not been deleted.',
+            )
         if not registry.is_active(device_id):
-            raise HTTPException(401, 'iPhone device is revoked')
+            raise HTTPException(
+                401,
+                'This web browser was removed from trusted devices. Sign in again to restore web access. Your account and stored data have not been deleted.',
+            )
         if hasattr(registry, 'authorize') and not registry.authorize(device_id, 'ai:chat'):
             raise HTTPException(403, 'This device is not permitted to use conversation or voice')
         return device_id
@@ -376,6 +530,11 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             '<script src="/iphone/first-run-actions.js" defer></script></body>',
         )
         return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/campaign-demo', include_in_schema=False)
+    def campaign_demo_entry():
+        """Open the isolated Screens 11–15 fixture without owner sign-in."""
+        return RedirectResponse('/iphone/?campaignDemo=1', status_code=302)
 
     @router.get('/vishnu-os-workspaces.js', include_in_schema=False)
     def vishnu_os_script():
@@ -451,6 +610,42 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def reference_pages_styles():
         return Response((web_dir / 'reference-pages.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/global-search.js', include_in_schema=False)
+    def global_search_script():
+        return Response((web_dir / 'global-search.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/global-search.css', include_in_schema=False)
+    def global_search_styles():
+        return Response((web_dir / 'global-search.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/command-center.js', include_in_schema=False)
+    def command_center_script():
+        return Response((web_dir / 'command-center.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/command-center.css', include_in_schema=False)
+    def command_center_styles():
+        return Response((web_dir / 'command-center.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/workspaces-ui.js', include_in_schema=False)
+    def workspaces_ui_script():
+        return Response((web_dir / 'workspaces-ui.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/workspaces-ui.css', include_in_schema=False)
+    def workspaces_ui_styles():
+        return Response((web_dir / 'workspaces-ui.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo.js', include_in_schema=False)
+    def campaign_demo_script():
+        return Response((web_dir / 'campaign-demo.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo.css', include_in_schema=False)
+    def campaign_demo_styles():
+        return Response((web_dir / 'campaign-demo.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo-data.js', include_in_schema=False)
+    def campaign_demo_fixture():
+        return Response((web_dir / 'campaign-demo-data.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
     @router.get('/owner-controls.js', include_in_schema=False)
     def owner_controls_script():
         return Response((web_dir / 'owner-controls.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
@@ -517,28 +712,208 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         }
 
     @router.get('/api/access/options')
-    def access_options():
+    def access_options(request: Request):
         google_client_id = getattr(settings, 'google_signin_client_id', '').strip()
         owner_google_email = getattr(settings, 'owner_google_email', '').strip().casefold()
         setup_state = first_run_setup.snapshot() if first_run_setup is not None else {}
         bootstrap_secret = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        # A loopback-only development server is itself the bootstrap boundary.
+        # It must remain usable even if a developer's shell/.env has a hosted
+        # bootstrap secret configured; the local launcher binds to 127.0.0.1
+        # and enables insecure HTTP explicitly. Never extend this to public
+        # binds or forwarded requests (checked by the helper above).
+        local_setup_available = local_development_bootstrap_allowed(request)
+        restore_available = bool(
+            first_run_setup is not None
+            and not first_run_setup.ready
+            and setup_state.get('status') in {'uninitialized', 'restore_failed'}
+            and owner_access.identity() is None
+            and not owner_access.password_configured()
+        )
         creation_available = bool(
             first_run_setup is not None
             and not first_run_setup.ready
-            and len(bootstrap_secret) >= 32
+            and (len(bootstrap_secret) >= 32 or local_setup_available)
             and setup_state.get('status') in {'uninitialized', 'setup_in_progress'}
             and setup_state.get('mode') in {None, 'create'}
         )
+        completed_steps = set(setup_state.get('completed_steps', []))
+        restore_state = setup_state.get('restore') if isinstance(setup_state.get('restore'), dict) else {}
+        restore_result = restore_state.get('result') if isinstance(restore_state.get('result'), dict) else {}
+        restore_report = None
+        if restore_result:
+            try:
+                restored_items = max(0, int(restore_result.get('restored', 0) or 0))
+            except (TypeError, ValueError):
+                restored_items = 0
+            restore_report = {
+                'status': 'restored' if restore_result.get('ok') else 'review_required',
+                'encrypted': bool(restore_result.get('encrypted')),
+                'restored_items': restored_items,
+                'skipped_security_items': len(restore_result.get('skipped_security_state') or []),
+                'identity_preserved': bool(restore_result.get('identity_preserved')),
+                'security_state_restored': False,
+            }
+        # Never send a partially-created owner through the create ceremony a
+        # second time. Resume after the last durable setup checkpoint instead.
+        if 'owner' not in completed_steps:
+            setup_resume_step = 2
+        elif 'security' not in completed_steps:
+            setup_resume_step = 3
+        else:
+            # The visible recovery step also retries the remaining secure
+            # defaults and finalization idempotently in the background.
+            setup_resume_step = 4
         return {
             'creation_available': creation_available,
+            'restore_available': restore_available,
+            'local_setup_available': bool(local_setup_available),
             'setup_in_progress': setup_state.get('status') == 'setup_in_progress',
-            'model_setup_complete': bool({'model', 'model_skipped'} & set(setup_state.get('completed_steps', []))),
+            'restore_setup_in_progress': bool(
+                setup_state.get('status') == 'setup_in_progress'
+                and setup_state.get('mode') == 'restore'
+                and 'restore' in completed_steps
+            ),
+            'restore_report': restore_report,
+            'restore_restart_required': bool(
+                setup_state.get('status') == 'restoring'
+                and setup_state.get('mode') == 'restore'
+            ),
+            'setup_resume_step': setup_resume_step if setup_state.get('status') == 'setup_in_progress' else None,
+            'setup_recovery_saved': 'recovery_saved' in completed_steps,
+            'model_setup_complete': bool({'model', 'model_skipped'} & completed_steps),
             'passkey_available': bool(owner_access.passkeys()),
             'password_available': owner_access.password_configured(),
             'recovery_available': owner_access.recovery_codes_remaining() > 0,
             'enrollment_available': len(getattr(settings, 'iphone_owner_enrollment_code', '').strip()) >= 12,
             'google_available': bool(google_client_id and owner_google_email),
             'google_client_id': google_client_id if google_client_id and owner_google_email else '',
+        }
+
+    @router.post('/api/first-run/restore/archive')
+    async def first_run_restore_archive(request: Request):
+        require_https(request)
+        fresh_recovery_setup()
+        bootstrap = request.headers.get('x-vishnu-setup-code', '')
+        validate_setup_bootstrap(bootstrap, request)
+        root = recovery_staging_root()
+        session = secrets.token_urlsafe(24)
+        session_dir = root / session
+        session_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
+        try:
+            size = await stream_recovery_upload(
+                request, session_dir / 'archive.vdr', limit=1024 * 1024 * 1024,
+                magic=b'VISHNUDR1\n',
+            )
+        except Exception:
+            shutil.rmtree(session_dir, ignore_errors=True)
+            raise
+        emit('owner.recovery.web_archive_staged', bytes=size)
+        return {'ok': True, 'session_id': session, 'bytes': size, 'next': 'verify_recovery_key'}
+
+    @router.post('/api/first-run/restore/key')
+    async def first_run_restore_key(request: Request, session_id: str = Query(..., min_length=24, max_length=80)):
+        require_https(request)
+        fresh_recovery_setup()
+        validate_setup_bootstrap(request.headers.get('x-vishnu-setup-code', ''), request)
+        if not all(char.isalnum() or char in {'-', '_'} for char in session_id):
+            raise HTTPException(422, 'Recovery upload session is invalid')
+        session_dir = recovery_staging_root() / session_id
+        if not (session_dir / 'archive.vdr').is_file():
+            raise HTTPException(404, 'Recovery package upload was not found or has expired')
+        size = await stream_recovery_upload(
+            request, session_dir / 'recovery-key.vrk', limit=8192,
+            magic=b'VISHNU-RECOVERY-KEY-1\n',
+        )
+        try:
+            os.utime(session_dir, None)
+        except OSError:
+            pass
+        emit('owner.recovery.web_key_staged', bytes=size)
+        return {'ok': True, 'session_id': session_id, 'bytes': size, 'next': 'verify_and_restore'}
+
+    @router.post('/api/first-run/restore/schedule')
+    def first_run_restore_schedule(body: FirstRunRestoreScheduleBody, request: Request):
+        require_https(request)
+        fresh_recovery_setup()
+        validate_setup_bootstrap(body.bootstrap_secret.get_secret_value(), request)
+        if not all(char.isalnum() or char in {'-', '_'} for char in body.session_id):
+            raise HTTPException(422, 'Recovery upload session is invalid')
+        session_dir = recovery_staging_root() / body.session_id
+        archive, key_file = session_dir / 'archive.vdr', session_dir / 'recovery-key.vrk'
+        if not archive.is_file() or not key_file.is_file():
+            raise HTTPException(404, 'Upload the encrypted recovery package and its separate recovery key first')
+        imports = owner_access.path.parent / 'recovery-imports'
+        imports.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            os.chmod(imports, 0o700)
+        except OSError:
+            pass
+        stable_archive = imports / f'{body.session_id}.vdr'
+        if stable_archive.exists():
+            raise HTTPException(409, 'This recovery package has already been scheduled')
+        shutil.copyfile(archive, stable_archive)
+        try:
+            os.chmod(stable_archive, 0o600)
+        except OSError:
+            pass
+        try:
+            result = first_run_setup.schedule_disaster_recovery(
+                stable_archive, key_file, body.passphrase.get_secret_value(),
+            )
+        except Exception as exc:
+            stable_archive.unlink(missing_ok=True)
+            emit('owner.recovery.web_restore_validation_failed', error_type=type(exc).__name__)
+            raise HTTPException(422, 'The recovery package, recovery key, or passphrase could not be authenticated') from exc
+        finally:
+            key_file.unlink(missing_ok=True)
+            shutil.rmtree(session_dir, ignore_errors=True)
+        emit('owner.recovery.web_restore_scheduled', archive=stable_archive.name)
+        return {'ok': True, 'status': 'restart_required', 'restore': result}
+
+    @router.post('/api/first-run/restore/secure-device')
+    def first_run_restore_secure_device(
+        body: FirstRunRestoreOwnerBody, request: Request, response: Response,
+        pa_setup_claim: str | None = Cookie(default=None),
+    ):
+        require_https(request)
+        validate_setup_bootstrap(body.bootstrap_secret.get_secret_value(), request)
+        if first_run_setup is None or first_run_setup.ready:
+            raise HTTPException(409, 'A restored Vishnu setup is not pending')
+        setup_state = first_run_setup.snapshot()
+        if (setup_state.get('status') != 'setup_in_progress'
+                or setup_state.get('mode') != 'restore'
+                or 'restore' not in setup_state.get('completed_steps', [])):
+            raise HTTPException(409, 'Restore the verified recovery package and restart the local runtime first')
+        identity = owner_access.identity()
+        if identity is None:
+            raise HTTPException(409, 'The restored Vishnu identity metadata is unavailable')
+        try:
+            claim, _ = owner_access.acquire_first_run_claim(
+                pa_setup_claim, ttl=900, allow_pending_identity=True,
+            )
+            first_run_setup.configure_owner(
+                first_name=identity['first_name'], last_name=identity['last_name'],
+                display_name=identity['display_name'],
+            )
+            codes = first_run_setup.configure_security(body.password.get_secret_value())
+            restored_identity = first_run_setup.initialize_pending_identity()
+            device = trust_browser(response, body.device_name, 'web-pwa-recovery')
+            first_run_setup.record_first_device(device['id'])
+        except FirstRunClaimBusy as exc:
+            raise HTTPException(409, str(exc)) from exc
+        except (ValueError, RuntimeError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        response.set_cookie(
+            'pa_setup_claim', claim, httponly=True,
+            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            samesite='strict', path='/iphone', max_age=900,
+        )
+        emit('owner.device.recovered', device_id=device['id'], platform='web-pwa', portable=True)
+        return {
+            'ok': True, 'identity': restored_identity,
+            'device': {key: device[key] for key in ('id', 'name', 'platform')},
+            'recovery_codes': codes, 'recovery_codes_shown_once': True,
         }
 
     @router.post('/api/first-run/create')
@@ -551,17 +926,31 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         require_https(request)
         key = allow_access_attempt(request, 'first-run-bootstrap')
         expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
-        if len(expected) < 32:
-            raise HTTPException(503, 'Secure first-device bootstrap is not configured')
-        if not hmac.compare_digest(body.bootstrap_secret.get_secret_value(), expected):
-            failed_access_attempt(key)
-            raise HTTPException(401, 'The Vishnu setup code is invalid')
+        local_setup = local_development_bootstrap_allowed(request)
+        submitted_secret = body.bootstrap_secret.get_secret_value()
+        if local_setup:
+            # The dev launcher binds the server to 127.0.0.1 and enables
+            # insecure local HTTP. Never infer this from a request header or
+            # accept this exception on a non-loopback bind.
+            pass
+        else:
+            if len(expected) < 32:
+                raise HTTPException(503, 'Secure first-device bootstrap is not configured')
+            if not hmac.compare_digest(submitted_secret, expected):
+                failed_access_attempt(key)
+                raise HTTPException(401, 'The Vishnu setup code is invalid')
         clear_access_attempts(key)
         if not first_run_setup.should_run():
             raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')
         state = first_run_setup.snapshot()
         if state.get('status') not in {'uninitialized', 'setup_in_progress'} or state.get('mode') not in {None, 'create'}:
             raise HTTPException(409, 'This Vishnu setup cannot start a new creation ceremony')
+        if (state.get('status') == 'setup_in_progress'
+                and 'security' in state.get('completed_steps', [])):
+            raise HTTPException(
+                409,
+                'The Vishnu owner account is already created. Resume the pending setup; creating it again would replace recovery credentials.',
+            )
         try:
             claim, created_claim = owner_access.acquire_first_run_claim(
                 pa_setup_claim, ttl=900,
@@ -835,7 +1224,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 'device': {key: device[key] for key in ('id', 'name', 'platform')}}
 
     @router.post('/api/first-run/complete')
-    def first_run_complete(body: FirstRunCompleteBody, response: Response,
+    def first_run_complete(body: FirstRunCompleteBody, request: Request, response: Response,
                            pa_setup_claim: str | None = Cookie(default=None),
                            pa_device: str | None = Cookie(default=None),
                            pa_token: str | None = Cookie(default=None)):
@@ -848,7 +1237,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         except (FirstRunClaimBusy, RuntimeError) as exc:
             raise HTTPException(401, 'The first-device setup session expired. Restart setup with your bootstrap code.') from exc
         device_id = auth_device(pa_device, pa_token)
-        require_fresh_owner_verification(device_id)
+        require_https(request)
         if body.recovery_saved is not True:
             raise HTTPException(422, 'Confirm that you saved the one-time recovery codes before continuing')
         if not owner_access.passkeys() and not body.passkey_unavailable_confirmed:
@@ -881,7 +1270,6 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         except (FirstRunClaimBusy, RuntimeError) as exc:
             raise HTTPException(401, 'The first-device setup session expired') from exc
         device_id = auth_device(pa_device, pa_token)
-        require_fresh_owner_verification(device_id)
         require_https(request)
         try:
             if body.provider_id == 'skip':
@@ -897,6 +1285,148 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
              provider_id='skipped' if body.provider_id == 'skip' else body.provider_id)
         return {'ok': True, 'provider': body.provider_id, 'configured': body.provider_id != 'skip'}
 
+    @router.put('/api/first-run/data-policy')
+    def first_run_data_policy(body: FirstRunDataPolicyBody, request: Request,
+                              pa_setup_claim: str | None = Cookie(default=None),
+                              pa_device: str | None = Cookie(default=None),
+                              pa_token: str | None = Cookie(default=None)):
+        """Save the new-data default during first run, before owner sign-in exists.
+
+        This is intentionally separate from the owner-only Data Plane settings
+        endpoint. The setup claim, first trusted device credential, and pending
+        setup state must all agree; it does not depend on an expiring owner session.
+        """
+        if first_run_setup is None or first_run_setup.ready:
+            raise HTTPException(409, 'First-device setup is not pending')
+        if not pa_setup_claim:
+            raise HTTPException(401, 'The first-device setup session expired')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        require_https(request)
+        setup_state = first_run_setup.snapshot()
+        if (setup_state.get('status') != 'setup_in_progress'
+                or setup_state.get('mode') not in {'create', 'restore'}):
+            raise HTTPException(409, 'First-device owner setup is not ready for data policy')
+        if setup_state.get('first_device_id') != device_id:
+            raise HTTPException(403, 'Only the first trusted device can set this policy')
+        if (hasattr(registry, 'authorize')
+                and not registry.authorize(device_id, 'device:admin')):
+            raise HTTPException(403, 'This device is not permitted to configure data placement')
+        data_plane = get_data_plane(runtime)
+        if data_plane is None:
+            raise HTTPException(503, 'Local-first storage authority is unavailable')
+        try:
+            settings_result = data_plane.update_settings(default_policy=body.default_policy)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        if str(settings_result.get('default_policy') or '') != body.default_policy:
+            raise HTTPException(409, 'Vishnu did not confirm the selected data placement policy')
+        emit('owner.first_run.data_policy_configured', device_id=device_id,
+             default_policy=body.default_policy)
+        return {'ok': True, 'settings': settings_result}
+
+    @router.post('/api/first-run/recovery-codes')
+    def first_run_recovery_codes(request: Request,
+                                 pa_setup_claim: str | None = Cookie(default=None),
+                                 pa_device: str | None = Cookie(default=None),
+                                 pa_token: str | None = Cookie(default=None)):
+        if first_run_setup is None or first_run_setup.ready or not pa_setup_claim:
+            raise HTTPException(409, 'First-device setup is not pending')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        require_https(request)
+        state = first_run_setup.snapshot()
+        if (state.get('status') != 'setup_in_progress'
+                or state.get('first_device_id') != device_id
+                or 'security' not in state.get('completed_steps', [])):
+            raise HTTPException(403, 'Only the first trusted device can recover setup codes')
+        # A new set is generated only on explicit owner action. The old codes
+        # are invalidated and the new plaintext is returned exactly once.
+        codes = owner_access.regenerate_recovery_codes()
+        first_run_setup.invalidate_recovery_confirmation()
+        emit('owner.first_run.recovery_codes_regenerated', device_id=device_id)
+        return {'recovery_codes': codes, 'shown_once': True}
+
+    @router.post('/api/first-run/resume')
+    def first_run_resume(body: FirstRunResumeBody, request: Request, response: Response,
+                         pa_device: str | None = Cookie(default=None),
+                         pa_token: str | None = Cookie(default=None)):
+        """Renew setup access, or recover a lost local first-browser credential."""
+        if first_run_setup is None or first_run_setup.ready:
+            raise HTTPException(409, 'First-device setup is already complete')
+        require_https(request)
+        state = first_run_setup.snapshot()
+        if (state.get('status') != 'setup_in_progress'
+                or state.get('mode') not in {'create', 'restore'}):
+            raise HTTPException(409, 'There is no interrupted first-device setup to resume')
+        if (pa_device and pa_token and registry.authenticate(pa_device, pa_token)
+                and state.get('first_device_id') == pa_device):
+            device_id = pa_device
+        else:
+            if body.password is None:
+                raise HTTPException(401, 'This browser needs owner-password verification to resume setup')
+            key = allow_access_attempt(request, 'first-run-resume')
+            if not owner_access.password_configured() or not owner_access.verify_password(
+                    body.password.get_secret_value()):
+                failed_access_attempt(key)
+                raise HTTPException(401, 'Incorrect owner password')
+            clear_access_attempts(key)
+            local_setup = local_development_bootstrap_allowed(request)
+            expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+            submitted = body.bootstrap_secret.get_secret_value()
+            if not local_setup and (len(expected) < 32 or not hmac.compare_digest(submitted, expected)):
+                raise HTTPException(401, 'The secure runtime setup code is required to recover this browser')
+            old_id = str(state.get('first_device_id') or '')
+            old_device = next((item for item in registry.list() if item.get('id') == old_id), None)
+            if old_device and registry.is_active(old_id):
+                if old_device.get('platform') != 'web-first-device' or not local_setup:
+                    raise HTTPException(409, 'Resume setup from the original trusted device; this device cannot replace it.')
+                registry.revoke(old_id)
+            device = trust_browser(response, body.device_name, 'web-first-device')
+            device_id = device['id']
+            try:
+                first_run_setup.record_first_device(device_id)
+            except RuntimeError as exc:
+                registry.revoke(device_id)
+                raise HTTPException(409, str(exc)) from exc
+        claim = owner_access.rotate_first_run_claim(ttl=900)
+        response.set_cookie(
+            'pa_setup_claim', claim,
+            httponly=True,
+            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            samesite='strict', path='/iphone', max_age=900,
+        )
+        return {'ok': True, 'status': 'setup_in_progress', 'device_id': device_id}
+
+    @router.post('/api/first-run/recovery-saved')
+    def first_run_recovery_saved(body: FirstRunRecoverySavedBody, request: Request,
+                                 pa_setup_claim: str | None = Cookie(default=None),
+                                 pa_device: str | None = Cookie(default=None),
+                                 pa_token: str | None = Cookie(default=None)):
+        if first_run_setup is None or first_run_setup.ready or not pa_setup_claim:
+            raise HTTPException(409, 'First-device setup is not pending')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        require_https(request)
+        state = first_run_setup.snapshot()
+        if (state.get('status') != 'setup_in_progress'
+                or state.get('first_device_id') != device_id):
+            raise HTTPException(403, 'Only the first trusted device can confirm recovery codes')
+        try:
+            first_run_setup.confirm_recovery_codes_saved()
+        except (RuntimeError, ValueError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {'ok': True, 'saved': body.saved}
+
     @router.get('/api/access/security')
     def access_security(
         pa_device: str | None = Cookie(default=None),
@@ -911,10 +1441,61 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 getattr(settings, 'google_signin_client_id', '').strip()
                 and getattr(settings, 'owner_google_email', '').strip()
             ),
+            'pending_device_joins': len(registry.pending_joins()) if hasattr(registry, 'pending_joins') else 0,
         }
 
+    @router.get('/api/access/join/requests')
+    def pending_device_joins(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        auth_device(pa_device, pa_token)
+        return {'requests': registry.pending_joins()}
+
+    @router.post('/api/access/join/{request_id}/decision')
+    def decide_device_join(
+        request_id: str,
+        body: OwnerJoinDecisionBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = auth_device(pa_device, pa_token)
+        # A valid trusted-device session alone is not enough for enrolling a
+        # new device; require fresh knowledge-factor verification for now.
+        if not owner_access.verify_password(body.password.get_secret_value()):
+            raise HTTPException(401, 'Owner password verification failed. No device was added.')
+        if not registry.decide_join(request_id, approve=body.approve, decided_by=device_id):
+            raise HTTPException(409, 'This request has expired or was already decided.')
+        emit('device.join.approved' if body.approve else 'device.join.denied',
+             device_id=device_id, request_id=request_id)
+        return {'status': 'approved' if body.approve else 'denied'}
+
+    @router.post('/api/access/join/status')
+    def device_join_status(body: OwnerJoinStatusBody, request: Request, response: Response,
+                           pa_join: str | None = Cookie(default=None)):
+        require_https(request)
+        token = pa_join or ''
+        result = registry.join_status(body.request_id, token)
+        if result is None:
+            raise HTTPException(404, 'This sign-in request is unavailable or expired.')
+        if result['status'] == 'approved':
+            device = registry.complete_join(body.request_id, token)
+            if not device:
+                raise HTTPException(409, 'Device approval could not be completed. Start sign-in again.')
+            cookie_kwargs = device_cookie_kwargs()
+            response.set_cookie('pa_device', device['id'], **cookie_kwargs)
+            response.set_cookie('pa_token', token, **cookie_kwargs)
+            response.delete_cookie('pa_join', path='/iphone/api/access/join')
+            emit('owner.access.trusted', device_id=device['id'], platform=device['platform'], source='approved_join')
+            return {'status': 'complete', 'device_id': device['id']}
+        if result['status'] in {'denied', 'expired', 'completed'}:
+            response.delete_cookie('pa_join', path='/iphone/api/access/join')
+        return result
+
     @router.post('/api/access/google/login')
-    def google_login(body: GoogleLoginBody, request: Request, response: Response):
+    def google_login(body: GoogleLoginBody, request: Request, response: Response,
+                     pa_device: str | None = Cookie(default=None),
+                     pa_token: str | None = Cookie(default=None)):
         require_https(request)
         key = allow_access_attempt(request, 'google')
         client_id = getattr(settings, 'google_signin_client_id', '').strip()
@@ -936,9 +1517,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             failed_access_attempt(key)
             raise HTTPException(401, 'This Google account is not authorized for Vishnu')
         clear_access_attempts(key)
-        device = trust_browser(response, body.name, 'web-pwa-google')
-        emit('owner.google.login', device_id=device['id'], provider='google')
-        return {'ok': True, 'device_id': device['id']}
+        result = begin_or_unlock_browser(response, body.name, 'web-pwa', pa_device, pa_token)
+        emit('owner.google.login' if result.get('ok') else 'owner.device.join_requested',
+             device_id=result.get('device_id'), request_id=result.get('request_id'), provider='google')
+        return result
 
     @router.post('/api/access/password/setup')
     def password_setup(
@@ -956,7 +1538,9 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         return {'ok': True}
 
     @router.post('/api/access/password/login')
-    def password_login(body: OwnerPasswordBody, request: Request, response: Response):
+    def password_login(body: OwnerPasswordBody, request: Request, response: Response,
+                       pa_device: str | None = Cookie(default=None),
+                       pa_token: str | None = Cookie(default=None)):
         require_https(request)
         key = allow_access_attempt(request, 'password')
         if not owner_access.password_configured():
@@ -965,9 +1549,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             failed_access_attempt(key)
             raise HTTPException(401, 'Incorrect owner password')
         clear_access_attempts(key)
-        device = trust_browser(response, body.name, 'web-pwa-password')
-        emit('owner.password.login', device_id=device['id'])
-        return {'ok': True, 'device_id': device['id']}
+        result = begin_or_unlock_browser(response, body.name, 'web-pwa', pa_device, pa_token)
+        emit('owner.password.unlock' if result.get('ok') else 'owner.device.join_requested',
+             device_id=result.get('device_id'), request_id=result.get('request_id'))
+        return result
 
     @router.post('/api/access/recovery/regenerate')
     def recovery_regenerate(
@@ -1084,7 +1669,9 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         return {'challenge_id': challenge_id, 'public_key': json.loads(options_to_json(options))}
 
     @router.post('/api/access/passkey/login/complete')
-    def passkey_login_complete(body: PasskeyCompleteBody, request: Request, response: Response):
+    def passkey_login_complete(body: PasskeyCompleteBody, request: Request, response: Response,
+                               pa_device: str | None = Cookie(default=None),
+                               pa_token: str | None = Cookie(default=None)):
         require_https(request)
         key = allow_access_attempt(request, 'passkey')
         challenge = owner_access.consume_challenge(body.challenge_id, 'authentication')
@@ -1114,9 +1701,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             raise HTTPException(401, 'Face ID passkey could not be verified')
         clear_access_attempts(key)
         owner_access.use_passkey(credential_id, verified.new_sign_count)
-        device = trust_browser(response, body.name, 'web-pwa-passkey')
-        emit('owner.passkey.login', device_id=device['id'])
-        return {'ok': True, 'device_id': device['id']}
+        result = begin_or_unlock_browser(response, body.name, 'web-pwa', pa_device, pa_token)
+        emit('owner.passkey.unlock' if result.get('ok') else 'owner.device.join_requested',
+             device_id=result.get('device_id'), request_id=result.get('request_id'))
+        return result
 
     @router.post('/api/enroll')
     def enroll(body: OwnerEnrollBody, request: Request, response: Response):
@@ -1124,7 +1712,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         key = allow_access_attempt(request, 'enrollment')
         expected = getattr(settings, 'iphone_owner_enrollment_code', '').strip()
         if len(expected) < 12:
-            raise HTTPException(503, 'iPhone owner enrollment is not configured')
+            raise HTTPException(503, 'Web owner enrollment is not configured for this Vishnu runtime.')
         if not hmac.compare_digest(body.code.strip(), expected):
             failed_access_attempt(key)
             raise HTTPException(401, 'Invalid owner enrollment code')

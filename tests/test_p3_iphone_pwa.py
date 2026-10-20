@@ -1,4 +1,5 @@
 from pathlib import Path
+import base64
 import time
 import uuid
 from types import SimpleNamespace
@@ -13,6 +14,8 @@ from server.iphone_pwa import iphone_pwa_router
 from models.router import ModelTimeout, ModelUnavailable
 from core.preferences import Preferences
 from onboarding.first_run import FirstRunCoordinator
+from recovery.backup import BackupService
+from recovery.disaster_recovery import DisasterRecoveryService, encrypt_recovery_key_file, generate_recovery_key
 from security.owner_access import OwnerAccessStore
 from security.pwa_sessions import PwaSessionStore
 from server.pwa_session_middleware import PwaSessionMiddleware
@@ -21,13 +24,16 @@ from server.pwa_session_middleware import PwaSessionMiddleware
 class Registry:
     def __init__(self):
         self.tokens = {}
+        self.platforms = {}
         self.active = set()
         self.sequence = 0
+        self.joins = {}
     def enroll(self, name, platform):
         self.sequence += 1
         device_id = f'iphone-{self.sequence}'
         token = f'token-{self.sequence}'
         self.tokens[device_id] = token
+        self.platforms[device_id] = platform
         self.active.add(device_id)
         return {'id': device_id, 'name': name, 'platform': platform}, token
     def enroll_with_credential(self, device_id, token, name, platform):
@@ -49,8 +55,33 @@ class Registry:
         self.active.remove(device_id)
         return True
     def list(self):
-        return [{'id': device_id, 'name': 'Device', 'platform': 'test'}
+        return [{'id': device_id, 'name': 'Device', 'platform': self.platforms.get(device_id, 'test')}
                 for device_id in sorted(self.active)]
+    def request_join(self, name, platform='web-pwa', *, ttl_seconds=600):
+        request_id, device_id, token = str(uuid.uuid4()), str(uuid.uuid4()), 'join-token-' + uuid.uuid4().hex * 2
+        result = {'request_id': request_id, 'device_id': device_id, 'device_token': token,
+                  'verification_code': '123456', 'expires_at': time.time() + ttl_seconds}
+        self.joins[request_id] = {**result, 'name': name, 'platform': platform, 'status': 'pending'}
+        return result
+    def pending_joins(self):
+        return [{k: v for k, v in item.items() if k in {'request_id', 'device_id', 'name', 'platform', 'verification_code', 'expires_at'}}
+                for item in self.joins.values() if item['status'] == 'pending']
+    def decide_join(self, request_id, *, approve, decided_by):
+        item = self.joins.get(request_id)
+        if not item or item['status'] != 'pending' or item['expires_at'] < time.time(): return False
+        item['status'] = 'approved' if approve else 'denied'
+        return True
+    def join_status(self, request_id, token):
+        item = self.joins.get(request_id)
+        if not item or item['device_token'] != token: return None
+        return {'status': item['status']}
+    def complete_join(self, request_id, token):
+        item = self.joins.get(request_id)
+        if not item or item['status'] != 'approved' or item['device_token'] != token: return None
+        item['status'] = 'completed'
+        self.tokens[item['device_id']] = token
+        self.active.add(item['device_id'])
+        return {'id': item['device_id'], 'name': item['name'], 'platform': item['platform']}
 
 
 class Executor:
@@ -91,11 +122,12 @@ class Recorder:
         return [{'id': 'session-1'}]
 
 
-def make_client(tmp_path: Path, allow_insecure=False, google_signin=False, server_sessions=False, include_legacy_runtime_routes=True):
+def make_client(tmp_path: Path, allow_insecure=False, google_signin=False, server_sessions=False, include_legacy_runtime_routes=True, *, bootstrap_secret='', runtime_overrides=None):
     settings = SimpleNamespace(
         base_dir=Path(__file__).resolve().parent.parent,
         iphone_owner_enrollment_code='this-is-a-long-owner-code',
         iphone_pwa_allow_insecure=allow_insecure,
+        owner_bootstrap_secret=bootstrap_secret,
         google_signin_client_id='google-client.apps.googleusercontent.com' if google_signin else '',
         owner_google_email='owner@example.com' if google_signin else '',
     )
@@ -118,6 +150,7 @@ def make_client(tmp_path: Path, allow_insecure=False, google_signin=False, serve
             device_registry=runtime['device_registry'],
             cookie_max_age=600,
         )
+    runtime.update(runtime_overrides or {})
     app.include_router(iphone_pwa_router(runtime, settings, include_legacy_runtime_routes=include_legacy_runtime_routes))
     return TestClient(app, base_url='https://testserver'), runtime
 
@@ -151,6 +184,9 @@ def test_production_router_can_exclude_legacy_canonical_runtime_overlaps(tmp_pat
 
 def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     client, _ = make_client(tmp_path)
+    demo_entry = client.get('/iphone/campaign-demo', follow_redirects=False)
+    assert demo_entry.status_code == 302
+    assert demo_entry.headers['location'] == '/iphone/?campaignDemo=1'
     page = client.get('/iphone/')
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
@@ -160,9 +196,27 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
     assert 'Restore Vishnu' in adapter.text
     assert 'data-genesis-restore' in adapter.text
-    assert 'Step ${s.step} of 10' in adapter.text
+    assert 'Step ${journeyStep} of 3' in adapter.text
     assert actions.status_code == 200 and '/first-run/create' in actions.text
-    assert "api('/first-run/complete'" in actions.text
+    assert "setupApi('/first-run/complete'" in actions.text
+
+    # The local visual preview, Search, and Command Center modules must be served by the
+    # FastAPI runtime itself (the existing browser test server can otherwise
+    # hide missing production routes by injecting those files).
+    for path, marker in (
+        ('/iphone/campaign-demo.js', 'campaignDemo'),
+        ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
+        ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
+        ('/iphone/global-search.js', 'globalSearch'),
+        ('/iphone/global-search.css', 'global-search'),
+        ('/iphone/command-center.js', 'vishnuOpenCommandCenter'),
+        ('/iphone/command-center.css', 'cc-dialog'),
+        ('/iphone/workspaces-ui.js', 'vishnuRenderWorkspaces'),
+        ('/iphone/workspaces-ui.css', 'ws-page'),
+    ):
+        asset = client.get(path)
+        assert asset.status_code == 200, path
+        assert marker.lower() in asset.text.lower(), path
 
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)
@@ -175,6 +229,17 @@ def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path
     assert any('pa_device=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c for c in cookies)
     assert any('pa_token=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c for c in cookies)
     assert all('Max-Age=31536000' in c for c in cookies)
+
+
+def test_missing_browser_trust_returns_clear_web_sign_in_guidance(tmp_path):
+    client, _ = make_client(tmp_path)
+    response = client.get('/iphone/api/conversations')
+    assert response.status_code == 401
+    message = response.json()['detail']
+    assert 'web browser' in message.lower()
+    assert 'sign in again' in message.lower()
+    assert 'not been deleted' in message.lower()
+    assert 'iphone' not in message.lower()
 
 
 def test_status_renews_existing_browser_trust_without_reenrollment(tmp_path):
@@ -191,8 +256,9 @@ def test_status_renews_existing_browser_trust_without_reenrollment(tmp_path):
 
 
 def test_owner_password_unlocks_a_new_browser_after_trusted_setup(tmp_path):
-    client, _ = make_client(tmp_path)
+    client, runtime = make_client(tmp_path)
     client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
+    owner_device, owner_token = client.cookies.get('pa_device'), client.cookies.get('pa_token')
     assert client.post('/iphone/api/access/password/setup', json={
         'password': 'correct horse battery staple',
     }).status_code == 200
@@ -201,12 +267,32 @@ def test_owner_password_unlocks_a_new_browser_after_trusted_setup(tmp_path):
     assert client.post('/iphone/api/access/password/login', json={
         'password': 'wrong password',
     }).status_code == 401
-    login = client.post('/iphone/api/access/password/login', json={
+    requester = TestClient(client.app, base_url='https://testserver')
+    login = requester.post('/iphone/api/access/password/login', json={
         'password': 'correct horse battery staple',
         'name': 'Safari with password',
     })
     assert login.status_code == 200
-    assert client.get('/iphone/api/status').status_code == 200
+    pending = login.json()
+    assert pending['status'] == 'approval_required'
+    assert len(runtime['device_registry'].active) == 1
+    assert requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    }).json()['status'] == 'pending'
+    # A trusted owner browser must verify its password and approve the exact
+    # request before the new browser receives any device credentials.
+    client.cookies.set('pa_device', owner_device)
+    client.cookies.set('pa_token', owner_token)
+    requests = client.get('/iphone/api/access/join/requests').json()['requests']
+    assert requests[0]['verification_code'] == pending['verification_code']
+    assert client.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': True,
+    }).status_code == 200
+    completed = requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    })
+    assert completed.json()['status'] == 'complete'
+    assert len(runtime['device_registry'].active) == 2
 
 
 def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
@@ -220,12 +306,147 @@ def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
     assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 401
 
 
+def test_web_portable_restore_preserves_identity_restores_data_and_secures_replacement_device(tmp_path, monkeypatch):
+    monkeypatch.setenv('PERSONAL_AI_ROOT_KEY', base64.b64encode(b'R' * 32).decode('ascii'))
+    source = tmp_path / 'source'
+    target = tmp_path / 'target'
+    source.mkdir()
+    target.mkdir()
+    source_owner = OwnerAccessStore(source / 'owner-access.sqlite3')
+    identity, _ = source_owner.initialize_identity(
+        first_name='Asha', last_name='Patel', display_name='Asha Patel',
+    )
+    (source / 'conversation-sample.json').write_text('{"message":"recoverable test data"}', encoding='utf-8')
+    recovery_key = generate_recovery_key()
+    archive = tmp_path / 'asha.vdr'
+    DisasterRecoveryService(BackupService(source)).create_bundle(
+        archive, recovery_key=recovery_key, owner_id=identity['owner_id'], key_id='web-recovery-test',
+    )
+    key_file = tmp_path / 'asha.vrk'
+    key_file.write_bytes(encrypt_recovery_key_file(recovery_key, 'correct horse battery staple'))
+
+    target_preferences = Preferences(target / 'preferences.json')
+
+    class Models:
+        def set_owner_privacy(self, _value):
+            return None
+
+    class Tools:
+        def set_autonomy_mode(self, _value):
+            return None
+
+    setup = FirstRunCoordinator(target)
+    client, runtime = make_client(
+        target, allow_insecure=True, bootstrap_secret='B' * 48,
+        runtime_overrides={
+            'preferences': target_preferences,
+            'models': Models(),
+            'tools': Tools(),
+            'backups': BackupService(target),
+            'first_run_setup': setup,
+        },
+    )
+    setup.bind_runtime(runtime)
+
+    headers = {'X-Vishnu-Setup-Code': 'B' * 48, 'Content-Type': 'application/octet-stream'}
+    staged_archive = client.post(
+        '/iphone/api/first-run/restore/archive', content=archive.read_bytes(), headers=headers,
+    )
+    assert staged_archive.status_code == 200, staged_archive.text
+    session = staged_archive.json()['session_id']
+    staged_key = client.post(
+        f'/iphone/api/first-run/restore/key?session_id={session}',
+        content=key_file.read_bytes(), headers=headers,
+    )
+    assert staged_key.status_code == 200, staged_key.text
+    scheduled = client.post('/iphone/api/first-run/restore/schedule', json={
+        'session_id': session,
+        'bootstrap_secret': 'B' * 48,
+        'passphrase': 'correct horse battery staple',
+    })
+    assert scheduled.status_code == 200, scheduled.text
+    assert scheduled.json()['status'] == 'restart_required'
+    assert not (target / '.web-recovery-staging' / session).exists()
+
+    restored = FirstRunCoordinator.apply_pending_restore(target)
+    assert restored['ok'] is True and restored['portable_disaster_recovery'] is True
+    assert (target / 'conversation-sample.json').read_text(encoding='utf-8') == '{"message":"recoverable test data"}'
+    restored_identity = runtime['owner_access'].identity()
+    assert restored_identity['owner_id'] == identity['owner_id']
+    assert restored_identity['vishnu_id'] == identity['vishnu_id']
+    assert runtime['owner_access'].password_configured() is False
+    assert runtime['owner_access'].recovery_codes_remaining() == 0
+
+    secured = client.post('/iphone/api/first-run/restore/secure-device', json={
+        'bootstrap_secret': 'B' * 48,
+        'password': 'a fresh replacement-device password',
+        'device_name': 'Development web browser',
+    })
+    assert secured.status_code == 200, secured.text
+    assert secured.json()['identity']['owner_id'] == identity['owner_id']
+    assert secured.json()['identity']['vishnu_id'] == identity['vishnu_id']
+    assert len(secured.json()['recovery_codes']) >= 4
+    assert runtime['owner_access'].password_configured() is True
+    assert runtime['owner_access'].recovery_codes_remaining() == len(secured.json()['recovery_codes'])
+
+    saved = client.post('/iphone/api/first-run/recovery-saved', json={'saved': True})
+    assert saved.status_code == 200, saved.text
+    configured = client.post('/iphone/api/first-run/model', json={'provider_id': 'skip'})
+    assert configured.status_code == 200, configured.text
+    complete = client.post('/iphone/api/first-run/complete', json={
+        'recovery_saved': True, 'privacy_mode': 'local_only',
+        'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
+    })
+    assert complete.status_code == 200, complete.text
+    assert setup.ready is True
+    assert runtime['owner_access'].identity()['owner_id'] == identity['owner_id']
+
+
+def test_password_join_requires_approval_on_an_existing_session(tmp_path):
+    owner, runtime = make_client(tmp_path, server_sessions=True)
+    assert owner.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'}).status_code == 200
+    assert owner.post('/iphone/api/access/password/setup', json={
+        'password': 'correct horse battery staple',
+    }).status_code == 200
+    requester = TestClient(owner.app, base_url='https://testserver')
+
+    request = requester.post('/iphone/api/access/password/login', json={
+        'password': 'correct horse battery staple', 'name': 'Development browser',
+    }).json()
+    assert request['status'] == 'approval_required'
+    assert len(runtime['device_registry'].active) == 1
+    assert requester.cookies.get('pa_device') is None
+    assert requester.cookies.get('pa_session') is None
+    assert requester.cookies.get('pa_join')
+    assert request.get('device_token') is None
+
+    assert owner.get('/iphone/api/access/join/requests').json()['requests'][0]['request_id'] == request['request_id']
+    decision = owner.post(f"/iphone/api/access/join/{request['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': True,
+    })
+    assert decision.status_code == 200
+    completed = requester.post('/iphone/api/access/join/status', json={
+        'request_id': request['request_id'],
+    })
+    assert completed.json()['status'] == 'complete'
+    assert requester.cookies.get('pa_session')
+    assert requester.get('/iphone/api/status').status_code == 200
+    assert len(runtime['device_registry'].active) == 2
+
+
 def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
     client, _ = make_client(tmp_path)
     options = client.get('/iphone/api/access/options').json()
     assert options == {
         'creation_available': False,
+        'restore_available': False,
+        'local_setup_available': False,
         'setup_in_progress': False,
+        'restore_setup_in_progress': False,
+        'restore_restart_required': False,
+        'restore_report': None,
+        'setup_resume_step': None,
+        'setup_recovery_saved': False,
         'model_setup_complete': False,
         'passkey_available': False,
         'password_available': False,
@@ -257,6 +478,7 @@ def test_password_failures_are_rate_limited(tmp_path):
 
 def test_verified_configured_google_owner_unlocks_new_browser(tmp_path, monkeypatch):
     client, runtime = make_client(tmp_path, google_signin=True)
+    client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
     calls = []
 
     def verify(token, request, audience):
@@ -272,17 +494,18 @@ def test_verified_configured_google_owner_unlocks_new_browser(tmp_path, monkeypa
     assert options['google_available'] is True
     assert options['google_client_id'] == 'google-client.apps.googleusercontent.com'
 
-    response = client.post('/iphone/api/access/google/login', json={
+    requester = TestClient(client.app, base_url='https://testserver')
+    response = requester.post('/iphone/api/access/google/login', json={
         'credential': 'g' * 120,
         'name': 'Owner Google Safari',
     })
 
     assert response.status_code == 200
+    assert response.json()['status'] == 'approval_required'
     assert calls == [('g' * 120, 'google-client.apps.googleusercontent.com')]
-    assert client.get('/iphone/api/status').status_code == 200
-    assert runtime['device_registry'].tokens['iphone-1'] == 'token-1'
-    cookies = response.headers.get_list('set-cookie')
-    assert all('HttpOnly' in cookie and 'Secure' in cookie and 'SameSite=strict' in cookie for cookie in cookies)
+    assert len(runtime['device_registry'].tokens) == 1
+    join_cookie = response.headers.get_list('set-cookie')
+    assert len(join_cookie) == 1 and 'pa_join=' in join_cookie[0] and 'HttpOnly' in join_cookie[0]
 
 
 def test_google_login_rejects_other_or_unverified_accounts(tmp_path, monkeypatch):
@@ -938,6 +1161,129 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'password': 'another sufficiently long password',
     })
     assert duplicate.status_code == 409
+
+
+def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(tmp_path):
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    runtime['pwa_sessions'] = PwaSessionStore(tmp_path / 'pwa-sessions.sqlite3', ttl_seconds=600)
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=True,
+        # A developer may start the local launcher from a shell with a
+        # bootstrap secret inherited from .env. Loopback setup must not ask
+        # them to paste that hosted-runtime secret into a fresh local owner.
+        control_server_host='127.0.0.1', owner_bootstrap_secret='B' * 40,
+        data_dir=tmp_path,
+        google_signin_client_id='', owner_google_email='',
+    )
+    runtime['settings'] = settings
+    app = FastAPI()
+    app.add_middleware(PwaSessionMiddleware, sessions=runtime['pwa_sessions'],
+                       device_registry=registry, cookie_max_age=600,
+                       first_run_setup=setup, cookie_secure=False)
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 12345))
+
+    options = client.get('/iphone/api/access/options').json()
+    assert options['creation_available'] is True
+    assert options['local_setup_available'] is True
+    created = client.post('/iphone/api/first-run/create', json={
+        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+        'password': 'a sufficiently long local password',
+    })
+    assert created.status_code == 200, created.text
+    assert runtime['owner_access'].identity() is not None
+    original_device_id = created.json()['device']['id']
+    client.cookies.delete('pa_device')
+    client.cookies.delete('pa_token')
+    reconnected = client.post('/iphone/api/first-run/resume', json={
+        'password': 'a sufficiently long local password',
+        'device_name': 'Replacement local browser',
+    })
+    assert reconnected.status_code == 200, reconnected.text
+    replacement_device_id = reconnected.json()['device_id']
+    assert replacement_device_id != original_device_id
+    assert not runtime['device_registry'].is_active(original_device_id)
+    assert runtime['device_registry'].is_active(replacement_device_id)
+    resumed = client.post('/iphone/api/first-run/resume', json={})
+    assert resumed.status_code == 200, resumed.text
+    assert 'pa_setup_claim=' in resumed.headers.get('set-cookie', '')
+    regenerated = client.post('/iphone/api/first-run/recovery-codes', json={})
+    assert regenerated.status_code == 200, regenerated.text
+    assert len(regenerated.json()['recovery_codes']) == 8
+    saved_recovery = client.post('/iphone/api/first-run/recovery-saved', json={'saved': True})
+    assert saved_recovery.status_code == 200, saved_recovery.text
+    options = client.get('/iphone/api/access/options').json()
+    assert options['setup_in_progress'] is True
+    assert options['setup_resume_step'] == 4
+    assert options['setup_recovery_saved'] is True
+    regenerated_after_ack = client.post('/iphone/api/first-run/recovery-codes', json={})
+    assert regenerated_after_ack.status_code == 200, regenerated_after_ack.text
+    options = client.get('/iphone/api/access/options').json()
+    assert options['setup_recovery_saved'] is False, 'new recovery codes must invalidate the previous save acknowledgement'
+    saved_recovery = client.post('/iphone/api/first-run/recovery-saved', json={'saved': True})
+    assert saved_recovery.status_code == 200, saved_recovery.text
+    recovery_count = runtime['owner_access'].recovery_codes_remaining()
+    duplicate = client.post('/iphone/api/first-run/create', json={
+        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+        'password': 'a different sufficiently long password',
+    })
+    assert duplicate.status_code == 409
+    assert 'Resume the pending setup' in duplicate.json()['detail']
+    assert runtime['owner_access'].recovery_codes_remaining() == recovery_count
+    saved_policy = client.put('/iphone/api/first-run/data-policy', json={
+        'default_policy': 'device_only',
+    })
+    assert saved_policy.status_code == 200, saved_policy.text
+    assert saved_policy.json()['settings']['default_policy'] == 'device_only'
+    # The ordinary settings API remains unavailable until setup is complete;
+    # only the setup-claim-bound endpoint may save the first-run choice.
+    ordinary_policy = client.put('/iphone/api/data-plane/settings', json={
+        'default_policy': 'sync_everywhere',
+    })
+    assert ordinary_policy.status_code == 423, ordinary_policy.text
+
+
+def test_insecure_development_flag_does_not_allow_secretless_setup_on_public_bind(tmp_path):
+    events = EventBus()
+    runtime = {
+        'device_registry': Registry(), 'executor': Executor(), 'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(), 'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=True,
+        control_server_host='0.0.0.0', owner_bootstrap_secret='',
+        google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 12345))
+    options = client.get('/iphone/api/access/options').json()
+    assert options['creation_available'] is False
+    assert options['local_setup_available'] is False
 
 
 def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_device(tmp_path):

@@ -217,7 +217,7 @@ def test_device_registry_upgrades_legacy_permissions_once(tmp_path):
 
     con = connect_sqlite(path)
     try:
-        assert schema_version(con, 'device_registry') == 4
+        assert schema_version(con, 'device_registry') == 5
     finally:
         con.close()
 

@@ -9,13 +9,13 @@ internal object PersonalAITheme {
         val elevatedSurface = 0xFF091A28.toInt()
         val field = 0xC404101B.toInt()
         val text = 0xFFF5FAFF.toInt()
-        val secondaryText = 0xFFA7BACB.toInt()
-        val mutedText = 0xFF687F94.toInt()
+        val secondaryText = 0xFFA7B9CA.toInt()
+        val mutedText = 0xFF667D91.toInt()
         val accent = 0xFF20B8FF.toInt()
         val brightAccent = 0xFF4DDCFF.toInt()
-        val softAccent = 0xFFA4E2FF.toInt()
+        val softAccent = 0xFF9DDBFF.toInt()
         val primaryAction = 0xFF075383.toInt()
-        val border = 0x4D3DAEEB.toInt()
+        val border = 0x2E78BEE6.toInt()
         val danger = 0xFFFFB2B2.toInt()
     }
 

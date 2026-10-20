@@ -45,7 +45,7 @@ Independent Vishnu assistant codebase designed from scratch.
 - Tests
 - GitHub Actions CI file
 - Packaging entrypoints
-- iPhone/PWA persistent conversations and hands-free voice
+- Browser-based web app with persistent conversations and hands-free voice
 - Owner-facing Memory Graph, Tree, Detail and controls
 - Separate document Knowledge ingestion, search and citations
 - Durable governed workflows, recovery and emergency stop
@@ -67,6 +67,9 @@ The checked-in `render.yaml` creates the canonical headless Vishnu runtime with 
 Render is an optional hosting path, not an identity or mandatory data authority. Owners with a local computer, home server, NAS, or another compatible HTTPS host can run the same canonical runtime there instead.
 
 ## Run
+
+For the isolated local workflow that runs the web app and Windows desktop app
+side-by-side, see [Local Web + Windows development](docs/LOCAL_DEVELOPMENT_WEB_AND_WINDOWS.md).
 
 ```bash
 python -m venv .venv

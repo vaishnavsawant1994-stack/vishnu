@@ -16,6 +16,9 @@ const before = `  await page.locator('[data-mx-retention]').selectOption('6_mont
 const after = `  const ambientRetentionSaved=page.waitForResponse(response=>response.url().includes('/iphone/api/memory/ambient/settings')&&response.request().method()==='PATCH'&&response.ok());\n  const ambientRetentionReloaded=page.waitForResponse(response=>new URL(response.url()).pathname.endsWith('/iphone/api/memory/ambient')&&response.request().method()==='GET'&&response.ok());\n  await page.locator('[data-mx-retention]').selectOption('6_months');\n  await ambientRetentionSaved;\n  await ambientRetentionReloaded;\n  await page.waitForFunction(()=>document.querySelectorAll('.rp-page[data-rp-page="memory"] .mx-candidate').length===1);\n  assert.equal(ambientSettings.retention,'6_months','Ambient retention selection persists');`;
 const sphereBefore = `    await page.evaluate(() => enterHomeLanding());\n    await page.waitForTimeout(180);\n    const layout = await page.evaluate(() => {`;
 const sphereAfter = `    await page.evaluate(() => enterHomeLanding());\n    await page.waitForFunction(() => {\n      const canvas = document.querySelector('#neuralCanvas');\n      if (!canvas || !canvas.width || !canvas.height) return false;\n      const pixels = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;\n      let sphereInk = 0;\n      for (let i = 0; i < pixels.length; i += 4) {\n        if (pixels[i + 3] > 12 && (pixels[i] > 80 || pixels[i + 1] > 100 || pixels[i + 2] > 150)) sphereInk++;\n      }\n      return sphereInk > 90;\n    }, undefined, { timeout: 3000 });\n    const layout = await page.evaluate(() => {`;
+const lineBreak = String.fromCharCode(10);
+const stableSphereBefore = sphereBefore.replace('    const layout', '    await waitForStableHomeLayout();' + lineBreak + '    const layout');
+const stableSphereAfter = sphereAfter.replace('    await page.waitForFunction', '    await waitForStableHomeLayout();' + lineBreak + '    await page.waitForFunction');
 
 if (!source.includes(sourceBefore)) {
   throw new Error('Canonical Ambient source-permission assertion changed; update the synchronization runner explicitly.');
@@ -23,7 +26,7 @@ if (!source.includes(sourceBefore)) {
 if (!source.includes(before)) {
   throw new Error('Canonical Ambient retention assertion changed; update the synchronization runner explicitly.');
 }
-if (!source.includes(sphereBefore)) {
+if (!source.includes(stableSphereBefore)) {
   throw new Error('Canonical responsive sphere synchronization point changed; update the runner explicitly.');
 }
 // Keep the named tablet/desktop snapshot in the same browser task as Home activation.
@@ -55,7 +58,7 @@ if (!source.includes(sweepBefore)) {
 let generated = source
   .replace(sourceBefore, sourceAfter)
   .replace(before, after)
-  .replace(sphereBefore, sphereAfter)
+  .replace(stableSphereBefore, stableSphereAfter)
   .replace(wideBefore, wideAfter)
   .replace(sweepBefore, sweepAfter);
 await writeFile(generatedUrl, generated, 'utf8');

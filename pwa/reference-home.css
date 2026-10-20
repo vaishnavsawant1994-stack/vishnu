@@ -243,6 +243,27 @@ body.v-ref.home-landing .v-project {
 }
 
 @media (orientation: landscape) and (max-height: 520px) and (max-width: 900px) {
+  body.v-ref.home-landing .home-greeting { margin: 4px 0 6px !important; }
+  body.v-ref.home-landing .v-shortcuts {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    grid-template-rows: 50px !important;
+    grid-auto-rows: 50px !important;
+    gap: 8px !important;
+    margin: 6px 0 10px !important;
+  }
+  body.v-ref.home-landing .v-card {
+    height: 50px !important;
+    min-height: 50px !important;
+    padding: 6px 8px !important;
+    grid-template-columns: 30px minmax(0, 1fr) !important;
+    grid-template-rows: 1fr !important;
+    gap: 7px !important;
+    border-radius: 13px !important;
+  }
+  body.v-ref.home-landing .v-card .v-icon { width: 28px; height: 28px; }
+  body.v-ref.home-landing .v-card strong { font-size: 11px !important; line-height: 1.2; }
+  body.v-ref.home-landing .v-card small,
+  body.v-ref.home-landing .v-card .v-chev { display: none !important; }
   body.v-ref.home-landing #composer {
     position: fixed !important;
     left: max(12px, env(safe-area-inset-left)) !important;

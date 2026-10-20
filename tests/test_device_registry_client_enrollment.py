@@ -1,3 +1,5 @@
+import time
+
 import pytest
 
 from devices.registry import DeviceRegistry
@@ -54,3 +56,36 @@ def test_client_credential_enrollment_rejects_weak_material(tmp_path):
         registry.enroll_with_credential('short', 's' * 40, 'Phone', 'ios')
     with pytest.raises(ValueError, match='at least 32'):
         registry.enroll_with_credential('c13c4bc5-2031-4a96-a5eb-732399d44712', 'weak', 'Phone', 'ios')
+
+
+def test_pending_join_is_not_trusted_until_exact_request_is_approved(tmp_path):
+    registry = DeviceRegistry(tmp_path / 'devices.sqlite3')
+    original, _ = registry.enroll('Owner desktop', 'windows')
+    pending = registry.request_join('New browser', 'web-pwa')
+
+    assert not registry.is_active(pending['device_id'])
+    assert registry.join_status(pending['request_id'], pending['device_token']) == {'status': 'pending'}
+    assert registry.join_status(pending['request_id'], 'wrong-token') is None
+    assert registry.decide_join(pending['request_id'], approve=True, decided_by=original['id'])
+
+    enrolled = registry.complete_join(pending['request_id'], pending['device_token'])
+    assert enrolled['id'] == pending['device_id']
+    assert registry.authenticate(pending['device_id'], pending['device_token'])
+    assert registry.is_active(original['id'])
+    assert not registry.authorize(pending['device_id'], 'device:admin')
+    assert registry.complete_join(pending['request_id'], pending['device_token']) is None
+
+
+def test_pending_join_denial_and_expiry_cannot_be_replayed(tmp_path):
+    registry = DeviceRegistry(tmp_path / 'devices.sqlite3')
+    denied = registry.request_join('Denied browser', 'web-pwa')
+    assert registry.decide_join(denied['request_id'], approve=False, decided_by='trusted-device')
+    assert registry.join_status(denied['request_id'], denied['device_token']) == {'status': 'denied'}
+    assert registry.complete_join(denied['request_id'], denied['device_token']) is None
+    assert not registry.decide_join(denied['request_id'], approve=True, decided_by='trusted-device')
+
+    expired = registry.request_join('Expired browser', 'web-pwa', ttl_seconds=60)
+    with registry._con() as con:
+        con.execute("UPDATE pending_device_joins SET expires_at=? WHERE id=?", (time.time() - 1, expired['request_id']))
+    assert registry.pending_joins() == []
+    assert registry.join_status(expired['request_id'], expired['device_token']) == {'status': 'expired'}

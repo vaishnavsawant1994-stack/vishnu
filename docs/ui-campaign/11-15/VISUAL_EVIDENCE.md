@@ -1,0 +1,5 @@
+# Visual evidence — Screens 11–15
+
+The isolated local preview captures are in `artifacts/campaign-demo/` (Home desktop/mobile, Conversation, History, Search and Voice desktop). They were visually inspected against the owner-supplied references. The preview now reuses Vishnu's canonical Core asset and existing desktop/mobile cosmic environments, and the shell hierarchy and card layout are substantially closer. Typography, control states and some screen details still differ; no image-difference overlay or native golden qualification has been produced. These captures are implementation evidence, not pixel-match approval. The reference JPEGs are not stretched as application backgrounds.
+
+Required next evidence: compare captures with extracted desktop/phone reference regions using a difference overlay; finish typography/control convergence; capture all five screens at desktop and phone sizes; review keyboard-open and reduced-motion states; then qualify each actual native app entry independently.

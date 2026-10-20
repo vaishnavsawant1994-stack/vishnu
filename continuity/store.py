@@ -345,6 +345,50 @@ class ContinuityStore:
             connection.commit()
         return grant
 
+    def stage_import_authority(self, *, checkpoint: ContinuityCheckpoint) -> None:
+        """Stage a verified foreign authority in a fresh target ledger.
+
+        This replaces the unsafe practice of copying the source SQLite file over
+        the target. A target with an existing authority must be explicitly
+        decommissioned before import; we never overwrite it implicitly.
+        """
+        now = _iso(_now_dt())
+        with self._con() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            existing = self._authority_row_locked(connection)
+            if existing is not None:
+                raise ContinuityAuthorityError(
+                    "target continuation authority already exists; stop and explicitly prepare this host for transfer"
+                )
+            connection.execute(
+                """
+                INSERT INTO continuation_authority(
+                    slot, epoch, host_id, token_hash, checkpoint_id, status,
+                    acquired_at, heartbeat_at, expires_at, fenced_at
+                ) VALUES (1, ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    int(checkpoint.authority_epoch),
+                    str(checkpoint.source_host_id),
+                    str(checkpoint.id),
+                    AuthorityStatus.FENCED.value,
+                    now,
+                    now,
+                    now,
+                    now,
+                ),
+            )
+            self._append_event_locked(
+                connection,
+                "authority.import_staged",
+                host_id=checkpoint.source_host_id,
+                checkpoint_id=checkpoint.id,
+                epoch=checkpoint.authority_epoch,
+                payload={"target_import": True},
+                created_at=now,
+            )
+            connection.commit()
+
     def fence_for_transfer(
         self,
         *,

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -69,6 +70,7 @@ class DeviceRegistry:
                     Migration(2, "canonical-data-permissions", self._migration_002_permissions),
                     Migration(3, "canonical-sensor-permissions", self._migration_003_sensor_permissions),
                     Migration(4, "sensorium-2-request-scopes", self._migration_004_sensorium2_permissions),
+                    Migration(5, "secure-pending-device-joins", self._migration_005_pending_joins),
                 ),
             )
             with con:
@@ -105,6 +107,19 @@ class DeviceRegistry:
 
     def _migration_004_sensorium2_permissions(self, con):
         self._upgrade_untouched_scopes(con)
+
+    def _migration_005_pending_joins(self, con):
+        con.execute(
+            """CREATE TABLE IF NOT EXISTS pending_device_joins(
+                id TEXT PRIMARY KEY, device_id TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL, platform TEXT NOT NULL,
+                credential_salt TEXT NOT NULL, credential_hash TEXT NOT NULL,
+                verification_code TEXT NOT NULL, status TEXT NOT NULL,
+                created_at REAL NOT NULL, expires_at REAL NOT NULL,
+                decided_at REAL, decided_by TEXT
+            )"""
+        )
+        con.execute("CREATE INDEX IF NOT EXISTS idx_pending_joins_status ON pending_device_joins(status,expires_at)")
 
     def _repair_permission_invariants(self, con):
         con.execute(
@@ -160,6 +175,97 @@ class DeviceRegistry:
         did = str(uuid.uuid4())
         token, salt, token_hash = new_bearer_secret()
         return self._insert_enrollment(did, token, salt, token_hash, name, platform)
+
+    def request_join(self, name, platform="web-pwa", *, ttl_seconds=600):
+        """Create a short-lived, untrusted device request. No device is enrolled yet."""
+        from core.security import hash_secret
+        import time
+
+        join_id = str(uuid.uuid4())
+        device_id = str(uuid.uuid4())
+        token = new_bearer_secret()[0]
+        salt = uuid.uuid4().hex
+        credential_hash = hash_secret(token, salt)
+        code = f"{secrets.randbelow(1_000_000):06d}"
+        stamp = time.time()
+        ttl = max(60, min(int(ttl_seconds), 900))
+        with self._con() as con:
+            con.execute(
+                """INSERT INTO pending_device_joins
+                   (id,device_id,name,platform,credential_salt,credential_hash,verification_code,status,created_at,expires_at)
+                   VALUES(?,?,?,?,?,?,?,'pending',?,?)""",
+                (join_id, device_id, str(name or "Owner browser")[:120], str(platform or "web-pwa")[:40],
+                 salt, credential_hash, code, stamp, stamp + ttl),
+            )
+        return {"request_id": join_id, "device_id": device_id, "device_token": token,
+                "verification_code": code, "expires_at": stamp + ttl}
+
+    def pending_joins(self):
+        import time
+        stamp = time.time()
+        with self._con() as con:
+            con.execute("UPDATE pending_device_joins SET status='expired' WHERE status='pending' AND expires_at<?", (stamp,))
+            rows = con.execute(
+                """SELECT id,device_id,name,platform,verification_code,created_at,expires_at
+                   FROM pending_device_joins WHERE status='pending' AND expires_at>=? ORDER BY created_at""",
+                (stamp,),
+            ).fetchall()
+        return [{**dict(row), "request_id": row["id"]} for row in rows]
+
+    def decide_join(self, request_id, *, approve, decided_by):
+        """Atomically approve or deny one unexpired join, recording its trusted reviewer."""
+        import time
+        stamp = time.time()
+        status = "approved" if approve else "denied"
+        with self._con() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT status,expires_at FROM pending_device_joins WHERE id=?", (str(request_id),)).fetchone()
+            if not row or row["status"] != "pending" or float(row["expires_at"]) < stamp:
+                con.rollback()
+                return False
+            changed = con.execute(
+                "UPDATE pending_device_joins SET status=?,decided_at=?,decided_by=? WHERE id=? AND status='pending'",
+                (status, stamp, str(decided_by), str(request_id)),
+            ).rowcount == 1
+            con.commit()
+        return changed
+
+    def join_status(self, request_id, token):
+        from core.security import verify_secret
+        import time
+        with self._con() as con:
+            row = con.execute("SELECT * FROM pending_device_joins WHERE id=?", (str(request_id),)).fetchone()
+        if not row or not verify_secret(str(token or ""), row["credential_salt"], row["credential_hash"]):
+            return None
+        if row["status"] in {"pending", "approved"} and float(row["expires_at"]) < time.time():
+            with self._con() as con:
+                con.execute("UPDATE pending_device_joins SET status='expired' WHERE id=? AND status IN ('pending','approved')", (str(request_id),))
+            return {"status": "expired"}
+        return {"status": row["status"]}
+
+    def complete_join(self, request_id, token):
+        """Enroll the exact approved credential once; denied, expired, or replayed joins fail."""
+        from core.security import verify_secret
+        import time
+        stamp = time.time()
+        with self._con() as con:
+            con.execute("BEGIN IMMEDIATE")
+            row = con.execute("SELECT * FROM pending_device_joins WHERE id=?", (str(request_id),)).fetchone()
+            if (not row or row["status"] != "approved" or float(row["expires_at"]) < stamp
+                    or not verify_secret(str(token or ""), row["credential_salt"], row["credential_hash"])):
+                con.rollback()
+                return None
+            scopes = sorted(self.DEFAULT_SCOPES)
+            con.execute(
+                "INSERT INTO devices VALUES(?,?,?,?,?,?,?,0)",
+                (row["device_id"], row["name"], row["platform"], row["credential_salt"],
+                 row["credential_hash"], now(), None),
+            )
+            con.execute("INSERT INTO device_permissions VALUES(?,?,?)",
+                        (row["device_id"], json.dumps(scopes), now()))
+            con.execute("UPDATE pending_device_joins SET status='completed' WHERE id=? AND status='approved'", (str(request_id),))
+            con.commit()
+        return {"id": row["device_id"], "name": row["name"], "platform": row["platform"]}
 
     def enroll_with_credential(self, device_id, token, name, platform):
         did = str(device_id or "").strip()
