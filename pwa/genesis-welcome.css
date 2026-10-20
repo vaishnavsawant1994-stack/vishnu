@@ -40,7 +40,7 @@
 .vw-stage { position: relative; z-index: 1; flex: 1; width: min(100%, 990px); min-height: 0; margin: 0 auto; padding: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
 .vw-sphere { flex: 0 0 auto; width: clamp(230px, 40vh, 385px); height: clamp(230px, 40vh, 385px); position: relative; isolation: isolate; touch-action: none; border-radius: 50%; }
 .vw-sphere::before { position:absolute; z-index:-1; inset:6%; content:""; background:radial-gradient(circle,rgba(27,201,255,.42) 0%,rgba(0,138,238,.24) 22%,rgba(0,75,174,.12) 45%,transparent 73%); filter:blur(26px); pointer-events:none; }
-.vw-sphere::after { content:""; position:absolute; inset:2%; border-radius:50%; border:1px solid rgba(21,180,255,.36); box-shadow: 0 0 27px rgba(0,141,255,.13), inset 0 0 35px rgba(0,134,255,.13); pointer-events:none; }
+.vw-sphere::after { content:""; position:absolute; inset:0; border-radius:50%; border:1px solid rgba(21,180,255,.36); box-shadow: 0 0 27px rgba(0,141,255,.13), inset 0 0 35px rgba(0,134,255,.13); pointer-events:none; }
 .vw-sphere canvas { width:100%;height:100%; display:block; outline:none; cursor:grab; border-radius:50%; }
 .vw-sphere canvas:active {cursor:grabbing;}
 .vw-sphere.vw-static-fallback { background: radial-gradient(circle at 44% 46%, #00d1fd 0 1%, #007cc1 3%, rgba(4,57,108,.25) 18%,transparent 67%); }
