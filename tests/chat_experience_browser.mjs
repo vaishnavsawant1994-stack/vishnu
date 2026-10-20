@@ -50,7 +50,10 @@ async function verifyReturningOwnerEntry(){
   await page.locator('.returning-shell').waitFor({state:'visible'});
   assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state instead of a Face ID dead end');
   await page.locator('[data-auth-action="restore"]').click();
-  assert.match(await page.locator('.returning-notice').innerText(),/not backup data/i,'recovery-code sign-in is not mislabeled as backup restoration');
+  assert.match(await page.locator('.returning-notice').innerText(),/encrypted recovery package/i,
+    'a fresh runtime must ask for the encrypted recovery package rather than treating a login code as a backup');
+  assert.equal(await page.locator('#restoreArchive').count(), 1,
+    'fresh runtime recovery requires the verified archive and separate key');
   assert.match(await page.locator('.genesis-copy h1').innerText(),/Recover owner access/i,'recovery route clearly names its purpose');
   await page.locator('[data-auth-action="welcome"]').click();
   assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
