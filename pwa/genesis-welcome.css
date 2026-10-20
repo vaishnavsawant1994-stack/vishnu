@@ -87,6 +87,7 @@ button.vw-tool:hover {color:var(--vw-cyan);}
 .vw-dialog p {font-size:15px;line-height:1.55;color:#bac9dc;}
 .vw-dialog select {width:100%;font-size:16px;background:#081c32;color:#fff;padding:13px;border:1px solid #3c92c3;border-radius:10px;}
 .vw-dialog button {margin-top:16px;color:#fff;background:#075dc8;border:1px solid #43b8e9;padding:10px 20px;border-radius:12px;cursor:pointer;}
+@media (min-width:701px) and (min-height:841px) { .genesis-welcome .vw-stage { transform:translateY(13px); } }
 @media (max-height:840px) and (min-width:701px) {
  .genesis-shell.genesis-welcome { padding-top:20px;padding-bottom:12px; }
  .vw-header {top:24px;}
