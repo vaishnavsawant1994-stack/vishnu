@@ -27,6 +27,8 @@
   panel.setAttribute('aria-label', 'Vishnu Genesis onboarding');
   const backgroundNavigation = [...document.querySelectorAll('.reference-desktop-sidebar,.reference-desktop-tools,.reference-mobile-nav,#drawerOverlay,#appDrawer,#conversationDrawer')];
   let priorNavigationState = [];
+  let disposeWelcome = () => {};
+  let welcomeMountId = 0;
 
   const paths = {
     user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
@@ -87,17 +89,109 @@
     return `${heading('Your Vishnu is ready to be created', 'Review your setup, then create your Vishnu.')}<div class="genesis-content"><div class="genesis-grid">${review.map(([iconName, title, copy]) => `<article class="genesis-card genesis-review"><div class="genesis-card-head">${icon(iconName)}<div><strong>${title}</strong><small>${copy}</small></div></div></article>`).join('')}</div>${actions('Create my Vishnu &rarr;')}</div>`;
   }
 
+
+  function welcomeMarkup() {
+    return `<main class="genesis-shell genesis-welcome" data-step="1">
+      <div class="vw-window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+      <header class="vw-header">
+        <div class="vw-brand"><span class="vw-logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48" fill="none"><path d="M24 3c2.7 12.7 5.3 15.3 18 21-12.7 2.7-15.3 5.3-18 21C21.3 32.3 18.7 29.7 6 24 18.7 21.3 21.3 18.7 24 3Z" fill="#e7ffff"/><path d="M24 9c1.8 9 3.9 11.1 13 15-9.1 1.9-11.2 4-13 13C22.2 28 20.1 25.9 11 24c9.1-1.9 11.2-4 13-15Z" fill="#73dfff"/></svg>
+        </span><span>VISHNU 2.0</span></div>
+        <span class="vw-screen-id" aria-label="Screen P1-01">P1-01</span>
+      </header>
+      <section class="vw-stage" aria-labelledby="vwHeadline">
+        <div class="vw-sphere" aria-hidden="true"><canvas id="vwSphereCanvas"></canvas></div>
+        <p class="vw-eyebrow">A NEW BEGINNING</p>
+        <h1 class="vw-heading" id="vwHeadline">Welcome to <em>Vishnu.</em></h1>
+        <p class="vw-subtitle">Your personal AI. Simple, secure, always with you.</p>
+        <div class="vw-actions">
+          <button type="button" class="vw-primary" data-genesis-create><span>Create My Vishnu</span><span class="vw-primary-arrow" aria-hidden="true">→</span></button>
+          <div class="vw-cards">
+            <button type="button" class="vw-card" data-genesis-join>
+              <span class="vw-card-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="10" r="5"/><path d="M7 28v-4a9 9 0 0 1 18 0v4Z"/></svg></span>
+              <span class="vw-card-copy"><strong>I Already Have Vishnu</strong><small>Unlock or securely connect this device.</small></span><span class="vw-chevron" aria-hidden="true">›</span>
+            </button>
+            <button type="button" class="vw-card" data-genesis-restore>
+              <span class="vw-card-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 13a11 11 0 1 1-1 9M6 6v8h8"/></svg></span>
+              <span class="vw-card-copy"><strong>Restore My Vishnu</strong><small>Recover login access or restore encrypted data.</small></span><span class="vw-chevron" aria-hidden="true">›</span>
+            </button>
+          </div>
+          <p class="vw-status" id="genesisStatus" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+      <footer class="vw-footer">
+        <div class="vw-privacy">PRIVATE BY DESIGN</div>
+        <div class="vw-tools">
+          <button type="button" class="vw-tool" data-vw-language><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2c-6 6-6 14 0 20M12 2c6 6 6 14 0 20"/></svg>Language</button>
+          <span class="vw-tool-divider" aria-hidden="true"></span>
+          <button type="button" class="vw-tool" data-vw-help><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.7 2.7 0 1 1 4.7 1.8c-.8.8-2.2 1.4-2.2 3.2M12 18h.01"/></svg>Help</button>
+        </div>
+      </footer>
+      <dialog class="vw-dialog" id="vwLanguageDialog" aria-labelledby="vwLanguageTitle">
+        <h2 id="vwLanguageTitle">Language</h2>
+        <label for="vwLanguageSelection">Available language</label>
+        <select id="vwLanguageSelection"><option value="en" selected>English</option></select>
+        <p>English is currently supported in this onboarding experience. More languages will be offered when fully translated.</p>
+        <button type="button" data-vw-close>Close</button>
+      </dialog>
+      <dialog class="vw-dialog" id="vwHelpDialog" aria-labelledby="vwHelpTitle">
+        <h2 id="vwHelpTitle">Getting started with Vishnu</h2>
+        <p><strong>Create My Vishnu</strong> begins a new owner setup only when the connected runtime allows it.</p>
+        <p><strong>I Already Have Vishnu</strong> signs in or requests approval for an additional device.</p>
+        <p><strong>Restore My Vishnu</strong> lets you recover access or verify encrypted recovery files. Recovery codes do not restore backup data.</p>
+        <button type="button" data-vw-close>Close</button>
+      </dialog>
+    </main>`;
+  }
+
+  async function startWelcomeCreation() {
+    const button = panel.querySelector('[data-genesis-create]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      const options = await window.loadAccessOptions();
+      if (options.setup_in_progress) {
+        renderPendingSetup();
+      } else if (options.creation_available) {
+        render(2);
+      } else {
+        renderReturning('welcome');
+      }
+    } catch {
+      setError('Could not verify owner setup status. Check your runtime connection and retry.');
+      button.disabled = false;
+    }
+  }
+
   function render(n = s.step) {
     s.step = Math.max(1, Math.min(4, n));
     const progress = s.step > 1;
     const journeyStep = s.step - 1;
+
+    disposeWelcome();
+    const mountId = ++welcomeMountId;
+    if (s.step === 1) {
+      panel.setAttribute('aria-label', 'Welcome to Vishnu');
+      panel.innerHTML = welcomeMarkup();
+      bind();
+      panel.querySelector('[data-vw-language]')?.addEventListener('click', () => $('vwLanguageDialog').showModal());
+      panel.querySelector('[data-vw-help]')?.addEventListener('click', () => $('vwHelpDialog').showModal());
+      panel.querySelectorAll('[data-vw-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
+      import('/iphone/genesis-neural-sphere.js').then(({ mountNeuralSphere }) => {
+        const canvas = $('vwSphereCanvas');
+        if (mountId !== welcomeMountId || !canvas || !canvas.isConnected) return;
+        disposeWelcome = mountNeuralSphere(canvas);
+      }).catch(() => { $('vwSphereCanvas')?.parentElement?.classList.add('vw-static-fallback'); });
+      return;
+    }
+    panel.setAttribute('aria-label', 'Vishnu owner setup');
     panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${journeyStep} of 3${dots(journeyStep)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, setup step ${journeyStep} of 3"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
     bind();
   }
 
   function bind() {
     panel.querySelectorAll('[data-genesis-back]').forEach(button => { button.onclick = () => s.step > 1 && render(s.step-1); });
-    panel.querySelector('[data-genesis-create]')?.addEventListener('click', () => render(2));
+    panel.querySelector('[data-genesis-create]')?.addEventListener('click', startWelcomeCreation);
     panel.querySelector('[data-genesis-join]')?.addEventListener('click', () => showLegacy('join'));
     panel.querySelector('[data-genesis-restore]')?.addEventListener('click', () => showLegacy('restore'));
     panel.querySelector('[data-genesis-next]')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: { step: s.step } })));
@@ -151,6 +245,8 @@
     return `<button type="button" class="returning-action ${primary ? 'primary' : ''}" data-auth-action="${kind}"><span class="returning-action-icon">${authIcon(kind) || ''}</span><span class="returning-action-copy"><strong>${title}</strong>${detail ? `<small>${detail}</small>` : ''}</span><span class="returning-arrow" aria-hidden="true">→</span></button>`;
   }
   function renderReturning(view = 'welcome') {
+    disposeWelcome();
+    ++welcomeMountId;
     s.authView = view;
     panel.setAttribute('aria-label', view === 'restore' ? 'Recover owner access' : 'Vishnu owner authentication');
     const configured = Boolean(s.options.passkey_available || s.options.password_available || s.options.recovery_available || s.options.google_available);
@@ -244,6 +340,8 @@
     }
   }
   function renderRestoreSecurity() {
+    disposeWelcome();
+    ++welcomeMountId;
     panel.setAttribute('aria-label', 'Secure restored Vishnu');
     panel.className = 'genesis';
     panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu recovery complete"></div><div class="genesis-copy"><h1>Secure your restored <em>Vishnu</em></h1><p>Available encrypted data has been restored. Security credentials were not imported. Set a fresh owner password and trust this web device.</p></div><div class="returning-actions returning-form">${s.options.local_setup_available ? '' : '<label class="returning-password-label" for="restoreSecureBootstrap">Local runtime setup code</label><input id="restoreSecureBootstrap" type="password" autocomplete="one-time-code" placeholder="Enter the secure setup code">'}<label class="returning-password-label" for="restoreOwnerPassword">New owner password</label><input id="restoreOwnerPassword" type="password" autocomplete="new-password" placeholder="At least 12 characters"><label class="returning-password-label" for="restoreOwnerPasswordAgain">Confirm new owner password</label><input id="restoreOwnerPasswordAgain" type="password" autocomplete="new-password" placeholder="Repeat the new password"><button id="restoreSecureDevice" class="genesis-primary" type="button">Secure this web device →</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
@@ -273,12 +371,16 @@
     });
   }
   function renderRestoreRestartRequired() {
+    disposeWelcome();
+    ++welcomeMountId;
     panel.setAttribute('aria-label', 'Restart Vishnu to restore data');
     panel.className = 'genesis';
     panel.innerHTML = '<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Verified Vishnu recovery package"></div><div class="genesis-copy"><h1>Recovery is ready</h1><p>The encrypted package was authenticated. Restart the local Vishnu runtime to restore available data. Your existing security state will not be imported.</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-restore-check>Check recovery status →</button></div></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>';
     panel.querySelector('[data-restore-check]')?.addEventListener('click', () => location.reload());
   }
   function renderPendingSetup() {
+    disposeWelcome();
+    ++welcomeMountId;
     const resumeStep = Number(s.options.setup_resume_step) || 4;
     s.identityCreated = resumeStep >= 4;
     panel.setAttribute('aria-label', 'Continue Vishnu setup');
@@ -294,6 +396,8 @@
   let joinPollTimer = 0;
   const safeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
   function renderJoinPending(join) {
+    disposeWelcome();
+    ++welcomeMountId;
     const publicJoin = { request_id: join.request_id, verification_code: join.verification_code, name: join.name, expires_at: join.expires_at };
     sessionStorage.setItem('vishnuPendingJoin', JSON.stringify(publicJoin));
     panel.setAttribute('aria-label', 'Approve this device');
@@ -366,6 +470,8 @@
     document.body.classList.add('genesis-active'); panel.className = 'genesis'; render(s.step);
   }
   function hide() {
+    disposeWelcome();
+    ++welcomeMountId;
     document.body.classList.remove('genesis-active'); panel.classList.add('hidden');
     for (const { element, ariaHidden, inert } of priorNavigationState) {
       if (ariaHidden === null) element.removeAttribute('aria-hidden'); else element.setAttribute('aria-hidden', ariaHidden);
