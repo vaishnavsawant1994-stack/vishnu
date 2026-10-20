@@ -14,14 +14,20 @@
   overflow: hidden;
   color: var(--vw-text);
   background:
-    radial-gradient(ellipse 470px 325px at 50% 31%, rgba(0, 87, 156, .14), transparent 74%),
-    radial-gradient(ellipse 60% 18% at 50% 73%, rgba(0, 91, 192, .14), transparent 80%),
+    radial-gradient(ellipse 470px 325px at 50% 31%, rgba(0, 87, 156, .16), transparent 74%),
+    radial-gradient(ellipse 50% 18% at 15% 73%, rgba(0, 91, 192, .14), transparent 86%),
+    radial-gradient(ellipse 50% 18% at 85% 73%, rgba(0, 91, 192, .14), transparent 86%),
+    radial-gradient(ellipse 75% 22% at 50% 73%, rgba(0, 73, 157, .15), transparent 82%),
+    radial-gradient(ellipse 65% 22% at 50% 100%, rgba(0, 51, 125, .15), transparent 90%),
     linear-gradient(160deg, #020508 5%, #020a13 47%, #010409 90%);
   box-shadow: inset 0 0 0 1px rgba(4, 40, 79, .2), 0 0 24px rgba(0, 27, 62, .08);
 }
 .genesis-welcome::before {
-  content: ""; position: absolute; pointer-events: none; inset: 52% -15% 13%;
-  opacity: .33; background: radial-gradient(ellipse 60% 8% at 50% 83%, #087be2 0, rgba(7, 85, 160, .24) 38%, transparent 85%);
+  content: ""; position: absolute; pointer-events: none; inset: 59% -15% 13%;
+  opacity: .62;
+  background:
+    linear-gradient(180deg, transparent 30%, rgba(0, 105, 205, .07) 34%, rgba(0, 122, 235, .14) 35%, rgba(0, 105, 204, .07) 36%, transparent 43%),
+    radial-gradient(ellipse 75% 12% at 50% 36%, rgba(0, 117, 224, .24), transparent 92%);
 }
 .genesis-welcome::after { background: none; }
 .vw-header {
