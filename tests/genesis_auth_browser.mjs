@@ -36,13 +36,29 @@ try {
     window.createCalls = [];
     window.api = async path => { window.createCalls.push(path); return {}; };
     window.vishnuFirstRun.state.identityCreated = true;
-    window.vishnuFirstRun.state.recoveryCodes = ['TEST-CODE'];
+    // A resumed setup has no plaintext codes in browser memory; it must offer
+    // regeneration instead of throwing while rendering the recovery screen.
+    window.vishnuFirstRun.state.recoveryCodes = undefined;
     window.vishnuFirstRun.render(3);
     window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: { step: 3 } }));
   });
-  await page.locator('#firstRunCodes').getByText('TEST-CODE').waitFor();
+  await page.locator('#firstRunCodes').getByText('Recovery codes were already generated').waitFor();
   assert.deepEqual(await page.evaluate(() => window.createCalls), [],
     'resuming after owner creation must not call create again or produce a duplicate-account error');
+  await page.evaluate(async () => {
+    window.api = async path => {
+      if (path === '/first-run/recovery-codes') {
+        throw new Error('This web browser is not currently trusted by Vishnu.');
+      }
+      return { ok: true, status: 'setup_in_progress' };
+    };
+    try { await window.vishnuFirstRun.setupApi('/first-run/recovery-codes', { method: 'POST', body: '{}' }); }
+    catch { /* UI asks the owner to reauthenticate instead of losing setup. */ }
+  });
+  await page.getByRole('heading', { name: 'Restore this browser’s setup access' }).waitFor();
+  await page.getByRole('textbox', { name: 'Owner password' }).fill('test owner password 123');
+  await page.getByRole('button', { name: 'Reconnect this browser' }).click();
+  await page.locator('#genesisStatus').getByText('Browser access restored').waitFor();
   await page.evaluate(() => {
     window.vishnuFirstRun.render(4);
     window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: { step: 4 } }));

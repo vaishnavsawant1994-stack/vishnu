@@ -15,7 +15,7 @@
   const localPreviewStep = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /^(?:[1-4])$/.test(requestedStep || '')
     ? Number(requestedStep) : 1;
   const s = {
-    step: localPreviewStep, options: {}, identityCreated: false, recoverySaved: false,
+    step: localPreviewStep, options: {}, identityCreated: false, recoveryCodes: [], recoverySaved: false,
     policySaved: false, modelSaved: false, passkeyCreated: false,
     auth: 'passkey', dataPolicy: 'device_only', intelligence: 'skip', privacy: 'local_only',
     accessIntent: accessIntent || '', authView: 'welcome', pendingPostAuthAction: '',
@@ -56,7 +56,7 @@
     if (n === 1) return `${heading('Welcome to Vishnu', 'Your personal AI. Your world.')}<div class="genesis-actions"><button class="genesis-primary" data-genesis-create>Create My Vishnu &rarr;</button><div class="genesis-secondary-row"><button class="genesis-tertiary" data-genesis-join>I Already Have Vishnu</button><span>|</span><button class="genesis-tertiary" data-genesis-restore>Restore Vishnu</button></div><p id="genesisStatus" class="genesis-error" role="status" aria-live="polite"></p></div>`;
     if (n === 2) return `${heading('What should Vishnu call you?', 'Your name helps personalize your Vishnu.')}<div class="genesis-content narrow"><div class="genesis-fields">${field('firstRunFirstName', 'First name', 'text', 'given-name')}${field('firstRunLastName', 'Last name (optional)', 'text', 'family-name')}${field('firstRunDisplayName', 'Display name', 'text', 'nickname', 'wide')}</div><p class="genesis-note">You can add a profile picture later from your profile.</p>${actions()}</div>`;
     if (n === 3) return `${heading('Secure your Vishnu', 'Choose a sign-in method and set a strong owner password.')}<div class="genesis-content medium"><div class="genesis-grid stack">${card({ value: 'passkey', title: 'Password + passkey', copy: 'Use your owner password and add this device’s secure sign-in.', badgeText: 'Recommended', name: 'auth', selected: true, iconName: 'user' })}${card({ value: 'password', title: 'Password only', copy: 'Use your owner password to sign in.', name: 'auth', iconName: 'lock' })}</div><p class="genesis-note">This runtime requires an owner password to protect setup and recovery. A passkey is an additional sign-in method and may be added later.</p><div class="genesis-fields">${field('firstRunBootstrap', 'Local runtime setup code', 'password', 'one-time-code', 'wide')}${field('firstRunPassword', 'Owner password - 12 characters minimum', 'password', 'new-password')}${field('firstRunPasswordAgain', 'Confirm owner password', 'password', 'new-password')}</div>${actions('Secure Vishnu &rarr;')}</div>`;
-    if (n === 4) return `${heading('Save your Vishnu Recovery Key', 'Keep these one-time recovery codes somewhere safe. They help you regain access if you lose your sign-in method.')}<div class="genesis-content medium"><article class="genesis-card selected"><div class="genesis-card-head">${icon('key')}<div><h3>Recovery codes${badge('Required')}</h3><p>Each code can be used once. Vishnu does not keep a readable copy.</p></div></div><pre id="firstRunCodes" class="genesis-recovery">Recovery codes are shown only once. If you did not save your earlier codes, generate a fresh set below.</pre><button type="button" class="genesis-tertiary" data-genesis-regenerate-codes>Generate fresh recovery codes</button></article><label class="genesis-check"><input id="firstRunRecoverySaved" type="checkbox" ${s.options.setup_recovery_saved ? 'checked' : ''}>I have safely saved my recovery codes.</label>${actions('Create My Vishnu &rarr;')}</div>`;
+    if (n === 4) return `${heading('Save your Vishnu Recovery Key', 'Keep these one-time recovery codes somewhere safe. They help you regain access if you lose your sign-in method.')}<div class="genesis-content medium">${s.options.restore_report?.status === 'restored' ? `<div class="genesis-note" role="status">Recovery complete: ${Number(s.options.restore_report.restored_items) || 0} files restored from an authenticated encrypted package. Owner and Vishnu identity preserved. Device credentials and prior security state were not restored.</div>` : ''}<article class="genesis-card selected"><div class="genesis-card-head">${icon('key')}<div><h3>Recovery codes${badge('Required')}</h3><p>Each code can be used once. Vishnu does not keep a readable copy.</p></div></div><pre id="firstRunCodes" class="genesis-recovery">Recovery codes are shown only once. If you did not save your earlier codes, generate a fresh set below.</pre><button type="button" class="genesis-tertiary" data-genesis-regenerate-codes>Generate fresh recovery codes</button></article><label class="genesis-check"><input id="firstRunRecoverySaved" type="checkbox" ${s.options.setup_recovery_saved ? 'checked' : ''}>I have safely saved my recovery codes.</label>${actions('Create My Vishnu &rarr;')}</div>`;
     if (n === 1) return `${heading('Welcome to Vishnu', 'Your personal AI. Your world.')}<div class="genesis-actions"><button class="genesis-primary" data-genesis-create>Create My Vishnu &rarr;</button><div class="genesis-secondary-row"><button class="genesis-tertiary" data-genesis-join>I Already Have Vishnu</button><span>|</span><button class="genesis-tertiary" data-genesis-restore>Restore Vishnu</button></div><p id="genesisStatus" class="genesis-error" role="status" aria-live="polite"></p></div>`;
 
     if (n === 2) return `${heading('What should Vishnu call you?', 'Your name helps personalize your Vishnu.')}<div class="genesis-content narrow"><div class="genesis-fields">${field('firstRunFirstName', 'First name', 'text', 'given-name')}${field('firstRunLastName', 'Last name (optional)', 'text', 'family-name')}${field('firstRunDisplayName', 'Display name', 'text', 'nickname', 'wide')}</div><p class="genesis-note">You can add a profile picture later from your profile.</p>${actions()}</div>`;
@@ -154,9 +154,11 @@
     s.authView = view;
     panel.setAttribute('aria-label', view === 'restore' ? 'Recover owner access' : 'Vishnu owner authentication');
     const configured = Boolean(s.options.passkey_available || s.options.password_available || s.options.recovery_available || s.options.google_available);
-    const freshRuntime = Boolean(s.options.creation_available && !s.options.setup_in_progress);
+    const freshRuntime = Boolean((s.options.creation_available || s.options.restore_available) && !s.options.setup_in_progress);
     const supportedPasskey = Boolean(s.options.passkey_available && window.PublicKeyCredential && navigator.credentials);
-    const body = view === 'restore'
+    const body = view === 'restore' && freshRuntime
+      ? `<div class="returning-notice" role="note"><strong>Restore your existing Vishnu</strong><span>Choose the encrypted recovery package and its separate recovery key. Vishnu authenticates both before scheduling any data changes.</span></div><div class="returning-actions returning-form"><label class="returning-password-label" for="restoreArchive">Encrypted recovery package (.vdr)</label><input id="restoreArchive" type="file" accept=".vdr,application/octet-stream"><label class="returning-password-label" for="restoreKeyFile">Encrypted recovery key (.vrk)</label><input id="restoreKeyFile" type="file" accept=".vrk,application/octet-stream"><label class="returning-password-label" for="restorePassphrase">Recovery key passphrase</label><input id="restorePassphrase" type="password" autocomplete="current-password" placeholder="Enter the passphrase used to protect the recovery key">${s.options.local_setup_available ? '' : '<label class="returning-password-label" for="restoreBootstrap">Local runtime setup code</label><input id="restoreBootstrap" type="password" autocomplete="one-time-code" placeholder="Enter the secure setup code">'}<button id="portableRestoreStart" class="genesis-primary" type="button">Verify recovery and continue →</button></div>`
+      : view === 'restore'
       ? `<div class="returning-actions returning-form"><label class="returning-password-label" for="recoveryCode">Recovery code</label><input id="recoveryCode" type="text" autocomplete="one-time-code" autocapitalize="characters" placeholder="Enter a saved recovery code"/><button id="recoveryLogin" class="genesis-primary" type="button">Verify and continue →</button></div>`
       : freshRuntime
       ? `<div class="returning-notice" role="status"><strong>No existing Vishnu is configured on this local runtime.</strong><span>You can create a new Vishnu here, or restore one from recovery materials. Nothing has been signed in or changed.</span></div><div class="returning-actions">${authButton('create', 'Create my Vishnu', 'Start owner setup on this device.', null, true)}${authButton('restore', 'Restore Vishnu', 'Choose recovery materials to begin.', null)}</div>`
@@ -175,20 +177,22 @@
       const notice = document.createElement('div');
       notice.className = 'returning-notice';
       notice.setAttribute('role', 'note');
-      notice.innerHTML = '<strong>This recovers owner access, not backup data.</strong><span>Enter a saved one-time recovery code to sign in. To restore a .vdr or .paibackup file, use the Vishnu desktop first-run restore workflow.</span>';
-      panel.querySelector('.genesis-copy').after(notice);
-      const label = panel.querySelector('label[for="recoveryCode"]');
-      if (label) label.textContent = 'One-time recovery code';
-      const submit = panel.querySelector('#recoveryLogin');
-      if (submit) submit.textContent = 'Verify owner access';
+      if (!freshRuntime) {
+        notice.innerHTML = '<strong>A recovery code restores sign-in access only.</strong><span>Enter a saved one-time recovery code to sign in. To recover backup data, use a verified encrypted recovery package and its separate recovery key.</span>';
+        panel.querySelector('.genesis-copy').after(notice);
+        const label = panel.querySelector('label[for="recoveryCode"]');
+        if (label) label.textContent = 'One-time recovery code';
+        const submit = panel.querySelector('#recoveryLogin');
+        if (submit) submit.textContent = 'Verify owner access';
+      }
     }
     if (freshRuntime) {
       const noticeText = panel.querySelector('.returning-notice span');
-      if (noticeText) noticeText.textContent = 'Create a new Vishnu here, or use the desktop first-run restore workflow to restore backup data. A recovery code only restores owner access.';
+      if (noticeText) noticeText.textContent = 'Create a new Vishnu here, or restore available data from an encrypted recovery package and its recovery key.';
       const recoveryAction = panel.querySelector('[data-auth-action="restore"]');
       if (recoveryAction) {
-        recoveryAction.querySelector('strong').textContent = 'Recover owner access';
-        recoveryAction.querySelector('small').textContent = 'Sign in with a saved one-time recovery code.';
+        recoveryAction.querySelector('strong').textContent = 'Restore Vishnu';
+        recoveryAction.querySelector('small').textContent = 'Verify an encrypted recovery package and key.';
       }
     }
     panel.querySelectorAll('[data-auth-action]').forEach(button => button.addEventListener('click', () => handleReturningAction(button.dataset.authAction)));
@@ -198,8 +202,81 @@
         ? 'Your sign-in stays local to this Vishnu runtime and uses its configured owner security.'
         : 'Keyboard navigation, visible focus and reduced motion are supported.';
     }));
-    if (view === 'restore') $('recoveryLogin').onclick = async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } };
+    panel.querySelector('#portableRestoreStart')?.addEventListener('click', submitPortableRestore);
+    if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } });
     if (view === 'google') renderGoogleLogin();
+  }
+  async function submitPortableRestore(event) {
+    const button = event.currentTarget;
+    const status = $('returningStatus');
+    const archive = $('restoreArchive')?.files?.[0];
+    const keyFile = $('restoreKeyFile')?.files?.[0];
+    const passphrase = $('restorePassphrase')?.value || '';
+    const bootstrap = $('restoreBootstrap')?.value || '';
+    if (!archive || !keyFile) { status.textContent = 'Choose both the encrypted recovery package and its separate recovery key.'; return; }
+    if (!archive.name.toLowerCase().endsWith('.vdr') || !keyFile.name.toLowerCase().endsWith('.vrk')) { status.textContent = 'Choose a .vdr recovery package and its matching .vrk key file.'; return; }
+    if (passphrase.length < 12) { status.textContent = 'Enter the recovery key passphrase (at least 12 characters).'; return; }
+    if (!s.options.local_setup_available && bootstrap.length < 32) { status.textContent = 'Enter the secure setup code provided for this Vishnu runtime.'; return; }
+    const upload = async (url, file) => {
+      const response = await fetch(url, { method: 'POST', credentials: 'same-origin', body: file,
+        headers: bootstrap ? { 'X-Vishnu-Setup-Code': bootstrap } : {} });
+      let payload = {};
+      try { payload = await response.json(); } catch {}
+      if (!response.ok) throw new Error(payload.detail || payload.error || `Recovery upload failed (${response.status}).`);
+      return payload;
+    };
+    button.disabled = true;
+    try {
+      status.textContent = 'Step 1 of 3 — verifying the encrypted recovery package…';
+      const staged = await upload('/iphone/api/first-run/restore/archive', archive);
+      status.textContent = 'Step 1 of 3 — verifying the separate recovery key…';
+      await upload(`/iphone/api/first-run/restore/key?session_id=${encodeURIComponent(staged.session_id)}`, keyFile);
+      status.textContent = 'Step 2 of 3 — authenticating ownership and preparing this web device…';
+      const scheduled = await api('/first-run/restore/schedule', { method: 'POST', body: JSON.stringify({
+        session_id: staged.session_id, bootstrap_secret: bootstrap, passphrase,
+      }) });
+      status.textContent = scheduled.status === 'restart_required'
+        ? 'Recovery package verified. Restart the local Vishnu runtime to restore available data. After restart, this web page will guide you through securing the replacement device.'
+        : 'Recovery package verified, but the runtime did not confirm that restoration was scheduled.';
+    } catch (error) {
+      status.textContent = error?.message || 'The recovery package could not be verified. No data was restored.';
+      button.disabled = false;
+    }
+  }
+  function renderRestoreSecurity() {
+    panel.setAttribute('aria-label', 'Secure restored Vishnu');
+    panel.className = 'genesis';
+    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu recovery complete"></div><div class="genesis-copy"><h1>Secure your restored <em>Vishnu</em></h1><p>Available encrypted data has been restored. Security credentials were not imported. Set a fresh owner password and trust this web device.</p></div><div class="returning-actions returning-form">${s.options.local_setup_available ? '' : '<label class="returning-password-label" for="restoreSecureBootstrap">Local runtime setup code</label><input id="restoreSecureBootstrap" type="password" autocomplete="one-time-code" placeholder="Enter the secure setup code">'}<label class="returning-password-label" for="restoreOwnerPassword">New owner password</label><input id="restoreOwnerPassword" type="password" autocomplete="new-password" placeholder="At least 12 characters"><label class="returning-password-label" for="restoreOwnerPasswordAgain">Confirm new owner password</label><input id="restoreOwnerPasswordAgain" type="password" autocomplete="new-password" placeholder="Repeat the new password"><button id="restoreSecureDevice" class="genesis-primary" type="button">Secure this web device →</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
+    panel.querySelector('#restoreSecureDevice')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      const password = $('restoreOwnerPassword')?.value || '';
+      if (password.length < 12) { $('returningStatus').textContent = 'Use a password with at least 12 characters.'; return; }
+      if (password !== $('restoreOwnerPasswordAgain')?.value) { $('returningStatus').textContent = 'The passwords do not match.'; return; }
+      const bootstrap = $('restoreSecureBootstrap')?.value || '';
+      if (!s.options.local_setup_available && bootstrap.length < 32) { $('returningStatus').textContent = 'Enter the secure setup code provided for this Vishnu runtime.'; return; }
+      button.disabled = true;
+      try {
+        const result = await api('/first-run/restore/secure-device', { method: 'POST', body: JSON.stringify({
+          bootstrap_secret: bootstrap, password,
+          device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+        }) });
+        s.identityCreated = true;
+        s.recoveryCodes = result.recovery_codes || [];
+        s.owner = result.identity?.display_name || 'Vishnu Owner';
+        render(4);
+        $('firstRunCodes').textContent = s.recoveryCodes.join('\n');
+        $('firstRunRecoverySaved').checked = false;
+      } catch (error) {
+        $('returningStatus').textContent = error?.message || 'This web device could not be secured.';
+        button.disabled = false;
+      }
+    });
+  }
+  function renderRestoreRestartRequired() {
+    panel.setAttribute('aria-label', 'Restart Vishnu to restore data');
+    panel.className = 'genesis';
+    panel.innerHTML = '<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Verified Vishnu recovery package"></div><div class="genesis-copy"><h1>Recovery is ready</h1><p>The encrypted package was authenticated. Restart the local Vishnu runtime to restore available data. Your existing security state will not be imported.</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-restore-check>Check recovery status →</button></div></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>';
+    panel.querySelector('[data-restore-check]')?.addEventListener('click', () => location.reload());
   }
   function renderPendingSetup() {
     const resumeStep = Number(s.options.setup_resume_step) || 4;
@@ -304,10 +381,12 @@
     try {
       s.options = await originalLoad() || {};
       const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
-      if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
+      if (s.options.restore_setup_in_progress) { show(); renderRestoreSecurity(); }
+      else if (s.options.restore_restart_required) { show(); renderRestoreRestartRequired(); }
+      else if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
       else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
       else if (s.accessIntent === 'join' || s.accessIntent === 'restore') { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); }
-      else if (s.options.creation_available) show();
+      else if (s.options.creation_available || s.options.restore_available) show();
       else if (result) {
         hide();
         if (s.pendingPostAuthAction) {

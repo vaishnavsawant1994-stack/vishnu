@@ -23,12 +23,70 @@
     try {
       return await api(path, options);
     } catch (error) {
+      if (/not currently trusted|saved sign-in credential/i.test(error?.message || '')) {
+        showSetupDeviceReauth();
+        throw error;
+      }
       if (!/setup session expired|setup is not pending/i.test(error?.message || '')) throw error;
       await api('/first-run/resume', { method: 'POST', body: '{}' });
       return api(path, options);
     }
   }
   flow.setupApi = setupApi;
+
+  function showSetupDeviceReauth() {
+    if (document.querySelector('[data-setup-device-reauth]')) return;
+    const content = document.querySelector('.genesis-content');
+    if (!content) return;
+    const panel = document.createElement('section');
+    panel.className = 'genesis-card';
+    panel.setAttribute('data-setup-device-reauth', '');
+    panel.setAttribute('aria-label', 'Verify owner to restore browser access');
+    const title = document.createElement('h3');
+    title.textContent = 'Restore this browser’s setup access';
+    const note = document.createElement('p');
+    note.textContent = 'This browser’s saved trust credential is no longer valid. Verify the owner password you created to securely reconnect it.';
+    const password = document.createElement('input');
+    password.type = 'password';
+    password.autocomplete = 'current-password';
+    password.placeholder = 'Owner password';
+    password.setAttribute('aria-label', 'Owner password');
+    panel.append(title, note);
+    if (!state.options.local_setup_available) {
+      const bootstrap = document.createElement('input');
+      bootstrap.type = 'password';
+      bootstrap.autocomplete = 'one-time-code';
+      bootstrap.placeholder = 'Secure runtime setup code';
+      bootstrap.setAttribute('aria-label', 'Secure runtime setup code');
+      panel.append(bootstrap);
+      panel.dataset.bootstrapInput = 'required';
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'genesis-primary';
+    button.textContent = 'Reconnect this browser';
+    button.addEventListener('click', async () => {
+      const bootstrap = panel.querySelector('[aria-label="Secure runtime setup code"]')?.value || '';
+      if (password.value.length < 12) { setError('Enter your owner password to reconnect this browser.'); return; }
+      if (panel.dataset.bootstrapInput && bootstrap.length < 32) { setError('Enter the secure runtime setup code.'); return; }
+      button.disabled = true;
+      try {
+        await api('/first-run/resume', { method: 'POST', body: JSON.stringify({
+          password: password.value,
+          bootstrap_secret: bootstrap,
+          device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+        }) });
+        password.value = '';
+        panel.remove();
+        setError('Browser access restored. Continue setup, or generate fresh recovery codes if needed.');
+      } catch (reauthError) {
+        setError(reauthError?.message || 'This browser could not be reconnected.');
+        button.disabled = false;
+      }
+    });
+    panel.append(password, button);
+    content.append(panel);
+  }
 
   async function createIdentity() {
     const firstName = $('firstRunFirstName')?.value.trim();
@@ -45,7 +103,8 @@
     // attempt. The user may still change the passkey choice before finishing.
     if (state.identityCreated) {
       render(4);
-      $('firstRunCodes').textContent = state.recoveryCodes.join('\n') ||
+      const recoveryCodes = Array.isArray(state.recoveryCodes) ? state.recoveryCodes : [];
+      $('firstRunCodes').textContent = recoveryCodes.join('\n') ||
         'Recovery codes were already generated. If you did not save them, generate a fresh set below.';
       return;
     }

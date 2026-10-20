@@ -63,6 +63,7 @@ PUBLIC_PATHS = {
 
 LOGIN_PATHS = {
     '/iphone/api/first-run/create',
+    '/iphone/api/first-run/resume',
     '/iphone/api/access/google/login',
     '/iphone/api/access/password/login',
     '/iphone/api/access/recovery/login',
