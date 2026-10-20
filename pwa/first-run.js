@@ -91,7 +91,7 @@
 
 
   function welcomeMarkup() {
-    return `<main class="genesis-shell genesis-welcome" data-step="1">
+    return `<main class="genesis-shell genesis-screen genesis-welcome" data-step="1">
       <div class="vw-window-dots" aria-hidden="true"><i></i><i></i><i></i></div>
       <header class="vw-header">
         <div class="vw-brand"><span class="vw-logo" aria-hidden="true">
