@@ -105,15 +105,15 @@
         <h1 class="vw-heading" id="vwHeadline">Welcome to <em>Vishnu.</em></h1>
         <p class="vw-subtitle">Your personal AI. Simple, secure, always with you.</p>
         <div class="vw-actions">
-          <button type="button" class="vw-primary" data-genesis-create><span>Create My Vishnu</span><span class="vw-primary-arrow" aria-hidden="true">→</span></button>
+          <button type="button" class="vw-primary" data-genesis-create><span>Create My Vishnu</span><span class="vw-primary-arrow" aria-hidden="true">&rarr;</span></button>
           <div class="vw-cards">
             <button type="button" class="vw-card" data-genesis-join>
               <span class="vw-card-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="10" r="5"/><path d="M7 28v-4a9 9 0 0 1 18 0v4Z"/></svg></span>
-              <span class="vw-card-copy"><strong>I Already Have Vishnu</strong><small>Unlock or securely connect this device.</small></span><span class="vw-chevron" aria-hidden="true">›</span>
+              <span class="vw-card-copy"><strong>I Already Have Vishnu</strong><small>Unlock or securely connect this device.</small></span><span class="vw-chevron" aria-hidden="true">&#8250;</span>
             </button>
             <button type="button" class="vw-card" data-genesis-restore>
               <span class="vw-card-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 13a11 11 0 1 1-1 9M6 6v8h8"/></svg></span>
-              <span class="vw-card-copy"><strong>Restore My Vishnu</strong><small>Recover login access or restore encrypted data.</small></span><span class="vw-chevron" aria-hidden="true">›</span>
+              <span class="vw-card-copy"><strong>Restore My Vishnu</strong><small>Recover login access or restore encrypted data.</small></span><span class="vw-chevron" aria-hidden="true">&#8250;</span>
             </button>
           </div>
           <p class="vw-status" id="genesisStatus" role="status" aria-live="polite"></p>
