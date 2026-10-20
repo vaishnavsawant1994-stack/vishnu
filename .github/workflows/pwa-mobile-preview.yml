@@ -99,16 +99,16 @@ jobs:
           done
           curl --fail --silent http://127.0.0.1:4173/iphone/ >/dev/null
           curl --fail --silent http://127.0.0.1:4173/standalone/ >/dev/null
-          node --check pwa/genesis-neural-sphere.js
-          node --check pwa/first-run.js
-          node --check tests/genesis_welcome_browser.mjs
-          VISHNU_WELCOME_SCREENSHOTS=artifacts/genesis-welcome node tests/genesis_welcome_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
           mkdir -p artifacts/our-products
           mkdir -p artifacts/visualize
           mkdir -p artifacts/engineering-ui
           mkdir -p artifacts/owner-release-ui
+          node --check pwa/genesis-neural-sphere.js
+          node --check pwa/first-run.js
+          node --check tests/genesis_welcome_browser.mjs
+          VISHNU_WELCOME_SCREENSHOTS=artifacts/genesis-welcome node tests/genesis_welcome_browser.mjs
           PROJECT_SCREENSHOT_DIR=artifacts/project-workspace node tests/projects_workspace_browser.mjs
           node tests/projects_canonical_work_browser.mjs
           node tests/projects_canonical_visualizations_browser.mjs
