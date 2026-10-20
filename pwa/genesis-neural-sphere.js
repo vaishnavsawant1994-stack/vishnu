@@ -23,7 +23,7 @@ export function mountNeuralSphere(canvas) {
       vec3 a = vec3(cy * a_point.x + sy * a_point.z, a_point.y, -sy * a_point.x + cy * a_point.z);
       vec3 p = vec3(a.x, cx * a.y - sx * a.z, sx * a.y + cx * a.z);
       float w = 2.9 - p.z * 0.38;
-      gl_Position = vec4(p.x * 2.40 / u_aspect, p.y * 2.40, 0.0, w);
+      gl_Position = vec4(p.x * 2.60 / u_aspect, p.y * 2.60, 0.0, w);
       v_depth = p.z;
       v_phase = a_point.w * 0.57 + a_point.x * 5.0 + a_point.y * 3.0;
       gl_PointSize = max(1.0, a_point.w * u_ratio * (2.9 / w));
@@ -38,7 +38,7 @@ export function mountNeuralSphere(canvas) {
     void main() {
       float front = clamp((v_depth + 1.0) * 0.5, 0.0, 1.0);
       if (u_mode < 0.5) {
-        gl_FragColor = vec4(0.04, 0.58 + 0.25 * front, 1.0, 0.39 + front * 0.36);
+        gl_FragColor = vec4(0.04, 0.60 + 0.23 * front, 1.0, 0.25 + front * 0.29);
       } else {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
@@ -82,13 +82,22 @@ export function mountNeuralSphere(canvas) {
   const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const nodes = [];
   const golden = Math.PI * (3 - Math.sqrt(5));
-  for (let i = 0; i < 192; i++) {
-    const y = 1 - 2 * (i + 0.5) / 192;
+  const shellCount = 162;
+  for (let i = 0; i < shellCount; i++) {
+    const y = 1 - 2 * (i + 0.5) / shellCount;
     const radius = Math.sqrt(1 - y * y);
-    const angle = i * golden + (random() - 0.5) * 0.12;
-    const depth = i < 164 ? 1 : 0.42 + random() * 0.26;
-    nodes.push([Math.cos(angle) * radius * depth, y * depth, Math.sin(angle) * radius * depth, i % 13 === 0 ? 12.0 : 6.2 + random() * 3.5]);
+    const angle = i * golden + (random() - 0.5) * 0.14;
+    nodes.push([Math.cos(angle) * radius, y, Math.sin(angle) * radius, i % 11 === 0 ? 14 : 6.5 + random() * 5]);
   }
+  // Populate the sphere's *volume*, not just its outer silhouette.
+  for (let i = 0; i < 78; i++) {
+    const y = random() * 2 - 1;
+    const angle = random() * Math.PI * 2;
+    const radius = 0.12 + 0.78 * random();
+    const flat = Math.sqrt(1 - y * y) * radius;
+    nodes.push([Math.cos(angle) * flat, y * radius, Math.sin(angle) * flat, i % 9 === 0 ? 12 : 5.8 + random() * 5]);
+  }
+  nodes.push([0.06, 0.02, 0.17, 19]);
   const pairs = [];
   const seen = new Set();
   for (let i = 0; i < nodes.length; i++) {
@@ -101,7 +110,7 @@ export function mountNeuralSphere(canvas) {
       neighbors.push([distance,j]);
     }
     neighbors.sort((a,b) => a[0]-b[0]);
-    for (const [,j] of neighbors.slice(0,i < 164 ? 4 : 3)) {
+    for (const [,j] of neighbors.slice(0,i < shellCount ? 5 : 6)) {
       const key = i < j ? i + ':' + j : j + ':' + i;
       if (seen.has(key)) continue;
       seen.add(key);
