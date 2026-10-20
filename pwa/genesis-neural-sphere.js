@@ -38,16 +38,16 @@ export function mountNeuralSphere(canvas) {
     void main() {
       float front = clamp((v_depth + 1.0) * 0.5, 0.0, 1.0);
       if (u_mode < 0.5) {
-        gl_FragColor = vec4(0.04, 0.61, 1.0, 0.12 + front * 0.18);
+        gl_FragColor = vec4(0.04, 0.58 + 0.25 * front, 1.0, 0.39 + front * 0.36);
       } else {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
         if (radius > 0.5) discard;
-        float core = smoothstep(0.31, 0.01, radius);
-        float bloom = smoothstep(0.50, 0.04, radius) * 0.18;
+        float core = smoothstep(0.29, 0.015, radius);
+        float bloom = smoothstep(0.50, 0.02, radius) * 0.38;
         float pulse = 0.90 + 0.10 * sin(u_time * 1.4 + v_phase);
-        float alpha = (core + bloom) * pulse * (0.44 + 0.56 * front);
-        gl_FragColor = vec4(0.23 + 0.51 * core, 0.70 + 0.26 * core, 1.0, alpha);
+        float alpha = min(1.0, (core + bloom) * pulse * (0.68 + 0.32 * front));
+        gl_FragColor = vec4(0.22 + 0.70 * core, 0.73 + 0.26 * core, 1.0, alpha);
       }
     }
   `;
@@ -87,7 +87,7 @@ export function mountNeuralSphere(canvas) {
     const radius = Math.sqrt(1 - y * y);
     const angle = i * golden + (random() - 0.5) * 0.12;
     const depth = i < 164 ? 1 : 0.42 + random() * 0.26;
-    nodes.push([Math.cos(angle) * radius * depth, y * depth, Math.sin(angle) * radius * depth, i % 13 === 0 ? 7.0 : 3.1 + random() * 2.0]);
+    nodes.push([Math.cos(angle) * radius * depth, y * depth, Math.sin(angle) * radius * depth, i % 13 === 0 ? 12.0 : 6.2 + random() * 3.5]);
   }
   const pairs = [];
   const seen = new Set();
