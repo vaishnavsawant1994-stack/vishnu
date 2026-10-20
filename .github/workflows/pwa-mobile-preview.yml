@@ -13,6 +13,7 @@ on:
       - 'server/owner_release_api.py'
       - 'server/owner_release_ui.py'
       - 'future_intelligence/release_control/runtime.py'
+      - 'tests/genesis_welcome_browser.mjs'
       - 'tests/pwa_mobile_preview.mjs'
       - 'tests/pwa_mobile_preview_runner.mjs'
       - 'tests/standalone_pwa_responsive.mjs'
@@ -117,6 +118,10 @@ jobs:
           OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
           VISHNU_OS_SCREENSHOT_DIR=artifacts/vishnu-os node tests/vishnu_os_workspaces_browser.mjs
+          node --check pwa/genesis-neural-sphere.js
+          node --check pwa/first-run.js
+          node --check tests/genesis_welcome_browser.mjs
+          VISHNU_WELCOME_SCREENSHOTS=artifacts/genesis-welcome node tests/genesis_welcome_browser.mjs
           node tests/pwa_mobile_preview_runner.mjs
           node tests/standalone_pwa_responsive.mjs
           ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
