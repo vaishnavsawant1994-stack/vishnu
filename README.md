@@ -20,6 +20,13 @@
 
 Independent Vishnu assistant codebase designed from scratch.
 
+## Vishnu 2.0 — approved product design decisions
+
+- **Phase 1 (creation, login, device joining, recovery):** [Simplified onboarding and access architecture](docs/VISHNU_PHASE_1_SIMPLIFIED_ONBOARDING_ARCHITECTURE.md).
+- **Decision:** 9 core unique Phase 1 screens + 1 conditional runtime-connection screen; the new-owner path uses four simple screens, with advanced AI/storage/privacy configuration accessible after creation.
+- **Design versus implementation:** This is an owner-agreed product specification, **not** a claim that every platform already matches it. For code and acceptance status, consult [Current UI Implementation Status](docs/ui/CURRENT_IMPLEMENTATION_STATUS.md) and [UI Truth](docs/ui/ui_truth.json).
+- **Future continuity:** Review this decision record before designing or changing onboarding. Other product phases and the final global screen count remain open for reconciliation.
+
 ## Current integrated product
 
 - PyQt6 desktop shell
