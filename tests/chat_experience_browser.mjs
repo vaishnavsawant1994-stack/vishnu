@@ -54,7 +54,7 @@ async function verifyReturningOwnerEntry(){
     'a fresh runtime must ask for the encrypted recovery package rather than treating a login code as a backup');
   assert.equal(await page.locator('#restoreArchive').count(), 1,
     'fresh runtime recovery requires the verified archive and separate key');
-  assert.match(await page.locator('.genesis-copy h1').innerText(),/Recover owner access/i,'recovery route clearly names its purpose');
+  assert.match(await page.locator('.genesis-copy h1').innerText(),/Restore your Vishnu/i,'fresh-runtime data restoration is clearly distinguished from sign-in recovery');
   await page.locator('[data-auth-action="welcome"]').click();
   assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
   assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'unauthenticated welcome-back screen hides OS navigation');
