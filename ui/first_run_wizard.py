@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFormLayout,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -67,6 +68,10 @@ class FirstRunWizard(QDialog):
         brand.setObjectName('brand')
         brand.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(brand)
+        wordmark_line = QFrame(self)
+        wordmark_line.setFixedSize(180, 1)
+        wordmark_line.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 transparent,stop:0.5 #4ddcff,stop:1 transparent); border:0;")
+        root.addWidget(wordmark_line, 0, Qt.AlignmentFlag.AlignHCenter)
         self.genesis_progress = QLabel('Screen 1 of 10   ● ○ ○ ○ ○ ○ ○ ○ ○ ○')
         self.genesis_progress.setObjectName('progress')
         self.genesis_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -78,7 +83,10 @@ class FirstRunWizard(QDialog):
         self.subtitle.setWordWrap(True)
 
         self.stack = QStackedWidget()
-        root.addWidget(self.stack, 1)
+        # Keep native forms aligned to the same centered content column as the
+        # responsive web Genesis instead of stretching fields edge-to-edge.
+        self.stack.setMaximumWidth(720)
+        root.addWidget(self.stack, 1, Qt.AlignmentFlag.AlignHCenter)
         self.stack.addWidget(self._welcome_page())       # 0
         self.stack.addWidget(self._owner_page())            # 1 / Genesis 02
         self.stack.addWidget(self._security_choice_page())  # 2 / Genesis 03
@@ -141,8 +149,9 @@ class FirstRunWizard(QDialog):
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
+        page.setMaximumWidth(920)
         layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 8, 0, 0)
+        layout.setContentsMargins(20, 8, 20, 0)
         layout.setSpacing(14)
         core_size = 300 if heading == 'Welcome to Vishnu' else 190
         core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity', core_size)
@@ -177,7 +186,7 @@ class FirstRunWizard(QDialog):
         page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
         create = QPushButton('Create my Vishnu  →')
         create.setObjectName('primary')
-        create.setMinimumWidth(470)
+        create.setFixedWidth(420)
         create.clicked.connect(lambda: self._choose_mode(SetupMode.CREATE))
         layout.addWidget(create, 0, Qt.AlignmentFlag.AlignHCenter)
         secondary = QHBoxLayout()

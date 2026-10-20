@@ -134,7 +134,7 @@ class ConnectActivity : AppCompatActivity() {
         val core = VishnuGenesisCoreView(this)
         val title = TextView(this).apply {
             text = "Welcome to Vishnu"
-            textSize = 36f
+            textSize = 30f
             gravity = android.view.Gravity.CENTER
             setTextColor(PersonalAITheme.ColorToken.text)
             setPadding(0, dp(18), 0, dp(10))
@@ -149,8 +149,8 @@ class ConnectActivity : AppCompatActivity() {
         val create = Button(this).apply { text = "Create my Vishnu" }
         styleButton(create, true)
         val join = Button(this).apply {
-            text = "I already have Vishnu · Scan QR"
-            contentDescription = "Scan the one-time Vishnu device connection QR code"
+            text = "I already have Vishnu"
+            contentDescription = "Connect this Android device to your existing Vishnu by scanning its one-time QR code"
         }
         styleButton(join, false)
         val restore = Button(this).apply { text = "Restore Vishnu" }
@@ -229,42 +229,97 @@ class ConnectActivity : AppCompatActivity() {
 
         createBox = buildFirstRunForm()
         createBox.visibility = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) View.GONE else View.VISIBLE
-        create.setOnClickListener {
-            createBox.visibility = if (createBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
-            joinBox.visibility = View.GONE
-            if (createBox.visibility == View.VISIBLE) {
-                genesisStep = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) 2 else 5
-                renderGenesisStep()
-            }
-        }
         restoreBox = buildRestoreForm()
         restoreBox.visibility = View.GONE
+        val welcomeGroup = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(title)
+            addView(copy)
+            addView(create)
+            addView(join)
+            addView(restore)
+        }
+        val backToWelcome = Button(this).apply { text = "Back to Welcome"; visibility = View.GONE }
+        styleButton(backToWelcome, false)
+        backToWelcome.setOnClickListener {
+            if (createBox.visibility == View.VISIBLE && genesisStep > 2) {
+                genesisStep -= 1
+                renderGenesisStep()
+                return@setOnClickListener
+            }
+            createBox.visibility = View.GONE
+            restoreBox.visibility = View.GONE
+            joinBox.visibility = View.GONE
+            welcomeGroup.visibility = View.VISIBLE
+            backToWelcome.visibility = View.GONE
+        }
+        create.setOnClickListener {
+            createBox.visibility = View.VISIBLE
+            restoreBox.visibility = View.GONE
+            joinBox.visibility = View.GONE
+            welcomeGroup.visibility = View.GONE
+            backToWelcome.text = "Back"
+            backToWelcome.visibility = View.VISIBLE
+            genesisStep = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) 2 else 5
+            renderGenesisStep()
+        }
+        join.setOnClickListener {
+            welcomeGroup.visibility = View.GONE
+            createBox.visibility = View.GONE
+            restoreBox.visibility = View.GONE
+            joinBox.visibility = View.VISIBLE
+            joinCopy.visibility = View.VISIBLE
+            scan.visibility = View.VISIBLE
+            manual.visibility = View.VISIBLE
+            backToWelcome.visibility = View.VISIBLE
+            backToWelcome.text = "Back to Welcome"
+        }
         restore.setOnClickListener {
-            restoreBox.visibility = if (restoreBox.visibility == View.VISIBLE) View.GONE else View.VISIBLE
+            restoreBox.visibility = View.VISIBLE
             createBox.visibility = View.GONE
             joinBox.visibility = View.GONE
+            welcomeGroup.visibility = View.GONE
+            backToWelcome.visibility = View.VISIBLE
+            backToWelcome.text = "Back to Welcome"
+        }
+        if (!prefs.getString("pending_recovery_codes", null).isNullOrBlank()) {
+            welcomeGroup.visibility = View.GONE
+            backToWelcome.visibility = View.VISIBLE
+            backToWelcome.text = "Back"
+            genesisStep = 5
+            renderGenesisStep()
         }
 
         status = TextView(this).apply {
-            text = "Choose how you want to start."
+            text = ""
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(20), 0, 0)
         }
         val safety = TextView(this).apply {
-            text = "The QR is one-use and expires automatically. Local discovery advertises no owner password, model key, memory, or device bearer credential."
+            text = "Privacy     |     Accessibility"
             textSize = 12f
-            setTextColor(Color.rgb(117, 135, 145))
-            setPadding(0, dp(26), 0, 0)
+            gravity = Gravity.CENTER
+            setTextColor(PersonalAITheme.ColorToken.mutedText)
+            setPadding(0, dp(20), 0, 0)
         }
 
         root.addView(brand)
+        val wordmarkLine = View(this).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.TRANSPARENT, PersonalAITheme.ColorToken.brightAccent, Color.TRANSPARENT),
+            )
+        }
+        root.addView(wordmarkLine, LinearLayout.LayoutParams(dp(175), dp(1)).apply {
+            gravity = Gravity.CENTER
+            topMargin = dp(12)
+            bottomMargin = dp(10)
+        })
         root.addView(core, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(220)))
-        root.addView(title)
-        root.addView(copy)
-        root.addView(create)
-        root.addView(join)
-        root.addView(restore)
+        root.addView(welcomeGroup)
+        root.addView(backToWelcome)
         root.addView(createBox)
         root.addView(restoreBox)
         root.addView(joinBox)
@@ -914,13 +969,12 @@ class ConnectActivity : AppCompatActivity() {
         val fill = if (primary) PersonalAITheme.ColorToken.primaryAction else PersonalAITheme.ColorToken.surface
         val ink = PersonalAITheme.ColorToken.text
         val stroke = if (primary) PersonalAITheme.ColorToken.brightAccent else PersonalAITheme.ColorToken.border
-        button.background = rounded(fill, stroke).apply {
-            if (primary) cornerRadius = dp(28).toFloat()
-        }
+        button.background = rounded(fill, stroke).apply { cornerRadius = dp(28).toFloat() }
         button.backgroundTintList = null
         button.setTextColor(ink)
         button.isAllCaps = false
         button.minHeight = dp(56)
+        button.setPadding(dp(20), dp(12), dp(20), dp(12))
         val params = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         params.bottomMargin = dp(10)
         button.layoutParams = params

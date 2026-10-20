@@ -16,11 +16,20 @@ from security.request_context import (
 PUBLIC_PATHS = {
     '/iphone',
     '/iphone/',
+    '/iphone/campaign-demo',
     '/iphone/native/authorize',
     '/iphone/manifest.webmanifest',
     '/iphone/sw.js',
     '/iphone/reference-home.css',
     '/iphone/reference-home.js',
+    '/iphone/global-search.js',
+    '/iphone/global-search.css',
+    # Static UI code and illustrative fixture content are public, non-secret
+    # resources. The demo itself only activates behind the explicit local
+    # `?campaignDemo=1` flag and performs no owner-data writes.
+    '/iphone/campaign-demo.js',
+    '/iphone/campaign-demo.css',
+    '/iphone/campaign-demo-data.js',
     '/iphone/genesis.css',
     '/iphone/first-run.js',
     '/iphone/first-run-actions.js',

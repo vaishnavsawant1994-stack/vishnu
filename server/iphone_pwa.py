@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field, SecretStr
 from data_plane.runtime import get_data_plane
 from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -70,7 +70,10 @@ class PasskeyCompleteBody(BaseModel):
 
 
 class FirstRunCreateBody(BaseModel):
-    bootstrap_secret: SecretStr = Field(min_length=32, max_length=256)
+    # Empty is accepted by the schema only so an explicitly loopback-only
+    # development runtime can bootstrap without asking the developer to copy
+    # a secret. The route below still requires a real secret everywhere else.
+    bootstrap_secret: SecretStr = Field(default=SecretStr(''), min_length=0, max_length=256)
     first_name: str = Field(min_length=1, max_length=80)
     last_name: str = Field(default='', max_length=80)
     display_name: str = Field(default='', max_length=120)
@@ -234,12 +237,31 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         if scheme != 'https' and not getattr(settings, 'iphone_pwa_allow_insecure', False):
             raise HTTPException(400, 'iPhone owner enrollment requires HTTPS')
 
+    def local_development_bootstrap_allowed(request: Request) -> bool:
+        """Allow secretless setup only for an explicitly loopback-bound dev server."""
+        if not getattr(settings, 'iphone_pwa_allow_insecure', False):
+            return False
+        bind_host = str(getattr(settings, 'control_server_host', '') or '').strip().casefold()
+        if bind_host == 'localhost':
+            bind_is_loopback = True
+        else:
+            try:
+                bind_is_loopback = ipaddress.ip_address(bind_host).is_loopback
+            except ValueError:
+                bind_is_loopback = False
+        client_host = request.client.host if request.client else ''
+        try:
+            client_is_loopback = ipaddress.ip_address(client_host).is_loopback
+        except ValueError:
+            client_is_loopback = str(client_host).casefold() == 'localhost'
+        return bind_is_loopback and client_is_loopback
+
     def request_identity(request: Request):
         forwarded_host = request.headers.get('x-forwarded-host', '').split(',')[0].strip()
         host = forwarded_host or request.headers.get('host', '').strip()
         forwarded_proto = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
         proto = forwarded_proto or request.url.scheme.lower()
-        if not host or proto != 'https':
+        if not host or (proto != 'https' and not local_development_bootstrap_allowed(request)):
             raise HTTPException(400, 'Secure HTTPS origin required')
         rp_id = host.rsplit(':', 1)[0] if host.count(':') == 1 else host.strip('[]')
         return rp_id, f'{proto}://{host}'
@@ -375,6 +397,11 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         )
         return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
 
+    @router.get('/campaign-demo', include_in_schema=False)
+    def campaign_demo_entry():
+        """Open the isolated Screens 11–15 fixture without owner sign-in."""
+        return RedirectResponse('/iphone/?campaignDemo=1', status_code=302)
+
     @router.get('/first-run.js', include_in_schema=False)
     def first_run_script():
         return Response((web_dir / 'first-run.js').read_text(encoding='utf-8'),
@@ -440,6 +467,42 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('/reference-pages.css', include_in_schema=False)
     def reference_pages_styles():
         return Response((web_dir / 'reference-pages.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/global-search.js', include_in_schema=False)
+    def global_search_script():
+        return Response((web_dir / 'global-search.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/global-search.css', include_in_schema=False)
+    def global_search_styles():
+        return Response((web_dir / 'global-search.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/command-center.js', include_in_schema=False)
+    def command_center_script():
+        return Response((web_dir / 'command-center.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/command-center.css', include_in_schema=False)
+    def command_center_styles():
+        return Response((web_dir / 'command-center.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/workspaces-ui.js', include_in_schema=False)
+    def workspaces_ui_script():
+        return Response((web_dir / 'workspaces-ui.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/workspaces-ui.css', include_in_schema=False)
+    def workspaces_ui_styles():
+        return Response((web_dir / 'workspaces-ui.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo.js', include_in_schema=False)
+    def campaign_demo_script():
+        return Response((web_dir / 'campaign-demo.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo.css', include_in_schema=False)
+    def campaign_demo_styles():
+        return Response((web_dir / 'campaign-demo.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/campaign-demo-data.js', include_in_schema=False)
+    def campaign_demo_fixture():
+        return Response((web_dir / 'campaign-demo-data.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
 
     @router.get('/owner-controls.js', include_in_schema=False)
     def owner_controls_script():
@@ -507,20 +570,24 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         }
 
     @router.get('/api/access/options')
-    def access_options():
+    def access_options(request: Request):
         google_client_id = getattr(settings, 'google_signin_client_id', '').strip()
         owner_google_email = getattr(settings, 'owner_google_email', '').strip().casefold()
         setup_state = first_run_setup.snapshot() if first_run_setup is not None else {}
         bootstrap_secret = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
+        local_setup_available = (
+            local_development_bootstrap_allowed(request) and len(bootstrap_secret) < 32
+        )
         creation_available = bool(
             first_run_setup is not None
             and not first_run_setup.ready
-            and len(bootstrap_secret) >= 32
+            and (len(bootstrap_secret) >= 32 or local_setup_available)
             and setup_state.get('status') in {'uninitialized', 'setup_in_progress'}
             and setup_state.get('mode') in {None, 'create'}
         )
         return {
             'creation_available': creation_available,
+            'local_setup_available': bool(creation_available and local_setup_available),
             'setup_in_progress': setup_state.get('status') == 'setup_in_progress',
             'model_setup_complete': bool({'model', 'model_skipped'} & set(setup_state.get('completed_steps', []))),
             'passkey_available': bool(owner_access.passkeys()),
@@ -541,11 +608,18 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         require_https(request)
         key = allow_access_attempt(request, 'first-run-bootstrap')
         expected = str(getattr(settings, 'owner_bootstrap_secret', '') or '').strip()
-        if len(expected) < 32:
-            raise HTTPException(503, 'Secure first-device bootstrap is not configured')
-        if not hmac.compare_digest(body.bootstrap_secret.get_secret_value(), expected):
-            failed_access_attempt(key)
-            raise HTTPException(401, 'The Vishnu setup code is invalid')
+        local_setup = local_development_bootstrap_allowed(request)
+        submitted_secret = body.bootstrap_secret.get_secret_value()
+        if local_setup and not expected:
+            # The dev launcher binds the server to 127.0.0.1 and enables
+            # insecure local HTTP. Never infer this from a request header.
+            pass
+        else:
+            if len(expected) < 32:
+                raise HTTPException(503, 'Secure first-device bootstrap is not configured')
+            if not hmac.compare_digest(submitted_secret, expected):
+                failed_access_attempt(key)
+                raise HTTPException(401, 'The Vishnu setup code is invalid')
         clear_access_attempts(key)
         if not first_run_setup.should_run():
             raise HTTPException(409, 'Vishnu is already initialized. Connect this device instead.')

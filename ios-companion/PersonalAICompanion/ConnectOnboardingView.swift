@@ -35,8 +35,7 @@ struct ConnectOnboardingView: View {
                 VishnuGenesisBackground()
                 ScrollView {
                 VStack(alignment: .center, spacing: 18) {
-                    Text("V I S H N U")
-                        .font(.title3.weight(.medium)).foregroundStyle(PersonalAITheme.ColorToken.primaryText).tracking(8)
+                    VishnuGenesisWordmark()
                     if selection == .create && genesisStep > 1 {
                         Text("Step \(genesisStep) of 10").font(.caption).foregroundStyle(PersonalAITheme.ColorToken.secondaryText)
                         HStack(spacing: 6) { ForEach(1...10, id: \.self) { step in Circle().fill(step <= genesisStep ? PersonalAITheme.ColorToken.brightAccent : PersonalAITheme.ColorToken.mutedText).frame(width: 7, height: 7) } }
@@ -52,20 +51,20 @@ struct ConnectOnboardingView: View {
                             Label("Create my Vishnu", systemImage: "person.crop.circle.badge.plus")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                        .buttonStyle(VishnuGenesisButtonStyle(primary: true))
                         Button { selection = .join } label: {
                             Label("I already have Vishnu", systemImage: "qrcode.viewfinder")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered).controlSize(.large)
+                        .buttonStyle(VishnuGenesisButtonStyle())
                         Button { selection = .restore } label: {
                             Label("Restore Vishnu", systemImage: "arrow.counterclockwise.icloud")
                                 .frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.bordered).controlSize(.large)
+                        .buttonStyle(VishnuGenesisButtonStyle())
                     } else {
                         Button("‹ Back") { if selection == .create && genesisStep > 2 { genesisStep -= 1 } else { selection = nil }; setupMessage = "" }
-                            .buttonStyle(.plain)
+                            .buttonStyle(VishnuGenesisButtonStyle())
                         if selection == .create {
                             createForm
                         } else if selection == .restore {
@@ -74,6 +73,10 @@ struct ConnectOnboardingView: View {
                             joinForm
                         }
                     }
+                    Text("Privacy     |     Accessibility")
+                        .font(PersonalAITheme.Typography.metadata)
+                        .foregroundStyle(PersonalAITheme.ColorToken.mutedText)
+                        .padding(.top, 12)
                 }
                 .padding(24)
                 .frame(maxWidth: 640, alignment: .leading)
@@ -115,9 +118,9 @@ struct ConnectOnboardingView: View {
         VStack(alignment: .leading, spacing: 14) {
             if genesisStep == 2 {
                 genesisHeading("Create your Vishnu identity", "This is how Vishnu will know and address you.")
-                TextField("First name", text: $firstName).textFieldStyle(.roundedBorder).textContentType(.givenName)
-                TextField("Last name", text: $lastName).textFieldStyle(.roundedBorder).textContentType(.familyName)
-                TextField("Display name", text: $displayName).textFieldStyle(.roundedBorder).textContentType(.nickname)
+                TextField("First name", text: $firstName).textContentType(.givenName).vishnuGenesisInput()
+                TextField("Last name", text: $lastName).textContentType(.familyName).vishnuGenesisInput()
+                TextField("Display name", text: $displayName).textContentType(.nickname).vishnuGenesisInput()
                 genesisContinue("Continue") { guard !firstName.trimmingCharacters(in: .whitespaces).isEmpty else { setupMessage = "First name is required."; return }; genesisStep = 3 }
             } else if genesisStep == 3 {
                 genesisHeading("Secure your Vishnu", "Choose how Vishnu should verify it’s you.")
@@ -125,11 +128,11 @@ struct ConnectOnboardingView: View {
                 genesisContinue("Continue") { genesisStep = 4 }
             } else if genesisStep == 4 {
                 genesisHeading("Configure your authentication", "Set up the authentication method you selected.")
-                TextField("Secure Vishnu runtime URL (https://…)", text: $store.baseURL).textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
-                SecureField("One-time runtime setup code", text: $bootstrapCode).textFieldStyle(.roundedBorder)
-                SecureField("Owner password (12 characters minimum)", text: $ownerPassword).textFieldStyle(.roundedBorder)
-                SecureField("Confirm owner password", text: $confirmPassword).textFieldStyle(.roundedBorder)
-                Button { Task { await beginNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create owner security →").frame(maxWidth: .infinity) } }.buttonStyle(.borderedProminent).disabled(setupWorking)
+                TextField("Secure Vishnu runtime URL (https://…)", text: $store.baseURL).textInputAutocapitalization(.never).keyboardType(.URL).vishnuGenesisInput()
+                SecureField("One-time runtime setup code", text: $bootstrapCode).vishnuGenesisInput()
+                SecureField("Owner password (12 characters minimum)", text: $ownerPassword).vishnuGenesisInput()
+                SecureField("Confirm owner password", text: $confirmPassword).vishnuGenesisInput()
+                Button { Task { await beginNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create owner security →").frame(maxWidth: .infinity) } }.buttonStyle(VishnuGenesisButtonStyle(primary: true)).disabled(setupWorking)
             } else if genesisStep == 5 {
                 genesisHeading("Protect your Vishnu", "Store recovery codes so Vishnu can be restored safely.")
                 Text(recoveryCodes.joined(separator: "\n")).font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
@@ -146,7 +149,7 @@ struct ConnectOnboardingView: View {
             } else if genesisStep == 8 {
                 genesisHeading("Set up Vishnu’s intelligence", "Choose how Vishnu should think and which AI providers it may use.")
                 Picker("AI setup", selection: $modelProvider) { Text("Recommended Setup").tag("skip"); Text("Local Intelligence").tag("local"); Text("OpenAI").tag("openai"); Text("Gemini").tag("gemini"); Text("OpenRouter").tag("openrouter") }.pickerStyle(.inline).vishnuGenesisCard()
-                if !["skip", "local"].contains(modelProvider) { TextField("Model name", text: $modelName).textFieldStyle(.roundedBorder); SecureField("Provider API key", text: $providerKey).textFieldStyle(.roundedBorder) }
+                if !["skip", "local"].contains(modelProvider) { TextField("Model name", text: $modelName).vishnuGenesisInput(); SecureField("Provider API key", text: $providerKey).vishnuGenesisInput() }
                 genesisContinue("Continue") { genesisStep = 9 }
             } else if genesisStep == 9 {
                 genesisHeading("Choose what Vishnu can access", "You stay in control. Permissions remain owner governed.")
@@ -156,7 +159,7 @@ struct ConnectOnboardingView: View {
             } else {
                 genesisHeading("Your Vishnu is ready to be created", "Review your setup, then create your Vishnu.")
                 VStack(alignment: .leading, spacing: 10) { Text("Owner: \(displayName.isEmpty ? firstName : displayName)"); Text("Security: \(authenticationChoice)"); Text("Trusted Device: \(UIDevice.current.name)"); Text("Data: \(dataPolicy)"); Text("Intelligence: \(modelProvider)"); Text("Privacy: owner controlled") }.frame(maxWidth: .infinity, alignment: .leading).vishnuGenesisCard()
-                Button { Task { await finishNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create my Vishnu →").frame(maxWidth: .infinity) } }.buttonStyle(.borderedProminent).disabled(setupWorking || !recoverySaved)
+                Button { Task { await finishNativeCreation() } } label: { if setupWorking { ProgressView().frame(maxWidth: .infinity) } else { Text("Create my Vishnu →").frame(maxWidth: .infinity) } }.buttonStyle(VishnuGenesisButtonStyle(primary: true)).disabled(setupWorking || !recoverySaved)
             }
             if !setupMessage.isEmpty {
                 Text(setupMessage).font(.footnote).foregroundStyle(PersonalAITheme.ColorToken.secondaryText).accessibilityAddTraits(.updatesFrequently)
@@ -169,7 +172,7 @@ struct ConnectOnboardingView: View {
     }
 
     private func genesisContinue(_ label: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Text("\(label) →").frame(maxWidth: .infinity) }.buttonStyle(.borderedProminent).controlSize(.large)
+        Button(action: action) { Text("\(label) →").frame(maxWidth: .infinity) }.buttonStyle(VishnuGenesisButtonStyle(primary: true))
     }
 
     @ViewBuilder
@@ -179,16 +182,16 @@ struct ConnectOnboardingView: View {
             Text("Use a recovery code to trust this iPhone with the runtime that owns your Vishnu. If that runtime was lost, restore its owner-controlled backup first. Data remains under its existing data policy.")
                 .font(.subheadline).foregroundStyle(.secondary)
             TextField("Secure Vishnu runtime URL (https://…)", text: $store.baseURL)
-                .textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never).keyboardType(.URL).vishnuGenesisInput()
             SecureField("One-time recovery code", text: $recoveryCode)
-                .textInputAutocapitalization(.characters).textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.characters).vishnuGenesisInput()
             Button {
                 Task { await restoreNativeDevice() }
             } label: {
                 if setupWorking { ProgressView().frame(maxWidth: .infinity) }
-                else { Text("Restore Vishnu on this iPhone").frame(maxWidth: .infinity) }
+                else { Text("Recover owner access on this iPhone").frame(maxWidth: .infinity) }
             }
-            .buttonStyle(.borderedProminent).disabled(setupWorking)
+            .buttonStyle(VishnuGenesisButtonStyle(primary: true)).disabled(setupWorking)
             if !setupMessage.isEmpty {
                 Text(setupMessage).font(.footnote).foregroundStyle(.secondary)
             }
@@ -204,22 +207,22 @@ struct ConnectOnboardingView: View {
             Button { showScanner = true } label: {
                 Label("Scan Vishnu QR", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
+            .buttonStyle(VishnuGenesisButtonStyle(primary: true))
             Button(showManual ? "Hide advanced fallback" : "Advanced manual fallback") {
                 withAnimation { showManual.toggle() }
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(VishnuGenesisButtonStyle())
             if showManual {
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("https://your-vishnu.example.com", text: $store.baseURL)
-                        .textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never).keyboardType(.URL).vishnuGenesisInput()
                     SecureField("Connection key", text: $store.pairingToken)
-                        .textInputAutocapitalization(.never).textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never).vishnuGenesisInput()
                     TextField("6-digit code", text: $store.pairingCode)
-                        .keyboardType(.numberPad).textFieldStyle(.roundedBorder)
+                        .keyboardType(.numberPad).vishnuGenesisInput()
                     Toggle("Allow insecure localhost development", isOn: $store.allowInsecureDevelopment)
                     Button("Connect this iPhone") { Task { await pairManual() } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(VishnuGenesisButtonStyle(primary: true))
                 }
                 .padding(16).background(.thinMaterial, in: RoundedRectangle(cornerRadius: 16))
             }

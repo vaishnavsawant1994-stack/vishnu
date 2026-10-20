@@ -83,9 +83,9 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
     assert "loadGlobalAwareness" in loader
     assert "visual.onload=loadGlobalAwareness" in loader
 
-    # v45 fixes mobile navigation stacking in the bounded offline shell;
+    # v49 refreshes the current shell and includes Workspace UI;
     # global work awareness remains precached and read-only exactly as before.
-    assert "personal-ai-iphone-v45" in sw
+    assert "personal-ai-iphone-v49" in sw
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "'/iphone/adaptive-composer.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw

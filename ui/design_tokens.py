@@ -4,14 +4,16 @@ from __future__ import annotations
 from PyQt6.QtGui import QGuiApplication
 
 COLORS = {
-    "background": "#030405",
-    "surface": "#0b1115",
-    "surface_raised": "#101b21",
-    "text": "#edf3f6",
-    "secondary": "#9badb7",
-    "muted": "#71818b",
-    "border": "#2b4350",
-    "accent": "#67b7ff",
+    "background": "#02060B",
+    "surface": "#071522",
+    "surface_raised": "#091A28",
+    "text": "#F5FAFF",
+    "secondary": "#A7B9CA",
+    "muted": "#667D91",
+    "border": "rgba(120, 190, 230, 0.18)",
+    "accent": "#20B8FF",
+    "bright": "#4DDCFF",
+    "soft": "#9DDBFF",
     "danger": "#ff929f",
     "selection": "#244656",
 }
@@ -30,10 +32,10 @@ def stylesheet(*, high_contrast: bool = False) -> str:
     QWidget {{ color: {colors['text']}; font-family: Inter, 'Segoe UI', Arial; font-size: {TYPE['body']}px; }}
     QLineEdit, QComboBox, QPlainTextEdit, QTextBrowser, QTreeWidget {{
       color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']};
-      border-radius: 10px; padding: 8px 10px; selection-background-color: {colors['selection']};
+      border-radius: 13px; padding: 9px 12px; selection-background-color: {colors['selection']};
     }}
     QPushButton {{ color: {colors['text']}; background: {colors['surface']}; border: 1px solid {colors['border']};
-      border-radius: 10px; padding: 8px 13px; min-height: {CONTROL_HEIGHT}px; }}
+      border-radius: 12px; padding: 9px 16px; min-height: {CONTROL_HEIGHT}px; }}
     QPushButton:hover {{ background: {colors['surface_raised']}; border-color: {colors['accent']}; }}
     QPushButton:pressed {{ background: {colors['selection']}; }}
     QPushButton:disabled {{ color: {colors['muted']}; }}

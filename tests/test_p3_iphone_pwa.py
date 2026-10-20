@@ -151,6 +151,9 @@ def test_production_router_can_exclude_legacy_canonical_runtime_overlaps(tmp_pat
 
 def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     client, _ = make_client(tmp_path)
+    demo_entry = client.get('/iphone/campaign-demo', follow_redirects=False)
+    assert demo_entry.status_code == 302
+    assert demo_entry.headers['location'] == '/iphone/?campaignDemo=1'
     page = client.get('/iphone/')
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
@@ -163,6 +166,24 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert 'Step ${s.step} of 10' in adapter.text
     assert actions.status_code == 200 and '/first-run/create' in actions.text
     assert "api('/first-run/complete'" in actions.text
+
+    # The local visual preview, Search, and Command Center modules must be served by the
+    # FastAPI runtime itself (the existing browser test server can otherwise
+    # hide missing production routes by injecting those files).
+    for path, marker in (
+        ('/iphone/campaign-demo.js', 'campaignDemo'),
+        ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
+        ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
+        ('/iphone/global-search.js', 'globalSearch'),
+        ('/iphone/global-search.css', 'global-search'),
+        ('/iphone/command-center.js', 'vishnuOpenCommandCenter'),
+        ('/iphone/command-center.css', 'cc-dialog'),
+        ('/iphone/workspaces-ui.js', 'vishnuRenderWorkspaces'),
+        ('/iphone/workspaces-ui.css', 'ws-page'),
+    ):
+        asset = client.get(path)
+        assert asset.status_code == 200, path
+        assert marker.lower() in asset.text.lower(), path
 
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)
@@ -225,6 +246,7 @@ def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
     options = client.get('/iphone/api/access/options').json()
     assert options == {
         'creation_available': False,
+        'local_setup_available': False,
         'setup_in_progress': False,
         'model_setup_complete': False,
         'passkey_available': False,
@@ -938,6 +960,75 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'password': 'another sufficiently long password',
     })
     assert duplicate.status_code == 409
+
+
+def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(tmp_path):
+    events = EventBus()
+    registry = Registry()
+    runtime = {
+        'device_registry': registry,
+        'executor': Executor(),
+        'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(),
+        'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+        'preferences': Preferences(tmp_path / 'preferences.json'),
+        'models': SimpleNamespace(set_owner_privacy=lambda mode: None,
+                                  set_default_provider=lambda provider: {'provider': provider},
+                                  connect_owner_provider=lambda provider, key, model: {'provider': provider, 'model': model},
+                                  status=lambda: {'state': 'unconfigured'}),
+        'tools': SimpleNamespace(set_autonomy_mode=lambda mode: None),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    runtime['pwa_sessions'] = PwaSessionStore(tmp_path / 'pwa-sessions.sqlite3', ttl_seconds=600)
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=True,
+        control_server_host='127.0.0.1', owner_bootstrap_secret='',
+        google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.add_middleware(PwaSessionMiddleware, sessions=runtime['pwa_sessions'],
+                       device_registry=registry, cookie_max_age=600,
+                       first_run_setup=setup)
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 12345))
+
+    options = client.get('/iphone/api/access/options').json()
+    assert options['creation_available'] is True
+    assert options['local_setup_available'] is True
+    created = client.post('/iphone/api/first-run/create', json={
+        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+        'password': 'a sufficiently long local password',
+    })
+    assert created.status_code == 200, created.text
+    assert runtime['owner_access'].identity() is not None
+
+
+def test_insecure_development_flag_does_not_allow_secretless_setup_on_public_bind(tmp_path):
+    events = EventBus()
+    runtime = {
+        'device_registry': Registry(), 'executor': Executor(), 'events': events,
+        'continuity': ContinuityService(tmp_path / 'continuity.sqlite3', events=events),
+        'voice_qualification': Recorder(), 'owner_access': OwnerAccessStore(tmp_path / 'owner-access.sqlite3'),
+    }
+    setup = FirstRunCoordinator(tmp_path, runtime=runtime)
+    setup.should_run()
+    runtime['first_run_setup'] = setup
+    settings = SimpleNamespace(
+        base_dir=Path(__file__).resolve().parent.parent,
+        iphone_owner_enrollment_code='', iphone_pwa_allow_insecure=True,
+        control_server_host='0.0.0.0', owner_bootstrap_secret='',
+        google_signin_client_id='', owner_google_email='',
+    )
+    app = FastAPI()
+    app.include_router(iphone_pwa_router(runtime, settings))
+    client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 12345))
+    options = client.get('/iphone/api/access/options').json()
+    assert options['creation_available'] is False
+    assert options['local_setup_available'] is False
 
 
 def test_native_first_run_uses_canonical_identity_and_retries_without_duplicate_device(tmp_path):

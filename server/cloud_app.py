@@ -56,6 +56,7 @@ from server.multimodal_world_api import multimodal_world_router
 from server.continuity_sync_api import continuity_sync_router
 from server.pwa_security import pwa_security_router
 from server.pwa_session_middleware import PwaSessionMiddleware
+from server.web_path_compat import CanonicalWebPathMiddleware
 from server.native_capability_auth import native_capability_auth_router
 from server.logical_request_middleware import LogicalRequestMiddleware
 from server.request_aware_pwa_state import RequestAwareIphonePwaState
@@ -71,10 +72,12 @@ from server.content_ingestion_api import content_ingestion_router
 from server.visualizations_api import visualizations_router
 from server.visualize_ui import VisualizeUiMiddleware, visualize_assets_router
 from projects.store import ProjectStore
+from workspaces.store import WorkspaceStore
 from projects.workforce_adapter import ProjectWorkforceStoreAdapter
 from products.store import ProductStore
 from products.license_store import ProductLicenseStore
 from server.projects_api import projects_router
+from server.workspaces_api import workspaces_router
 from server.products_api import products_router
 from server.product_distribution_api import product_distribution_router
 from server.product_runner_queue_api import product_runner_queue_router
@@ -132,6 +135,7 @@ runtime['apple_app_site_association']=_json_env('VISHNU_APPLE_APP_SITE_ASSOCIATI
 runtime['visual_intelligence']=VisualIntelligenceService(settings.data_dir/'visual-intelligence.sqlite3',events=runtime.get('events'))
 base_project_store=ProjectStore(settings.data_dir/'projects.sqlite3')
 project_store=ProjectWorkforceStoreAdapter(base_project_store,runtime['agent_workforce'],events=runtime.get('events'));runtime['project_store']=project_store;runtime['base_project_store']=base_project_store
+workspace_store=WorkspaceStore(settings.data_dir/'workspaces.sqlite3');runtime['workspace_store']=workspace_store
 product_store=ProductStore(settings.data_dir/'products.sqlite3');runtime['product_store']=product_store
 product_license_store=ProductLicenseStore(settings.data_dir/'products.sqlite3');runtime['product_license_store']=product_license_store
 runtime['release_control']=None;runtime['release_automation']=None;runtime['release_monitor']=None
@@ -227,11 +231,13 @@ async def lifespan(app):
         runtime['voice'].stop();stop_e9_services(runtime);runtime['automations'].stop();runtime['telemetry'].persist();runtime['apns'].close();runtime['visual_intelligence'].close()
 
 app=create_app(runtime['executor'],settings,device_registry=runtime['device_registry'],device_gateway=runtime['device_gateway'],second_brain=runtime['second_brain'],automations=runtime['automations'],runtime=runtime)
+app.add_middleware(CanonicalWebPathMiddleware)
 app.add_middleware(LogicalRequestMiddleware)
 app.add_middleware(PwaSessionMiddleware,sessions=runtime['pwa_sessions'],device_registry=runtime['device_registry'],cookie_max_age=60*60*24*max(1,min(int(getattr(settings,'iphone_device_cookie_days',365)),3650)),first_run_setup=runtime['first_run_setup'],cookie_secure=not settings.iphone_pwa_allow_insecure)
 app.add_middleware(WorkflowBudgetUiMiddleware);app.add_middleware(ConnectorUiMiddleware);app.add_middleware(VisualizeUiMiddleware);app.add_middleware(OwnerIntelligenceUiMiddleware);app.add_middleware(OwnerEngineeringUiMiddleware);app.add_middleware(OwnerReleaseUiMiddleware);app.add_middleware(PortableIntelligenceUiMiddleware);app.add_middleware(SelfImprovementUiMiddleware);app.add_middleware(CapabilityForgeUiMiddleware)
 pwa_runtime=dict(runtime);pwa_runtime['executor']=SessionBoundExecutor(runtime['executor'],continuity=runtime['continuity'],surface='iphone-pwa');pwa_runtime['continuity']=CanonicalConversationProjection(runtime['continuity'])
 app.include_router(approval_router(runtime,pwa_runtime['executor']))
+app.include_router(workspaces_router(runtime,workspace_store))
 app.include_router(approvals_center_router(runtime))
 app.include_router(conversation_voice_router(runtime,pwa_runtime['executor']))
 # The workforce shell router is intentionally mounted before iphone_pwa_router

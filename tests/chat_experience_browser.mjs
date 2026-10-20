@@ -1,10 +1,16 @@
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHAT_TEST_CHROMIUM_PATH || undefined });
 const errors = [];
+const firstRunSource = await readFile(new URL('../pwa/first-run.js', import.meta.url), 'utf8');
+const genesisStyleSource = await readFile(new URL('../pwa/genesis.css', import.meta.url), 'utf8');
+const globalSearchSource = await readFile(new URL('../pwa/global-search.js', import.meta.url), 'utf8');
+const globalSearchStyle = await readFile(new URL('../pwa/global-search.css', import.meta.url), 'utf8');
+const commandCenterSource = await readFile(new URL('../pwa/command-center.js', import.meta.url), 'utf8');
+const commandCenterStyle = await readFile(new URL('../pwa/command-center.css', import.meta.url), 'utf8');
 let active = null;
 let conversations = [];
 let created = 0;
@@ -14,6 +20,8 @@ let modalities = [],turnRequests=[];
 function bundle(){ return active || { conversation: { id: '', title: 'New conversation' }, events: [] }; }
 async function verifyGenesisNavigationIsolation(){
   const page=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
+  await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
+  await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false}'}));
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
@@ -29,6 +37,53 @@ async function verifyGenesisNavigationIsolation(){
   await page.screenshot({path:'artifacts/genesis-isolated-mobile.png',fullPage:true});
   await page.close();
 }
+async function verifyReturningOwnerEntry(){
+  const page=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
+  await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
+  await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
+  await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
+  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
+  await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.waitForTimeout(200);
+  await page.locator('.returning-shell').waitFor({state:'visible'});
+  assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state instead of a Face ID dead end');
+  await page.locator('[data-auth-action="restore"]').click();
+  assert.match(await page.locator('.returning-notice').innerText(),/not backup data/i,'recovery-code sign-in is not mislabeled as backup restoration');
+  assert.match(await page.locator('.genesis-copy h1').innerText(),/Recover owner access/i,'recovery route clearly names its purpose');
+  await page.locator('[data-auth-action="welcome"]').click();
+  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
+  assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'unauthenticated welcome-back screen hides OS navigation');
+  await page.screenshot({path:'artifacts/returning-owner-fresh-desktop.png',fullPage:true});
+  await page.setViewportSize({width:390,height:844});
+  await page.screenshot({path:'artifacts/returning-owner-fresh-mobile.png',fullPage:true});
+  await page.locator('[data-auth-action="create"]').click();
+  await page.locator('.genesis-screen[data-step="1"]').waitFor({state:'visible'});
+  await page.close();
+}
+async function verifyConfiguredOwnerMethods(){
+  const page=await browser.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
+  let passwordLoginAttempts=0;
+  await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
+  await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
+  await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"Owner verification required"}'}));
+  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":false,"passkey_available":false,"password_available":true,"recovery_available":true}'}));
+  await page.route('**/iphone/api/access/password/login',async route=>{passwordLoginAttempts++;return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'})});
+  await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.locator('.returning-shell').waitFor({state:'visible'});
+  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkeys stay hidden');
+  await page.locator('[data-auth-action="methods"]').click();
+  assert.equal(await page.locator('[data-auth-action="password"]').count(),1,'configured password is offered');
+  assert.equal(await page.locator('[data-auth-action="recovery"]').count(),1,'configured recovery is offered');
+  await page.locator('[data-auth-action="password"]').click();
+  await page.locator('#returningPassword').fill('test-only-password');
+  await page.locator('[data-auth-action="password-submit"]').click();
+  assert.equal(passwordLoginAttempts,1,'password action reaches the canonical owner login endpoint');
+  await page.close();
+}
 async function wire(page){
   page.on('pageerror', e => errors.push(e.message));
   await page.route('**/iphone/api/**', async route => {
@@ -37,6 +92,7 @@ async function wire(page){
     if(path==='/status') body={ok:true,owner_display_name:'Test Owner',model:{state:'ready'},conversation:null,conversations:[],memory_count:0};
     else if(path==='/preferences') body={continuous_voice:false,voice_rate:1,quiet_hours:false};
     else if(path==='/projects'||path==='/projects?status=active') body={projects:[{id:'p1',name:'Test Project',conversation_id:'project-chat-p1'}]};
+    else if(path==='/projects/p1') body={project:{id:'p1',name:'Test Project',goal:'Verify search-to-project navigation.',status:'active',tasks:[],milestones:[],threads:[],files:[],activity:[],approvals:[]}};
     else if(path==='/projects/p1/conversation'&&method==='POST') body={conversation_id:'project-chat-p1',project:{id:'p1',name:'Test Project'}};
     else if(path==='/projects/p1/discussions'&&method==='POST'){
       const input=JSON.parse(req.postData()||'{}');await page.evaluate(value=>window.__projectDiscussion=value,input);body={project:{id:'p1',name:'Test Project'}};
@@ -64,10 +120,15 @@ async function wire(page){
 
 try{
   await verifyGenesisNavigationIsolation();
+  await verifyReturningOwnerEntry();
+  await verifyConfiguredOwnerMethods();
   const desktop=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await wire(desktop);
-  await desktop.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await desktop.addStyleTag({content:globalSearchStyle});
+  await desktop.addScriptTag({content:globalSearchSource});
+  await desktop.addStyleTag({content:commandCenterStyle});
+  await desktop.addScriptTag({content:commandCenterSource});
   await desktop.locator('#vNewChat').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await desktop.screenshot({path:'artifacts/chat-new-empty-desktop.png',fullPage:true});
@@ -133,11 +194,44 @@ try{
   await desktop.waitForFunction(()=>document.body.innerText.includes('General chat · No project context'));
   assert.notEqual(await desktop.evaluate(()=>window.vishnuChatBridge.current.id),'project-chat-p1','switching to general opens a separate general conversation');
 
+  await desktop.evaluate(()=>window.openModule('search'));
+  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
+  await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
+  await desktop.locator('#globalSearchQuery').fill('New conversation');
+  await desktop.locator('[data-gs-open="conversation"]').first().waitFor({state:'visible'});
+  assert.equal(await desktop.locator('.gs-group h2').first().innerText(),'Conversations','global search groups canonical conversation results');
+  await desktop.screenshot({path:'artifacts/global-search-desktop.png',fullPage:true});
+  const searchConversationId=await desktop.locator('[data-gs-open="conversation"]').first().getAttribute('data-gs-id');
+  await desktop.locator('[data-gs-open="conversation"]').first().click();
+  await desktop.waitForFunction(id=>window.vishnuChatBridge.current.id===id,searchConversationId,'search result activates its existing conversation ID');
+
+  await desktop.evaluate(()=>window.openModule('search'));
+  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
+  await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
+  await desktop.locator('#globalSearchQuery').fill('Test Project');
+  await desktop.locator('[data-gs-scope="projects"]').click();
+  await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').click();
+  await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
+  await desktop.keyboard.press('Control+Shift+P');
+  await desktop.getByRole('heading',{name:'Command Center'}).waitFor({state:'visible'});
+  await desktop.screenshot({path:'artifacts/command-center-desktop.png',fullPage:false});
+  await desktop.locator('[data-cc-query]').fill('Projects');
+  await desktop.locator('[data-cc-run="Projects"]').click();
+  await desktop.waitForFunction(()=>document.querySelector('#moduleTitle')?.textContent==='Projects','command navigation opens the canonical Projects module');
+  assert.equal(await desktop.locator('.cc-dialog').count(),0,'command navigation closes the palette and returns to the canonical Projects module');
+
   const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,serviceWorkers:'block'});
   active=null;conversations=[];created=0;turns=0;modalities=[];
   await wire(mobile);
-  await mobile.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await mobile.addStyleTag({content:globalSearchStyle});
+  await mobile.addScriptTag({content:globalSearchSource});
+  await mobile.addStyleTag({content:commandCenterStyle});
+  await mobile.addScriptTag({content:commandCenterSource});
   await mobile.locator('#vNewChat').evaluate(node=>node.click());
   await mobile.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await mobile.screenshot({path:'artifacts/chat-new-empty-mobile.png',fullPage:true});
@@ -172,6 +266,16 @@ try{
   await mobile.screenshot({path:'artifacts/chat-details-mobile.png',fullPage:true});
   await mobile.locator('#chatDetailMobile [data-chat-detail="back"]').click();
   assert.equal(await mobile.locator('#chatDetailMobile').evaluate(n=>n.classList.contains('open')),false,'mobile details returns to the conversation');
+  await mobile.keyboard.press('Control+Shift+P');
+  await mobile.getByRole('heading',{name:'Command Center'}).waitFor({state:'visible'});
+  assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile Command Center stays within the viewport');
+  await mobile.screenshot({path:'artifacts/command-center-mobile.png',fullPage:false});
+  await mobile.keyboard.press('Escape');
+  assert.equal(await mobile.locator('.cc-dialog').count(),0,'Escape closes the mobile Command Center');
+  await mobile.locator('[data-reference-search]').evaluate(node=>node.click());
+  await mobile.locator('#globalSearchQuery').waitFor({state:'visible'});
+  assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile global search has no horizontal overflow');
+  await mobile.screenshot({path:'artifacts/global-search-mobile.png',fullPage:true});
   assert.deepEqual(errors,[],'browser has no uncaught errors');
   console.log('Chat experience desktop/mobile checks passed. Screenshots: artifacts/chat-active-desktop.png, artifacts/chat-details-mobile.png');
 }finally{await browser.close()}

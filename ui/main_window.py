@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import os
 
 from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, QThread, QTimer, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QDesktopServices
@@ -76,7 +77,7 @@ class MainWindow(QMainWindow):
         "error": ("Interrupted", "Something prevented me from completing this."),
         "background": ("Background", "I am available without demanding attention."),
     }
-    CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/iphone/"
+    CLOUD_URL = "https://personal-ai-runtime-production.up.railway.app/web/"
 
     # EventBus callbacks may originate on voice/runtime worker threads. PyQt
     # signals marshal these payloads back onto the MainWindow GUI thread.
@@ -922,10 +923,10 @@ class MainWindow(QMainWindow):
         Browser handoff preserves Google authentication, secure device cookies,
         microphone permissions and cross-device conversation continuity.
         """
-        target = self.runtime.get("cloud_url") or self.CLOUD_URL
-        if settings.control_server_enabled:
+        target = os.getenv("VISHNU_WEB_APP_URL", "").strip() or self.runtime.get("cloud_url") or self.CLOUD_URL
+        if not os.getenv("VISHNU_WEB_APP_URL", "").strip() and settings.control_server_enabled:
             host = "127.0.0.1" if settings.control_server_host in {"0.0.0.0", "::"} else settings.control_server_host
-            target = f"http://{host}:{settings.control_server_port}/iphone/"
+            target = f"http://{host}:{settings.control_server_port}/web/"
         if not QDesktopServices.openUrl(QUrl(target)):
             QMessageBox.warning(
                 self,
