@@ -14,6 +14,7 @@ export function mountNeuralSphere(canvas) {
     uniform vec2 u_rotation;
     uniform float u_aspect;
     uniform float u_ratio;
+    uniform float u_scale;
     uniform float u_time;
     varying float v_depth;
     varying float v_phase;
@@ -26,7 +27,7 @@ export function mountNeuralSphere(canvas) {
       gl_Position = vec4(p.x * 2.60 / u_aspect, p.y * 2.60, 0.0, w);
       v_depth = p.z;
       v_phase = a_point.w * 0.57 + a_point.x * 5.0 + a_point.y * 3.0;
-      gl_PointSize = max(1.0, a_point.w * u_ratio * (2.9 / w));
+      gl_PointSize = max(1.0, a_point.w * u_ratio * u_scale * (2.9 / w));
     }
   `;
   const fragment = `
@@ -43,6 +44,11 @@ export function mountNeuralSphere(canvas) {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
         if (radius > 0.5) discard;
+        if (u_mode > 1.5) {
+          float halo = exp(-20.0 * radius * radius) * (0.16 + 0.12 * front);
+          gl_FragColor = vec4(0.12, 0.74, 1.0, halo);
+          return;
+        }
         float core = smoothstep(0.29, 0.015, radius);
         float bloom = smoothstep(0.50, 0.02, radius) * 0.38;
         float pulse = 0.90 + 0.10 * sin(u_time * 1.4 + v_phase);
@@ -136,6 +142,7 @@ export function mountNeuralSphere(canvas) {
   const rotation = gl.getUniformLocation(program, 'u_rotation');
   const aspect = gl.getUniformLocation(program, 'u_aspect');
   const ratio = gl.getUniformLocation(program, 'u_ratio');
+  const pointScale = gl.getUniformLocation(program, 'u_scale');
   const mode = gl.getUniformLocation(program, 'u_mode');
   const time = gl.getUniformLocation(program, 'u_time');
   gl.useProgram(program);
@@ -169,9 +176,11 @@ export function mountNeuralSphere(canvas) {
       gl.bindBuffer(gl.ARRAY_BUFFER, item);
       gl.vertexAttribPointer(attribute, 4, gl.FLOAT, false, 16, 0);
       gl.uniform1f(mode, kind);
+      gl.uniform1f(pointScale, kind > 1.5 ? 2.55 : 1.0);
       gl.drawArrays(drawMode, 0, count);
     };
     renderBuffer(lineBuffer, edges.length / 4, 0, gl.LINES);
+    renderBuffer(pointBuffer, nodes.length, 2, gl.POINTS);
     renderBuffer(pointBuffer, nodes.length, 1, gl.POINTS);
     if (!reducedMotion.matches) {
       for (let i = 0; i < 24; i++) {
