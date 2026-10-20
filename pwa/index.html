@@ -3418,7 +3418,7 @@ function beginFreshConversationState(){
  $('conversationTitle').textContent=currentConversationTitle;$('transcript').textContent='';$('reply').textContent='';
  renderMessages();syncChatMenuAvailability();
 }
-function enterHomeLanding(){beginFreshConversationState();document.body.classList.add('home-landing');syncChatMenuAvailability();requestAnimationFrame(resizeCanvas)}
+function enterHomeLanding(){beginFreshConversationState();activeModule='home';document.body.classList.remove('focused-module','owner-controls-mode');$('modulePanel').classList.remove('open');$('voicePanel').classList.remove('hidden');$('features').classList.remove('hidden');document.body.classList.add('home-landing');syncChatMenuAvailability();requestAnimationFrame(resizeCanvas)}
 function enterConversationView(){activeModule='home';$('modulePanel').classList.remove('open');$('voicePanel').classList.remove('hidden');$('features').classList.remove('hidden');document.body.classList.remove('home-landing');syncChatMenuAvailability();requestAnimationFrame(()=>{$('messageStream').scrollTop=$('messageStream').scrollHeight;resizeCanvas()})}
 function eventMessage(event){
  const kind=String(event.kind||''),text=String((event.payload&&event.payload.text)||'');

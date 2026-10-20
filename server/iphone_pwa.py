@@ -392,6 +392,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         page = (web_dir / 'index.html').read_text(encoding='utf-8')
         page = page.replace(
             '</body>',
+            '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">'
+            '<script src="/iphone/vishnu-os-workspaces.js" defer></script>'
             '<script src="/iphone/first-run.js" defer></script>'
             '<script src="/iphone/first-run-actions.js" defer></script></body>',
         )
@@ -401,6 +403,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def campaign_demo_entry():
         """Open the isolated Screens 11–15 fixture without owner sign-in."""
         return RedirectResponse('/iphone/?campaignDemo=1', status_code=302)
+
+    @router.get('/vishnu-os-workspaces.js', include_in_schema=False)
+    def vishnu_os_script():
+        return Response((web_dir / 'vishnu-os-workspaces.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/vishnu-os-workspaces.css', include_in_schema=False)
+    def vishnu_os_styles():
+        return Response((web_dir / 'vishnu-os-workspaces.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
     @router.get('/first-run.js', include_in_schema=False)
     def first_run_script():
