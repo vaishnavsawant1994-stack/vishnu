@@ -46,7 +46,7 @@
 .vw-sphere.vw-static-fallback { background: radial-gradient(circle at 44% 46%, #00d1fd 0 1%, #007cc1 3%, rgba(4,57,108,.25) 18%,transparent 67%); }
 .vw-sphere.vw-static-fallback::after { background: repeating-radial-gradient(circle,transparent 0 20px,rgba(34,168,240,.14) 21px,transparent 22px); }
 .vw-eyebrow { margin: 13px 0 7px; font-size: 12px; font-weight: 550; letter-spacing: .67em; padding-left: .67em; line-height:1.5; color: #70e9ff; white-space: nowrap; }
-.vw-heading { font-weight: 740; line-height: 1.1; letter-spacing: -.05em; margin: 0; font-size: clamp(38px, 4.15vw, 64px); }
+.vw-heading { font-weight: 740; line-height: 1.1; letter-spacing: -.022em; margin: 0; font-size: clamp(38px, 4.15vw, 64px); }
 .vw-heading em { font-style: normal; color: #54e7ff; background: linear-gradient(100deg,#82edff,#10c6ef); background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent; }
 .vw-subtitle { margin: 9px 0 0; font-size: clamp(15px, 1.38vw, 21px); color: var(--vw-muted); line-height: 1.45; }
 .vw-actions { display: grid; gap: 16px; width: min(100%, 984px); margin-top: 20px; }
