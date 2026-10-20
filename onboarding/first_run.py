@@ -276,6 +276,14 @@ class FirstRunCoordinator:
             raise RuntimeError('Owner security and recovery codes must be created first')
         return self._mark_step('recovery_saved', stage='privacy')
 
+    def invalidate_recovery_confirmation(self) -> dict:
+        """Require a fresh acknowledgement after one-time recovery codes rotate."""
+        state = self._read_state()
+        completed = [step for step in state.get('completed_steps', []) if step != 'recovery_saved']
+        state['completed_steps'] = completed
+        state['stage'] = 'recovery'
+        return self._write_state(state)
+
     def configure_preferences(
         self,
         *,

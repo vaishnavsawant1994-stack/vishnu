@@ -150,7 +150,9 @@ def test_cross_host_transfer_uses_different_root_keys_and_preserves_target_secur
     assert result["credentials_rebind_required"] is True
     assert result["restart_required"] is True
     assert "devices.sqlite3" in result["skipped_security_state"]
+    assert "agent-continuity.sqlite3" in result["skipped_security_state"]
     assert IMPORT_RECEIPT_FILENAME in NON_RESTORABLE_SECURITY_NAMES
+    assert "agent-continuity.sqlite3" in NON_RESTORABLE_SECURITY_NAMES
 
     assert _read_value(target_dir / "assistant.sqlite3", "memory_rows") == "source-memory"
     assert _read_value(target_dir / "devices.sqlite3", "security_rows") == "target-security"
@@ -206,6 +208,28 @@ def test_target_body_mismatch_fails_before_restore(tmp_path):
             transfer_token=exported.transfer_token,
         )
     assert _read_value(target_dir / "assistant.sqlite3", "memory_rows") == "target-original"
+
+
+def test_import_refuses_initialized_target_before_restoring_any_data(tmp_path):
+    _source_dir, _source_authority, exported, verifier = _source_export(
+        tmp_path, target_host="target-already-initialized"
+    )
+    target_dir = tmp_path / "target-already-initialized-dir"
+    target_dir.mkdir()
+    _simple_db(target_dir / "assistant.sqlite3", "memory_rows", "target-original")
+    target_service, target_authority = _target_service(
+        target_dir, host_id="target-already-initialized", verifier=verifier
+    )
+    target_authority.bootstrap_or_resume()
+
+    with pytest.raises(ContinuityAuthorityError, match="target continuation authority already exists"):
+        target_service.import_bundle(
+            bundle_path=exported.bundle_path,
+            transfer_token=exported.transfer_token,
+        )
+
+    assert _read_value(target_dir / "assistant.sqlite3", "memory_rows") == "target-original"
+    assert target_service.import_receipts.get(exported.grant.id) is None
 
 
 def test_failure_after_restore_boundary_requires_manual_recovery_not_replay(tmp_path, monkeypatch):

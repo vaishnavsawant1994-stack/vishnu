@@ -12,12 +12,12 @@
   }
 
   const requestedStep = new URLSearchParams(location.search).get('genesisStep');
-  const localPreviewStep = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /^(?:[1-9]|10)$/.test(requestedStep || '')
+  const localPreviewStep = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) && /^(?:[1-4])$/.test(requestedStep || '')
     ? Number(requestedStep) : 1;
   const s = {
     step: localPreviewStep, options: {}, identityCreated: false, recoverySaved: false,
     policySaved: false, modelSaved: false, passkeyCreated: false,
-    auth: 'passkey', dataPolicy: 'progress_only', intelligence: 'skip', privacy: 'local_preferred',
+    auth: 'passkey', dataPolicy: 'device_only', intelligence: 'skip', privacy: 'local_only',
     accessIntent: accessIntent || '', authView: 'welcome', pendingPostAuthAction: '',
   };
   const panel = $('enrollPanel');
@@ -42,8 +42,8 @@
     check: '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
   };
   const icon = name => `<span class="genesis-card-icon" aria-hidden="true"><svg width="27" height="27" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${paths[name] || paths.check}</svg></span>`;
-  const dots = n => `<div class="genesis-dots" aria-hidden="true">${Array.from({ length: 10 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>`;
-  const coreState = n => n >= 10 ? 'ready' : n >= 9 ? 'privacy' : n >= 3 ? 'security' : 'identity';
+  const dots = n => `<div class="genesis-dots" aria-hidden="true">${Array.from({ length: 3 }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>`;
+  const coreState = n => n >= 4 ? 'recovery' : n >= 3 ? 'security' : 'identity';
   const badge = text => text ? `<span class="genesis-badge">${text}</span>` : '';
   const field = (id, placeholder, type = 'text', autocomplete = 'off', cls = '') => `<input class="${cls}" id="${id}" type="${type}" autocomplete="${autocomplete}" placeholder="${placeholder}">`;
   const heading = (title, copy) => `<div class="genesis-copy"><h1>${title}</h1><p>${copy}</p></div>`;
@@ -53,15 +53,19 @@
   const card = ({ value, title, copy, badgeText = '', name = 'choice', selected = false, iconName = 'check', details = '' }) => `<label class="genesis-card ${selected ? 'selected' : ''}"><input type="radio" name="${name}" value="${value}" ${selected ? 'checked' : ''}><div class="genesis-card-head">${icon(iconName)}<div><h3>${title}${badge(badgeText)}</h3><p>${copy}</p></div></div>${details}</label>`;
 
   function content(n) {
-    if (n === 1) return `${heading('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')}<div class="genesis-actions"><button class="genesis-primary" data-genesis-create>Create my Vishnu &rarr;</button><div class="genesis-secondary-row"><button class="genesis-tertiary" data-genesis-join>I already have Vishnu</button><span>|</span><button class="genesis-tertiary" data-genesis-restore>Restore Vishnu</button></div><p id="genesisStatus" class="genesis-error" role="status" aria-live="polite"></p></div>`;
+    if (n === 1) return `${heading('Welcome to Vishnu', 'Your personal AI. Your world.')}<div class="genesis-actions"><button class="genesis-primary" data-genesis-create>Create My Vishnu &rarr;</button><div class="genesis-secondary-row"><button class="genesis-tertiary" data-genesis-join>I Already Have Vishnu</button><span>|</span><button class="genesis-tertiary" data-genesis-restore>Restore Vishnu</button></div><p id="genesisStatus" class="genesis-error" role="status" aria-live="polite"></p></div>`;
+    if (n === 2) return `${heading('What should Vishnu call you?', 'Your name helps personalize your Vishnu.')}<div class="genesis-content narrow"><div class="genesis-fields">${field('firstRunFirstName', 'First name', 'text', 'given-name')}${field('firstRunLastName', 'Last name (optional)', 'text', 'family-name')}${field('firstRunDisplayName', 'Display name', 'text', 'nickname', 'wide')}</div><p class="genesis-note">You can add a profile picture later from your profile.</p>${actions()}</div>`;
+    if (n === 3) return `${heading('Secure your Vishnu', 'Choose a sign-in method and set a strong owner password.')}<div class="genesis-content medium"><div class="genesis-grid stack">${card({ value: 'passkey', title: 'Password + passkey', copy: 'Use your owner password and add this device’s secure sign-in.', badgeText: 'Recommended', name: 'auth', selected: true, iconName: 'user' })}${card({ value: 'password', title: 'Password only', copy: 'Use your owner password to sign in.', name: 'auth', iconName: 'lock' })}</div><p class="genesis-note">This runtime requires an owner password to protect setup and recovery. A passkey is an additional sign-in method and may be added later.</p><div class="genesis-fields">${field('firstRunBootstrap', 'Local runtime setup code', 'password', 'one-time-code', 'wide')}${field('firstRunPassword', 'Owner password - 12 characters minimum', 'password', 'new-password')}${field('firstRunPasswordAgain', 'Confirm owner password', 'password', 'new-password')}</div>${actions('Secure Vishnu &rarr;')}</div>`;
+    if (n === 4) return `${heading('Save your Vishnu Recovery Key', 'Keep these one-time recovery codes somewhere safe. They help you regain access if you lose your sign-in method.')}<div class="genesis-content medium"><article class="genesis-card selected"><div class="genesis-card-head">${icon('key')}<div><h3>Recovery codes${badge('Required')}</h3><p>Each code can be used once. Vishnu does not keep a readable copy.</p></div></div><pre id="firstRunCodes" class="genesis-recovery">Recovery codes are shown only once. If you did not save your earlier codes, generate a fresh set below.</pre><button type="button" class="genesis-tertiary" data-genesis-regenerate-codes>Generate fresh recovery codes</button></article><label class="genesis-check"><input id="firstRunRecoverySaved" type="checkbox" ${s.options.setup_recovery_saved ? 'checked' : ''}>I have safely saved my recovery codes.</label>${actions('Create My Vishnu &rarr;')}</div>`;
+    if (n === 1) return `${heading('Welcome to Vishnu', 'Your personal AI. Your world.')}<div class="genesis-actions"><button class="genesis-primary" data-genesis-create>Create My Vishnu &rarr;</button><div class="genesis-secondary-row"><button class="genesis-tertiary" data-genesis-join>I Already Have Vishnu</button><span>|</span><button class="genesis-tertiary" data-genesis-restore>Restore Vishnu</button></div><p id="genesisStatus" class="genesis-error" role="status" aria-live="polite"></p></div>`;
 
-    if (n === 2) return `${heading('Create your Vishnu identity', 'This is how Vishnu will know and address you.')}<div class="genesis-content narrow"><div class="genesis-fields">${field('firstRunFirstName', 'First name', 'text', 'given-name')}${field('firstRunLastName', 'Last name', 'text', 'family-name')}${field('firstRunDisplayName', 'Display name', 'text', 'nickname', 'wide')}</div><div class="genesis-card-head">${icon('user')}<div><h3>Profile picture</h3><p>Optional &middot; Add after setup from your owner profile</p></div></div>${actions()}</div>`;
+    if (n === 2) return `${heading('What should Vishnu call you?', 'Your name helps personalize your Vishnu.')}<div class="genesis-content narrow"><div class="genesis-fields">${field('firstRunFirstName', 'First name', 'text', 'given-name')}${field('firstRunLastName', 'Last name (optional)', 'text', 'family-name')}${field('firstRunDisplayName', 'Display name', 'text', 'nickname', 'wide')}</div><p class="genesis-note">You can add a profile picture later from your profile.</p>${actions()}</div>`;
 
-    if (n === 3) return `${heading('Secure your Vishnu', 'Choose how Vishnu should verify it\'s you.')}<div class="genesis-content medium"><div class="genesis-grid stack">${card({ value: 'passkey', title: 'Passkey', copy: 'Use your device\'s secure authentication &mdash; Face ID, Touch ID, Windows Hello or device biometrics.', badgeText: 'Recommended', name: 'auth', selected: true, iconName: 'user' })}${card({ value: 'password', title: 'Password', copy: 'Create a private owner password. A simple and secure way to verify it\'s you.', name: 'auth', iconName: 'lock' })}${card({ value: 'both', title: 'Passkey + Password', copy: 'Use both methods for maximum security and flexibility.', name: 'auth', iconName: 'shield' })}</div><p class="genesis-note">&#9432; You can add or remove authentication methods later from Security settings.</p>${actions()}</div>`;
+    if (n === 3) return `${heading('Secure your Vishnu', 'Choose a sign-in method and set a strong owner password.')}<div class="genesis-content medium"><div class="genesis-grid stack">${card({ value: 'passkey', title: 'Passkey', copy: 'Add your device’s secure sign-in as a convenient way to return.', badgeText: 'Recommended', name: 'auth', selected: true, iconName: 'user' })}${card({ value: 'password', title: 'Password only', copy: 'Use your owner password to sign in.', name: 'auth', iconName: 'lock' })}</div><p class="genesis-note">This runtime currently requires an owner password to protect setup and recovery. A passkey can be added when supported.</p><div class="genesis-fields">${field('firstRunBootstrap', 'Local runtime setup code', 'password', 'one-time-code', 'wide')}${field('firstRunPassword', 'Owner password - 12 characters minimum', 'password', 'new-password')}${field('firstRunPasswordAgain', 'Confirm owner password', 'password', 'new-password')}</div>${actions('Secure Vishnu &rarr;')}</div>`;
 
     if (n === 4) return `${heading('Configure your authentication', 'Set up the authentication method you selected.')}<div class="genesis-content medium"><article class="genesis-card selected" data-auth-choice="passkey"><div class="genesis-card-head">${icon('user')}<div><h3>Create your passkey${badge('Recommended')}</h3><p>Use your device\'s biometric authentication to create secure owner access for Vishnu.</p></div></div>${features([['Fast and secure', 'Uses your device secure hardware.'], ['Works across your devices', 'Uses supported passkey providers.'], ['Private', 'Biometric data never leaves your device.'], ['Can be added later', 'Manage from Security settings.']])}</article><div class="genesis-or">OR</div><article class="genesis-card" data-auth-choice="password"><div class="genesis-card-head">${icon('lock')}<div><h3>Create a password instead</h3><p>Set a private owner password to verify it\'s you.</p></div></div></article><div class="genesis-fields" style="margin-top:14px">${field('firstRunBootstrap', 'Local runtime setup code', 'password', 'one-time-code', 'wide')}${field('firstRunPassword', 'Owner password — 12 characters minimum', 'password', 'new-password')}${field('firstRunPasswordAgain', 'Confirm owner password', 'password', 'new-password')}</div>${actions('Create passkey &rarr;')}</div>`;
 
-    if (n === 5) return `${heading('Protect your Vishnu', 'Set up recovery so you can restore Vishnu if you lose access to your devices.')}<div class="genesis-content medium"><article class="genesis-card selected"><div class="genesis-card-head">${icon('key')}<div><h3>Recovery codes${badge('Required')}</h3><p>Generate one-time recovery codes that can restore your Vishnu if you lose access to every device.</p></div></div>${features([['One-time codes', 'Each code can be used once.'], ['Keep them safe', 'Store them somewhere secure.'], ['Not stored by Vishnu', 'We do not keep a readable copy.']])}<pre id="firstRunCodes" class="genesis-recovery">Recovery codes will appear after security is created.</pre></article><article class="genesis-card"><div class="genesis-card-head">${icon('cloud')}<div><h3>Encrypted recovery package${badge('Recommended')}</h3><p>Create an encrypted recovery package that can help restore configuration and identity on another trusted device.</p></div></div>${features([['Your data, encrypted', 'Encrypted with your keys.'], ['Choose where to save', 'You decide the location.'], ['Use when needed', 'Helps restore your Vishnu.']])}</article><label class="genesis-check"><input id="firstRunRecoverySaved" type="checkbox">I have safely stored my recovery codes somewhere secure.</label>${actions()}</div>`;
+    if (n === 5) return `${heading('Protect your Vishnu', 'Set up recovery so you can restore Vishnu if you lose access to your devices.')}<div class="genesis-content medium"><article class="genesis-card selected"><div class="genesis-card-head">${icon('key')}<div><h3>Recovery codes${badge('Required')}</h3><p>These one-time codes are shown only once. Store them somewhere secure; Vishnu keeps no readable copy.</p></div></div>${features([['One-time codes', 'Each code can be used once.'], ['Keep them safe', 'Store them somewhere secure.'], ['Not stored by Vishnu', 'We do not keep a readable copy.']])}<pre id="firstRunCodes" class="genesis-recovery">Your existing recovery codes cannot be displayed again. If you did not save them, generate a fresh set below; this invalidates the old set.</pre><button type="button" class="genesis-tertiary" data-genesis-regenerate-codes>Generate fresh recovery codes</button></article><article class="genesis-card"><div class="genesis-card-head">${icon('cloud')}<div><h3>Encrypted recovery package${badge('Recommended')}</h3><p>Create an encrypted recovery package that can help restore configuration and identity on another trusted device.</p></div></div>${features([['Your data, encrypted', 'Encrypted with your keys.'], ['Choose where to save', 'You decide the location.'], ['Use when needed', 'Helps restore your Vishnu.']])}</article><label class="genesis-check"><input id="firstRunRecoverySaved" type="checkbox">I have safely stored my current recovery codes somewhere secure.</label>${actions()}</div>`;
 
     if (n === 6) return `${heading('Register this device', 'Make this device part of your trusted Vishnu network.')}<div class="genesis-content medium"><div class="genesis-grid"><article class="genesis-card selected"><div class="genesis-card-head">${icon('device')}<div><h3>This device</h3><p id="genesisDeviceName">Your browser</p></div></div>${features([['Secure storage available', 'Local credentials stay on this device.'], ['Device key created', 'Independent and revocable.']])}</article><article class="genesis-card"><div class="genesis-card-head">${icon('shield')}<div><h3>Trusted devices can</h3><p>Sign in to Vishnu, continue your work, access allowed data, and help restore your Vishnu.</p></div></div>${features([['Continue your work', 'Your context stays with you.'], ['Receive capabilities', 'Only approved features.']])}</article></div>${field('genesisDeviceAlias', 'Device name', 'text', 'off')}${actions('Trust this device &rarr;')}</div>`;
 
@@ -84,9 +88,10 @@
   }
 
   function render(n = s.step) {
-    s.step = Math.max(1, Math.min(10, n));
+    s.step = Math.max(1, Math.min(4, n));
     const progress = s.step > 1;
-    panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${s.step} of 10${dots(s.step)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, onboarding step ${s.step}"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
+    const journeyStep = s.step - 1;
+    panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${journeyStep} of 3${dots(journeyStep)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, setup step ${journeyStep} of 3"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
     bind();
   }
 
@@ -97,27 +102,7 @@
     panel.querySelector('[data-genesis-restore]')?.addEventListener('click', () => showLegacy('restore'));
     panel.querySelector('[data-genesis-next]')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: { step: s.step } })));
     panel.querySelectorAll('input[name=auth]').forEach(input => { input.onchange = () => s.auth = input.value; });
-    if (s.step === 4) {
-      const choices = [...panel.querySelectorAll('[data-auth-choice]')];
-      const selectAuth = choice => {
-        s.auth = choice.dataset.authChoice;
-        choices.forEach(card => {
-          const selected = card === choice;
-          card.classList.toggle('selected', selected);
-          card.setAttribute('aria-checked', String(selected));
-        });
-        const next = panel.querySelector('[data-genesis-next]');
-        if (next) next.innerHTML = s.auth === 'password' ? 'Create password &rarr;' : 'Create passkey &rarr;';
-      };
-      choices.forEach(card => {
-        card.setAttribute('role', 'radio');
-        card.tabIndex = 0;
-        card.addEventListener('click', () => selectAuth(card));
-        card.addEventListener('keydown', event => {
-          if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectAuth(card); }
-        });
-      });
-      selectAuth(choices.find(card => card.dataset.authChoice === s.auth) || choices[0]);
+    if (s.step === 3) {
       if (s.options.local_setup_available) {
         const code = $('firstRunBootstrap');
         code?.remove();
@@ -128,6 +113,24 @@
         panel.querySelector('.genesis-fields')?.prepend(notice);
       }
     }
+    panel.querySelector('[data-genesis-regenerate-codes]')?.addEventListener('click', async event => {
+      const button = event.currentTarget;
+      button.disabled = true;
+      button.textContent = 'Generating fresh codes…';
+      try {
+        const request = window.vishnuFirstRun?.setupApi || api;
+        const result = await request('/first-run/recovery-codes', { method: 'POST', body: '{}' });
+        s.recoveryCodes = result.recovery_codes || [];
+        $('firstRunCodes').textContent = s.recoveryCodes.join('\n');
+        $('firstRunRecoverySaved').checked = false;
+        setError('The previous recovery codes are now invalid. Save this new set before continuing.');
+      } catch (error) {
+        setError(error.message || 'Fresh recovery codes could not be generated.');
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Generate fresh recovery codes';
+      }
+    });
     panel.querySelectorAll('input[name=data]').forEach(x => { x.onchange = () => { s.dataPolicy=x.value; }; });
     panel.querySelectorAll('input[name=ai]').forEach(x => { x.onchange = () => { s.intelligence=x.value; if (s.intelligence === 'later') s.intelligence = 'skip'; $('genesisProviderFields')?.classList.toggle('hidden', x.value !== 'provider'); }; });
     panel.querySelectorAll('[data-genesis-info]').forEach(link => { link.onclick = event => { event.preventDefault(); setError(link.dataset.genesisInfo === 'privacy' ? 'Your setup remains local and owner controlled.' : 'Keyboard, screen reader, large text and reduced motion are supported.'); }; });
@@ -198,11 +201,52 @@
     if (view === 'restore') $('recoveryLogin').onclick = async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } };
     if (view === 'google') renderGoogleLogin();
   }
+  function renderPendingSetup() {
+    const resumeStep = Number(s.options.setup_resume_step) || 4;
+    s.identityCreated = resumeStep >= 4;
+    panel.setAttribute('aria-label', 'Continue Vishnu setup');
+    panel.className = 'genesis';
+    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu setup in progress"></div><div class="genesis-copy"><h1>Continue your Vishnu setup</h1><p>Your owner account is already created on this local runtime. Continue setup to finish it; do not create another account.</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-auth-action="resume-setup">Continue setup &rarr;</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
+    panel.querySelector('[data-auth-action="resume-setup"]')?.addEventListener('click', () => {
+      s.accessIntent = '';
+      s.step = resumeStep;
+      show();
+      render(resumeStep);
+    });
+  }
+  let joinPollTimer = 0;
+  const safeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  function renderJoinPending(join) {
+    const publicJoin = { request_id: join.request_id, verification_code: join.verification_code, name: join.name, expires_at: join.expires_at };
+    sessionStorage.setItem('vishnuPendingJoin', JSON.stringify(publicJoin));
+    panel.setAttribute('aria-label', 'Approve this device');
+    panel.className = 'genesis';
+    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><button class="genesis-back" type="button" data-join-cancel>← Cancel</button><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu device approval"></div><div class="genesis-copy"><h1>Approve this <em>device</em></h1><p>Sign-in was verified. A trusted device must approve this request before this browser is added.</p></div><article class="genesis-card selected"><h3>${safeText(join.name || 'New web browser')}</h3><p>Verification code</p><strong class="join-verification-code">${safeText(join.verification_code || '')}</strong><p>Open Settings → Devices on an existing trusted device, check that the code matches, then approve. This request expires shortly.</p></article><p id="joinStatus" class="genesis-error" role="status" aria-live="polite">Waiting for approval…</p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
+    panel.querySelector('[data-join-cancel]')?.addEventListener('click', () => { clearTimeout(joinPollTimer); sessionStorage.removeItem('vishnuPendingJoin'); renderReturning('welcome'); });
+    const poll = async () => {
+      try {
+        const result = await api('/access/join/status', { method: 'POST', body: JSON.stringify({ request_id: join.request_id }) });
+        if (result.status === 'complete') {
+          clearTimeout(joinPollTimer); sessionStorage.removeItem('vishnuPendingJoin'); await check(); return;
+        }
+        if (result.status === 'denied' || result.status === 'expired') {
+          sessionStorage.removeItem('vishnuPendingJoin');
+          $('joinStatus').textContent = result.status === 'denied' ? 'This request was denied. No device was added.' : 'This request expired. Sign in again to request approval.';
+          return;
+        }
+      } catch (error) {
+        if ($('joinStatus')) $('joinStatus').textContent = error.message || 'Unable to check approval right now.';
+      }
+      joinPollTimer = setTimeout(poll, 3000);
+    };
+    joinPollTimer = setTimeout(poll, 1200);
+  }
   async function handleReturningAction(action) {
     const status = $('returningStatus');
     try {
       if (action === 'back') { s.accessIntent = ''; show(); render(1); return; }
       if (action === 'create') { s.accessIntent = ''; show(); render(1); return; }
+      if (action === 'resume-setup') { s.accessIntent = ''; const step = Number(s.options.setup_resume_step) || 4; s.step = step; show(); render(step); return; }
       if (action === 'methods') { renderReturning('methods'); return; }
       if (action === 'welcome') { renderReturning('welcome'); return; }
       if (action === 'restore') {
@@ -215,7 +259,8 @@
         s.accessIntent = '';
         const start = await api('/access/passkey/login/options', { method: 'POST', body: '{}' });
         const credential = await navigator.credentials.get({ publicKey: requestOptions(start.public_key) });
-        await api('/access/passkey/login/complete', { method: 'POST', body: JSON.stringify({ challenge_id: start.challenge_id, credential: credentialJson(credential), name: 'Vishnu owner browser' }) });
+        const result = await api('/access/passkey/login/complete', { method: 'POST', body: JSON.stringify({ challenge_id: start.challenge_id, credential: credentialJson(credential), name: `${navigator.userAgentData?.platform || 'Web'} browser` }) });
+        if (result.status === 'approval_required') { renderJoinPending(result); return; }
         await check();
       }
       if (action === 'password') {
@@ -225,7 +270,8 @@
       }
       if (action === 'password-submit') {
         s.accessIntent = '';
-        await api('/access/password/login', { method: 'POST', body: JSON.stringify({ password: $('returningPassword').value, name: 'Vishnu owner browser' }) });
+        const result = await api('/access/password/login', { method: 'POST', body: JSON.stringify({ password: $('returningPassword').value, name: `${navigator.userAgentData?.platform || 'Web'} browser` }) });
+        if (result.status === 'approval_required') { renderJoinPending(result); return; }
         await check();
       }
       if (action === 'recovery') renderReturning('restore');
@@ -257,7 +303,10 @@
     const result = await originalCheck(...args);
     try {
       s.options = await originalLoad() || {};
-      if (s.accessIntent === 'join' || s.accessIntent === 'restore') { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); }
+      const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
+      if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
+      else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
+      else if (s.accessIntent === 'join' || s.accessIntent === 'restore') { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); }
       else if (s.options.creation_available) show();
       else if (result) {
         hide();

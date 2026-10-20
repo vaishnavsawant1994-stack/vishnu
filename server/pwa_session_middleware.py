@@ -35,6 +35,13 @@ PUBLIC_PATHS = {
     '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
     '/iphone/api/first-run/create',
+    '/iphone/api/first-run/complete',
+    '/iphone/api/first-run/model',
+    '/iphone/api/first-run/data-policy',
+    '/iphone/api/first-run/recovery-codes',
+    '/iphone/api/first-run/recovery-saved',
+    '/iphone/api/first-run/resume',
+    '/iphone/api/first-run/resume',
     '/iphone/api/first-run/native/create',
     '/iphone/api/first-run/native/complete',
     '/iphone/api/access/native/recovery',
@@ -43,6 +50,7 @@ PUBLIC_PATHS = {
     '/iphone/api/access/recovery/login',
     '/iphone/api/access/passkey/login/options',
     '/iphone/api/access/passkey/login/complete',
+    '/iphone/api/access/join/status',
     '/iphone/api/enroll',
     '/iphone/api/first-run/create',
     '/iphone/api/native/sessions/exchange',
@@ -59,6 +67,7 @@ LOGIN_PATHS = {
     '/iphone/api/access/password/login',
     '/iphone/api/access/recovery/login',
     '/iphone/api/access/passkey/login/complete',
+    '/iphone/api/access/join/status',
     '/iphone/api/enroll',
 }
 
@@ -178,10 +187,12 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                 '/iphone/api/access/security',
                 '/iphone/api/first-run/complete',
                 '/iphone/api/first-run/model',
-                # ONB-005 uses the canonical Data Plane settings authority. This
-                # changes only the default policy for newly governed data; it
-                # never moves existing owner data during first-run.
-                '/iphone/api/data-plane/settings',
+                '/iphone/api/first-run/recovery-codes',
+                '/iphone/api/first-run/recovery-saved',
+                '/iphone/api/first-run/resume',
+                # First-run policy writes are separately authorized by the
+                # setup claim and first-device credential in iphone_pwa.py.
+                '/iphone/api/first-run/data-policy',
             }
             if path.startswith('/iphone/api/') and path not in allowed_during_setup and path not in PUBLIC_PATHS:
                 response = JSONResponse(

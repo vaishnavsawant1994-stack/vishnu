@@ -275,6 +275,22 @@ class AgentContinuityService:
             manifest = self.backups._inspect_zip(payload, encrypted=True)
             self.verifier.verify_payload(checkpoint, payload=payload, manifest=manifest)
 
+            # Cross-host import is a first-device handoff. Refuse an already
+            # initialized target before claiming the one-time receipt or writing
+            # any restored files; the owner must explicitly prepare that host.
+            if self.import_receipts.get(grant.id) is not None:
+                # Preserve the explicit replay/recovery classification even
+                # though a completed import now has an active target authority.
+                self.import_receipts.claim(
+                    grant_id=grant.id,
+                    checkpoint_id=checkpoint.id,
+                    bundle_hash=bundle_sha256(bundle),
+                )
+            if self.store.current_authority() is not None:
+                raise ContinuityAuthorityError(
+                    "target continuation authority already exists; explicitly prepare this host before restoring"
+                )
+
             # Rewrap the authenticated portable payload with the target host's
             # owner root key. The source root key never crosses the boundary.
             self.backups._encrypt_payload(payload, rewrapped)
@@ -297,6 +313,7 @@ class AgentContinuityService:
                 # the authenticated outer header, then consume the one-time grant.
                 self.store.record_checkpoint(checkpoint)
                 self.store.prepare_transfer_grant(grant)
+                self.store.stage_import_authority(checkpoint=checkpoint)
                 next_epoch = grant.source_epoch + 1
                 target_token = self.authority.target_token(next_epoch)
                 lease = self.store.consume_transfer(

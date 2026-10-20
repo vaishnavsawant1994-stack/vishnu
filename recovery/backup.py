@@ -40,6 +40,12 @@ NON_RESTORABLE_SECURITY_NAMES = {
     'operator-policies.sqlite3',
     'operator-transactions.sqlite3',
     'owner-access.sqlite3',
+    # Continuation leases, epochs, grants and checkpoints are host-local
+    # authority. Cross-host imports recreate only the authenticated checkpoint
+    # and one-time grant on the target; restoring this database would both
+    # overwrite live SQLite state on Windows and risk rolling back target
+    # authority.
+    'agent-continuity.sqlite3',
     'connectors.sqlite3',
 }
 SQLITE_SUFFIXES = {'.sqlite3', '.sqlite', '.db'}
@@ -146,6 +152,14 @@ class BackupService:
         if not row or row[0] != 'ok':
             raise BackupError(f'database integrity failure: {path.name}')
 
+    @classmethod
+    def _is_valid_sqlite(cls, path: Path) -> bool:
+        try:
+            cls._sqlite_integrity(path)
+            return True
+        except BackupError:
+            return False
+
     @staticmethod
     def _snapshot_sqlite(source: Path, destination: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -166,6 +180,25 @@ class BackupService:
             return
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(source, destination)
+
+    @staticmethod
+    def _restore_sqlite_snapshot(source: Path, destination: Path) -> None:
+        """Restore SQLite contents without replacing an open Windows database.
+
+        SQLite's online backup API coordinates with other connections and keeps
+        the destination file identity stable, unlike ``os.replace`` which fails
+        on Windows whenever the runtime still has the database open.
+        """
+        try:
+            source_uri = source.resolve().as_uri() + '?mode=ro'
+            with sqlite3.connect(source_uri, uri=True, timeout=30) as src:
+                with sqlite3.connect(destination, timeout=30) as dst:
+                    src.backup(dst)
+                    row = dst.execute('PRAGMA integrity_check').fetchone()
+        except sqlite3.DatabaseError as exc:
+            raise BackupError(f'cannot restore database safely: {destination.name}') from exc
+        if not row or row[0] != 'ok':
+            raise BackupError(f'cannot restore database safely: {destination.name}')
 
     def _memory_key_envelope(self) -> bytes | None:
         vault_path = self.data_dir / 'vault.json'
@@ -664,7 +697,11 @@ class BackupService:
                     if not destination.is_file() or destination.is_symlink():
                         raise BackupError(f'unsafe restore destination: {rel.as_posix()}')
                     rollback_copy = rollback / rel
-                    self._copy_fsynced(destination, rollback_copy)
+                    if (destination.suffix.lower() in SQLITE_SUFFIXES
+                            and self._is_valid_sqlite(destination)):
+                        self._snapshot_sqlite(destination, rollback_copy)
+                    else:
+                        self._copy_fsynced(destination, rollback_copy)
                 touched.append((destination, rollback_copy))
 
             restored = 0
@@ -675,8 +712,19 @@ class BackupService:
                         f'.{destination.name}.{secrets.token_hex(6)}.restore'
                     )
                     try:
-                        self._copy_fsynced(source, temp_destination)
-                        os.replace(temp_destination, destination)
+                        if (source.suffix.lower() in SQLITE_SUFFIXES and destination.exists()
+                                and self._is_valid_sqlite(destination)):
+                            self._restore_sqlite_snapshot(source, destination)
+                        elif source.suffix.lower() in SQLITE_SUFFIXES and destination.exists():
+                            # A corrupt/non-SQLite legacy file cannot be updated
+                            # through SQLite's backup API. Preserve a byte-for-
+                            # byte rollback copy above, then rewrite in place;
+                            # replacing a file can be denied on Windows even
+                            # when no SQLite connection can consume it.
+                            self._copy_fsynced(source, destination)
+                        else:
+                            self._copy_fsynced(source, temp_destination)
+                            os.replace(temp_destination, destination)
                         restored += 1
                     finally:
                         temp_destination.unlink(missing_ok=True)
@@ -692,14 +740,20 @@ class BackupService:
                         if rollback_copy is None:
                             destination.unlink(missing_ok=True)
                         else:
-                            rollback_temp = destination.with_name(
-                                f'.{destination.name}.{secrets.token_hex(6)}.rollback'
-                            )
-                            try:
-                                self._copy_fsynced(rollback_copy, rollback_temp)
-                                os.replace(rollback_temp, destination)
-                            finally:
-                                rollback_temp.unlink(missing_ok=True)
+                            if (destination.suffix.lower() in SQLITE_SUFFIXES and destination.exists()
+                                    and self._is_valid_sqlite(rollback_copy)):
+                                self._restore_sqlite_snapshot(rollback_copy, destination)
+                            elif destination.suffix.lower() in SQLITE_SUFFIXES and destination.exists():
+                                self._copy_fsynced(rollback_copy, destination)
+                            else:
+                                rollback_temp = destination.with_name(
+                                    f'.{destination.name}.{secrets.token_hex(6)}.rollback'
+                                )
+                                try:
+                                    self._copy_fsynced(rollback_copy, rollback_temp)
+                                    os.replace(rollback_temp, destination)
+                                finally:
+                                    rollback_temp.unlink(missing_ok=True)
                     except Exception as rollback_exc:  # pragma: no cover - catastrophic filesystem failure
                         rollback_errors.append(f'{destination}: {rollback_exc}')
                 if rollback_errors:

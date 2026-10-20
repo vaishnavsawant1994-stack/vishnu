@@ -72,7 +72,7 @@ class FirstRunWizard(QDialog):
         wordmark_line.setFixedSize(180, 1)
         wordmark_line.setStyleSheet("background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 transparent,stop:0.5 #4ddcff,stop:1 transparent); border:0;")
         root.addWidget(wordmark_line, 0, Qt.AlignmentFlag.AlignHCenter)
-        self.genesis_progress = QLabel('Screen 1 of 10   ● ○ ○ ○ ○ ○ ○ ○ ○ ○')
+        self.genesis_progress = QLabel('')
         self.genesis_progress.setObjectName('progress')
         self.genesis_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self.genesis_progress)
@@ -174,13 +174,12 @@ class FirstRunWizard(QDialog):
         return button
 
     def _update_progress(self, index: int):
-        if 0 <= index <= 9:
-            step = index + 1
-            dots = ' '.join('●' if item <= step else '○' for item in range(1, 11))
-            self.genesis_progress.setText(f'Screen {step} of 10   {dots}')
-            self.genesis_progress.setVisible(index > 0)
-        else:
-            self.genesis_progress.setVisible(False)
+        steps = {1: 1, 2: 2, 4: 3}
+        step = steps.get(index)
+        self.genesis_progress.setVisible(step is not None)
+        if step is not None:
+            dots = ' '.join('●' if item <= step else '○' for item in range(1, 4))
+            self.genesis_progress.setText(f'Step {step} of 3   {dots}')
 
     def _welcome_page(self):
         page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
@@ -220,36 +219,28 @@ class FirstRunWizard(QDialog):
         return page
 
     def _security_choice_page(self):
-        page, layout = self._page('Secure your Vishnu', 'Choose how Vishnu should verify it is you.')
-        self.authentication_choice = QComboBox()
-        self.authentication_choice.addItem('Passkey — recommended', 'passkey')
-        self.authentication_choice.addItem('Password', 'password')
-        self.authentication_choice.addItem('Passkey + password', 'both')
-        layout.addWidget(self.authentication_choice)
-        hint = QLabel('A private owner password initializes recovery security. When Windows passkey support is available, Vishnu will offer the selected passkey option without changing your owner identity.')
-        hint.setObjectName('hint')
-        hint.setWordWrap(True)
-        layout.addWidget(hint)
-        layout.addStretch(1)
-        layout.addWidget(self._next_button('Continue', lambda: self.stack.setCurrentIndex(3)))
-        return page
-
-    def _security_page(self):
-        page, layout = self._page('Configure your authentication', 'Create the private owner credential and recovery security for this Vishnu.')
+        page, layout = self._page('Secure your Vishnu', 'Create the owner password that protects this Vishnu.')
         form = QFormLayout()
         self.password = QLineEdit()
         self.password.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password.setPlaceholderText('12 characters minimum')
         self.password_confirm = QLineEdit()
         self.password_confirm.setEchoMode(QLineEdit.EchoMode.Password)
+        self.password_confirm.setPlaceholderText('Enter the same password again')
         form.addRow('Owner password', self.password)
         form.addRow('Confirm password', self.password_confirm)
         layout.addLayout(form)
-        hint = QLabel('Minimum 12 characters. Vishnu stores a password hash, never this plaintext password.')
+        hint = QLabel('A passkey can be added later from Security settings when supported. Vishnu stores a password hash, never this plaintext password.')
         hint.setObjectName('hint')
         hint.setWordWrap(True)
         layout.addWidget(hint)
         layout.addStretch(1)
-        layout.addWidget(self._next_button('Create security', self._save_security))
+        layout.addWidget(self._next_button('Secure Vishnu  →', self._save_security))
+        return page
+
+    def _security_page(self):
+        page, layout = self._page('Secure your Vishnu', 'Security is configured in the previous step.')
+        layout.addStretch(1)
         return page
 
     def _recovery_page(self):
@@ -455,18 +446,16 @@ class FirstRunWizard(QDialog):
         self.title.setText('Finish restoring Vishnu' if mode_value == SetupMode.RESTORE.value else 'Continue setting up Vishnu')
         if stage == 'owner':
             self.stack.setCurrentIndex(1)
-        elif stage == 'security':
+        elif stage == 'security' or (stage == 'recovery' and 'recovery_saved' not in completed):
             self.stack.setCurrentIndex(2)
-        elif stage == 'recovery' and 'recovery_saved' not in completed:
-            self.stack.setCurrentIndex(3)
             self.subtitle.setText('Setup was interrupted before recovery codes were confirmed. Re-enter an owner password to generate a fresh recovery-code set.')
-        elif stage == 'privacy' or ('recovery_saved' in completed and 'privacy' not in completed):
-            self.stack.setCurrentIndex(5)
-        elif {'model', 'model_skipped'} & completed:
-            self._refresh_review()
-            self.stack.setCurrentIndex(8 if 'privacy' not in completed else 9)
         else:
-            self.stack.setCurrentIndex(6)
+            # The recovery acknowledgement is the last visible step. It can
+            # safely resume here; defaults and completion are retried after it.
+            self.saved_codes.setChecked('recovery_saved' in completed)
+            if 'recovery_saved' in completed:
+                self.recovery_label.setText('Recovery codes were already confirmed. Continue to finish secure setup.')
+            self.stack.setCurrentIndex(4)
 
     def _choose_mode(self, mode: SetupMode):
         self.mode = mode
@@ -490,7 +479,7 @@ class FirstRunWizard(QDialog):
             self.title.setText('Welcome to Vishnu')
             return
         if self.mode is SetupMode.CREATE:
-            previous = {2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 7: 6, 8: 7, 9: 8}.get(index)
+            previous = {2: 1, 3: 2, 4: 2}.get(index)
             if previous is not None:
                 self.stack.setCurrentIndex(previous)
 
@@ -532,7 +521,22 @@ class FirstRunWizard(QDialog):
             return
         self.recovery_codes = []
         self.recovery_label.setText('Recovery codes saved and hidden. Regenerate them from Settings → Security if they are ever lost.')
-        self.stack.setCurrentIndex(5)
+        try:
+            # Keep Create to three user-facing stages while applying the
+            # existing secure defaults through the canonical authorities.
+            self.coordinator.configure_preferences(
+                privacy_mode='local_only', autonomy_mode='ask', memory_enabled=True,
+            )
+            self.coordinator.skip_model_configuration()
+            result = get_data_plane(self.runtime).update_settings(default_policy='device_only')
+            if str(result.get('default_policy') or '') != 'device_only':
+                raise RuntimeError('Vishnu did not confirm the local-only data default')
+            self.coordinator.complete()
+        except Exception as exc:
+            QMessageBox.warning(self, 'Finish setup', str(exc))
+            return
+        QMessageBox.information(self, 'Vishnu is ready', 'Your Vishnu identity is ready on this first trusted device.')
+        self.accept()
 
     def _save_preferences(self):
         try:

@@ -28,7 +28,7 @@ def test_genesis_native_clients_share_canonical_art_assets_and_palette() -> None
     assert "0xFF4DDCFF" in android and "red: 77/255, green: 220/255" in ios
 
 
-def test_windows_uses_canonical_genesis_design_and_all_ten_steps() -> None:
+def test_windows_uses_canonical_genesis_design_and_three_create_steps() -> None:
     wizard = (ROOT / "ui/first_run_wizard.py").read_text(encoding="utf-8")
     for page in (
         "_welcome_page()", "_owner_page()", "_security_choice_page()", "_security_page()",
@@ -36,7 +36,9 @@ def test_windows_uses_canonical_genesis_design_and_all_ten_steps() -> None:
         "_privacy_page()", "_review_page()",
     ):
         assert f"self.stack.addWidget(self.{page})" in wizard
-    assert "Screen {step} of 10" in wizard
+    assert "Step {step} of 3" in wizard
+    assert "Secure Vishnu  →" in wizard
+    assert "default_policy='device_only'" in wizard
     assert "class VishnuCore" in wizard
     assert "#02060b" in wizard and "#4ddcff" in wizard
 
