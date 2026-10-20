@@ -39,13 +39,13 @@ export function mountNeuralSphere(canvas) {
     void main() {
       float front = clamp((v_depth + 1.0) * 0.5, 0.0, 1.0);
       if (u_mode < 0.5) {
-        gl_FragColor = vec4(0.04, 0.60 + 0.23 * front, 1.0, 0.25 + front * 0.29);
+        gl_FragColor = vec4(0.07, 0.66 + 0.20 * front, 1.0, 0.37 + front * 0.37);
       } else {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
         if (radius > 0.5) discard;
         if (u_mode > 1.5) {
-          float halo = exp(-20.0 * radius * radius) * (0.16 + 0.12 * front);
+          float halo = exp(-17.0 * radius * radius) * (0.30 + 0.23 * front);
           gl_FragColor = vec4(0.12, 0.74, 1.0, halo);
           return;
         }
@@ -176,7 +176,7 @@ export function mountNeuralSphere(canvas) {
       gl.bindBuffer(gl.ARRAY_BUFFER, item);
       gl.vertexAttribPointer(attribute, 4, gl.FLOAT, false, 16, 0);
       gl.uniform1f(mode, kind);
-      gl.uniform1f(pointScale, kind > 1.5 ? 2.55 : 1.0);
+      gl.uniform1f(pointScale, kind > 1.5 ? 3.10 : 1.0);
       gl.drawArrays(drawMode, 0, count);
     };
     renderBuffer(lineBuffer, edges.length / 4, 0, gl.LINES);
