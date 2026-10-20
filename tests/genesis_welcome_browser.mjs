@@ -68,6 +68,29 @@ try {
     const fileName = viewport.width===1536 ? 'p1-01-desktop.png' :
       viewport.width===390 ? 'p1-01-mobile.png' : `p1-01-${viewport.width}.png`;
     await page.screenshot({ path: resolve(dir,fileName), fullPage: true, animations:'disabled' });
+    if (viewport.width === 1536) {
+      const canvas = page.locator('#vwSphereCanvas');
+      const webglReady = await canvas.evaluate(node => Boolean(node.getContext('webgl')) &&
+        !node.parentElement.classList.contains('vw-static-fallback'));
+      assert(webglReady, 'Neural sphere must use a working WebGL renderer rather than a static fallback');
+      await page.emulateMedia({ reducedMotion: 'no-preference' });
+      await page.waitForTimeout(150);
+      const rotationBefore = await canvas.screenshot();
+      await page.waitForTimeout(450);
+      const rotationAfter = await canvas.screenshot();
+      assert.notDeepEqual(rotationAfter, rotationBefore, 'Neural sphere should visibly rotate without user input');
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.waitForTimeout(100);
+      const dragBefore = await canvas.screenshot();
+      const bounds = await canvas.boundingBox();
+      await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2);
+      await page.mouse.down();
+      await page.mouse.move(bounds.x + bounds.width / 2 + 65, bounds.y + bounds.height / 2 + 32, { steps: 5 });
+      await page.mouse.up();
+      await page.waitForTimeout(120);
+      const dragAfter = await canvas.screenshot();
+      assert.notDeepEqual(dragAfter, dragBefore, 'Pointer drag should change the true 3D sphere orientation');
+    }
     await page.getByRole('button', { name:'Help' }).click();
     assert.equal(await page.locator('#vwHelpDialog').evaluate(e=>e.open),true);
     await page.locator('#vwHelpDialog [data-vw-close]').click();
