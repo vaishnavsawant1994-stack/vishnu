@@ -1,0 +1,105 @@
+/* P1-01 focused visual and navigation acceptance in an isolated PWA shell. */
+import assert from 'node:assert/strict';
+import { readFile, mkdir } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { chromium } from 'playwright';
+
+const root = new URL('../pwa/', import.meta.url);
+const assets = new Map();
+for (const name of ['first-run.js', 'genesis.css', 'genesis-welcome.css', 'genesis-neural-sphere.js']) {
+  assets.set('/iphone/' + name, await readFile(new URL(name, root), 'utf8'));
+}
+const dir = process.env.VISHNU_WELCOME_SCREENSHOTS || 'artifacts/genesis-welcome';
+await mkdir(dir, { recursive: true });
+const browser = await chromium.launch({ headless: true, args: ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader'] });
+try {
+  for (const viewport of [{width:1536,height:961},{width:1366,height:768},{width:390,height:844},{width:360,height:800}]) {
+    const page = await browser.newPage({ viewport, deviceScaleFactor: 1, reducedMotion: 'reduce' });
+    const errors = [];
+    page.on('pageerror', error => errors.push(error.message));
+    await page.route('http://127.0.0.1:4173/**', route => {
+      const path = new URL(route.request().url()).pathname;
+      if (assets.has(path)) {
+        const type = path.endsWith('.css') ? 'text/css' : 'text/javascript';
+        return route.fulfill({ status: 200, contentType: type, body: assets.get(path) });
+      }
+      if (path === '/iphone/' || path === '/') {
+        return route.fulfill({ status: 200, contentType: 'text/html', body: `<!doctype html>
+          <html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+          <style>html,body{margin:0;min-height:100%;background:#02060b}.hidden{display:none!important}</style>
+          <link rel="stylesheet" href="/iphone/genesis.css"></head><body>
+          <div id="enrollPanel" class="hidden"></div>
+          <script>
+            window.__previewOptions = { creation_available:true, restore_available:true, local_setup_available:true };
+            window.loadAccessOptions = async () => window.__previewOptions;
+            window.check = async () => null;
+          </script>
+          <script src="/iphone/first-run.js"></script>
+          </body></html>` });
+      }
+      return route.fulfill({ status: 404, body: '' });
+    });
+    await page.goto('http://127.0.0.1:4173/iphone/');
+    await page.locator('.genesis-welcome').waitFor();
+    await page.locator('#vwSphereCanvas').waitFor();
+    await page.waitForFunction(() => window.vishnuFirstRun?.state?.options?.creation_available === true);
+    assert.equal(await page.locator('h1').textContent(), 'Welcome to Vishnu.');
+    for (const label of ['Create My Vishnu', 'I Already Have Vishnu', 'Restore My Vishnu', 'Language', 'Help']) {
+      assert.equal(await page.getByRole('button', {name: new RegExp(label)}).count(), 1, label);
+    }
+    const metrics = await page.evaluate(() => {
+      const sphere = document.querySelector('.vw-sphere').getBoundingClientRect();
+      const heading = document.querySelector('.vw-heading').getBoundingClientRect();
+      const cards = [...document.querySelectorAll('.vw-card')].map(e => e.getBoundingClientRect());
+      const primary = document.querySelector('.vw-primary').getBoundingClientRect();
+      const footer = document.querySelector('.vw-footer').getBoundingClientRect();
+      return { docWidth:document.documentElement.scrollWidth, innerWidth, sphere:{x:sphere.x,y:sphere.y,width:sphere.width},
+        headingY:heading.y, primaryY:primary.y, cardsY:cards[0].y, footerY:footer.y,
+        cardsSideBySide: Math.abs(cards[0].y-cards[1].y)<3 };
+    });
+    assert(metrics.docWidth <= viewport.width+1, `Horizontal overflow on ${viewport.width}px: ${JSON.stringify(metrics)}`);
+    assert(metrics.sphere.width >= 185 && metrics.sphere.width <= 390, `Sphere size out of range: ${JSON.stringify(metrics)}`);
+    assert(metrics.sphere.y < metrics.headingY && metrics.headingY < metrics.primaryY && metrics.primaryY < metrics.cardsY,
+      `Welcome content order changed: ${JSON.stringify(metrics)}`);
+    assert.equal(metrics.cardsSideBySide, viewport.width > 700);
+    if (viewport.width === 1536) {
+      assert(metrics.sphere.x > 500 && metrics.sphere.x < 700, `Sphere not horizontally centered: ${JSON.stringify(metrics)}`);
+    }
+    const fileName = viewport.width===1536 ? 'p1-01-desktop.png' :
+      viewport.width===390 ? 'p1-01-mobile.png' : `p1-01-${viewport.width}.png`;
+    await page.screenshot({ path: resolve(dir,fileName), fullPage: true, animations:'disabled' });
+    await page.getByRole('button', { name:'Help' }).click();
+    assert.equal(await page.locator('#vwHelpDialog').evaluate(e=>e.open),true);
+    await page.locator('#vwHelpDialog [data-vw-close]').click();
+    await page.getByRole('button', { name:'Language' }).click();
+    assert.equal(await page.locator('#vwLanguageSelection').inputValue(),'en');
+    await page.locator('#vwLanguageDialog [data-vw-close]').click();
+    await page.getByRole('button', {name:/Create My Vishnu/}).click();
+    await page.getByRole('heading', {name:'What should Vishnu call you?'}).waitFor();
+    assert.equal(await page.locator('.genesis-screen').getAttribute('data-step'),'2');
+    assert.deepEqual(errors, [], `Browser errors: ${errors.join('; ')}`);
+    await page.close();
+  }
+  const page = await browser.newPage({viewport:{width:1536,height:961}});
+  await page.route('http://127.0.0.1:4173/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (assets.has(path)) return route.fulfill({ status:200,
+      contentType: path.endsWith('.css')?'text/css':'text/javascript', body:assets.get(path) });
+    return route.fulfill({ status:200, contentType:'text/html', body:`<!doctype html>
+      <html><head><style>body{margin:0}.hidden{display:none!important}</style><link rel="stylesheet" href="/iphone/genesis.css"></head>
+      <body><div id="enrollPanel"></div><script>
+      window.__previewOptions={creation_available:true,restore_available:true};
+      window.loadAccessOptions=async()=>window.__previewOptions;
+      window.check=async()=>null;</script><script src="/iphone/first-run.js"></script></body></html>` });
+  });
+  await page.goto('http://127.0.0.1:4173/iphone/');
+  await page.locator('.genesis-welcome').waitFor();
+  await page.evaluate(() => {window.__previewOptions={creation_available:false,password_available:true,restore_available:false};});
+  await page.getByRole('button',{name:/Create My Vishnu/}).click();
+  await page.getByRole('heading',{name:/Welcome back to Vishnu/}).waitFor();
+  assert.equal(await page.locator('[data-step="2"]').count(),0,'Existing owner cannot enter new identity creation');
+  await page.close();
+  console.log('Vishnu P1-01 responsive screenshots, entry controls, help and guarded creation passed.');
+} finally {
+  await browser.close();
+}
