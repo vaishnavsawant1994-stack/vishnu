@@ -277,6 +277,125 @@
    actions.append(btn('Close','p202b-primary',()=>modal.close()));modal.append(actions);
    document.body.append(modal);modal.addEventListener('close',()=>modal.remove(),{once:true});modal.showModal();
  }
+ 
+ async function setProjectLink(projectId){
+   const id=currentId();
+   if(!isActive()||!id)throw new Error('Open a Work conversation first.');
+   const next=projectId||null;
+   const result=await bridge().api('/conversations/'+encodeURIComponent(id)+'/work-project',{
+     method:'PUT',body:JSON.stringify({project_id:next,confirm:true})
+   });
+   if(result?.conversation?.context?.work_project_id!==next)
+     throw new Error('Canonical Project association was not confirmed.');
+   linkedProjectId=next;renderResources();
+   await bridge().openConversation(id);await reload();refreshHistory();
+   inform(next?'Project linked to this Work conversation.':'Project unlinked.');
+ }
+ async function linkProjectPicker(){
+   const payload=await bridge().api('/projects');
+   const projects=(Array.isArray(payload?.projects)?payload.projects:[]).filter(p=>p.id&&p.status!=='archived');
+   const dialog=make('dialog','p202b-modal p202b-resources-modal');
+   dialog.append(make('h2','','Choose an existing Project'),make('p','',
+     'Only existing, authorized Project resources will be shown. No work starts automatically.'));
+   const search=make('input');search.type='search';search.placeholder='Search Projects';
+   search.setAttribute('aria-label','Search Projects');
+   const list=make('div','p202b-project-choices');
+   const draw=()=>{
+     list.replaceChildren();
+     projects.filter(p=>String(p.name||'').toLowerCase().includes(search.value.toLowerCase()))
+       .slice(0,75).forEach(p=>list.append(btn(String(p.name||'Project')+(p.id===linkedProjectId?' · Linked':''),
+       'p202b-project-choice',()=>{dialog.close();guarded(()=>setProjectLink(p.id))})));
+     if(!list.childElementCount)list.append(make('p','p202b-empty','No available Projects.'));
+   };
+   search.addEventListener('input',draw);draw();
+   const footer=make('div','p202b-modal-actions');
+   if(linkedProjectId)footer.append(btn('Unlink Project','',()=>{dialog.close();guarded(()=>setProjectLink(null))}));
+   footer.append(btn('Cancel','p202b-primary',()=>dialog.close()));
+   dialog.append(search,list,footer);document.body.append(dialog);
+   dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
+ }
+ function resourceDialog(title,items,mapper){
+   const dialog=make('dialog','p202b-modal p202b-resources-modal');
+   dialog.append(make('h2','',title),make('p','','Resources remain in the existing authorized Project.'));
+   const list=make('div','p202b-project-choices');
+   items.slice(0,75).forEach(item=>{
+     const [label,action]=mapper(item);
+     list.append(btn(label,'p202b-project-choice',()=>{dialog.close();action()}));
+   });
+   if(!items.length)list.append(make('p','p202b-empty','No Project resources found.'));
+   dialog.append(list,btn('Close','p202b-primary',()=>dialog.close()));
+   document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
+ }
+ function openProjectFile(file){
+   if(!file?.id||!linkedProjectId)return;
+   const actions=[];
+   if(['upload','deliverable'].includes(file.kind)){
+     actions.push(['Download file',()=>{
+       const a=make('a');a.href='/iphone/api/projects/'+encodeURIComponent(linkedProjectId)+'/files/'+encodeURIComponent(file.id)+'/download';
+       document.body.append(a);a.click();a.remove();
+     }]);
+     actions.push(['Preview text',()=>guarded(async()=>{
+       const p='/projects/'+encodeURIComponent(linkedProjectId)+'/files/'+encodeURIComponent(file.id)+'/index';
+       const result=await bridge().api(p);
+       alertDialog(file.title||'Preview',String(result?.extracted_text||'No text preview is available.').slice(0,12000));
+     })]);
+   }
+   alertDialog(file.title||'File','Canonical Project resource · '+String(file.kind||'file'),actions);
+ }
+ function openProjectTask(task){
+   if(!task?.id||!linkedProjectId)return;
+   const done=task.status==='done';
+   alertDialog(task.title||'Task','Project task · '+String(task.status||'planned'),[
+     [done?'Reopen':'Mark done',()=>guarded(async()=>{
+       const url='/projects/'+encodeURIComponent(linkedProjectId)+'/tasks/'+encodeURIComponent(task.id);
+       await bridge().api(url,{method:'PATCH',body:JSON.stringify({status:done?'planned':'done'})});
+       await reload();inform('Project task updated.');
+     })]
+   ]);
+ }
+ function showLinkedResources(project,plan,approvals){
+   linkedProject=project;linkedWork=plan;linkedApprovals=approvals;
+   if(ref.link)ref.link.textContent='Change Project';
+   ref.context.replaceChildren(make('strong','',bridge()?.current?.title||'Work Conversation'),
+     make('p','p202b-note','Linked Project · '+String(project.name||'Project')));
+   renderRows(ref.files,project.files||[],'No Project files.',f=>
+     itemRow(f.kind==='deliverable'?'▧':'▤',f.title||'File',String(f.kind||'file'),()=>openProjectFile(f)));
+   renderRows(ref.tasks,(project.tasks||[]).slice(0,8),'No Project tasks.',t=>
+     itemRow(t.status==='done'?'✓':'□',t.title||'Task',String(t.status||'planned'),()=>openProjectTask(t)));
+   renderRows(ref.approvals,approvals.slice(0,5),'No pending Project approvals.',a=>
+     itemRow('◈',a.title||a.description||'Approval',String(a.status||'Pending'),()=>nav('workflows')));
+   ref.work.replaceChildren(make('p','p202b-note','Linked Project · '+String(project.name||'Project')));
+   if(plan?.p10_plan)ref.work.append(itemRow('▣','WorkPlan · '+String(plan.p10_plan.state||'available'),
+     (plan.p10_plan.tasks||[]).length+' steps',()=>nav('workflows')));
+   else ref.work.append(make('p','p202b-empty','No active canonical Project WorkPlan.'));
+ }
+ async function loadLinkedProject(signal){
+   const id=currentId();if(!id)return;
+   const bundle=await bridge().api('/conversations/'+encodeURIComponent(id),{signal});
+   if(signal.aborted||!isActive()||id!==currentId())return;
+   const ctx=bundle?.conversation?.context||{};
+   if(ctx.conversation_kind!=='work')return;
+   const pid=ctx.work_project_id||null;
+   if(pid!==linkedProjectId){linkedProjectId=pid;renderResources();renderOverview();}
+   if(!pid)return;
+   const root='/projects/'+encodeURIComponent(pid);
+   const results=await Promise.allSettled([
+     bridge().api(root,{signal}),bridge().api(root+'/work',{signal}),
+     bridge().api('/approvals-center?limit=100',{signal})
+   ]);
+   if(signal.aborted||!isActive()||id!==currentId()||pid!==linkedProjectId)return;
+   const project=results[0].status==='fulfilled'?results[0].value?.project:null;
+   if(!project){
+     setLoading(ref.files,'Linked Project is unavailable or archived.');
+     setLoading(ref.tasks,'Linked Project tasks unavailable.');
+     setLoading(ref.approvals,'Linked Project approvals unavailable.');
+     setLoading(ref.work,'Linked WorkPlan unavailable.');
+     return;
+   }
+   const plan=results[1].status==='fulfilled'?results[1].value:null;
+   const all=results[2].status==='fulfilled'?results[2].value?.approvals:[];
+   showLinkedResources(project,plan,(Array.isArray(all)?all:[]).filter(a=>a.project_id===pid));
+ }
  function openFiles(){
    if(linkedProject) return resourceDialog('Files & Deliverables',linkedProject.files||[],f=>[String(f.title||'File')+' · '+String(f.kind||'file'),()=>openProjectFile(f)]);
    alertDialog('Files & Resources','This Work chat currently has no canonical conversation-attachment association. Adding a file to Knowledge is a separate, persistent action and requires explicit owner choice.',[
