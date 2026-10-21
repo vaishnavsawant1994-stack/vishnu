@@ -49,7 +49,7 @@ function markup(s){
    <button type="button" class="vs-language" data-vs-language aria-haspopup="dialog">${globe} English <span aria-hidden="true">⌄</span></button>
  </header>
  <div class="vs-body">
-   <div class="vs-hero" aria-hidden="true"><div class="vw-sphere vs-sphere"><canvas data-vs-sphere></canvas></div><div class="vs-ground"><span></span></div></div>
+   <div class="vs-hero" aria-hidden="true"><div class="vw-sphere vs-sphere"><canvas data-vs-sphere data-neural-emphasis="security"></canvas></div><div class="vs-ground"><span></span></div></div>
    <div class="vs-main">
      <p class="vs-eyebrow">STEP 3 OF 4</p>
      <h1>Secure Your <span>Vishnu</span></h1>
