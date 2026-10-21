@@ -114,6 +114,11 @@ try{
  assert.equal(await page.locator('#p202Header').isVisible(),false,'Chat header fully hidden on Home');
  assert.equal(await page.locator('#p202MobileNav').isVisible(),false,'Chat-only mobile tabs do not leak into Home');
  assert.equal(await page.locator('#p202ModelPlacement').isVisible(),false,'Chat model control not shown on Home');
+ await page.locator('.reference-desktop-sidebar [data-p202-open-chat]').click();
+ await page.waitForFunction(()=>window.vishnuChatBridge.current.id==='personal-3'&&document.body.classList.contains('p202-personal-chat'));
+ assert.equal(creates,2,'Home Chat entry creates one governed personal conversation');
+ await page.evaluate(()=>window.vishnuChatBridge.openModule('home'));
+ await page.waitForFunction(()=>!document.body.classList.contains('p202-personal-chat'));
  // A conversation explicitly bound to a project must not be relabeled Personal.
  const projectPage=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
  await projectPage.route('**/iphone/api/**',route=>{
