@@ -28,7 +28,7 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     # v49 refreshes installed PWAs with the current canonical shell assets
     # while retaining the bounded local-first data-plane continuation cache.
     # Keeping v44 would leave installed clients on the earlier onboarding shell.
-    assert "personal-ai-iphone-v52" in sw
+    assert "personal-ai-iphone-v53" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw
