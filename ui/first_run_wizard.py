@@ -295,6 +295,13 @@ class FirstRunWizard(QDialog):
         self.recovery_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.recovery_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;font-family:monospace;')
         layout.addWidget(self.recovery_label)
+        self.download_codes_button = QPushButton('Save recovery codes as a private file')
+        self.download_codes_button.clicked.connect(self._download_recovery_codes)
+        layout.addWidget(self.download_codes_button)
+        self.recovery_summary = QLabel('Quick review: owner, security, trusted device, privacy, and AI.')
+        self.recovery_summary.setObjectName('hint')
+        self.recovery_summary.setWordWrap(True)
+        layout.addWidget(self.recovery_summary)
         self.saved_codes = QCheckBox('I saved these recovery codes in a safe place')
         layout.addWidget(self.saved_codes)
         layout.addStretch(1)
@@ -554,7 +561,40 @@ class FirstRunWizard(QDialog):
         self.password_confirm.clear()
         self.saved_codes.setChecked(False)
         self.recovery_label.setText('\n'.join(self.recovery_codes))
+        owner = self.display_name.text().strip() or self.first_name.text().strip()
+        self.recovery_summary.setText(
+            f'Owner: {owner}\n'
+            'Sign-in: owner password; optional passkey in Settings\n'
+            'First device: this trusted computer\n'
+            'Storage: device-only (no automatic sync)\n'
+            'AI provider: configure later\n'
+            'Privacy: local-only, approval for important actions'
+        )
         self.stack.setCurrentIndex(4)
+
+    def _download_recovery_codes(self):
+        if not self.recovery_codes:
+            QMessageBox.warning(self, 'Recovery codes', 'No new codes are available to save.')
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 'Save one-time recovery codes privately',
+            'Vishnu-Recovery-Codes.txt', 'Text files (*.txt)',
+        )
+        if not filename:
+            return
+        try:
+            descriptor = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+                output.write('\n'.join(self.recovery_codes) + '\n')
+            QMessageBox.information(
+                self, 'Recovery codes saved',
+                'Codes saved to your chosen location. Store them privately, preferably offline. '
+                'This file is not an encrypted data backup.',
+            )
+        except FileExistsError:
+            QMessageBox.warning(self, 'Recovery codes', 'Choose a new filename; that file already exists.')
+        except OSError:
+            QMessageBox.warning(self, 'Recovery codes', 'Could not save the file to that location.')
 
     def _confirm_recovery_codes(self):
         if not self.saved_codes.isChecked():
