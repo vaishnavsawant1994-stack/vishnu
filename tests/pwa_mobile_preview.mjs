@@ -702,6 +702,17 @@ try {
   assert.ok(drawerState.footer.bottom <= 845 && drawerState.footer.height >= 44, "account actions must remain visible and touchable");
   assert.ok(await page.locator("#sidebarNewChat").isVisible(), "new chat must be a primary action");
   assert.ok(await page.locator("#sidebarSearchToggle").isVisible(), "chat search must be a primary action");
+  const sidebarActions = await page.evaluate(() => {
+    const search = document.querySelector('#appDrawer #sidebarSearchToggle').getBoundingClientRect();
+    const command = document.querySelector('#appDrawer [data-command-center-entry]').getBoundingClientRect();
+    return {search:{left:search.left,right:search.right,top:search.top,bottom:search.bottom},
+      command:{left:command.left,right:command.right,top:command.top,bottom:command.bottom}};
+  });
+  assert.ok(sidebarActions.search.right <= sidebarActions.command.left ||
+    sidebarActions.command.right <= sidebarActions.search.left ||
+    sidebarActions.search.bottom <= sidebarActions.command.top ||
+    sidebarActions.command.bottom <= sidebarActions.search.top,
+    'Search chats and Command Center must have distinct, nonoverlapping touch targets on mobile');
   await page.click("#sidebarPinCurrent");
   await page.waitForFunction(()=>document.querySelector("#sidebarPinnedList")?.textContent.includes("Project Planning"));
   assert.deepEqual(sidebarPreferences.pinned_sidebar_items,["chat:c1"],"Pin current must persist the active conversation in trusted-browser preferences");
