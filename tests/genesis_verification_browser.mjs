@@ -55,7 +55,13 @@ async function fixture(viewport,{restore=false}={}){
  });
  await page.goto('http://127.0.0.1:4173/iphone/');
  await page.waitForFunction(()=>Boolean(window.vishnuFirstRun?.showRecoveryVerification));
+ // Let the canonical initial check and owner-state routing finish before
+ // deliberately entering P1-08. Otherwise initial login can unmount the
+ // test page after P1-08 was shown, producing a false UI failure.
+ if(restore)await page.locator('.genesis-screen[data-step="1"]').waitFor({state:'visible'});
+ else await page.locator('.genesis-login .vl-panel').waitFor({state:'visible'});
  await page.evaluate(mode=>window.vishnuFirstRun.showRecoveryVerification(mode),restore?'restore_data':'recover_login');
+ await page.locator('.genesis-verification .v8-method').first().waitFor({state:'visible'});
  await page.getByRole('heading',{name:'Recovery Verification'}).waitFor();
  return {page,errors};
 }
