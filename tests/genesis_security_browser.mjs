@@ -39,7 +39,10 @@ try{
      <script src="/iphone/first-run-actions.js"></script></body></html>`});
    return route.fulfill({status:404,body:'not found'});
   });
-  await page.goto('http://127.0.0.1:4173/iphone/?genesisStep=3');
+  await page.goto('http://127.0.0.1:4173/iphone/?genesisStep=2');
+  await page.locator('.genesis-identity .vi-form').waitFor({state:'visible'});
+  await page.locator('#firstRunFirstName').fill('Test Owner');
+  await page.locator('.vi-continue').click();
   await page.locator('.genesis-security .vs-main').waitFor({state:'visible'});
   await page.waitForTimeout(120);
   assert.equal(await page.getByRole('heading',{name:'Secure Your Vishnu'}).count(),1);
