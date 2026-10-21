@@ -1,0 +1,43 @@
+name: Vishnu P1-04 Recovery Visual and Functional Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/first-run-actions.js'
+      - 'pwa/genesis-recovery.js'
+      - 'pwa/genesis-recovery.css'
+      - 'pwa/genesis-security.css'
+      - 'pwa/genesis-neural-sphere.js'
+      - 'server/iphone_pwa.py'
+      - 'tests/genesis_recovery_browser.mjs'
+      - '.github/workflows/vishnu-p1-04-recovery.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Validate P1-04 UI, one-time code handling and screenshots
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/first-run-actions.js
+          node --check pwa/genesis-recovery.js
+          node --check tests/genesis_recovery_browser.mjs
+          VISHNU_RECOVERY_SCREENSHOTS=artifacts/genesis-recovery node tests/genesis_recovery_browser.mjs
+      - name: Upload P1-04 desktop, tablet and mobile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-04-desktop-mobile
+          path: artifacts/genesis-recovery/*.png
+          if-no-files-found: warn
+          retention-days: 14
