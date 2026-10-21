@@ -58,13 +58,13 @@
   display: flex; align-items: flex-start; justify-content: center;
 }
 .rc-host .rc-core {
-  display: block; touch-action: none; width: min(100%, 590px);
+  display: block; position: relative; z-index: 1; touch-action: none; width: min(100%, 590px);
   height: min(63vh, 573px); margin-top: 10px; cursor: grab;
   filter: drop-shadow(0 0 28px rgba(0,161,255,.21));
 }
 .rc-host .rc-core:active { cursor: grabbing; }
 .rc-host .rc-platform {
-  position: absolute; z-index: -1; pointer-events: none;
+  position: absolute; z-index: 0; pointer-events: none;
   width: min(92%, 610px); height: 150px;
   top: clamp(490px, 63vh, 580px); left: 50%; transform: translateX(-50%);
   background: radial-gradient(ellipse at 50% 45%, rgba(0,206,255,.3), rgba(0,80,160,.07) 40%, transparent 67%);
