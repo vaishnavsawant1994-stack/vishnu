@@ -6,7 +6,7 @@ import {chromium} from 'playwright';
 
 const assetNames=[
  'first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
- 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css',
+ 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css','genesis-recovery.js','genesis-recovery.css',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg',
 ];
@@ -110,7 +110,7 @@ try{
     await page.locator('.vs-continue[data-genesis-next]').click();
     await page.locator('#firstRunRecoverySaved').waitFor();
     await page.locator('#firstRunRecoverySaved').check();
-    await page.locator('.genesis-primary[data-genesis-next]').click();
+    await page.locator('.vr-nav [data-genesis-next]').click();
     await page.waitForFunction(()=>window.__apiCalls.some(x=>x.path==='/first-run/complete'));
     const calls=await page.evaluate(()=>window.__apiCalls);
     const createIndex=calls.findIndex(x=>x.path==='/first-run/create');
