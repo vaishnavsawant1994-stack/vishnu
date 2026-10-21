@@ -2,6 +2,7 @@ import AVFoundation
 import Security
 import SwiftUI
 import UIKit
+import UniformTypeIdentifiers
 
 struct ConnectOnboardingView: View {
     @ObservedObject var store: CompanionStore
@@ -18,6 +19,7 @@ struct ConnectOnboardingView: View {
     @State private var deviceName = UIDevice.current.name
     @State private var recoveryCodes: [String] = []
     @State private var recoverySaved = false
+    @State private var showRecoveryExport = false
     @State private var privacyMode = "local_only"
     @State private var dataPolicy = "device_only"
     @State private var genesisStep = 1
@@ -101,6 +103,19 @@ struct ConnectOnboardingView: View {
             }
         }
         .preferredColorScheme(.dark)
+        .fileExporter(
+            isPresented: $showRecoveryExport,
+            document: VishnuRecoveryCodesDocument(text: recoveryCodes.joined(separator: "\n")),
+            contentType: .plainText,
+            defaultFilename: "Vishnu-Recovery-Codes"
+        ) { result in
+            switch result {
+            case .success:
+                setupMessage = "Codes exported. Move the file to a private safe location; Files providers may sync it."
+            case .failure:
+                setupMessage = "Could not export recovery codes. Please choose another secure destination."
+            }
+        }
         .onAppear {
             if let saved = KeychainStore.shared.get("pending_first_recovery_codes"),
                let data = saved.data(using: .utf8),
@@ -161,6 +176,15 @@ struct ConnectOnboardingView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .vishnuGenesisCard()
                     .accessibilityLabel("One-time owner recovery codes")
+                Button("Save Recovery Codes as File") {
+                    guard recoveryCodes.count >= 4 else {
+                        setupMessage = "Recovery codes are not available. Retry secure setup."
+                        return
+                    }
+                    showRecoveryExport = true
+                }
+                .buttonStyle(VishnuGenesisButtonStyle())
+                .disabled(recoveryCodes.isEmpty)
                 Button("Copy all recovery codes") {
                     UIPasteboard.general.string = recoveryCodes.joined(separator: "\n")
                     setupMessage = "Codes copied. Save them securely away from this phone, then clear your clipboard."
@@ -643,5 +667,27 @@ final class QRScannerViewController: UIViewController, AVCaptureMetadataOutputOb
               object.type == .qr, let value = object.stringValue else { return }
         session.stopRunning()
         onCode?(value)
+    }
+}
+
+
+/// Owner-controlled export of one-time recovery codes. Never written to shared
+/// caches or uploaded by the companion. Warn that third-party Files providers
+/// may synchronize user-selected storage automatically.
+struct VishnuRecoveryCodesDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.plainText] }
+    var text: String
+
+    init(text: String) {
+        self.text = text
+    }
+
+    init(configuration: ReadConfiguration) throws {
+        let data = configuration.file.regularFileContents ?? Data()
+        text = String(data: data, encoding: .utf8) ?? ""
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: Data(text.utf8))
     }
 }
