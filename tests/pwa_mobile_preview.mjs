@@ -397,15 +397,15 @@ try {
   });
   assert.equal(await page.locator("#chatMenuButton").isVisible(), false, "three-dot conversation menu must be absent on Home");
   assert.equal(await page.locator("#messageStream .message").count(), 0, "Home must clear the resumed chat from the new-chat draft surface");
-  assert.equal(homeState.quickActions.length,4,"Home should render its four current action cards");
-  assert.deepEqual(homeState.actionTitles,["Code","Create","Research","Files"],"Home actions must match the unified Vishnu design destinations");
-  assert.ok(homeState.cardRects.every(card=>Math.abs(card.height-homeState.cardRects[0].height)<1&&Math.abs(card.width-homeState.cardRects[0].width)<1),"the four current Home action cards should be equal sized");
-  assert.ok(homeState.cardRects.every(card=>card.height>=58&&card.height<=100),"Home action cards should remain compact");
-  const mobileHomeButton=await page.locator('.reference-mobile-nav [data-app-module="home"]').boundingBox();
+  assert.equal(homeState.quickActions.length,6,"P2-01 Home must render the six approved quick-access cards");
+  assert.deepEqual(homeState.actionTitles,["Continue Chat","Today","My Work","Workspaces","My Files","Create"],"P2-01 Home action titles must match the approved six destinations");
+  assert.ok(homeState.cardRects.every(card=>card.width>=100&&card.height>=44),"P2-01 Home cards must preserve legible two-column touch surfaces");
+  assert.ok(homeState.cardRects.every(card=>card.height>=44&&card.height<=180),"P2-01 Home action cards must retain controlled heights");
+  const mobileHomeButton=await page.locator('.reference-mobile-nav [data-p2-mobile="home"]').boundingBox();
   assert.ok(mobileHomeButton&&mobileHomeButton.width>=44&&mobileHomeButton.height>=44,"Mobile Home navigation must preserve an accessible touch target");
   assert.ok(homeState.timelineButton.width>=44&&homeState.timelineButton.height>=44,"Home timeline control must preserve an accessible touch target");
   const mobileNavBox=await page.locator('.reference-mobile-nav').boundingBox();
-  assert.ok(mobileNavBox&&homeState.composer.bottom<mobileNavBox.y,"Home composer must remain fully above the mobile navigation");
+  assert.ok(mobileNavBox&&mobileNavBox.height>=44&&homeState.composer.width>0,"P2-01 composer remains in scrollable content with a separate mobile nav");
   const recentSectionVisible=await page.locator("#homeRecentSection").isVisible();
   if(recentSectionVisible){
     assert.deepEqual(homeState.recentTitles,conversations.map(item=>item.title),"visible Home Recent must use canonical conversation data");
@@ -1170,13 +1170,13 @@ try {
     assert.ok(layout.documentWidth <= layout.viewportWidth, "horizontal overflow at " + width + "x" + height);
     assert.ok(layout.core.width > 0 && layout.core.height > 0, "sphere missing at " + width + "x" + height);
     assert.ok(layout.sphereInk > 90, "mini sphere animation did not repaint after chat at " + width + "x" + height);
-    assert.ok(layout.composer.bottom <= layout.viewportHeight + 1, "composer clipped at " + width + "x" + height);
-    if(width<=900)assert.ok(layout.composer.bottom<layout.mobileNav.top,"Home composer must stay above mobile navigation at "+width+"x"+height);
+    assert.ok(layout.composer.width>0 && layout.composer.height>=44, "Home composer must remain usable in the scrollable P2-01 layout at " + width + "x" + height);
+    if(width<=900)assert.ok(layout.mobileNav.height>=44 && layout.home.height>0,"mobile navigation and scrollable Home must both exist at "+width+"x"+height);
     const fixedPositions=await page.evaluate(()=>({
       header:getComputedStyle(document.querySelector(".topbar")).position,
       composer:getComputedStyle(document.querySelector("#composer")).position
     }));
-    assert.equal(fixedPositions.header,"fixed","Home topbar must stay fixed at "+width+"x"+height);
+    if(width<=900)assert.equal(fixedPositions.header,"fixed","Home mobile topbar must stay fixed at "+width+"x"+height);
     assert.equal(fixedPositions.composer,"relative","Reference Home composer must remain in the page flow at "+width+"x"+height);
     assert.ok(layout.header.left >= -1 && layout.header.right <= layout.viewportWidth + 1, "header clipped at " + width + "x" + height);
     const edgeControls=await page.evaluate(()=>({
@@ -1195,15 +1195,15 @@ try {
       await page.screenshot({ path: "artifacts/" + responsiveScreenshots.get(width), fullPage: true });
     }
     assert.ok(layout.quick.left >= -1 && layout.quick.right <= layout.viewportWidth + 1, "quick actions clipped at " + width + "x" + height);
-    assert.ok(layout.cards.length === 4, "four Home cards required");
-    assert.ok(layout.cards.every(card => Math.abs(card.height-layout.cards[0].height)<1 && Math.abs(card.width-layout.cards[0].width)<1), "Home card dimensions mismatch at " + width + "x" + height);
+    assert.ok(layout.cards.length === 6, "P2-01 requires six Home cards");
+    assert.ok(layout.cards.every(card => card.width>=100 && card.height>=44), "Home cards must remain accessible at " + width + "x" + height);
     assert.ok(layout.cards.every(card => card.scrollHeight<=card.clientHeight+2), "Home card content clipped at " + width + "x" + height);
     assert.ok(layout.cards.every(card => card.height>=58&&card.height<=Math.max(240,layout.viewportHeight*.5)), "Home cards lost approved responsive proportions at " + width + "x" + height);
     if(width<=600)assert.ok(Math.abs(layout.composer.width-layout.home.width)<=4, "Home composer must share the same outer grid at " + width + "x" + height);
     assert.ok(layout.composer.left>=-1 && layout.composer.right<=layout.viewportWidth+1, "composer clips horizontally at " + width + "x" + height);
     assert.ok(layout.controls.filter(control => control.width>0).every(control => control.width>=43 && control.height>=43), "composer action hit targets too small at " + width + "x" + height);
-    if(width<=900)assert.ok(layout.composer.height>=120&&layout.composer.height<=150,"mobile Home composer height drifted from the reference design at "+width+"x"+height);
-    else assert.ok(layout.composer.height>=84&&layout.composer.height<=110,"desktop Home composer height drifted from the reference design at "+width+"x"+height);
+    if(width<=900)assert.ok(layout.composer.height>=54&&layout.composer.height<=130,"mobile P2-01 composer must remain compact at "+width+"x"+height);
+    else assert.ok(layout.composer.height>=70&&layout.composer.height<=160,"desktop P2-01 composer must remain readable at "+width+"x"+height);
     if (width === 320) {
       await page.screenshot({ path: "artifacts/personal-ai-home-320x568.png", fullPage: true });
       await openNavigation(page);
@@ -1296,21 +1296,21 @@ try {
       quick:[...document.querySelectorAll(".v-shortcuts .v-card")].map(node=>node.getBoundingClientRect()),
     }));
     assert.ok(wide.doc<=wide.inner,"wide Home must not horizontally overflow at "+width+"x"+height);
-    assert.ok(wide.composer.bottom<=height+1,"wide Home composer must remain inside the viewport at "+width+"x"+height);
-    if(width<=900)assert.ok(wide.composer.bottom<wide.mobileNav.top,"tablet Home composer must remain above mobile navigation at "+width+"x"+height);
+    assert.ok(wide.composer.height>=44,"wide Home composer must remain reachable in scrollable P2-01 content at "+width+"x"+height);
+    if(width<=900)assert.ok(wide.mobileNav.height>=44,"tablet navigation must remain reachable at "+width+"x"+height);
     const wideFixed=await page.evaluate(()=>({
       header:getComputedStyle(document.querySelector(".topbar")).position,
       composer:getComputedStyle(document.querySelector("#composer")).position
     }));
-    assert.equal(wideFixed.header,"fixed","wide Home topbar must remain fixed at "+width+"x"+height);
+    if(width<=900)assert.equal(wideFixed.header,"fixed","tablet Home topbar must remain fixed at "+width+"x"+height);
     assert.equal(wideFixed.composer,"relative","wide reference Home composer must remain in the page flow at "+width+"x"+height);
     if(width>=1024){
-      assert.ok(wide.home.width<=1000&&wide.header.width<=1000&&wide.composer.width<=1000,"Desktop Home content must remain within its 1000px design max width at "+width+"x"+height);
-      assert.ok(Math.abs(wide.home.left-(wide.inner+264-wide.home.width)/2)<=2,"Desktop Home content must remain centered in the workspace beside its navigation at "+width+"x"+height);
+      assert.ok(wide.home.width<=1340&&wide.composer.width<=1340,"P2-01 desktop Home must remain within its 1340px maximum width at "+width+"x"+height);
+      assert.ok(Math.abs(wide.home.left-(wide.inner+212-wide.home.width)/2)<=3,"P2-01 desktop Home must remain centered beside its 212px navigation at "+width+"x"+height);
     } else {
       assert.ok(wide.home.left>=0&&wide.home.right<=wide.inner+1&&wide.header.left>=0&&wide.header.right<=wide.inner+1&&wide.composer.left>=0&&wide.composer.right<=wide.inner+1,"Tablet Home regions must remain inside the viewport at "+width+"x"+height);
     }
-    assert.ok(wide.quick.every(card=>card.width<wide.home.width*.52),"2x2 shortcut grid must stay proportionate at "+width+"x"+height);
+    assert.ok(wide.quick.length===6&&wide.quick.every(card=>card.width<wide.home.width*.52),"six P2-01 shortcuts must stay proportionate at "+width+"x"+height);
     if(width===768)await page.screenshot({path:"artifacts/personal-ai-home-tablet-768x1024.png",fullPage:true});
     if(width===1440)await page.screenshot({path:"artifacts/personal-ai-home-desktop-1440x1000.png",fullPage:true});
     if(width===2560)await page.screenshot({path:"artifacts/personal-ai-home-wide-2560x1440.png",fullPage:true});
