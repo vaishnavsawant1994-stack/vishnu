@@ -117,9 +117,16 @@ try{
  // A conversation explicitly bound to a project must not be relabeled Personal.
  const projectPage=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
  await projectPage.route('**/iphone/api/**',route=>{
-   if(parsePath(route.request().url())==='/projects'){
+   const path=parsePath(route.request().url());
+   if(path==='/projects'){
      return route.fulfill({status:200,contentType:'application/json',
        body:JSON.stringify({projects:[{id:'project-1',name:'Private Project',conversation_id:'personal-1'}]})});
+   }
+   if(path==='/status'||path==='/conversations/personal-1/activate'||path==='/conversations/personal-1'){
+     const data=path==='/status'?
+       {owner_display_name:'Mira Chen',model:{state:'ready'},conversation:{conversation:convo,events},conversations:[convo],active_qualification:true}:
+       {conversation:convo,events};
+     return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
    }
    return fixture(route);
  });
