@@ -1,0 +1,41 @@
+name: Vishnu P1-05 Login Visual & Authentication Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/genesis-login.js'
+      - 'pwa/genesis-login.css'
+      - 'pwa/genesis.css'
+      - 'pwa/genesis-neural-sphere.js'
+      - 'server/iphone_pwa.py'
+      - 'tests/genesis_login_browser.mjs'
+      - '.github/workflows/vishnu-p1-05-login.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  login-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Qualify P1-05 visuals and login trust contract
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/genesis-login.js
+          node --check tests/genesis_login_browser.mjs
+          VISHNU_LOGIN_SCREENSHOTS=artifacts/genesis-login node tests/genesis_login_browser.mjs
+      - name: Upload actual desktop and mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-05-desktop-mobile
+          path: artifacts/genesis-login/*.png
+          retention-days: 14
+          if-no-files-found: warn
