@@ -296,7 +296,7 @@
     await setupApi('/first-run/data-policy', {
       method: 'PUT', body: JSON.stringify({ default_policy: 'device_only' }),
     });
-    await setupApi('/first-run/complete', {
+    const completed = await setupApi('/first-run/complete', {
       method: 'POST',
       body: JSON.stringify({
         recovery_saved: true,
@@ -306,6 +306,11 @@
       }),
     });
     state.recoveryCodes=[]; // Stop retaining one-time credentials after acceptance.
+    if (completed?.ok === true && completed.status === 'ready' &&
+        completed.recovery_result && flow.showRecoveryResult(completed.recovery_result)) {
+      busy(false);
+      return;
+    }
     state.recoverySaved=false;
     busy(false);
     setError('Your Vishnu is ready. Enter to start using it.');
