@@ -83,7 +83,7 @@ try{
   await page.getByRole('heading',{name:'Secure your Vishnu'}).waitFor();
   const state=await page.evaluate(()=>({first:window.vishnuFirstRun?.state?.firstName,display:window.vishnuFirstRun?.state?.displayName}));
   assert.deepEqual(state,{first:'Alexander',display:'Alex'});
-  await page.locator('[data-genesis-back]').click();
+  await page.locator('.genesis-tertiary[data-genesis-back]').click();
   await page.locator('#firstRunFirstName').waitFor();
   assert.equal(await page.locator('#firstRunFirstName').inputValue(),'Alexander');
   assert.equal(await page.locator('#firstRunDisplayName').inputValue(),'Alex');
