@@ -19,7 +19,7 @@ Scope: bounded PWA Home adaptation; **not** production deployment, universal nat
 | Active Work | `/iphone/api/work/summary` | Owner-scoped, verified authority marker; no fake percentages |
 | Six Home shortcuts | existing chat bridge and canonical module router | New UI; browser qualification pending |
 | Recent Activity | existing `#homeRecentSection`, canonical conversation cache | Existing behavior reused |
-| Six Quick Tools | draft seeding in existing composer | Guided requests, not invented execution |
+| Quick Tools and Edit | existing composer draft seeding; device-local shortcut preference | Guided requests; Edit is implemented, browser requalification pending |
 | Main composer, attachments, voice | existing `#composer`, send/attachment/microphone logic | Existing implementation retained; end-to-end requalification pending |
 | Desktop sidebar and mobile tabs | existing Vishnu module router/Chat bridge | New P2-01 navigation adaptation |
 | Offline shell | `pwa/sw.js` cache v61 | Assets added; offline device test pending |
@@ -30,7 +30,7 @@ Scope: bounded PWA Home adaptation; **not** production deployment, universal nat
 - Each unavailable API section reports an unavailable state, not a false zero count.
 - Weather is **not** displayed: no configured, authorized weather source was established.
 - Meeting count describes the Vishnu plan, **not** connected Google/Apple calendar events.
-- Quick Tools prefill the canonical composer; they do **not** claim that every specialized tool or model capability is installed.
+- Quick Tools prefill the canonical composer; an Edit dialog persists visible shortcut preferences in device-local storage, without activating unconfigured models or tools.
 - Work controls do **not** execute, pause, resume or approve WorkOrders. Existing protected modules remain the authority.
 - Production Home requires active owner authentication; CSS explicitly preserves `#voicePanel.hidden`.
 - No new Home-only conversation store, service authority, approval bypass, credential store or fake agent run is introduced.
@@ -51,7 +51,7 @@ Scope: bounded PWA Home adaptation; **not** production deployment, universal nat
 4. Verify actual owner login, passkey/recovery continuity and no leakage after session revocation.
 5. Test voice permissions, attachments, model failure and live conversation delivery in real configured environments.
 6. Confirm calendar integration, optional weather provider and tool-capability support before activating their UI claims.
-7. Implement genuinely editable/persisted Quick Tools if required; current screen intentionally omits a nonfunctional Edit button.
+7. Requalify the implemented Quick Tools Edit dialog, including persistence, keyboard handling and its honest availability boundary.
 8. Qualify Windows/macOS/Linux native shells, Android Emulator and iOS Simulator; physical-platform acceptance is deferred.
 9. Obtain independent visual, accessibility, performance and security acceptance before requesting merge.
 
