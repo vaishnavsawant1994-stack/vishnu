@@ -63,6 +63,14 @@ try {
     deviceStatus: 'pending', canContinueToHome: false, warnings: [],
   });
   assert.equal(await page.locator('.rc-continue').isDisabled(), true, 'pending device cannot enter Home');
+  assert.match(await page.locator('.rc-eyebrow').innerText(), /NEEDS ATTENTION/,
+    'a partial or pending recovery must not present a complete-success heading');
+  assert.equal(await page.locator('[data-recovery-overall="needs-attention"]').count(), 1);
+  await page.locator('.rc-back').click();
+  assert.match(await page.locator('.rc-eyebrow').innerText(), /RECOVERY SUMMARY/);
+  await page.locator('.rc-back').click();
+  assert.match(await page.locator('.rc-eyebrow').innerText(), /NEEDS ATTENTION/,
+    'returning from a partial recovery summary must not imply full success');
   assert.equal(await page.locator('.rc-status-card[data-status="completed"]').count(), 1,
     'partial data or pending device must not receive a verified check');
   await page.setViewportSize({ width: 390, height: 844 });
