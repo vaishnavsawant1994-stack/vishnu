@@ -44,6 +44,8 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/iphone/api/**',fixture);
  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ await page.waitForFunction(()=>window.vishnuChatBridge&&document.getElementById('voicePanel')&&!document.getElementById('voicePanel').classList.contains('hidden'));
+ await page.evaluate(()=>window.vishnuChatBridge.openConversation('personal-1'));
  await page.waitForFunction(()=>document.body.classList.contains('p202-personal-chat'),null,{timeout:20000});
  await page.locator('#p202Header').waitFor({state:'visible'});
  assert.equal(await page.locator('#p202Header .p202-conversation-name').innerText(),'My daily planning');
@@ -122,6 +124,8 @@ try{
    return fixture(route);
  });
  await projectPage.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ await projectPage.waitForFunction(()=>window.vishnuChatBridge&&document.getElementById('voicePanel')&&!document.getElementById('voicePanel').classList.contains('hidden'));
+ await projectPage.evaluate(()=>window.vishnuChatBridge.openConversation('personal-1'));
  await projectPage.waitForFunction(()=>window.__vishnuP202A&&document.body.classList.contains('chat-experience'));
  await projectPage.waitForTimeout(300);
  assert.equal(await projectPage.locator('#p202Header').isVisible(),false,
