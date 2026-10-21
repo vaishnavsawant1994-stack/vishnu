@@ -1,6 +1,6 @@
-const CACHE='personal-ai-iphone-v51';
+const CACHE='personal-ai-iphone-v52';
 const SHELL=[
-  '/iphone/','/iphone/manifest.webmanifest','/iphone/genesis.css','/iphone/first-run.js','/iphone/first-run-actions.js','/iphone/genesis-welcome.css','/iphone/genesis-neural-sphere.js','/iphone/genesis-identity.css','/iphone/genesis-identity.js','/iphone/campaign-demo.css','/iphone/campaign-demo.js','/iphone/campaign-demo-data.js','/iphone/global-search.css','/iphone/global-search.js','/iphone/command-center.css','/iphone/command-center.js','/iphone/workspaces-ui.css','/iphone/workspaces-ui.js',
+  '/iphone/','/iphone/manifest.webmanifest','/iphone/genesis.css','/iphone/first-run.js','/iphone/first-run-actions.js','/iphone/genesis-welcome.css','/iphone/genesis-neural-sphere.js','/iphone/genesis-identity.css','/iphone/genesis-identity.js','/iphone/genesis-security.css','/iphone/genesis-security.js','/iphone/campaign-demo.css','/iphone/campaign-demo.js','/iphone/campaign-demo-data.js','/iphone/global-search.css','/iphone/global-search.js','/iphone/command-center.css','/iphone/command-center.js','/iphone/workspaces-ui.css','/iphone/workspaces-ui.js',
   '/iphone/assets/genesis/avatar-blue.svg','/iphone/assets/genesis/avatar-mountain.svg','/iphone/assets/genesis/avatar-forest.svg','/iphone/assets/genesis/avatar-horizon.svg',
   '/iphone/assets/genesis/vishnu-core.png','/iphone/assets/genesis/cosmic-desktop.png','/iphone/assets/genesis/cosmic-mobile.png','/iphone/projects-workspace.css','/iphone/projects-workspace.js',
   '/iphone/reference-home.css','/iphone/reference-home.js',
