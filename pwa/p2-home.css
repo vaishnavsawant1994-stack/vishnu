@@ -38,11 +38,12 @@ html body.v-ref.p2-home-ready.home-landing .app-shell {
   background:transparent!important;
   overflow:visible!important
 }
-html body.v-ref.p2-home-ready.home-landing #voicePanel.home {
+html body.v-ref.p2-home-ready.home-landing #voicePanel.home:not(.hidden) {
   display:block!important;height:auto!important;min-height:0!important;
   max-height:none!important;overflow:visible!important;
   background:none!important
 }
+html body.v-ref.p2-home-ready.home-landing #voicePanel.home.hidden {display:none!important}
 html body.v-ref.p2-home-ready.home-landing .presence {
   height:auto!important;min-height:0!important;max-height:none!important;
   display:block!important;overflow:visible!important;
