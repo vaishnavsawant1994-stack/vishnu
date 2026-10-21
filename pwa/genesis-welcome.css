@@ -108,7 +108,8 @@ button.vw-tool:hover {color:var(--vw-cyan);}
  .vw-footer {margin-top:15px;}
  .vw-tools {margin-top:10px;}
 }
-@media (max-width:700px) {
+@media (max-width:800px) {
+ .genesis-welcome .vw-stage {transform:none;}
  .genesis-shell.genesis-welcome {margin:0;min-height:100dvh;height:auto;border:0;border-radius:0;padding:max(20px,env(safe-area-inset-top)) 20px max(20px,env(safe-area-inset-bottom));overflow:visible;background:radial-gradient(ellipse 80% 30% at 50% 31%,rgba(0,94,156,.12),transparent 78%),#02070d;}
  .vw-window-dots {display:none;}
  .vw-header {position:relative;inset:auto;width:100%;min-height:46px;align-self:stretch;flex:0 0 auto;}
