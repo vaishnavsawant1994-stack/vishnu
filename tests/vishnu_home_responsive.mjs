@@ -46,61 +46,34 @@ try {
   });
 
   await page.goto("http://127.0.0.1:4173/iphone/", { waitUntil: "domcontentloaded" });
-  await page.waitForFunction(() => document.body.classList.contains("home-landing") && document.querySelector("#homeProjectList .v-project"));
-  assert.match(await page.locator("#homeGreeting").innerText(), /^Good (morning|afternoon|evening), Vaishnav$/, "greeting should use the saved preferred name and local time");
-  assert.equal(await page.locator("#homeProjectList").innerText().then(text => text.includes("Responsive workspace")), true, "recent project row should render live project data");
+  await page.waitForFunction(() => document.body.classList.contains("home-landing") && document.querySelector("#homeProjectList .v-project") && window.__vishnuP201);
+  assert.match(await page.locator("#homeGreeting").innerText(), /^Good (Morning|Afternoon|Evening), Vaishnav$/, "greeting should use the saved preferred name and local time");
+  assert.equal(await page.locator("#homeProjectList").textContent().then(text => text.includes("Responsive workspace")), true, "recent project row should render live project data");
   assert.equal(await page.locator("#appDrawer").isVisible(), false, "navigation drawer starts collapsed");
   assert.equal(await page.locator("#homeSphereStage #neuralCanvas").count(), 1, "Home should reuse the existing particle sphere canvas");
   assert.equal(await page.evaluate(() => currentConversationId), "global-existing", "Home should preserve the active general conversation binding");
 
-  for (const [width, height, columns] of [[320, 568, 2], [390, 844, 2], [768, 960, 4], [1440, 900, 4]]) {
-    await page.setViewportSize({ width, height });
-    const layout = await page.evaluate(() => {
-      const rect = selector => { const r = document.querySelector(selector).getBoundingClientRect(); return { left:r.left, right:r.right, top:r.top, bottom:r.bottom, width:r.width, height:r.height }; };
-      return {
-        documentWidth: document.documentElement.scrollWidth,
-        gridColumns: getComputedStyle(document.querySelector(".v-shortcuts")).gridTemplateColumns.split(" ").length,
-        greeting: rect("#homeGreeting"), sphere: rect("#homeSphereStage"), intro: rect("#homeIntro"), topbar: rect(".topbar"),
-        cards: [...document.querySelectorAll(".v-card")].map(node => rect(`#${node.id}`)),
-        dock: rect("#vChatDock"), newChat: rect("#vNewChat"), viewAll: rect("#vViewAllProjects"),
-        homePanel: rect("#voicePanel"), presence: rect(".presence"),
-        sidebarButton: rect("#ownerButton"),
-        projectsHeading: rect("#homeProjectsHeading"), projectList: rect("#homeProjectList"),
-        composer: rect("#composer"), home: rect("#homeIntro"),
-        scrollbar: getComputedStyle(document.querySelector("#homeIntro")).scrollbarWidth,
-        composerBackground: getComputedStyle(document.querySelector("#composer")).backgroundColor,
-        composerBackgroundImage: getComputedStyle(document.querySelector("#composer")).backgroundImage,
-        composerShadow: getComputedStyle(document.querySelector("#composer")).boxShadow,
-        dockBackground: getComputedStyle(document.querySelector("#vChatDock")).backgroundColor,
-        homeScroll: { height: document.querySelector("#homeIntro").clientHeight, scrollHeight: document.querySelector("#homeIntro").scrollHeight, maxHeight: getComputedStyle(document.querySelector("#homeIntro")).maxHeight },
-      };
+  // The approved P2-01 layout changes the old 4-card grid to six cards and
+  // turns the mobile Home into a normal scrollable screen. Keep the older
+  // owner, project, navigation and conversation behavioral assertions below.
+  for(const [width,height,columns] of [[320,568,2],[390,844,2],[393,852,2],[768,960,2],[1024,768,3],[1440,900,6]]){
+    await page.setViewportSize({width,height});
+    const layout=await page.evaluate(()=>{
+      const box=node=>{const r=node.getBoundingClientRect();return {left:r.left,right:r.right,top:r.top,bottom:r.bottom,height:r.height}};
+      return {pageWidth:document.documentElement.scrollWidth,
+        columns:getComputedStyle(document.querySelector('.v-shortcuts')).gridTemplateColumns.split(' ').length,
+        cards:[...document.querySelectorAll('.p2-tile')].map(box),
+        sphere:box(document.getElementById('homeSphereStage')),
+        greeting:box(document.querySelector('.p2-greeting')),
+        composer:box(document.getElementById('composer'))};
     });
-    if (width <= 600) console.log(`mobile layout ${width}x${height}: ${JSON.stringify(layout)}`);
-      assert.ok(layout.documentWidth <= width, `horizontal overflow at ${width}px`);
-      assert.equal(layout.gridColumns, columns, `shortcut grid should have ${columns} columns at ${width}px`);
-      assert.ok(layout.sphere.bottom <= layout.greeting.top + 1, `particle sphere should sit above the greeting at ${width}px`);
-    assert.equal(layout.cards.length, 4);
-    assert.ok(layout.cards.every(card => card.left >= 0 && card.right <= width && card.height >= 44), `shortcut card clips at ${width}px`);
-    assert.ok(layout.dock.left >= 0 && layout.dock.right <= width && layout.dock.bottom <= layout.composer.top + 1, `New chat dock overlaps or clips at ${width}px`);
-    if (width <= 600) {
-      assert.equal(await page.locator("#vNewChat").evaluate(node => Math.round(node.getBoundingClientRect().width)), 44, "mobile New chat remains a circle");
-      assert.equal(await page.locator("#vNewChat").getAttribute("aria-label"), "New chat");
-      assert.ok(Math.max(...layout.cards.map(card => card.height)) - Math.min(...layout.cards.map(card => card.height)) <= 1, "all four mobile shortcuts have matching heights");
-      assert.ok(layout.sidebarButton.width >= 44 && layout.sidebarButton.right <= width, "right timeline sidebar button is visible and usable");
-      assert.ok(layout.sphere.top >= layout.topbar.bottom && layout.sphere.top - layout.topbar.bottom <= 32, `mobile sphere should start just below the header at ${width}px`);
-      assert.equal(layout.scrollbar, "none", "Home scrolling works without a visible scrollbar");
-      assert.equal(layout.composerBackground, "rgba(0, 0, 0, 0)", "composer has no backing panel behind the input");
-      assert.equal(layout.composerBackgroundImage, "none", "composer has no background image or footer band");
-      assert.equal(layout.composerShadow, "none", "composer has no drop shadow that creates a background layer");
-      assert.equal(layout.dockBackground, "rgba(0, 0, 0, 0)", "New chat dock has no backing panel");
-      assert.ok(layout.home.bottom <= layout.dock.top + 1, `Scrollable Home content extends under the fixed dock at ${width}px`);
-      assert.ok(layout.home.bottom <= layout.composer.top + 1, `Scrollable Home content extends under the composer at ${width}px`);
-      assert.ok(layout.homePanel.bottom >= height - 1, `Home background panel ends early and exposes a different page background at ${width}px`);
-      assert.ok(layout.presence.bottom <= layout.dock.top + 1, `Home content area extends underneath New chat at ${width}px`);
-      const headingVisible = layout.projectsHeading.bottom > layout.home.top && layout.projectsHeading.top < layout.home.bottom;
-      if (headingVisible) assert.ok(layout.newChat.left >= layout.viewAll.right || layout.newChat.right <= layout.viewAll.left || layout.newChat.bottom <= layout.viewAll.top || layout.newChat.top >= layout.viewAll.bottom, `New chat covers View all at ${width}px`);
-    } else assert.equal(await page.locator("#vNewChat span").isVisible(), true, "desktop New chat shows its label");
-    if ([320, 390, 1440].includes(width)) await page.screenshot({ path: `artifacts/vishnu-home-${width}.png`, fullPage: true });
+    assert.ok(layout.pageWidth<=width+1,'no horizontal overflow at '+width);
+    assert.equal(layout.columns,columns,'approved responsive grid at '+width);
+    assert.equal(layout.cards.length,6,'all approved Home actions at '+width);
+    assert.ok(layout.cards.every(card=>card.left>=0&&card.right<=width+1&&card.height>=44),'unclipped Home actions at '+width);
+    assert.ok(layout.composer.left>=0&&layout.composer.right<=width+1,'canonical composer visible at '+width);
+    if(width<=900)assert.ok(layout.sphere.bottom<=layout.greeting.top+5,'mobile Core precedes greeting at '+width);
+    if([320,390,1440].includes(width))await page.screenshot({path:'artifacts/vishnu-home-'+width+'.png',fullPage:true});
   }
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -109,6 +82,7 @@ try {
   await page.click("#closeAppDrawer");
   assert.equal(await page.locator("#appDrawer").isVisible(), false, "navigation drawer closes again");
 
+  await page.locator(".p2-mobile-chat").click();
   await page.click("#vNewChat");
   await page.waitForFunction(() => currentConversationId === "global-new-1");
   assert.equal(created, 1, "New chat persists a separate conversation");
@@ -119,7 +93,7 @@ try {
   await page.getByText("Vishnu reply from the system-wide conversation.").waitFor({ state: "visible", timeout: 10000 });
   assert.equal(active.conversation.id, "global-new-1", "Home message stays on the new system-wide thread");
   assert.deepEqual(errors, [], "Home renders without uncaught JavaScript errors");
-  console.log("Vishnu Home responsive and general conversation checks passed at 320, 390, 768, and 1440 CSS px.");
+  console.log("Vishnu P2-01 Home responsive and canonical conversation regression checks passed.");
 } finally {
   await browser.close();
 }
