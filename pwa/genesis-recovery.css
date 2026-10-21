@@ -1,0 +1,116 @@
+/* Vishnu 2.0 P1-04: screenshot-calibrated layout, extending P1-03 shared
+   shell, progress, WebGL sphere and navigation. */
+.genesis-recovery-screen .vs-progress li.complete:nth-child(3)::after{background:#0e95e7;}
+.genesis-recovery-screen .vs-body{grid-template-columns:minmax(0,51.5%) minmax(0,48.5%);}
+.genesis-recovery-screen .vs-main.vr-main{max-width:800px;padding:48px clamp(25px,2.7vw,44px) 30px 18px;}
+.genesis-recovery-screen .vr-main h1{font-size:clamp(32px,2.94vw,46px);white-space:nowrap;}
+.genesis-recovery-screen .vr-main h1 span{color:#078cf5;}
+.genesis-recovery-screen .vr-main .vs-description{font-size:clamp(15px,1.42vw,21px);margin:12px 0 27px;line-height:1.50;}
+.genesis-recovery-screen .vs-sphere{width:clamp(360px,41vw,620px);height:clamp(360px,41vw,620px);}
+.vr-panel{border:1px solid #142b40;background:linear-gradient(145deg,rgba(3,13,24,.94),rgba(2,10,19,.98));border-radius:18px;padding:17px 17px 16px;box-shadow:inset 0 0 28px rgba(4,50,87,.17);}
+.vr-card-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;}
+.vr-card-title{display:flex;align-items:center;gap:13px;font-size:17px;}
+.vr-card-title>svg{height:31px;width:31px;color:#0eacfc;filter:drop-shadow(0 0 7px rgba(3,150,255,.38));flex:none;}
+.vr-card-title strong{font-weight:640;white-space:nowrap;}
+.vr-new{border:1px solid #1e4669;border-radius:10px;background:linear-gradient(120deg,#07192a,#071220);color:#d8e9fa;font:400 12px Inter,Geist,"Segoe UI",sans-serif;min-height:42px;display:flex;align-items:center;justify-content:center;gap:9px;padding:6px 12px;cursor:pointer;}
+.vr-new svg{width:19px;height:19px;color:#49b9fa;}
+.vr-code-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-flow:column;grid-template-rows:repeat(4,minmax(39px,auto));gap:8px 11px;margin-bottom:14px;}
+.vr-code{min-width:0;min-height:39px;border:1px solid #14283e;border-radius:10px;background:linear-gradient(130deg,#0a1b2e,#071321);display:flex;align-items:center;padding:0 9px 0 11px;gap:9px;box-sizing:border-box;}
+.vr-number{font-size:12px;color:#a4c7e4;font-variant-numeric:tabular-nums;flex:none;}
+.vr-code code{font-size:clamp(9px,.78vw,12px);font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;color:#f3f9ff;letter-spacing:.012em;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis;flex:1;}
+.vr-copy{border:0;padding:5px;min-width:30px;min-height:35px;display:grid;place-items:center;background:none;color:#b9dcf8;cursor:pointer;flex:none;}
+.vr-copy svg{width:18px;height:18px;}
+.vr-missing{grid-column:1/-1;grid-row:1/-1;align-self:center;color:#bed3e6;line-height:1.55;font-size:14px;margin:10px 0;padding:18px;}
+.vr-code-actions{display:grid;grid-template-columns:1.3fr .9fr;gap:13px;margin-bottom:16px;}
+.vr-code-actions>button{min-width:0;display:flex;align-items:center;gap:20px;min-height:70px;text-align:left;padding:10px 15px;border-radius:11px;border:1px solid #1267a8;background:linear-gradient(120deg,#061b30,#071625);color:#f6fbff;cursor:pointer;}
+.vr-code-actions>button>svg{width:31px;height:31px;flex:none;color:#0fb5ff;filter:drop-shadow(0 0 8px rgba(0,146,255,.4));}
+.vr-code-actions strong{display:block;font-weight:580;font-size:14px;line-height:1.4;}
+.vr-code-actions small{display:block;color:#aac2dc;font-size:12px;line-height:1.4;}
+.vr-download strong{color:#36bdff;}
+.vr-warning{display:flex;gap:18px;border:1px solid rgba(205,137,44,.46);border-radius:11px;background:linear-gradient(112deg,rgba(45,27,9,.66),rgba(48,30,8,.70));padding:15px 19px;margin-bottom:14px;color:#f2ddb5;}
+.vr-warning>svg{color:#ffb438;flex:none;height:33px;width:33px;filter:drop-shadow(0 0 9px rgba(255,153,10,.30));}
+.vr-warning strong{font-size:17px;color:#ffc76c;}
+.vr-warning ul{padding-left:0;list-style:disc inside;margin:8px 0 0;font-size:12px;line-height:1.6;color:#f4ebdc;}
+.vr-warning li{margin-bottom:0;}
+.vr-ack{display:flex;align-items:flex-start;gap:11px;font-size:14px;color:#c8d8ea;cursor:pointer;line-height:1.45;}
+.genesis-security .vr-ack input[type=checkbox]{appearance:checkbox;accent-color:#117fff;flex:none;width:22px;height:22px;margin:0;cursor:pointer;}
+.vr-review-trigger{display:inline-flex;align-items:center;gap:6px;border:0;background:none;color:#a3cbe4;font-size:12px;padding:7px 0 0;margin-top:2px;cursor:pointer;}
+.genesis-recovery-screen .vr-nav{margin-top:21px;gap:clamp(28px,8vw,130px);}
+.genesis-recovery-screen .vr-nav .vs-back{min-height:64px;}
+.genesis-recovery-screen .vr-nav .vs-continue{min-height:64px;}
+.vr-status{line-height:1.3;}
+.vr-status[data-error="true"]{color:#ffb2c2;}
+.vr-status[data-error="false"]{color:#89d9ff;}
+.genesis-recovery-screen :is(button,input):focus-visible{outline:2px solid #8beaff;outline-offset:3px;}
+.vr-code button:hover,.vr-code button:focus-visible{color:#3ddaff;}
+.vr-code-actions button:hover,.vr-new:hover{border-color:#3ad5ff;box-shadow:0 0 14px rgba(0,124,237,.2);}
+.vr-panel button:disabled{opacity:.50;cursor:not-allowed;}
+.vr-dialog{width:min(90vw,480px);max-width:480px;box-sizing:border-box;}
+.vr-dialog h2{font-size:20px;margin:0 0 10px;}
+.vr-dialog p{color:#a8c4db;font-size:14px;line-height:1.6;}
+.vr-dialog-actions{display:flex;gap:12px;justify-content:flex-end;}
+.vr-dialog-actions .vr-danger{background:#8a2535;border-color:#d75d70;}
+.vr-dialog dl{display:grid;grid-template-columns:40% 1fr;gap:10px 12px;font-size:13px;}
+.vr-dialog dt{color:#91b9d7;}
+.vr-dialog dd{margin:0;color:#f2f8ff;overflow-wrap:anywhere;}
+.vr-review-help{font-size:12px!important;}
+@media(min-width:901px) and (max-height:900px){
+ .genesis-recovery-screen .vs-main.vr-main{padding-top:15px;padding-bottom:12px;}
+ .genesis-recovery-screen .vr-main .vs-description{margin:8px 0 12px;font-size:16px;}
+ .vr-panel{padding:12px;}
+ .vr-card-head{margin-bottom:9px;}
+ .vr-code-grid{gap:6px;grid-template-rows:repeat(4,minmax(34px,auto));margin-bottom:9px;}
+ .vr-code{min-height:34px;}
+ .vr-code-actions{margin-bottom:8px;}
+ .vr-code-actions>button{min-height:55px;}
+ .vr-warning{padding:10px;margin-bottom:8px;}
+ .vr-warning ul{font-size:11px;}
+ .genesis-recovery-screen .vr-nav{margin-top:12px;}
+ .genesis-recovery-screen .vr-nav :is(.vs-back,.vs-continue){min-height:51px;}
+}
+@media(max-width:900px){
+ .genesis-recovery-screen .vs-body{display:flex;flex-direction:column;}
+ /* Override the desktop sphere-specific selector, otherwise the 360px globe
+    is clipped to the 150px mobile visual region. */
+ .genesis-recovery-screen .vs-sphere{
+   width:clamp(125px,18vh,195px);height:clamp(125px,18vh,195px);
+   max-width:none;max-height:none;transform:none;
+ }
+ .genesis-recovery-screen .vs-main.vr-main{max-width:none;padding:8px 14px max(22px,env(safe-area-inset-bottom));}
+ .genesis-recovery-screen .vr-main h1{font-size:clamp(25px,6.9vw,34px);white-space:normal;}
+ .genesis-recovery-screen .vr-main .vs-description{font-size:13px;line-height:1.5;margin:9px 0 15px;}
+ .vr-desktop-break{display:none;}
+ .vr-panel{padding:13px;border-radius:15px;}
+ .vr-card-head{align-items:flex-start;}
+ .vr-card-title{font-size:13px;gap:7px;}
+ .vr-card-title>svg{width:25px;height:25px;}
+ .vr-new{padding:5px 8px;font-size:11px;min-height:40px;gap:4px;}
+ .vr-new svg{width:17px;height:17px;}
+ .vr-code-grid{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:repeat(4,minmax(40px,auto));gap:7px;}
+ .vr-code{padding:0 6px;gap:5px;}
+ .vr-number{font-size:10px;}
+ .vr-code code{font-size:clamp(9px,2.55vw,12px);}
+ .vr-copy{min-width:27px;}
+ .vr-copy svg{width:16px;height:16px;}
+ .vr-code-actions{grid-template-columns:1fr 1fr;gap:8px;}
+ .vr-code-actions>button{gap:8px;min-height:62px;padding:9px;}
+ .vr-code-actions>button>svg{width:23px;height:23px;}
+ .vr-code-actions strong{font-size:12px;}
+ .vr-code-actions small{font-size:10px;}
+ .vr-warning{padding:11px;gap:10px;}
+ .vr-warning>svg{height:26px;width:26px;}
+ .vr-warning strong{font-size:14px;}
+ .vr-warning ul{font-size:11px;line-height:1.55;}
+ .vr-ack{font-size:12px;}
+ .genesis-recovery-screen .vr-nav{gap:13px;margin-top:15px;}
+ .genesis-recovery-screen .vr-nav :is(.vs-back,.vs-continue){min-height:51px;font-size:14px;gap:8px;}
+ .genesis-recovery-screen .vr-nav svg{width:19px;height:19px;}
+}
+@media(max-width:380px){
+ .genesis-recovery-screen .vs-main.vr-main{padding-left:10px;padding-right:10px;}
+ .vr-card-title strong{font-size:12px;}
+ .vr-new{font-size:10px;}
+ .vr-code code{font-size:9px;}
+ .vr-code-actions small{display:none;}
+}
+@media(prefers-reduced-motion:reduce){.genesis-recovery-screen *{animation:none!important;transition:none!important;}}

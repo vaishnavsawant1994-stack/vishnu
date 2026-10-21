@@ -6,7 +6,7 @@ import {chromium} from 'playwright';
 
 const assetNames=[
  'first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
- 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css',
+ 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css','genesis-recovery.js','genesis-recovery.css',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg',
 ];
@@ -38,7 +38,11 @@ try{
       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
       window.check=async()=>null;
       window.__apiCalls=[];
-      window.api=async(path,opts)=>{window.__apiCalls.push({path,method:opts?.method,body:opts?.body});return {ok:true};};
+      window.api=async(path,opts)=>{
+        window.__apiCalls.push({path,method:opts?.method,body:opts?.body});
+        if(path==='/first-run/create')return {ok:true,recovery_codes:['A2BC-D3EF-G4HJ','B3CD-E4FG-H5JK','C4DE-F5GH-J6KL','D5EF-G6HJ-K7LM']};
+        return {ok:true};
+      };
      </script>
      <script src="/iphone/first-run.js"></script>
      <script src="/iphone/first-run-actions.js"></script>
@@ -110,7 +114,7 @@ try{
     await page.locator('.vs-continue[data-genesis-next]').click();
     await page.locator('#firstRunRecoverySaved').waitFor();
     await page.locator('#firstRunRecoverySaved').check();
-    await page.locator('.genesis-primary[data-genesis-next]').click();
+    await page.locator('.vr-nav [data-genesis-next]').click();
     await page.waitForFunction(()=>window.__apiCalls.some(x=>x.path==='/first-run/complete'));
     const calls=await page.evaluate(()=>window.__apiCalls);
     const createIndex=calls.findIndex(x=>x.path==='/first-run/create');
