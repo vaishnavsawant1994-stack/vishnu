@@ -43,6 +43,31 @@ class SmokeInstrumentedTest {
         }
     }
 
+    @Test
+    fun nativeJoinAndRestoreNavigationRequiresExplicitActions() {
+        ActivityScenario.launch(ConnectActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val root = activity.window.decorView
+                findButton(root, "I already have Vishnu")!!.performClick()
+                assertTrue("QR pairing must be reachable", findButton(root, "Scan Vishnu QR")!!.isShown)
+                assertTrue("Native join does not silently create owner trust",
+                    findButton(root, "Connect this device")!!.visibility != View.VISIBLE)
+                findButton(root, "Advanced manual fallback")!!.performClick()
+                assertTrue("Explicit fallback exposes the secure endpoint",
+                    findField(root, "https://your-vishnu.example.com")!!.isShown)
+                assertTrue(findButton(root, "Connect this device")!!.isShown)
+                findButton(root, "Back to Welcome")!!.performClick()
+                assertTrue(findButton(root, "Create my Vishnu")!!.isShown)
+                findButton(root, "Restore Vishnu")!!.performClick()
+                assertTrue("Recovery credentials must be entered before any restore",
+                    findField(root, "One-time recovery code")!!.isShown)
+                assertTrue(findButton(root, "Restore Vishnu on this phone")!!.isShown)
+                findButton(root, "Back to Welcome")!!.performClick()
+                assertTrue(findButton(root, "I already have Vishnu")!!.isShown)
+            }
+        }
+    }
+
     private fun hasText(view: View, expected: String): Boolean =
         view is TextView && view.text.toString() == expected ||
             view is EditText && view.hint.toString() == expected ||

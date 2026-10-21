@@ -129,7 +129,7 @@
     const warnings = Array.isArray(result.warnings) ? result.warnings : [];
     const tips = [...new Set([...points, ...warnings,
       'Reconnect any optional AI providers if needed.',
-      'Continue to Vishnu to finish setup.'])].slice(0, 6);
+      canContinue ? 'Continue to Vishnu to finish setup.' : 'Finish the pending security or recovery checks before entering Vishnu.'])].slice(0, 6);
     for (const tip of tips) {
       const li = document.createElement('li');
       li.textContent = String(tip).slice(0, 300);

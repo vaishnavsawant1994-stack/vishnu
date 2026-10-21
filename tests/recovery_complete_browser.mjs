@@ -73,6 +73,8 @@ try {
     deviceStatus: 'pending', canContinueToHome: false, warnings: [],
   });
   assert.equal(await page.locator('.rc-continue').isDisabled(), true, 'pending device cannot enter Home');
+  assert.match(await page.locator('#rcNextSteps').innerText(), /Finish the pending security or recovery checks/);
+  assert.doesNotMatch(await page.locator('#rcNextSteps').innerText(), /Continue to Vishnu to finish setup/);
   assert.match(await page.locator('.rc-eyebrow').innerText(), /NEEDS ATTENTION/,
     'a partial or pending recovery must not present a complete-success heading');
   assert.equal(await page.locator('[data-recovery-overall="needs-attention"]').count(), 1);

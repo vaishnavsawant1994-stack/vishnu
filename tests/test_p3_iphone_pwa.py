@@ -520,6 +520,50 @@ def test_password_join_requires_approval_on_an_existing_session(tmp_path):
     assert len(runtime['device_registry'].active) == 2
 
 
+def test_join_denial_and_bad_approver_password_never_enroll_new_device(tmp_path):
+    owner, runtime = make_client(tmp_path, server_sessions=True)
+    assert owner.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'}).status_code == 200
+    assert owner.post('/iphone/api/access/password/setup', json={
+        'password': 'correct horse battery staple',
+    }).status_code == 200
+
+    requester = TestClient(owner.app, base_url='https://testserver')
+    login = requester.post('/iphone/api/access/password/login', json={
+        'password': 'correct horse battery staple', 'name': 'Unknown browser',
+    })
+    assert login.status_code == 200
+    pending = login.json()
+    assert pending['status'] == 'approval_required'
+    assert requester.cookies.get('pa_join') is not None
+    assert requester.cookies.get('pa_session') is None
+    assert len(runtime['device_registry'].active) == 1
+
+    bad = owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'incorrect password', 'approve': True,
+    })
+    assert bad.status_code == 401
+    assert requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    }).json()['status'] == 'pending'
+
+    denial = owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': False,
+    })
+    assert denial.status_code == 200
+    assert denial.json()['status'] == 'denied'
+    final = requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    })
+    assert final.status_code == 200
+    assert final.json()['status'] == 'denied'
+    assert requester.cookies.get('pa_device') is None
+    assert requester.cookies.get('pa_session') is None
+    assert len(runtime['device_registry'].active) == 1
+    assert owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': True,
+    }).status_code == 409
+
+
 def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
     client, _ = make_client(tmp_path)
     options = client.get('/iphone/api/access/options').json()
