@@ -87,6 +87,7 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
  const error=$('#vsPasswordError'), devError=$('#vsDeviceError');
  const device=$('#vsDeviceName');
  device.value=state.deviceName===undefined?deviceGuess().name:state.deviceName;
+ state.deviceName=device.value;
  const validate=()=>{
    if(state.identityCreated)return true;
    const value=pw.value;
@@ -125,7 +126,8 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
  let pending=false;
  const progress=async(fn,label)=>{
    if(pending)return;
-   if(!deviceValid()||!validate()){if(!state.identityCreated)pw.focus();return;}
+   if(!deviceValid())return;
+   if(!validate()){pw.focus();return;}
    pending=true;button.disabled=true;
    const passkeyButton=$('[data-vs-passkey]');
    passkeyButton.disabled=true;
