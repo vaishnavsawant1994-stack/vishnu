@@ -27,6 +27,20 @@
   const contextById = new Map();
   const refs = {};
 
+  function openPersonalChat(){
+    return guarded(async()=>{
+      const b=bridge();if(!b)throw new Error('Vishnu Chat is unavailable.');
+      if(active()){ $('message')?.focus();return; }
+      if(b.turnInFlight)throw new Error('Finish the current reply before switching conversations.');
+      // A Chat navigation action deliberately starts a personal conversation.
+      // Preserve the owner's unsent draft when leaving Home.
+      const draft=b.getDraft?.()||'';
+      if(draft)b.setDraft('');
+      try {await b.createConversation();}
+      catch(error){if(draft)b.setDraft(draft);throw error;}
+      if(draft)b.setDraft(draft);
+    });
+  }
   function installShell(){
     const presence=qs('#voicePanel .presence');
     if(!presence||$('p202Header'))return;
@@ -78,6 +92,24 @@
       const anchor=qs('.home-greeting',intro);
       if(anchor)anchor.after(welcome);else intro.prepend(welcome);
       refs.hello=hello;
+    }
+    // Add a scoped Chat entry to the current main navigation. Other Home controls
+    // are left intact; the mobile hamburger opens the same canonical entry.
+    const desktopNav=qs('.reference-desktop-sidebar nav');
+    if(desktopNav&&!qs('[data-p202-open-chat]',desktopNav)){
+      const item=button(' Chat','p202-nav-chat',openPersonalChat);
+      item.dataset.p202OpenChat='true';
+      item.prepend(create('span','', '▢'));
+      const home=qs('[data-app-module="home"]',desktopNav);
+      if(home)home.after(item);else desktopNav.prepend(item);
+    }
+    const drawerNav=qs('#appDrawer .sidebar-main-nav');
+    if(drawerNav&&!qs('[data-p202-open-chat]',drawerNav)){
+      const item=button(' Chat','sidebar-nav-row p202-nav-chat',openPersonalChat);
+      item.dataset.p202OpenChat='true';
+      item.prepend(create('span','p202-nav-glyph','▢'));
+      const home=qs('[data-app-module="home"]',drawerNav);
+      if(home)home.after(item);else drawerNav.prepend(item);
     }
     // Reuse existing authenticated conversation list and CRUD handlers.
     const drawerHeader=qs('#conversationsDrawerMode .conversations-drawer-header');
@@ -354,6 +386,7 @@
       }
     }
     document.body.classList.toggle('p202-personal-chat',enabled);
+    document.querySelectorAll('[data-p202-open-chat]').forEach(btn=>{btn.classList.toggle('active',enabled);if(enabled)btn.setAttribute('aria-current','page');else btn.removeAttribute('aria-current')});
     for(const id of ['p202Header','p202Welcome','p202NewChat','p202MobileNav','p202MobileActions','p202ModelPlacement']){
       const el=$(id);if(el)el.hidden=!enabled;
     }
