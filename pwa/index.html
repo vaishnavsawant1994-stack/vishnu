@@ -2960,7 +2960,11 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
 #appDrawer .sidebar-action{position:absolute;z-index:2;left:8px;top:0;width:38px;height:42px;min-height:42px;padding:0;display:grid;grid-template-columns:1fr;place-items:center;border-radius:10px;background:transparent;color:#9db0cb;font-size:0}
 #appDrawer .sidebar-action svg{width:20px;height:20px}
 #appDrawer .sidebar-action span{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-#appDrawer .sidebar-primary-actions{position:relative}
+#appDrawer .sidebar-primary-actions{position:relative;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+#appDrawer .sidebar-primary-actions > .sidebar-action{position:relative;inset:auto;z-index:1;width:100%;height:44px;min-height:44px;padding:0 10px;display:flex;align-items:center;justify-content:flex-start;gap:9px;font-size:12px;border:1px solid rgba(92,137,194,.24);background:rgba(8,23,42,.75)}
+#appDrawer .sidebar-primary-actions > .sidebar-action span{position:static;width:auto;height:auto;overflow:visible;clip:auto;font-size:12px}
+#appDrawer .sidebar-primary-actions > .sidebar-action kbd{display:none}
+#appDrawer .sidebar-primary-actions > .sidebar-search-panel{grid-column:1/-1}
 #appDrawer .sidebar-search-panel{display:grid!important;grid-template-columns:24px minmax(0,1fr) 38px;min-height:42px;padding:3px 6px;border:1px solid rgba(92,137,194,.24);border-radius:13px;background:rgba(8,23,42,.9)}
 #appDrawer .sidebar-search-panel.hidden{display:grid!important}
 #appDrawer.search-closed .sidebar-search-panel{display:none!important}
