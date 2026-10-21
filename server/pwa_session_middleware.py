@@ -45,6 +45,8 @@ PUBLIC_PATHS = {
     '/iphone/genesis-connect.js',
     '/iphone/genesis-recovery-options.css',
     '/iphone/genesis-recovery-options.js',
+    '/iphone/genesis-verification.css',
+    '/iphone/genesis-verification.js',
     '/iphone/first-run.js',
     '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
