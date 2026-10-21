@@ -389,6 +389,14 @@
         const authorized = await originalCheck();
         if (!authorized) {
           panel.classList.remove('hidden');
+          const status = await window.vishnuRuntimeAssistant?.probe?.();
+          if (status?.status === 'offline' || status?.status === 503) {
+            window.vishnuRuntimeAssistant.mount(panel, {
+              origin: 'recovery',
+              onBack() { if (s.recoveryResult) showRecoveryResult(s.recoveryResult); },
+              onReady() { if (s.recoveryResult) showRecoveryResult(s.recoveryResult); },
+            });
+          }
           throw new Error('Vishnu could not verify this trusted browser or runtime. Reconnect and try again.');
         }
         s.recoveryResult = null;
@@ -405,6 +413,20 @@
     if (s.recoveryResult) { panel.classList.remove('hidden'); return result; }
     try {
       s.options = await originalLoad() || {};
+      // This is a genuinely conditional screen: show it only if the canonical
+      // runtime cannot be reached. A 401 owner challenge remains normal login.
+      if (!result && Object.keys(s.options).length === 0 && window.vishnuRuntimeAssistant) {
+        const connection = await window.vishnuRuntimeAssistant.probe();
+        if (connection.status === 'offline' || connection.status === 503) {
+          show();
+          window.vishnuRuntimeAssistant.mount(panel, {
+            origin: s.accessIntent || 'welcome',
+            onBack: () => { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); },
+            onReady: () => window.check(),
+          });
+          return result;
+        }
+      }
       const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
       if (s.options.restore_setup_in_progress) { show(); renderRestoreSecurity(); }
       else if (s.options.restore_restart_required) { show(); renderRestoreRestartRequired(); }

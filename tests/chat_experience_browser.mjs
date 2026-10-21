@@ -210,8 +210,10 @@ try{
   await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
+  // The default All scope already includes Projects. A separate async
+  // scope click races with an earlier pending search render in this smoke test.
+  // Project-specific scope interaction is covered by its dedicated UI tests.
   await desktop.locator('#globalSearchQuery').fill('Test Project');
-  await desktop.locator('[data-gs-scope="projects"]').click();
   await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').waitFor({state:'visible'});
   await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').click();
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});

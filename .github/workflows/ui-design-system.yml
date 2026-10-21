@@ -8,6 +8,7 @@ on:
       - 'tests/web_companion_responsive.mjs'
       - 'tests/web_companion_baseline_screenshots.mjs'
       - 'tests/recovery_complete_browser.mjs'
+      - 'tests/runtime_assistant_browser.mjs'
       - 'pwa/**'
       - 'ios-companion/**'
       - 'android-companion/**'
@@ -20,6 +21,7 @@ on:
       - 'tests/web_companion_responsive.mjs'
       - 'tests/web_companion_baseline_screenshots.mjs'
       - 'tests/recovery_complete_browser.mjs'
+      - 'tests/runtime_assistant_browser.mjs'
       - 'pwa/**'
       - 'ios-companion/**'
       - 'android-companion/**'
@@ -62,6 +64,7 @@ jobs:
           node tests/web_companion_baseline_screenshots.mjs
           node tests/web_companion_responsive.mjs
           node tests/recovery_complete_browser.mjs
+          node tests/runtime_assistant_browser.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -75,5 +78,13 @@ jobs:
         with:
           name: vishnu-p1-09-preview
           path: artifacts/p1-09-preview-*.png
+          if-no-files-found: warn
+          retention-days: 7
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vishnu-p1-10-previews
+          path: artifacts/p1-10-preview-*.png
           if-no-files-found: warn
           retention-days: 7

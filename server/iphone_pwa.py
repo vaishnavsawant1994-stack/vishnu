@@ -526,6 +526,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             '</body>',
             '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">'
             '<script src="/iphone/vishnu-os-workspaces.js" defer></script>'
+            '<script src="/iphone/neural-sphere.js" defer></script>'
+            '<script src="/iphone/runtime-assistant.js" defer></script>'
             '<script src="/iphone/recovery-complete.js" defer></script>'
             '<script src="/iphone/first-run.js" defer></script>'
             '<script src="/iphone/first-run-actions.js" defer></script></body>',
@@ -555,6 +557,24 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def first_run_actions_script():
         return Response((web_dir / 'first-run-actions.js').read_text(encoding='utf-8'),
                         media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/neural-sphere.js', include_in_schema=False)
+    def neural_sphere_script():
+        return Response((web_dir / 'neural-sphere.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.js', include_in_schema=False)
+    def runtime_assistant_script():
+        return Response((web_dir / 'runtime-assistant.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.css', include_in_schema=False)
+    def runtime_assistant_stylesheet():
+        return Response((web_dir / 'runtime-assistant.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
                         headers={'Cache-Control': 'no-cache'})
 
     @router.get('/recovery-complete.js', include_in_schema=False)
