@@ -65,6 +65,7 @@ export function mountIdentityScreen(root, state, { onBack, onContinue }) {
     $('[data-vi-add]').setAttribute('aria-pressed','false');
   };
   const select = (source,id=null) => {
+    if (state.avatarSource !== source || state.avatarId !== id) state.avatarSaved = false;
     clearSelection();
     state.avatarSource=source;state.avatarId=id;
     if(source==='preset') {
