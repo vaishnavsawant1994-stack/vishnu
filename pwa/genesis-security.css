@@ -149,3 +149,40 @@
  .vs-section-heading small{white-space:normal;text-align:right;}
 }
 @media(prefers-reduced-motion:reduce){.genesis-security *{animation:none!important;transition:none!important;}}
+
+/* The shared legacy .genesis input rule has equal specificity. Make P1-03's
+   icon spacing authoritative so placeholders never overlap their icons. */
+.genesis .genesis-security input:not([type=checkbox]):not([type=radio]){
+ padding-left:50px;padding-right:54px;height:51px;min-height:51px;
+}
+.genesis .genesis-security .vs-device-field input:not([type=checkbox]):not([type=radio]){
+ padding-left:48px;padding-right:44px;
+}
+.genesis .genesis-security .vs-runtime-code input:not([type=checkbox]):not([type=radio]){
+ padding-left:16px;padding-right:15px;height:45px;min-height:45px;
+}
+@media(min-width:901px) and (min-height:890px){
+ .vs-sphere{transform:translateY(-75px);}
+ .vs-ground{bottom:15%;filter:blur(2px);opacity:1;}
+}
+@media(min-width:901px){
+ .vs-hero::after{
+   content:"";position:absolute;pointer-events:none;left:20%;top:19%;width:3px;height:3px;
+   border-radius:50%;background:rgba(40,180,247,.48);filter:blur(.8px);
+   box-shadow:
+     -74px 58px 10px rgba(20,145,237,.43),
+     194px -34px 7px rgba(30,191,255,.32),
+     303px 78px 13px rgba(0,135,255,.36),
+     -135px 204px 8px rgba(48,191,247,.43),
+     104px 139px 10px rgba(36,189,248,.25),
+     407px 220px 8px rgba(10,148,241,.34),
+     348px 382px 11px rgba(26,179,245,.29),
+     -97px 406px 9px rgba(0,150,236,.28),
+     160px 468px 9px rgba(33,153,250,.27),
+     391px 523px 10px rgba(32,170,255,.21),
+     -42px 555px 12px rgba(27,155,245,.33);
+ }
+}
+@media(max-height:850px) and (min-width:901px){
+ .genesis .genesis-security input:not([type=checkbox]):not([type=radio]){height:44px;min-height:44px;}
+}
