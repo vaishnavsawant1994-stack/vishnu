@@ -533,6 +533,9 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             '</body>',
             '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">'
             '<script src="/iphone/vishnu-os-workspaces.js" defer></script>'
+            '<script src="/iphone/neural-sphere.js" defer></script>'
+            '<script src="/iphone/runtime-assistant.js" defer></script>'
+            '<script src="/iphone/recovery-complete.js" defer></script>'
             '<script src="/iphone/first-run.js" defer></script>'
             '<script src="/iphone/first-run-actions.js" defer></script></body>',
         )
@@ -561,6 +564,36 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def first_run_actions_script():
         return Response((web_dir / 'first-run-actions.js').read_text(encoding='utf-8'),
                         media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/neural-sphere.js', include_in_schema=False)
+    def neural_sphere_script():
+        return Response((web_dir / 'neural-sphere.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.js', include_in_schema=False)
+    def runtime_assistant_script():
+        return Response((web_dir / 'runtime-assistant.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.css', include_in_schema=False)
+    def runtime_assistant_stylesheet():
+        return Response((web_dir / 'runtime-assistant.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/recovery-complete.js', include_in_schema=False)
+    def recovery_complete_script():
+        return Response((web_dir / 'recovery-complete.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/recovery-complete.css', include_in_schema=False)
+    def recovery_complete_stylesheet():
+        return Response((web_dir / 'recovery-complete.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
                         headers={'Cache-Control': 'no-cache'})
 
     @router.get('/genesis.css', include_in_schema=False)
@@ -1420,7 +1453,31 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         response.delete_cookie('pa_setup_claim', path='/iphone')
         emit('owner.first_run.completed', device_id=device_id,
              owner_id=result.get('identity', {}).get('owner_id'))
-        return {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+        payload = {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+        # This evidence is returned only to a trusted owner device after the
+        # canonical first-run authority has completed the restore workflow.
+        if result.get('mode') == 'restore':
+            restore = result.get('restore') if isinstance(result.get('restore'), dict) else {}
+            evidence = restore.get('result') if isinstance(restore.get('result'), dict) else {}
+            try:
+                restored = max(0, int(evidence.get('restored', 0) or 0))
+            except (ValueError, TypeError):
+                restored = 0
+            verified = bool(evidence.get('ok') and evidence.get('encrypted') and
+                            evidence.get('identity_preserved'))
+            skipped_security = len(evidence.get('skipped_security_state') or [])
+            payload['recovery_result'] = {
+                'recoveryType': 'encrypted_data',
+                'identityStatus': 'completed',
+                'dataStatus': 'completed' if verified else ('partial' if restored else 'pending'),
+                'deviceStatus': 'completed',
+                'restoredItems': restored,
+                'skippedSecurityItems': skipped_security,
+                'securityActionsRequired': ['Review your trusted devices in Settings.'],
+                'warnings': [] if verified else ['Some recovery data could not be verified. Review the backup before relying on it.'],
+                'canContinueToHome': True,
+            }
+        return payload
 
     @router.post('/api/first-run/model')
     def first_run_model(body: FirstRunModelBody, request: Request,
@@ -1761,7 +1818,18 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         clear_access_attempts(key)
         device = trust_browser(response, body.name, 'web-pwa-recovery')
         emit('owner.recovery.used', device_id=device['id'])
-        return {'ok': True, 'device_id': device['id']}
+        return {
+            'ok': True, 'device_id': device['id'],
+            'recovery_result': {
+                'recoveryType': 'owner_access',
+                'identityStatus': 'completed',
+                'dataStatus': 'not_applicable',
+                'deviceStatus': 'completed',
+                'securityActionsRequired': ['Review your trusted devices in Settings.'],
+                'warnings': ['A recovery code restores owner access only. No encrypted backup data was restored.'],
+                'canContinueToHome': True,
+            },
+        }
 
     @router.post('/api/access/passkey/register/options')
     def passkey_register_options(

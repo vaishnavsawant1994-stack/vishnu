@@ -191,6 +191,18 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
     assert '/iphone/first-run-actions.js' in page.text
+    assert '/iphone/neural-sphere.js' in page.text
+    assert '/iphone/runtime-assistant.js' in page.text
+    assert '/iphone/runtime-assistant.css' in page.text
+    for asset, expected in (
+        ('neural-sphere.js', 'vishnuNeuralSphere'),
+        ('runtime-assistant.js', 'vishnuRuntimeAssistant'),
+        ('runtime-assistant.css', 'runtime-host'),
+    ):
+        response = client.get('/iphone/' + asset)
+        assert response.status_code == 200
+        assert expected in response.text
+
     adapter = client.get('/iphone/first-run.js')
     actions = client.get('/iphone/first-run-actions.js')
     assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
@@ -367,7 +379,11 @@ def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
     generated = client.post('/iphone/api/access/recovery/regenerate', json={}).json()['codes']
     client.post('/iphone/api/logout', json={})
 
-    assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 200
+    recovered = client.post('/iphone/api/access/recovery/login', json={'code': generated[0]})
+    assert recovered.status_code == 200
+    assert recovered.json()['recovery_result']['identityStatus'] == 'completed'
+    assert recovered.json()['recovery_result']['dataStatus'] == 'not_applicable'
+    assert recovered.json()['recovery_result']['deviceStatus'] == 'completed'
     client.post('/iphone/api/logout', json={})
     assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 401
 
@@ -464,6 +480,10 @@ def test_web_portable_restore_preserves_identity_restores_data_and_secures_repla
         'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
     })
     assert complete.status_code == 200, complete.text
+    assert complete.json()['recovery_result']['recoveryType'] == 'encrypted_data'
+    assert complete.json()['recovery_result']['identityStatus'] == 'completed'
+    assert complete.json()['recovery_result']['deviceStatus'] == 'completed'
+    assert complete.json()['recovery_result']['dataStatus'] in {'completed', 'partial', 'pending'}
     assert setup.ready is True
     assert runtime['owner_access'].identity()['owner_id'] == identity['owner_id']
 
