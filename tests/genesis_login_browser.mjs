@@ -162,5 +162,40 @@ try{
  assert.equal(body.credential.response.authenticatorData,'BwgJ');
  assert.equal(body.credential.response.clientDataJSON,'BAUG');
  await auth.close();
- console.log('P1-05 desktop/mobile/WebGL/password/passkey/trust/recovery-ready browser qualification: PASS');
+ // Recovery and Back keep owner identity intact and return to approved entry.
+ const {page:recover}=await fixturePage({width:390,height:844});
+ await recover.locator('[data-vl-recovery]').click();
+ await recover.getByRole('heading',{name:'Recover owner access'}).waitFor();
+ assert.equal(await recover.locator('#recoveryCode').count(),1);
+ await recover.close();
+ const {page:back}=await fixturePage({width:1536,height:1024});
+ await back.locator('.vl-back').click();
+ await back.getByRole('heading',{name:'Welcome to Vishnu.'}).waitFor();
+ await back.close();
+ // Explicit fallback with no configured passkey: no fake ceremony or
+ // credential is attempted.
+ const {page:unsupported}=await fixturePage({width:1536,height:1024});
+ await unsupported.evaluate(()=>{
+   window.PublicKeyCredential=undefined;
+   window.vishnuFirstRun.showLogin();
+ });
+ await unsupported.locator('[data-vl-passkey]').click();
+ assert.match(await unsupported.locator('#returningStatus').innerText(),/unavailable/i);
+ assert.equal(await unsupported.evaluate(()=>window.__calls.some(x=>x.path==='/access/passkey/login/options')),false);
+ await unsupported.close();
+ // Authenticator cancellation must return safely to the login form.
+ const {page:cancelled}=await fixturePage({width:1536,height:1024});
+ await cancelled.evaluate(()=>{
+   window.PublicKeyCredential=class FakePasskey{};
+   Object.defineProperty(navigator,'credentials',{configurable:true,value:{
+     get:async()=>{const err=new Error('not permitted');err.name='NotAllowedError';throw err;}
+   }});
+   window.vishnuFirstRun.showLogin();
+ });
+ await cancelled.locator('[data-vl-passkey]').click();
+ await cancelled.waitForFunction(()=>document.querySelector('#returningStatus')?.textContent.includes('cancelled'));
+ assert.equal(await cancelled.locator('.vl-panel').isVisible(),true);
+ assert.equal(await cancelled.evaluate(()=>window.__session),false);
+ await cancelled.close();
+ console.log('P1-05 desktop/mobile/WebGL/password/passkey/trust/recovery/cancellation browser qualification: PASS');
 }finally{await browser.close();}
