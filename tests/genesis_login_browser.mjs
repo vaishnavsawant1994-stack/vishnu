@@ -55,8 +55,10 @@ const fixturePage=async(vp)=>{
  });
  await page.goto('http://127.0.0.1:4173/iphone/');
  await page.waitForFunction(()=>Boolean(window.vishnuFirstRun?.showLogin));
- await page.evaluate(async()=>{window.vishnuFirstRun.state.options=await window.loadAccessOptions();window.vishnuFirstRun.showLogin();});
+ // An existing owner without a trusted session must be taken directly to
+ // P1-05; the user should not have to manually enter a test-only route.
  await page.locator('.genesis-login .vl-panel').waitFor();
+ assert.equal(await page.locator('.genesis-login').count(),1);
  return {page,exceptions};
 };
 try{
