@@ -1168,7 +1168,7 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     })
     assert uploaded.status_code == 200, uploaded.text
     image = client.get('/iphone/api/access/profile/avatar/image')
-    assert image.status_code == 200 and image.content.startswith(b'\\x89PNG')
+    assert image.status_code == 200 and image.content.startswith(b'\x89PNG')
     assert image.headers['cache-control'] == 'private, no-store'
     assert stranger.get('/iphone/api/access/profile/avatar/image').status_code == 401
     invalid = client.put('/iphone/api/first-run/avatar', json={
