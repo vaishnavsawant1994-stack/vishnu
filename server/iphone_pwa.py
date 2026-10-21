@@ -1628,6 +1628,26 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             response.delete_cookie('pa_join', path='/iphone/api/access/join')
         return result
 
+    @router.post('/api/access/join/cancel')
+    def cancel_device_join(body: OwnerJoinStatusBody, request: Request, response: Response,
+                           pa_join: str | None = Cookie(default=None)):
+        """Only the join requester holding its original scoped cookie may
+        cancel this exact unapproved request. No owner/device trust is created.
+        """
+        require_https(request)
+        if not pa_join:
+            raise HTTPException(401, 'The pending join credential is missing.')
+        status = registry.join_status(body.request_id, pa_join)
+        if status is None:
+            raise HTTPException(404, 'The join request is unavailable or expired.')
+        if status.get('status') != 'pending':
+            raise HTTPException(409, 'This request is no longer pending.')
+        if not registry.decide_join(body.request_id, approve=False, decided_by='requester_cancelled'):
+            raise HTTPException(409, 'The join request could not be cancelled.')
+        response.delete_cookie('pa_join', path='/iphone/api/access/join')
+        emit('device.join.cancelled', request_id=body.request_id)
+        return {'status': 'cancelled'}
+
     @router.post('/api/access/google/login')
     def google_login(body: GoogleLoginBody, request: Request, response: Response,
                      pa_device: str | None = Cookie(default=None),
