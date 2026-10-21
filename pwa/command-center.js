@@ -1,5 +1,9 @@
 /* Safe command/navigation palette. It only dispatches existing canonical UI actions. */
 (() => {
+  // The PWA shell and responsive test mounts may evaluate this module more than once.
+  // Register global keyboard/click listeners only once so one shortcut opens one dialog.
+  if (window.vishnuCommandCenterInitialized) return;
+  window.vishnuCommandCenterInitialized = true;
   const entries = [
     { label: 'Home', detail: 'Return to your Vishnu home', category: 'Navigation', module: 'home', keywords: 'start overview' },
     { label: 'Workspaces', detail: 'Open the current workspace directory', category: 'Navigation', module: 'labs', keywords: 'spaces workspace library' },
