@@ -170,8 +170,8 @@ try{
  await recover.getByRole('heading',{name:'Recovery Options'}).waitFor();
  assert.equal(await recover.locator('.vo-choice').count(),3);
  await recover.locator('[data-vo-continue]').click();
- await recover.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
- assert.equal(await recover.locator('#voRecoveryCode').count(),1);
+ await recover.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+ assert.equal(await recover.locator('[data-v8-group]').count(),6);
  await recover.close();
  const {page:back}=await fixturePage({width:1536,height:1024});
  await back.locator('.vl-back').click();
