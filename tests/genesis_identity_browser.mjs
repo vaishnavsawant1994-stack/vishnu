@@ -37,7 +37,8 @@ try{
      <script>
       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
       window.check=async()=>null;
-      window.api=async()=>({ok:true});
+      window.__apiCalls=[];
+      window.api=async(path,opts)=>{window.__apiCalls.push({path,method:opts?.method,body:opts?.body});return {ok:true};};
      </script>
      <script src="/iphone/first-run.js"></script>
      <script src="/iphone/first-run-actions.js"></script>
@@ -96,8 +97,33 @@ try{
   await page.locator('#firstRunFirstName').waitFor();
   assert.equal(await page.locator('#firstRunFirstName').inputValue(),'Alexander');
   assert.equal(await page.locator('#firstRunDisplayName').inputValue(),'Alex');
-  await page.locator('[data-vi-back]').click();
-  await page.getByRole('heading',{name:'Welcome to Vishnu.'}).waitFor();
+  if(vp.width===1536) {
+    // Exercise the full approved identity -> security -> recovery journey.
+    // The avatar endpoint must be invoked only after the canonical owner is
+    // created; a selected photo must not be silently omitted at completion.
+    await page.locator('[data-vi-avatar="forest"]').click();
+    await page.locator('[data-genesis-next]').click();
+    await page.getByRole('heading',{name:'Secure your Vishnu'}).waitFor();
+    await page.locator('#firstRunPassword').fill('vishnu-test-password-123');
+    await page.locator('#firstRunPasswordAgain').fill('vishnu-test-password-123');
+    await page.evaluate(()=>{window.vishnuFirstRun.state.auth='password';});
+    await page.locator('.genesis-primary[data-genesis-next]').click();
+    await page.locator('#firstRunRecoverySaved').waitFor();
+    await page.locator('#firstRunRecoverySaved').check();
+    await page.locator('.genesis-primary[data-genesis-next]').click();
+    await page.waitForFunction(()=>window.__apiCalls.some(x=>x.path==='/first-run/complete'));
+    const calls=await page.evaluate(()=>window.__apiCalls);
+    const createIndex=calls.findIndex(x=>x.path==='/first-run/create');
+    const avatarIndex=calls.findIndex(x=>x.path==='/first-run/avatar');
+    const completeIndex=calls.findIndex(x=>x.path==='/first-run/complete');
+    assert(createIndex>=0 && avatarIndex>createIndex && completeIndex>avatarIndex,
+      'Private avatar persistence must happen after secure creation and before final completion');
+    const avatar=JSON.parse(calls[avatarIndex].body);
+    assert.deepEqual(avatar,{source:'preset',preset_id:'forest',image_b64:''});
+  } else {
+    await page.locator('[data-vi-back]').click();
+    await page.getByRole('heading',{name:'Welcome to Vishnu.'}).waitFor();
+  }
   assert.deepEqual(errors,[],'No browser errors at '+vp.width+': '+errors.join('; '));
   await page.close();
  }
