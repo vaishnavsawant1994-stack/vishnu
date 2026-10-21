@@ -221,6 +221,7 @@ try{
   const searchConversationId=await desktop.locator('[data-gs-open="conversation"]').first().getAttribute('data-gs-id');
   await desktop.locator('[data-gs-open="conversation"]').first().click();
   await desktop.waitForFunction(id=>window.vishnuChatBridge.current.id===id,searchConversationId,'search result activates its existing conversation ID');
+  await desktop.waitForFunction(()=>!document.querySelector('#modulePanel')?.classList.contains('open') && !document.body.classList.contains('global-search-mode'),null,{timeout:10000}); // Wait for async conversation navigation to close Search before reopening it.
 
   // Use one authentic search entry per test. Double-opening the module
   // races its asynchronous shell render and can hide a freshly mounted input.
