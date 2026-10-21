@@ -116,3 +116,6 @@
  .vl-trust button{margin-left:auto;}
  .genesis-login .vl-mobile-back{display:inline-flex;}
 }
+
+.vl-mobile-back{display:none;background:#03101d;color:#f3faff;border:1px solid #2a506c;border-radius:999px;min-height:46px;min-width:125px;align-items:center;justify-content:center;cursor:pointer;margin-top:15px;}
+@media(max-width:900px){.genesis-login .vl-mobile-back{display:inline-flex;align-self:flex-start;}}
