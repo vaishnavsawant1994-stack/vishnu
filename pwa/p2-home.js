@@ -239,7 +239,13 @@
       if (knowledge) knowledge.lastChild.textContent = 'Library';
       const tools = sidebar.querySelector('[data-app-module="tools"]');
       if (tools) tools.lastChild.textContent = 'Tools';
-      const search = actionButton(' Search', 'p2-sidebar-added', navigate.search);
+      const devices = sidebar.querySelector('[data-app-module="devices"]');
+      if (devices) {
+        const more = actionButton(' More', 'p2-sidebar-added p2-sidebar-more', navigate.more);
+        more.prepend(make('span', '', '◫'));
+        devices.after(more);
+      }
+      const search = actionButton(' Search', 'p2-sidebar-added p2-sidebar-search', navigate.search);
       search.prepend(make('span', '', '⌕'));
       const notifications = actionButton(' Notifications', 'p2-sidebar-added', navigate.notification);
       notifications.prepend(make('span', '', '♧'));
@@ -285,6 +291,8 @@
     }
     const owner = document.querySelector('[data-reference-owner]');
     if (owner) owner.textContent = 'Owner';
+    const ownerSub = document.querySelector('.reference-owner small');
+    if (ownerSub) ownerSub.textContent = 'Owner account';
   }
   function paintClock() {
     if (!elements.time) return;
@@ -297,8 +305,14 @@
       const hour = now.getHours();
       const part = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
       $('homeGreeting').textContent = part + (String(name).trim() ? ', ' + String(name).trim() : '');
+      const displayName = String(name).trim();
       const owner = document.querySelector('[data-reference-owner]');
-      if (owner) owner.textContent = String(name).trim() || 'Owner';
+      if (owner) owner.textContent = displayName || 'Owner';
+      const initials = displayName ? displayName.split(/\s+/).slice(0,2).map(part => part[0].toUpperCase()).join('') : '◯';
+      const avatar = document.querySelector('.reference-owner .reference-avatar');
+      if (avatar) avatar.textContent = initials;
+      const profile = document.querySelector('.reference-desktop-tools .reference-profile');
+      if (profile) profile.textContent = initials;
     }
   }
   function setRow(key, title, detail) {
