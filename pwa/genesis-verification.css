@@ -101,3 +101,25 @@
  .v8-method-title small{font-size:10px;}
 }
 @media(prefers-reduced-motion:reduce){.genesis-verification *{animation:none!important;transition:none!important;}}
+
+/* Final screenshot comparison: compact resting backup card matches the
+   owner's reference. The required second key file + security guidance
+   reveal on backup selection, never removing the governed restore path. */
+.genesis-verification .v8-method:not(.selected) .v8-key-file,
+.genesis-verification .v8-method:not(.selected) .v8-method-limit,
+.genesis-verification .v8-method:not(.selected) .v8-bootstrap{display:none;}
+.genesis-verification .v8-code-groups{width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
+.genesis-verification .v8-code-groups input{min-width:0;max-width:100%;box-sizing:border-box;}
+@media(min-width:901px){
+ .genesis-verification .vo-sphere{transform:translate(31px,-78px);}
+ .genesis-verification .vo-ground{bottom:16.5%;}
+ .genesis-verification .vo-hero::after{transform:translateY(-45px);}
+ .genesis-verification .v8-safety{min-height:99px;margin-top:15px;}
+}
+@media(max-width:900px){
+ .genesis-verification .v8-code-groups{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;}
+ .genesis-verification .v8-code-groups input{width:100%;min-width:0;max-width:100%;font-size:12px;letter-spacing:0;}
+}
+@media(max-width:350px){
+ .genesis-verification .v8-code-groups{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
