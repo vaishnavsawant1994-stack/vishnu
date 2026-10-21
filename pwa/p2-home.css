@@ -596,3 +596,11 @@ html body.v-ref.p2-home-ready:has(#enrollPanel:not(.hidden)) .reference-mobile-n
   display:none!important;
   pointer-events:none!important;
 }
+
+
+/* Today is a full-screen canonical experience with its own bottom navigation.
+ * P2 Home controls must yield to it even if Home remains mounted behind it. */
+html body.v-ref.p2-home-ready.today-command-mode .reference-mobile-nav {
+  display:none!important;
+  pointer-events:none!important;
+}
