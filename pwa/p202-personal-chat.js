@@ -30,7 +30,7 @@
     const presence=qs('#voicePanel .presence');
     if(!presence||$('p202Header'))return;
     const head=create('header','p202-header');
-    head.id='p202Header';
+    head.id='p202Header';head.hidden=true;
     head.setAttribute('aria-label','Personal conversation');
     const orb=create('span','p202-head-core');
     orb.setAttribute('aria-hidden','true');
@@ -54,7 +54,7 @@
     const intro=$('homeIntro');
     if(intro){
       const welcome=create('section','p202-welcome');
-      welcome.id='p202Welcome';
+      welcome.id='p202Welcome';welcome.hidden=true;
       const art=create('img','p202-welcome-core');
       art.src='/iphone/assets/genesis/vishnu-core.png';
       art.alt='';art.loading='lazy';art.decoding='async';
@@ -85,12 +85,12 @@
         if(bridge()?.getDraft?.()?.trim()) {notify('Send or clear your current draft before creating a new chat.');return;}
         await bridge().createConversation();
       }));
-      newChat.id='p202NewChat';newChat.setAttribute('aria-label','Start a new personal conversation');
+      newChat.id='p202NewChat';newChat.hidden=true;newChat.setAttribute('aria-label','Start a new personal conversation');
       drawerHeader.append(newChat);
       refs.drawerTitle=qs('h2',drawerHeader);
     }
     const mobileNav=create('nav','p202-mobile-nav');
-    mobileNav.id='p202MobileNav';mobileNav.setAttribute('aria-label','Personal Chat navigation');
+    mobileNav.id='p202MobileNav';mobileNav.hidden=true;mobileNav.setAttribute('aria-label','Personal Chat navigation');
     [
       ['Home','⌂',()=>navigate('home')],
       ['Chat','▢',()=>$('message')?.focus()],
@@ -111,16 +111,16 @@
       bell.setAttribute('aria-label','Open notifications');
       const owner=button('◯','p202-mobile-profile',()=>navigate('owner'));
       owner.setAttribute('aria-label','Open owner profile');
-      actions.append(bell,owner);topbar.append(actions);refs.ownerButton=owner;
+      actions.append(bell,owner);actions.hidden=true;topbar.append(actions);refs.ownerButton=owner;
       const brand=create('span','p202-mobile-brand','VISHNU');brand.setAttribute('aria-hidden','true');
-      topbar.append(brand);
+      brand.hidden=true;topbar.append(brand);
     }
     const model=button('Vishnu AI ▾','p202-model',()=>openModelInfo());
     model.setAttribute('aria-label','View Vishnu AI routing and model availability');
     model.setAttribute('aria-haspopup','dialog');
     const composer=$('composer'),microphone=$('micButton'),send=$('sendButton');
     if(composer&&!$('p202ModelPlacement')){
-      const wrapper=create('div','p202-model-placement');wrapper.id='p202ModelPlacement';
+      const wrapper=create('div','p202-model-placement');wrapper.id='p202ModelPlacement';wrapper.hidden=true;
       wrapper.append(model);
       if(microphone)composer.insertBefore(wrapper,microphone);else if(send)composer.insertBefore(wrapper,send);else composer.append(wrapper);
     }
@@ -323,6 +323,10 @@
       }
     }
     document.body.classList.toggle('p202-personal-chat',enabled);
+    for(const id of ['p202Header','p202Welcome','p202NewChat','p202MobileNav','p202MobileActions','p202ModelPlacement']){
+      const el=$(id);if(el)el.hidden=!enabled;
+    }
+    const brand=qs('.p202-mobile-brand');if(brand)brand.hidden=!enabled;
     if(!enabled)return;
     updateHeader();
     if(document.body.classList.contains('chat-details-open')&&!document.body.dataset.p202DetailsExplicit){
