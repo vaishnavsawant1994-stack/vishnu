@@ -14,7 +14,7 @@
  const inChat=()=>ready()&&document.body.classList.contains('chat-experience')&&!document.body.classList.contains('home-landing');
  const projectScoped=()=>/^\s*Project\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
  let selected=false, lastId=null, syncing=false, refreshController=null, refreshTimer=null, status={};
- let resumePending=false, resumeBusy=false;
+ let resumePending=false, resumeBusy=false, checkedConversationId=null, checkingId=null;
  const ref={}, drafts=new Map();
  const statusNotice=txt=>{if(ref.notice)ref.notice.textContent=txt;};
  const inform=msg=>bridge()?.showToast?.(msg);
@@ -33,31 +33,49 @@
    bridge()?.setDraft?.(draft);
    $('message')?.focus();
  };
- function newWork(){
+ async function createWork(){
+   if(bridge()?.turnInFlight)throw new Error('Finish or cancel the current response first.');
+   if(($('message')?.value||'').trim())throw new Error('Send or clear your unsent message first.');
+   const response=await bridge().api('/conversations',{method:'POST',body:JSON.stringify({
+     title:'New Work Conversation',context_type:'work'
+   })});
+   const item=response?.conversation;
+   if(!item?.id || item?.context?.conversation_kind!=='work')
+     throw new Error('Server did not confirm a Work-scoped conversation.');
+   await bridge().openConversation(item.id);
+   toggle(true);queue();
+ }
+ function newWork(){return guarded(createWork)}
+ function startWorkView(){
    return guarded(async()=>{
-     if(bridge()?.turnInFlight)return inform('Finish or cancel the current response first.');
-     const original=$('message')?.value||'';
-     if(original.trim())return inform('Send or clear your unsent message before starting another conversation.');
-     await bridge().createConversation();
-     toggle(true);queue();
+     if(bridge()?.turnInFlight)throw new Error('Finish the current response first.');
+     if(($('message')?.value||'').trim())throw new Error('Send or clear the current draft before switching contexts.');
+     const listing=await bridge().api('/conversations?kind=work&limit=1');
+     const row=listing?.conversations?.[0];
+     if(row?.id){
+       await bridge().openConversation(row.id);
+       toggle(true);
+     }else await createWork();
+     queue();
    });
  }
- function startWorkView(){
-   selected=true;resumePending=false;
-   try{sessionStorage.setItem('vishnu.work.chat.view','on')}catch{}
-   if(!inChat()){
-     const id=currentId();
-     if(id)return guarded(()=>bridge().openConversation(id));
-     return newWork();
-   }
-   queue();
+ function startPersonalView(){
+   return guarded(async()=>{
+     if(bridge()?.turnInFlight)throw new Error('Finish the current response first.');
+     if(($('message')?.value||'').trim())throw new Error('Send or clear the current draft before switching contexts.');
+     const listing=await bridge().api('/conversations?kind=personal&limit=1');
+     const row=listing?.conversations?.[0];
+     if(row?.id)await bridge().openConversation(row.id);
+     else await bridge().createConversation();
+     toggle(false);
+   });
  }
  function chooseContext(){
    const dialog=make('dialog','p202b-modal');dialog.setAttribute('aria-label','Conversation context');
    dialog.append(make('h2','','Choose a conversation context'));
-   dialog.append(make('p','','Work is currently an organizational view on this device. It does not create a new security or sharing boundary. Project and Workspace contexts have separate canonical controls.'));
+   dialog.append(make('p','','Work and Personal chats retain distinct canonical conversation types. Changing the view switches to a different saved conversation; it does not move or share the current transcript. This remains a single-owner security domain.'));
    const actions=make('div','p202b-modal-actions');
-   actions.append(btn('Personal Chat','',()=>{dialog.close();toggle(false)}));
+   actions.append(btn('Personal Chat','',()=>{dialog.close();startPersonalView()}));
    actions.append(btn('Project context…','',()=>{dialog.close();$('vContextChip')?.click()}));
    actions.append(btn('Keep Work view','p202b-primary',()=>dialog.close()));
    dialog.append(actions);document.body.append(dialog);
@@ -109,7 +127,7 @@
    history.append(historyActions);
    ref.history=make('div','p202b-history-list');
    ref.history.setAttribute('aria-label','Saved conversations; Work context is not server-classified');
-   history.append(make('p','p202b-note','All saved conversations. Vishnu does not yet distinguish standalone Work chats in canonical history.'),ref.history);
+   history.append(make('p','p202b-note','Only Work conversations from the existing owner-authorized continuity ledger.'),ref.history);
    layout.append(history);
    const main=make('div','p202b-main');
    ref.surface=make('div','p202b-surface');
@@ -182,9 +200,7 @@
    // The original message stream and composer remain in their canonical DOM;
    // this shell is layout/navigation only and must not duplicate either.
    document.body.append(shell);
-   const entry=btn('▣ Work Chat','p202b-entry',()=>{
-     if(inChat())toggle(true);else startWorkView();
-   });
+   const entry=btn('▣ Work Chat','p202b-entry',startWorkView);
    entry.id='p202bEntry';entry.setAttribute('aria-label','Open Work Conversation');
    const navHost=document.querySelector('.reference-desktop-sidebar nav');
    const chat=navHost?.querySelector('.p2-sidebar-added');
@@ -260,7 +276,7 @@
  async function refreshHistory(){
    if(!isActive())return;
    try{
-     const data=await bridge().api('/conversations?limit=50');
+     const data=await bridge().api('/conversations?kind=work&limit=50');
      if(!isActive())return;
      const rows=Array.isArray(data?.conversations)?data.conversations:[];
      renderRows(ref.history,rows,'No saved conversations yet. Start a Work Conversation.',row=>{
@@ -302,7 +318,7 @@
  function renderOverview(){
    const id=currentId(),title=bridge()?.current?.title||'New Work Conversation';
    ref.title.textContent=title==='New conversation'?'New Work Conversation':title;
-   ref.context.replaceChildren(make('strong','',ref.title.textContent),make('p','p202b-empty','Work view · local organization only'));
+   ref.context.replaceChildren(make('strong','',ref.title.textContent),make('p','p202b-empty','Work · saved conversation context'));
    if(id)ref.context.append(btn('Conversation options ›','p202b-link',openMenu));
    statusNotice('Messages use the canonical Vishnu conversation. Unlinked files and tasks are not shown as attached.');
  }
@@ -340,15 +356,36 @@
    if(!resumePending||resumeBusy||!selected||!ready()||!document.body.classList.contains('home-landing'))return;
    resumePending=false;resumeBusy=true;
    try{
-     const result=await bridge().api('/conversations?limit=1');
-     const id=result?.active_conversation_id||result?.conversations?.[0]?.id;
+     const result=await bridge().api('/conversations?kind=work&limit=50');
+     const rows=result?.conversations||[];
+     const id=rows.some(row=>row.id===result?.active_conversation_id)?result.active_conversation_id:rows[0]?.id;
      if(id && selected && ready())await bridge().openConversation(id);
    }catch{
      inform('Work conversation could not be resumed. Open a saved conversation from History.');
    }finally{resumeBusy=false;queue()}
  }
+ async function detectWorkContext(id){
+   if(!id||checkingId===id)return;
+   checkingId=id;
+   try{
+     const data=await bridge().api('/conversations/'+encodeURIComponent(id));
+     if(currentId()!==id)return;
+     const work=data?.conversation?.context?.conversation_kind==='work';
+     if(work && !projectScoped()){
+       if(!selected)toggle(true);
+     }else if(selected)toggle(false);
+   }catch{
+     // Do not claim a conversation's classification without a verified read.
+     if(selected&&currentId()===id)toggle(false);
+   }finally{if(checkingId===id)checkingId=null}
+ }
  function sync(){
    syncing=false;
+   const id=currentId();
+   if(id && id!==checkedConversationId){
+     checkedConversationId=id;
+     void detectWorkContext(id);
+   }
    if(resumePending && selected && ready() && document.body.classList.contains('home-landing'))
      void resumeExistingWorkView();
    const show=isActive();
@@ -376,7 +413,7 @@
    const shell=$('p202bShell');ref.shell=shell;
    queue();
  }
- window.__vishnuP202B={version:1,authority:'presentation_only',open:startWorkView,newChat:newWork,isActive};
+ window.__vishnuP202B={version:2,authority:'canonical_conversation_context',open:startWorkView,newChat:newWork,isActive};
  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start,{once:true});
  else start();
 })();
