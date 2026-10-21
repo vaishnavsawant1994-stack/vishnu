@@ -532,3 +532,21 @@ body.v-ref.p2-home-ready .p2-dialog-buttons button {
 @media(prefers-reduced-motion:reduce) {
   html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::after {animation:none!important}
 }
+
+
+/* P2 Home navigation hierarchy: less-used legacy destinations remain
+ * available from More instead of crowding the approved primary rail. */
+body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar nav > [data-app-module="activities"],
+body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar nav > [data-app-module="dashboard"] {
+  display:none!important
+}
+body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar .p2-sidebar-search {
+  margin-top:20px;
+  border-top:1px solid rgba(57,115,193,.16)!important;
+  border-radius:0!important;
+  padding-top:12px!important;
+  height:53px!important
+}
+body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar .p2-sidebar-more {
+  border-bottom:1px solid rgba(57,115,193,.16)!important
+}
