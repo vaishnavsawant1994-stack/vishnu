@@ -36,13 +36,13 @@ try {
     await page.setViewportSize({width,height});
     await page.screenshot({path:'artifacts/p1-10-preview-'+width+'x'+height+'.png',fullPage:false});
     if (width <= 820) {
-      // The P1-10 modal itself scrolls. A page-level fullPage screenshot only
-      // captures the viewport when the scroll owner is the fixed modal.
-      await page.locator('.runtime-assistant').screenshot({
-        path:'artifacts/p1-10-preview-'+width+'x'+height+'-full.png',
-      });
+      // P1-10 uses an internal fixed modal scroll container: capture its
+      // bottom viewport as well so all choices, help and buttons are reviewed.
       await page.locator('[data-runtime-continue]').scrollIntoViewIfNeeded();
-      assert.equal(await page.locator('[data-runtime-continue]').isVisible(),true);
+      const button = await page.locator('[data-runtime-continue]').boundingBox();
+      assert.ok(button && button.y >= 0 && button.y + button.height <= height + 1,
+        'Continue must be reachable by scrolling at '+width+'x'+height);
+      await page.screenshot({path:'artifacts/p1-10-preview-'+width+'x'+height+'-bottom.png'});
       await page.locator('#rtaTitle').scrollIntoViewIfNeeded();
     }
     const size = await page.evaluate(() => ({
