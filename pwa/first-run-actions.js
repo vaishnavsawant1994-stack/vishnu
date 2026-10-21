@@ -136,6 +136,7 @@
     state.identityCreated = true;
     state.auth = state.passkeyCreated ? 'passkey' : 'password';
     state.recoveryCodes = result.recovery_codes || [];
+    if (stayOnSecurity) busy(false);
     if (!stayOnSecurity) {
       render(4);
       $('firstRunCodes').textContent = state.recoveryCodes.join('\n');
@@ -213,7 +214,12 @@
       const confirmField = $('firstRunPasswordAgain');
       if (!passwordField || !confirmField) throw new Error('The security form is unavailable.');
       state.deviceName = deviceName || state.deviceName;
-      await configureSecurity({stayOnSecurity:true});
+      try {
+        await configureSecurity({stayOnSecurity:true});
+      } catch(error) {
+        busy(false);
+        throw error;
+      }
       passwordField.value = '';
       confirmField.value = '';
     }
