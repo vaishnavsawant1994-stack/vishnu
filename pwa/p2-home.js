@@ -8,7 +8,7 @@
   const bridge = () => window.vishnuChatBridge;
   const home = () => document.body.classList.contains('home-landing') && !$('voicePanel')?.classList.contains('hidden');
   const activeStates = new Set(['RUNNING', 'VERIFYING', 'RECOVERING', 'RETRYING']);
-  let initialized = false, wasHome = false, refreshEpoch = 0, nextRefresh = 0;
+  let initialized = false, wasHome = false, refreshEpoch = 0, nextRefresh = 0, requestController = null;
   const model = {today: null, work: null, attention: null, status: null};
   const elements = {};
   const icon = (name) => ({
@@ -45,9 +45,9 @@
     settings: () => module('settings'),
     more: () => $('historyButton')?.click()
   };
-  const safeRead = async path => {
+  const safeRead = async (path, signal) => {
     if (!bridge()?.api) throw new Error('Vishnu is not connected');
-    return bridge().api(path);
+    return bridge().api(path, {signal});
   };
   function make(tag, cls, text) {
     const node = document.createElement(tag);
@@ -403,8 +403,14 @@
   async function refreshData() {
     if (!home() || document.visibilityState === 'hidden') return;
     const epoch = ++refreshEpoch;
+    requestController?.abort();
+    const controller = new AbortController();
+    requestController = controller;
     const paths = ['/everyday/active?limit=200','/work/summary','/work/attention','/status'];
-    const results = await Promise.allSettled(paths.map(safeRead));
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    let results;
+    try { results = await Promise.allSettled(paths.map(path => safeRead(path, controller.signal))); }
+    finally { clearTimeout(timeout); if (requestController === controller) requestController = null; }
     if (epoch !== refreshEpoch || !home()) return;
     paintToday(results[0]);
     paintWork(results[1]);
@@ -419,6 +425,7 @@
       clearInterval(nextRefresh);
       nextRefresh = setInterval(() => { if (home() && document.visibilityState === 'visible') refreshData(); }, 45000);
     } else if (!nowHome && wasHome) {
+      requestController?.abort();
       ++refreshEpoch;
       clearInterval(nextRefresh); nextRefresh = 0;
     }
