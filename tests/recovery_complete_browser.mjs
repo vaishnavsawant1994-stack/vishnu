@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const script = await readFile(new URL('../pwa/recovery-complete.js', import.meta.url), 'utf8');
@@ -33,6 +33,16 @@ try {
   assert.equal(await page.locator('img').count(), 0, 'static image cannot replace rotating geometry');
   assert.match(await page.locator('[data-recovery-card="data"]').innerText(), /27 backed-up items/);
   assert.equal(await page.locator('.rc-continue').isEnabled(), true);
+  // Preview artifacts from controlled result fixtures, not end-to-end evidence.
+  await mkdir('artifacts', { recursive: true });
+  for (const [width, height] of [[1536,864],[1920,1080],[1366,768],[820,1180],[390,844],[360,800]]) {
+    await page.setViewportSize({ width, height });
+    await page.screenshot({
+      path: 'artifacts/p1-09-preview-' + width + 'x' + height + '.png',
+      fullPage: width <= 820,
+    });
+  }
+  await page.setViewportSize({ width: 1536, height: 864 });
   await page.locator('.rc-back').click();
   assert.match(await page.locator('.rc-eyebrow').innerText(), /RECOVERY SUMMARY/);
   await page.locator('.rc-back').click();
