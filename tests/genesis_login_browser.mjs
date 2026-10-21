@@ -72,6 +72,7 @@ try{
   assert.match(await page.locator('[data-vl-trust-title]').innerText(),/checked on sign-in/i);
   const width=await page.evaluate(()=>document.documentElement.scrollWidth);
   assert(width<=vp.width+1,'Horizontal overflow at '+vp.width+': '+width);
+  await page.screenshot({path:resolve(output,`p1-05-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
   if(vp.width>900){
    const sphere=await page.locator('.vl-sphere').boundingBox();
    const panel=await page.locator('.vl-panel').boundingBox();
@@ -87,7 +88,9 @@ try{
    const bottom=await page.locator('.vl-mobile-back').boundingBox();
    assert(bottom&&bottom.y>=0&&bottom.y+bottom.height<=vp.height+1);
   }
-  await page.screenshot({path:resolve(output,`p1-05-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
+  if(vp.width<=900){
+    await page.screenshot({path:resolve(output,`p1-05-mobile-bottom-${vp.width}x${vp.height}.png`),animations:'disabled'});
+  }
   await page.locator('[data-vl-submit]').click();
   assert.match(await page.locator('#vlPasswordError').innerText(),/enter your owner password/i);
   assert.equal(await page.evaluate(()=>window.__calls.filter(c=>c.path==='/access/password/login').length),0);
