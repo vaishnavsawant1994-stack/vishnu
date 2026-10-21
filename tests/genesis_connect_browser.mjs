@@ -32,7 +32,7 @@ const make=async viewport=>{
        expires_at:Date.now()/1000+300,name:'New web browser',status:'approval_required'};
    window.loadAccessOptions=async()=>({creation_available:false,restore_available:false,
      password_available:true,passkey_available:true,recovery_available:true});
-   window.check=async()=>window.__session&&!window.__blockVerification?{ok:true,device_id:'verified-new-device'}:null;
+   window.check=async()=>{if(window.__blockVerification){document.getElementById('enrollPanel').classList.add('hidden');return null;}return window.__session?{ok:true,device_id:'verified-new-device'}:null;};
    window.api=async(path,opts={})=>{
      window.__calls.push({path,body:opts.body});
      if(path==='/access/password/login')return window.__testJoin;
