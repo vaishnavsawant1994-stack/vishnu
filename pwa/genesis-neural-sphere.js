@@ -178,7 +178,7 @@ export function mountNeuralSphere(canvas) {
       gl.uniform1f(mode, kind);
       gl.uniform1f(pointScale, (kind > 1.5 ? 3.10 : 1.0) *
         (width < 130 ? Math.max(.22, width / 310) : 1.0) *
-        (canvas.dataset.neuralEmphasis === 'security' ? 1.75 : 1));
+        (canvas.dataset.neuralEmphasis === 'security' && width >= 300 ? 1.75 : 1));
       gl.drawArrays(drawMode, 0, count);
     };
     renderBuffer(lineBuffer, edges.length / 4, 0, gl.LINES);
