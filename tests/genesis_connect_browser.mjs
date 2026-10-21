@@ -106,6 +106,15 @@ try{
   assert.deepEqual(errors,[],'Uncaught browser errors: '+errors.join('; '));
   await page.close();
  }
+ const {page:account}=await make({width:1536,height:1024});
+ await account.locator('[data-vc-method=account]').click();
+ await account.locator('[data-vc-continue]').click();
+ await account.getByRole('heading',{name:'Unlock Vishnu'}).waitFor();
+ await account.locator('.vl-back').click();
+ await account.getByRole('heading',{name:'Connect This Device'}).waitFor();
+ assert.equal(await account.locator('.vc-method').count(),5,
+   'Returning from credential entry keeps the device-joining journey');
+ await account.close();
  const {page:cancel}=await make({width:1536,height:1024});
  await cancel.evaluate(()=>window.vishnuFirstRun.showConnect(window.__testJoin));
  await cancel.locator('.vc-request').waitFor({state:'visible'});
