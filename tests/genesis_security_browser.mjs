@@ -87,7 +87,23 @@ try{
   await page.locator('[data-visibility="firstRunPassword"]').click();
   await confirm.fill('R4ndom$Ocean!9457236');
   await page.locator('#vsDeviceName').fill('Personal Linux Desktop');
+  if(vp.width===1536){
+    await page.evaluate(()=>{
+      const oldApi=window.api;
+      window.api=async (path,options)=>{
+        if(path==='/first-run/create')await new Promise(resolve=>setTimeout(resolve,280));
+        return oldApi(path,options);
+      };
+    });
+  }
   await page.locator('.vs-continue').click();
+  if(vp.width===1536){
+    await page.waitForFunction(()=>document.querySelector('.vs-continue')?.disabled);
+    // A second click while the real create request is outstanding must
+    // remain inert; otherwise recovery credentials could be reissued.
+    await page.locator('.vs-continue').evaluate(el=>el.click());
+    assert.equal(await page.locator('.vs-continue').isDisabled(),true);
+  }
   await page.locator('#firstRunRecoverySaved').waitFor();
   const info=await page.evaluate(()=>({calls:window.__apiCalls,state:window.vishnuFirstRun.state}));
   const created=info.calls.find(x=>x.path==='/first-run/create');
