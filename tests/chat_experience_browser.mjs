@@ -18,13 +18,15 @@ let turns = 0;
 let modalities = [],turnRequests=[];
 
 function bundle(){ return active || { conversation: { id: '', title: 'New conversation' }, events: [] }; }
+// Third-party scripts can delay the page load event; the app DOM is the
+// deterministic readiness boundary for these browser-state assertions.
 async function verifyGenesisNavigationIsolation(){
   const page=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
   await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false}'}));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
   await page.locator('#enrollPanel .genesis-screen[data-step="1"]').waitFor({state:'visible'});
   assert.equal(await page.locator('#enrollPanel').getAttribute('aria-modal'),'true','Genesis is exposed as a modal first-run experience');
@@ -44,7 +46,7 @@ async function verifyReturningOwnerEntry(){
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"restore_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
   await page.waitForTimeout(200);
   await page.locator('.genesis-connect').waitFor({state:'visible'});
@@ -86,7 +88,7 @@ async function verifyConfiguredOwnerMethods(){
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":false,"passkey_available":false,"password_available":true,"recovery_available":true}'}));
   await page.route('**/iphone/api/access/password/login',async route=>{passwordLoginAttempts++;return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'})});
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
   await page.locator('.genesis-connect').waitFor({state:'visible'});
   await page.locator('[data-vc-method=account]').click();
@@ -139,7 +141,7 @@ try{
   await verifyConfiguredOwnerMethods();
   const desktop=await browser.newPage({viewport:{width:1440,height:960},serviceWorkers:'block'});
   await wire(desktop);
-  await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
   await desktop.addStyleTag({content:globalSearchStyle});
   await desktop.addScriptTag({content:globalSearchSource});
   await desktop.addStyleTag({content:commandCenterStyle});
@@ -245,7 +247,7 @@ try{
   const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,serviceWorkers:'block'});
   active=null;conversations=[];created=0;turns=0;modalities=[];
   await wire(mobile);
-  await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
+  await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
   await mobile.addStyleTag({content:globalSearchStyle});
   await mobile.addScriptTag({content:globalSearchSource});
   await mobile.addStyleTag({content:commandCenterStyle});
