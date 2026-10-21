@@ -1111,6 +1111,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             httponly=True, secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
             samesite='strict', path='/iphone', max_age=900,
         )
+        response.headers['Cache-Control'] = 'no-store, private'
+        response.headers['Pragma'] = 'no-cache'
         emit('owner.security.configured', device_id=device['id'], method='password')
         return {
             'ok': True,
@@ -1451,7 +1453,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         return {'ok': True, 'settings': settings_result}
 
     @router.post('/api/first-run/recovery-codes')
-    def first_run_recovery_codes(request: Request,
+    def first_run_recovery_codes(request: Request, response: Response,
                                  pa_setup_claim: str | None = Cookie(default=None),
                                  pa_device: str | None = Cookie(default=None),
                                  pa_token: str | None = Cookie(default=None)):
@@ -1473,6 +1475,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         codes = owner_access.regenerate_recovery_codes()
         first_run_setup.invalidate_recovery_confirmation()
         emit('owner.first_run.recovery_codes_regenerated', device_id=device_id)
+        response.headers['Cache-Control'] = 'no-store, private'
+        response.headers['Pragma'] = 'no-cache'
         return {'recovery_codes': codes, 'shown_once': True}
 
     @router.post('/api/first-run/resume')
