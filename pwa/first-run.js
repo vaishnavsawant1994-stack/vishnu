@@ -427,41 +427,54 @@
     if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } });
     if (view === 'google') renderGoogleLogin();
   }
-  async function submitPortableRestore(event) {
-    const button = event.currentTarget;
-    const status = $('returningStatus');
-    const archive = $('restoreArchive')?.files?.[0];
-    const keyFile = $('restoreKeyFile')?.files?.[0];
-    const passphrase = $('restorePassphrase')?.value || '';
-    const bootstrap = $('restoreBootstrap')?.value || '';
-    if (!archive || !keyFile) { status.textContent = 'Choose both the encrypted recovery package and its separate recovery key.'; return; }
-    if (!archive.name.toLowerCase().endsWith('.vdr') || !keyFile.name.toLowerCase().endsWith('.vrk')) { status.textContent = 'Choose a .vdr recovery package and its matching .vrk key file.'; return; }
-    if (passphrase.length < 12) { status.textContent = 'Enter the recovery key passphrase (at least 12 characters).'; return; }
-    if (!s.options.local_setup_available && bootstrap.length < 32) { status.textContent = 'Enter the secure setup code provided for this Vishnu runtime.'; return; }
-    const upload = async (url, file) => {
-      const response = await fetch(url, { method: 'POST', credentials: 'same-origin', body: file,
-        headers: bootstrap ? { 'X-Vishnu-Setup-Code': bootstrap } : {} });
-      let payload = {};
-      try { payload = await response.json(); } catch {}
-      if (!response.ok) throw new Error(payload.detail || payload.error || `Recovery upload failed (${response.status}).`);
+  async function scheduleVerifiedPortableRestore({archive,keyFile,passphrase,bootstrap='',onProgress=()=>{}}){
+    // Reuse the preexisting owner's strictly governed staged .vdr/.vrk
+    // endpoints for both the legacy restore entry and P1-08.
+    if(!s.options.restore_available||s.options.restore_setup_in_progress)
+      throw new Error('Encrypted restore requires an eligible uninitialized Vishnu runtime.');
+    if(!archive||!keyFile||!archive.name.toLowerCase().endsWith('.vdr')||
+       !keyFile.name.toLowerCase().endsWith('.vrk'))
+      throw new Error('Choose a valid .vdr recovery package and its separate .vrk key file.');
+    if(passphrase.length<12)throw new Error('Enter a recovery-key passphrase of at least 12 characters.');
+    if(!s.options.local_setup_available&&bootstrap.length<32)
+      throw new Error('Enter the secure setup code provided for this runtime.');
+    const upload=async(url,file)=>{
+      const response=await fetch(url,{method:'POST',credentials:'same-origin',body:file,
+        headers:bootstrap?{'X-Vishnu-Setup-Code':bootstrap}:{}});
+      let payload={};try{payload=await response.json();}catch{}
+      if(!response.ok)throw new Error(payload.detail||payload.error||'Recovery file verification failed.');
       return payload;
     };
-    button.disabled = true;
-    try {
-      status.textContent = 'Step 1 of 3 — verifying the encrypted recovery package…';
-      const staged = await upload('/iphone/api/first-run/restore/archive', archive);
-      status.textContent = 'Step 1 of 3 — verifying the separate recovery key…';
-      await upload(`/iphone/api/first-run/restore/key?session_id=${encodeURIComponent(staged.session_id)}`, keyFile);
-      status.textContent = 'Step 2 of 3 — authenticating ownership and preparing this web device…';
-      const scheduled = await api('/first-run/restore/schedule', { method: 'POST', body: JSON.stringify({
-        session_id: staged.session_id, bootstrap_secret: bootstrap, passphrase,
-      }) });
-      status.textContent = scheduled.status === 'restart_required'
-        ? 'Recovery package verified. Restart the local Vishnu runtime to restore available data. After restart, this web page will guide you through securing the replacement device.'
-        : 'Recovery package verified, but the runtime did not confirm that restoration was scheduled.';
-    } catch (error) {
-      status.textContent = error?.message || 'The recovery package could not be verified. No data was restored.';
-      button.disabled = false;
+    onProgress('Verifying the encrypted recovery package…');
+    const staged=await upload('/iphone/api/first-run/restore/archive',archive);
+    onProgress('Verifying the separate recovery key…');
+    await upload('/iphone/api/first-run/restore/key?session_id='+encodeURIComponent(staged.session_id),keyFile);
+    onProgress('Authenticating the recovery materials and scheduling a safe restore…');
+    const scheduled=await api('/first-run/restore/schedule',{method:'POST',
+      body:JSON.stringify({session_id:staged.session_id,bootstrap_secret:bootstrap,passphrase})});
+    if(scheduled.status!=='restart_required')
+      throw new Error('The runtime did not confirm that recovery was scheduled.');
+    return scheduled;
+  }
+  async function submitPortableRestore(event){
+    const button=event.currentTarget,status=$('returningStatus');
+    const archive=$('restoreArchive')?.files?.[0],keyFile=$('restoreKeyFile')?.files?.[0];
+    const passphrase=$('restorePassphrase')?.value||'',bootstrap=$('restoreBootstrap')?.value||'';
+    if(button.disabled)return;
+    button.disabled=true;
+    try{
+      const result=await scheduleVerifiedPortableRestore({archive,keyFile,passphrase,bootstrap,
+        onProgress:message=>{status.textContent=message;}});
+      status.textContent=result.status==='restart_required'
+        ? 'Recovery package authenticated. Restart this local Vishnu runtime to restore data, then secure your replacement device.'
+        : 'Recovery was not confirmed.';
+    }catch(error){
+      status.textContent=error?.message||'The recovery package could not be verified. No restoration was confirmed.';
+      button.disabled=false;
+    }finally{
+      // Do not keep backup decryption material in a password input after use.
+      if($('restorePassphrase'))$('restorePassphrase').value='';
+      if($('restoreBootstrap'))$('restoreBootstrap').value='';
     }
   }
   function renderRestoreSecurity() {
@@ -601,8 +614,8 @@
     s.recoveryMode=mode;
     panel.className='genesis';
     panel.setAttribute('aria-label','Recovery Verification');
-    panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login genesis-recovery-options" data-step="P1-08"><div id="voRoot">Loading recovery verification…</div></main>';
-    import('/iphone/genesis-recovery-options.js').then(({mountRecoveryVerificationScreen})=>{
+    panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login genesis-recovery-options genesis-verification" data-step="P1-08"><div id="voRoot">Loading recovery verification…</div></main>';
+    import('/iphone/genesis-verification.js').then(({mountRecoveryVerificationScreen})=>{
       const root=document.getElementById('voRoot');
       if(mountId!==welcomeMountId||!root||!root.isConnected)return;
       disposeWelcome=mountRecoveryVerificationScreen(root,mode,s.options,{
@@ -619,13 +632,8 @@
           const session=await window.check();
           if(!session)throw new Error('Recovery was verified, but this browser session has not been confirmed. Retry securely.');
         },
-        onRestore:async()=>{
-          if(!s.options.restore_available||s.options.restore_setup_in_progress)
-            throw new Error('Encrypted restore requires an eligible new Vishnu runtime. This runtime is not accepting a restore.');
-          // Existing .vdr/.vrk/passphrase authentication, staging, integrity
-          // checks and restart confirmation remain canonical. Never copy keys.
-          renderReturning('restore');
-        },
+        onRestore:async({archive,keyFile,passphrase,bootstrap})=>
+          scheduleVerifiedPortableRestore({archive,keyFile,passphrase,bootstrap}),
       });
     }).catch(()=>{
       const root=document.getElementById('voRoot');
