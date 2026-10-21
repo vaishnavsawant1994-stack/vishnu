@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 const names=['first-run.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
  'genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js',
  'genesis-recovery.css','genesis-recovery.js','genesis-login.css','genesis-login.js',
- 'genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js'];
+ 'genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js','genesis-verification.css','genesis-verification.js'];
 const assets=new Map();
 for(const name of names)assets.set('/iphone/'+name,await readFile(new URL('../pwa/'+name,import.meta.url)));
 const dir=process.env.VISHNU_CONNECT_SCREENSHOTS||'artifacts/genesis-connect';
