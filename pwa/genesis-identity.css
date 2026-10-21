@@ -163,3 +163,12 @@ button.vi-continue:disabled{opacity:.5;cursor:wait;}
   .vi-actions{margin-top:12px;}
   .vi-avatar-row{margin-bottom:0;}
 }
+
+/* The supplied composite reference displays the desktop app at roughly
+   1136 x 810 beside an illustrative phone; calibrate the app, not the phone bezel. */
+@media (min-width:901px) and (max-width:1200px) and (min-height:790px) {
+ .vi-sphere{width:440px;height:440px;transform:translateY(-25px);}
+ .vi-form{padding:22px 32px 18px;transform:translateY(12px);}
+ .vi-subtitle{margin-bottom:20px;}
+ .vi-form-fields{gap:16px;}
+}
