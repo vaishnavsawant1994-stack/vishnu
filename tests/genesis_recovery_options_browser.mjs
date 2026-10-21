@@ -95,7 +95,7 @@ try{
   assert.equal(await page.evaluate(()=>window.__calls.length),0,'Empty code not sent');
   await page.locator('[data-v8-group="0"]').fill('ABCD-EFGH-JKLM');
   await page.evaluate(()=>window.__fail=true);
-  await page.locator('[data-vo-submit]').click();
+  await page.locator('[data-v8-submit]').click();
   assert.match(await page.locator('#v8Status').innerText(),/Invalid or already used recovery code/i);
   assert.equal(await page.evaluate(()=>window.__session),false);
   assert.equal(await page.locator('[data-v8-group="0"]').inputValue(),'','Never retain failed code in text input');
@@ -105,11 +105,11 @@ try{
  }
  const {page:login}=await fixture({width:1536,height:1024});
  await login.locator('[data-vo-continue]').click();
- await login.locator('#voRecoveryCode').fill('ABCD-2345-ZYXW');
- await login.locator('[data-vo-submit]').click();
+ await login.locator('[data-v8-group="0"]').fill('ABCD-EFGH-JKLM');
+ await login.locator('[data-v8-submit]').click();
  await login.waitForFunction(()=>window.__verified===true);
  await login.locator('.genesis-recovery-options').waitFor({state:'hidden'});
- assert.equal(await login.evaluate(()=>window.__code),'ABCD-2345-ZYXW');
+ assert.equal(await login.evaluate(()=>window.__code),'ABCD-EFGH-JKLM');
  assert.equal(await login.evaluate(()=>window.__session),true);
  assert.equal(await login.evaluate(()=>sessionStorage.getItem('vishnuRecoveryCode')),null);
  await login.close();
@@ -117,17 +117,17 @@ try{
  await replacement.locator('[data-vo-mode=replacement_device]').click();
  await replacement.locator('[data-vo-continue]').click();
  await replacement.getByRole('heading',{name:'Recovery Verification'}).waitFor();
- assert.match(await replacement.locator('.vo-description').innerText(),/replacement browser/i);
+ assert.match(await replacement.locator('.vo-description').innerText(),/real recovery code/i);
  await replacement.screenshot({path:resolve(directory,'p1-08-replacement-390x844.png'),fullPage:true,animations:'disabled'});
- await replacement.locator('#voRecoveryCode').fill('XXXX-9876-ZZZZ');
- await replacement.locator('[data-vo-submit]').click();
+ await replacement.locator('[data-v8-group="0"]').fill('ABCD-EFGH-JKLM');
+ await replacement.locator('[data-v8-submit]').click();
  await replacement.waitForFunction(()=>window.__verified===true);
  assert.equal(await replacement.evaluate(()=>window.__session),true);
  await replacement.close();
  const {page:backup}=await fixture({width:1536,height:1024});
  await backup.evaluate(()=>{window.vishnuFirstRun.state.options.restore_available=true;window.vishnuFirstRun.showRecoveryVerification('restore_data');});
  await backup.getByRole('heading',{name:'Recovery Verification'}).waitFor();
- await backup.locator('[data-vo-backup]').click();
+ await backup.locator('[data-v8-select=backup]').click();
  await backup.locator('#restoreArchive').waitFor({state:'visible'});
  assert.equal(await backup.locator('#restoreKeyFile').count(),1);
  assert.equal(await backup.locator('#restorePassphrase').count(),1);
