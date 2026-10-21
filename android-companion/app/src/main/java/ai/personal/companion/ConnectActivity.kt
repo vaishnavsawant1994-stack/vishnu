@@ -148,9 +148,7 @@ class ConnectActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(34), dp(28), dp(34))
-            background = BitmapDrawable(resources, BitmapFactory.decodeResource(resources, R.drawable.vishnu_genesis_cosmic_mobile)).apply {
-                gravity = Gravity.FILL
-            }
+            setBackgroundColor(0xFF02060B.toInt())
         }
         val brand = TextView(this).apply {
             text = "V I S H N U"

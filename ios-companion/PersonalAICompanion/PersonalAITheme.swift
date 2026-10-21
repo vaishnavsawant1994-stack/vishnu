@@ -45,14 +45,9 @@ enum PersonalAITheme {
 
 struct VishnuGenesisBackground: View {
     var body: some View {
-        ZStack {
-            PersonalAITheme.ColorToken.background
-            Image("vishnu-genesis-cosmic-mobile")
-                .resizable()
-                .scaledToFill()
-                .accessibilityHidden(true)
-            LinearGradient(colors: [.clear, PersonalAITheme.ColorToken.background.opacity(0.24)], startPoint: .top, endPoint: .bottom)
-        }.ignoresSafeArea()
+        // Owner-approved unobstructed near-black backdrop across all platforms.
+        PersonalAITheme.ColorToken.background
+            .ignoresSafeArea()
     }
 }
 

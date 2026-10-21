@@ -175,7 +175,7 @@ class FirstRunWizard(QDialog):
     def _stylesheet(self) -> str:
         background = (Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'cosmic-desktop.png').as_posix()
         return """
-        QDialog#firstRunWizard { background-color:#02060b; border-image:url('__BACKGROUND__') 0 0 0 0 stretch stretch; color:#f5faff; font-family:"Segoe UI"; }
+        QDialog#firstRunWizard { background-color:#02060b; color:#f5faff; font-family:"Segoe UI"; }
         QDialog#firstRunWizard QWidget { background:transparent; color:#f5faff; font-family:"Segoe UI"; }
         QLabel#brand { color:#f5faff; font-size:22px; font-weight:450; letter-spacing:7px; }
         QLabel#title { font-size:38px; font-weight:350; color:#f5faff; }
