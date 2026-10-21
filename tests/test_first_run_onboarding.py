@@ -94,6 +94,37 @@ def runtime(tmp_path, *, devices=None):
     }
 
 
+def test_custom_first_trusted_device_name_is_persisted_once(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin(SetupMode.CREATE)
+    coordinator.configure_owner(first_name='Vishnu', display_name='Owner')
+    coordinator.configure_security('correct horse battery staple')
+    coordinator.confirm_recovery_codes_saved()
+    coordinator.configure_preferences(privacy_mode='local_only', autonomy_mode='ask')
+    coordinator.skip_model_configuration()
+
+    first = coordinator.ensure_first_device('My MacBook Pro')
+    assert first['device_id'] == rt['device_registry'].rows[0]['id']
+    assert rt['device_registry'].rows[0]['name'] == 'My MacBook Pro'
+
+    # An interrupted or retried completion must not enroll a duplicate device.
+    assert coordinator.ensure_first_device('My other name') == first
+    assert coordinator.complete()['first_device_id'] == first['device_id']
+    assert len(rt['device_registry'].rows) == 1
+
+
+def test_first_trusted_device_name_rejects_controls_and_oversized_values(tmp_path):
+    rt = runtime(tmp_path)
+    coordinator = FirstRunCoordinator(tmp_path, runtime=rt)
+    coordinator.begin(SetupMode.CREATE)
+    coordinator.configure_owner(first_name='Vishnu', display_name='Owner')
+    for name in ('Bad\nName', 'X' * 121):
+        with pytest.raises(ValueError, match='first device name'):
+            coordinator.ensure_first_device(name)
+    assert rt['device_registry'].rows == []
+
+
 def test_fresh_install_requires_setup_and_completes_without_storing_secrets(tmp_path):
     rt = runtime(tmp_path)
     coordinator = FirstRunCoordinator(tmp_path, runtime=rt)

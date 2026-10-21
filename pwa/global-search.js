@@ -5,6 +5,10 @@
   let query = '';
   let scope = 'all';
   let epoch = 0;
+  // Reject asynchronous module openings that are superseded by a later route.
+  // Otherwise an older openModule('search') promise can remount Global Search
+  // over a newer screen while an owner is interacting with its controls.
+  let navigationEpoch = 0;
   let timer = 0;
   const cache = { conversations: [], projects: [] };
 
@@ -135,11 +139,16 @@
   const originalOpenModule = window.openModule;
   if (typeof originalOpenModule !== 'function') return;
   window.openModule = function (name) {
+    const request = ++navigationEpoch;
     if (name !== 'search') {
+      ++epoch; // Cancel in-flight search responses during navigation.
+      if (timer) { clearTimeout(timer); timer = 0; }
       document.body.classList.remove('global-search-mode');
       return originalOpenModule.call(this, name);
     }
     return originalOpenModule.call(this, name).then(() => {
+      // Respect the most recent navigation, even if older promises resolve last.
+      if (request !== navigationEpoch) return;
       document.body.classList.add('global-search-mode');
       const title = $('moduleTitle');
       const subtitle = $('moduleText');

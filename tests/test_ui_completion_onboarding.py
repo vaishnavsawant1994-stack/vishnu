@@ -54,7 +54,7 @@ def test_desktop_wizard_uses_canonical_data_plane_and_short_secure_completion() 
     assert "get_data_plane(self.runtime).update_settings" in source
     assert "get_data_plane(self.runtime).settings()" in source
     assert ".get_settings()" not in source
-    assert "Step {step} of 3" in source
+    assert "Step {step} of 4" in source
     assert "default_policy='device_only'" in source
     assert "def _confirm_recovery_codes" in source
     assert "self.coordinator.complete()" in source

@@ -22,10 +22,48 @@ class SmokeInstrumentedTest {
             scenario.onActivity { activity ->
                 assertTrue(hasText(activity.window.decorView, "Welcome to Vishnu"))
                 assertTrue(hasText(activity.window.decorView, "Create my Vishnu"))
-                assertTrue(hasText(activity.window.decorView, "I already have Vishnu · Scan QR"))
+                assertTrue(hasText(activity.window.decorView, "I already have Vishnu"))
                 assertTrue(hasText(activity.window.decorView, "Restore Vishnu"))
-                findButton(activity.window.decorView, "Create my Vishnu")?.performClick()
-                assertTrue(hasText(activity.window.decorView, "One-time runtime setup code"))
+                val create = findButton(activity.window.decorView, "Create my Vishnu")
+                assertNotNull("Create must have a real click action", create)
+                create!!.performClick()
+                assertTrue("The new creation route starts at owner identity",
+                    hasText(activity.window.decorView, "What should Vishnu call you?"))
+                val firstName = findField(activity.window.decorView, "First name")
+                assertNotNull("First-name input is required", firstName)
+                firstName!!.setText("Test Owner")
+                val continueButton = findButton(activity.window.decorView, "Continue →")
+                assertNotNull("Identity must lead to security", continueButton)
+                continueButton!!.performClick()
+                assertTrue("Security appears after completing identity",
+                    hasText(activity.window.decorView, "Secure Your Vishnu"))
+                assertTrue("The runtime setup code is on the security page",
+                    hasText(activity.window.decorView, "One-time runtime setup code"))
+            }
+        }
+    }
+
+    @Test
+    fun nativeJoinAndRestoreNavigationRequiresExplicitActions() {
+        ActivityScenario.launch(ConnectActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                val root = activity.window.decorView
+                findButton(root, "I already have Vishnu")!!.performClick()
+                assertTrue("QR pairing must be reachable", findButton(root, "Scan Vishnu QR")!!.isShown)
+                assertTrue("Native join does not silently create owner trust",
+                    !findButton(root, "Connect this device")!!.isShown)
+                findButton(root, "Advanced manual fallback")!!.performClick()
+                assertTrue("Explicit fallback exposes the secure endpoint",
+                    findField(root, "https://your-vishnu.example.com")!!.isShown)
+                assertTrue(findButton(root, "Connect this device")!!.isShown)
+                findButton(root, "Back to Welcome")!!.performClick()
+                assertTrue(findButton(root, "Create my Vishnu")!!.isShown)
+                findButton(root, "Restore Vishnu")!!.performClick()
+                assertTrue("Recovery credentials must be entered before any restore",
+                    findField(root, "One-time recovery code")!!.isShown)
+                assertTrue(findButton(root, "Restore Vishnu on this phone")!!.isShown)
+                findButton(root, "Back to Welcome")!!.performClick()
+                assertTrue(findButton(root, "I already have Vishnu")!!.isShown)
             }
         }
     }
@@ -34,6 +72,16 @@ class SmokeInstrumentedTest {
         view is TextView && view.text.toString() == expected ||
             view is EditText && view.hint.toString() == expected ||
             view is ViewGroup && (0 until view.childCount).any { hasText(view.getChildAt(it), expected) }
+
+    private fun findField(view: View, expectedHint: String): EditText? {
+        if (view is EditText && view.hint?.toString() == expectedHint) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findField(view.getChildAt(index), expectedHint)?.let { return it }
+            }
+        }
+        return null
+    }
 
     private fun findButton(view: View, expected: String): Button? {
         if (view is Button && view.text.toString() == expected) return view

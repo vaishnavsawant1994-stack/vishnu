@@ -74,7 +74,7 @@
         await api('/first-run/resume', { method: 'POST', body: JSON.stringify({
           password: password.value,
           bootstrap_secret: bootstrap,
-          device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+          device_name: state.deviceName || `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
         }) });
         password.value = '';
         panel.remove();
@@ -97,15 +97,13 @@
     state.owner = state.displayName || [state.firstName, state.lastName].filter(Boolean).join(' ');
   }
 
-  async function configureSecurity() {
+  async function configureSecurity({ stayOnSecurity = false } = {}) {
     // An interrupted setup can resume after owner security already exists.
     // Do not post /first-run/create again; that would be a duplicate-owner
     // attempt. The user may still change the passkey choice before finishing.
     if (state.identityCreated) {
+      if (stayOnSecurity) return;
       render(4);
-      const recoveryCodes = Array.isArray(state.recoveryCodes) ? state.recoveryCodes : [];
-      $('firstRunCodes').textContent = recoveryCodes.join('\n') ||
-        'Recovery codes were already generated. If you did not save them, generate a fresh set below.';
       return;
     }
     const password = $('firstRunPassword')?.value || '';
@@ -117,6 +115,10 @@
     if (password !== confirmation) throw new Error('The passwords do not match.');
 
     busy(true, 'Securing Vishnu…');
+    // Never submit an empty or invalid friendly device name; the backend
+    // binds the label to the new DeviceRegistry record without changing trust.
+    if (!state.deviceName || !state.deviceName.trim() || state.deviceName.length > 120)
+      throw new Error('Enter a device name with no more than 120 characters.');
     const result = await api('/first-run/create', {
       method: 'POST',
       body: JSON.stringify({
@@ -125,23 +127,61 @@
         last_name: state.lastName,
         display_name: state.displayName,
         password,
-        device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+        device_name: state.deviceName,
       }),
     });
     state.identityCreated = true;
+    state.auth = state.passkeyCreated ? 'passkey' : 'password';
     state.recoveryCodes = result.recovery_codes || [];
-    render(4);
-    $('firstRunCodes').textContent = state.recoveryCodes.join('\n');
-    if (state.options.setup_recovery_saved) $('firstRunRecoverySaved').checked = true;
+    if (stayOnSecurity) busy(false);
+    if (!stayOnSecurity) {
+      render(4); // Module uses the one-time in-memory codes directly.
+    }
   }
 
+  // Return a real Promise to P1-03 so Submit remains locked until the
+  // canonical first-device creation API finishes or fails.
+  flow.continueSecurity = () => configureSecurity();
+
+  const decodeBase64Url = text => {
+    const padded = String(text).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  };
+  const encodeBase64Url = buffer => {
+    const data = new Uint8Array(buffer);
+    let raw = '';
+    for (const byte of data) raw += String.fromCharCode(byte);
+    return btoa(raw).split('+').join('-').split('/').join('_').replace(/=+$/, '');
+  };
+  const creationOptions = options => ({
+    ...options,
+    challenge: decodeBase64Url(options.challenge),
+    user: { ...options.user, id: decodeBase64Url(options.user.id) },
+    excludeCredentials: (options.excludeCredentials || []).map(item => ({
+      ...item, id: decodeBase64Url(item.id),
+    })),
+  });
+  const credentialJson = credential => ({
+    id: credential.id,
+    rawId: encodeBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: encodeBase64Url(credential.response.clientDataJSON),
+      attestationObject: encodeBase64Url(credential.response.attestationObject),
+      transports: credential.response.getTransports?.() || [],
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() || {},
+    authenticatorAttachment: credential.authenticatorAttachment || null,
+  });
+
   async function createPasskey() {
-    if (state.passkeyCreated || state.options.passkey_available) return true;
+    if (state.passkeyCreated) return true;
     if (!window.PublicKeyCredential || !navigator.credentials) return false;
     try {
       const start = await api('/access/passkey/register/options', { method: 'POST', body: '{}' });
       const credential = await navigator.credentials.create({ publicKey: creationOptions(start.public_key) });
-      await api('/access/passkey/register/complete', {
+      const savedCredential = await api('/access/passkey/register/complete', {
         method: 'POST',
         body: JSON.stringify({
           challenge_id: start.challenge_id,
@@ -149,6 +189,7 @@
           name: 'Vishnu web passkey',
         }),
       });
+      if (!savedCredential || !savedCredential.ok) throw new Error('Passkey registration was not confirmed by Vishnu.');
       state.passkeyCreated = true;
       return true;
     } catch (error) {
@@ -157,12 +198,84 @@
     }
   }
 
+  async function startPasskeySetup({ password, confirmation, bootstrap, deviceName } = {}) {
+    if (state.passkeyCreated) return true;
+    if (!window.PublicKeyCredential || !navigator.credentials?.create) return false;
+    if (!state.identityCreated) {
+      // WebAuthn registration is bound to the real owner/device. Create the
+      // canonical owner first, but do not navigate away from P1-03 until
+      // the user finishes or cancels the platform authenticator ceremony.
+      if ((password || '').length < 12 || password !== confirmation)
+        throw new Error('Enter a matching owner password of at least 12 characters first.');
+      if (!state.options.local_setup_available && (bootstrap || '').length < 32)
+        throw new Error('Enter the secure setup code before enrolling a passkey.');
+      const passwordField = $('firstRunPassword');
+      const confirmField = $('firstRunPasswordAgain');
+      if (!passwordField || !confirmField) throw new Error('The security form is unavailable.');
+      state.deviceName = deviceName || state.deviceName;
+      try {
+        await configureSecurity({stayOnSecurity:true});
+      } catch(error) {
+        busy(false);
+        throw error;
+      }
+      passwordField.value = '';
+      confirmField.value = '';
+    }
+    const result = await createPasskey();
+    if (result) state.auth = 'passkey';
+    return result;
+  }
+  flow.startPasskeySetup = startPasskeySetup;
+
+  async function persistOwnerAvatar() {
+    const source = state.avatarSource || 'none';
+    if (source === 'none' || state.avatarSaved) return;
+    let image_b64 = '';
+    if (source === 'upload') {
+      if (!state.avatarFile) throw new Error('The selected photo is no longer available. Return to Your Identity and select it again.');
+      // FileReader keeps raw pixels out of local/session storage; the backend
+      // re-encodes validated pixels and binds the file to the canonical owner.
+      image_b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Cannot read the selected photo. Choose another image.'));
+        reader.onload = () => {
+          const data = String(reader.result || '');
+          const sep = data.indexOf(',');
+          if (sep < 0) reject(new Error('The selected photo is invalid.'));
+          else resolve(data.slice(sep + 1));
+        };
+        reader.readAsDataURL(state.avatarFile);
+      });
+    }
+    await setupApi('/first-run/avatar', { method: 'PUT', body: JSON.stringify({
+      source, preset_id: source === 'preset' ? (state.avatarId || '') : '', image_b64,
+    })});
+    state.avatarSaved = true;
+  }
+
+  async function regenerateRecoveryCodes(){
+    // This function can only be invoked by the P1-04 explicit confirmation
+    // dialog, never by a render/refresh/resume side effect.
+    const result=await setupApi('/first-run/recovery-codes',{method:'POST',body:'{}'});
+    if(!Array.isArray(result.recovery_codes)||!result.recovery_codes.length)
+      throw new Error('The runtime did not return new recovery codes.');
+    state.recoveryCodes=result.recovery_codes;
+    state.recoverySaved=false;
+    state.options.setup_recovery_saved=false;
+    return result.recovery_codes;
+  }
+  flow.regenerateRecoveryCodes=regenerateRecoveryCodes;
+
   async function finish() {
     if (!$('firstRunRecoverySaved')?.checked) {
       throw new Error('Save your recovery codes somewhere secure, then confirm to continue.');
     }
 
     busy(true, 'Finishing secure setup…');
+    // Avatar persistence is optional, but a selected picture must not be
+    // silently discarded or announced as saved when the upload fails.
+    await persistOwnerAvatar();
     await setupApi('/first-run/recovery-saved', {
       method: 'POST', body: JSON.stringify({ saved: true }),
     });
@@ -183,7 +296,7 @@
     await setupApi('/first-run/data-policy', {
       method: 'PUT', body: JSON.stringify({ default_policy: 'device_only' }),
     });
-    await setupApi('/first-run/complete', {
+    const completed = await setupApi('/first-run/complete', {
       method: 'POST',
       body: JSON.stringify({
         recovery_saved: true,
@@ -192,9 +305,21 @@
         passkey_unavailable_confirmed: !passkeyCreated,
       }),
     });
+    state.recoveryCodes=[]; // Stop retaining one-time credentials after acceptance.
+    if (completed?.ok === true && completed.status === 'ready' &&
+        completed.recovery_result && flow.showRecoveryResult(completed.recovery_result)) {
+      busy(false);
+      return;
+    }
+    state.recoverySaved=false;
+    busy(false);
     setError('Your Vishnu is ready. Enter to start using it.');
     setTimeout(() => window.check(), 700);
   }
+  flow.finishRecovery=async()=>{
+    try {return await finish();}
+    catch(error) {busy(false);throw error;}
+  };
 
   window.addEventListener('vishnu:genesis-next', async event => {
     setError('');

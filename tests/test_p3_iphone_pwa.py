@@ -191,6 +191,18 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
     assert '/iphone/first-run-actions.js' in page.text
+    assert '/iphone/neural-sphere.js' in page.text
+    assert '/iphone/runtime-assistant.js' in page.text
+    assert '/iphone/runtime-assistant.css' in page.text
+    for asset, expected in (
+        ('neural-sphere.js', 'vishnuNeuralSphere'),
+        ('runtime-assistant.js', 'vishnuRuntimeAssistant'),
+        ('runtime-assistant.css', 'runtime-host'),
+    ):
+        response = client.get('/iphone/' + asset)
+        assert response.status_code == 200
+        assert expected in response.text
+
     adapter = client.get('/iphone/first-run.js')
     actions = client.get('/iphone/first-run-actions.js')
     assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
@@ -204,6 +216,26 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     # FastAPI runtime itself (the existing browser test server can otherwise
     # hide missing production routes by injecting those files).
     for path, marker in (
+        ('/iphone/genesis-welcome.css', 'vw-sphere'),
+        ('/iphone/genesis-neural-sphere.js', 'mountNeuralSphere'),
+        ('/iphone/genesis-identity.css', 'genesis-identity'),
+        ('/iphone/genesis-identity.js', 'mountIdentityScreen'),
+        ('/iphone/genesis-security.css', 'genesis-security'),
+        ('/iphone/genesis-security.js', 'mountSecurityScreen'),
+        ('/iphone/genesis-recovery.css', 'vr-code-grid'),
+        ('/iphone/genesis-recovery.js', 'mountRecoveryScreen'),
+        ('/iphone/genesis-login.css', 'vl-panel'),
+        ('/iphone/genesis-login.js', 'mountLoginScreen'),
+        ('/iphone/genesis-connect.css', 'vc-method'),
+        ('/iphone/genesis-connect.js', 'mountConnectScreen'),
+        ('/iphone/genesis-recovery-options.css', 'vo-choice'),
+        ('/iphone/genesis-recovery-options.js', 'mountRecoveryOptionsScreen'),
+        ('/iphone/genesis-verification.css', 'v8-method'),
+        ('/iphone/genesis-verification.js', 'mountRecoveryVerificationScreen'),
+        ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-horizon.svg', '<svg'),
         ('/iphone/campaign-demo.js', 'campaignDemo'),
         ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
         ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
@@ -295,13 +327,63 @@ def test_owner_password_unlocks_a_new_browser_after_trusted_setup(tmp_path):
     assert len(runtime['device_registry'].active) == 2
 
 
+
+def test_join_request_cancel_requires_original_join_cookie_and_invalidates_request(tmp_path):
+    client, runtime = make_client(tmp_path)
+    client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
+    assert client.post('/iphone/api/access/password/setup', json={
+        'password': 'correct horse battery staple',
+    }).status_code == 200
+    # A second, untrusted browser authenticates only the owner identity.
+    requester = TestClient(client.app, base_url='https://testserver')
+    pending = requester.post('/iphone/api/access/password/login', json={
+        'password': 'correct horse battery staple', 'name': 'Untrusted browser',
+    }).json()
+    assert pending['status'] == 'approval_required'
+    request_id = pending['request_id']
+    assert len(runtime['device_registry'].active) == 1
+
+    # Without the HttpOnly pa_join cookie, even knowing the public request ID
+    # does not allow an attacker to cancel someone else's join.
+    unauthenticated = TestClient(client.app, base_url='https://testserver')
+    denied = unauthenticated.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    })
+    assert denied.status_code == 401
+    attacker = TestClient(client.app, base_url='https://testserver')
+    attacker.cookies.set('pa_join', 'wrong-random-credential')
+    assert attacker.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    }).status_code == 404
+
+    cancelled = requester.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    })
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {'status': 'cancelled'}
+    assert len(runtime['device_registry'].active) == 1
+    assert requester.post('/iphone/api/access/join/status', json={
+        'request_id': request_id,
+    }).status_code == 404
+    assert requester.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    }).status_code in {401, 404, 409}
+    assert not runtime['device_registry'].decide_join(
+        request_id, approve=True, decided_by='iphone-1',
+    )
+
+
 def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
     client, _ = make_client(tmp_path)
     client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
     generated = client.post('/iphone/api/access/recovery/regenerate', json={}).json()['codes']
     client.post('/iphone/api/logout', json={})
 
-    assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 200
+    recovered = client.post('/iphone/api/access/recovery/login', json={'code': generated[0]})
+    assert recovered.status_code == 200
+    assert recovered.json()['recovery_result']['identityStatus'] == 'completed'
+    assert recovered.json()['recovery_result']['dataStatus'] == 'not_applicable'
+    assert recovered.json()['recovery_result']['deviceStatus'] == 'completed'
     client.post('/iphone/api/logout', json={})
     assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 401
 
@@ -398,6 +480,10 @@ def test_web_portable_restore_preserves_identity_restores_data_and_secures_repla
         'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
     })
     assert complete.status_code == 200, complete.text
+    assert complete.json()['recovery_result']['recoveryType'] == 'encrypted_data'
+    assert complete.json()['recovery_result']['identityStatus'] == 'completed'
+    assert complete.json()['recovery_result']['deviceStatus'] == 'completed'
+    assert complete.json()['recovery_result']['dataStatus'] in {'completed', 'partial', 'pending'}
     assert setup.ready is True
     assert runtime['owner_access'].identity()['owner_id'] == identity['owner_id']
 
@@ -432,6 +518,50 @@ def test_password_join_requires_approval_on_an_existing_session(tmp_path):
     assert requester.cookies.get('pa_session')
     assert requester.get('/iphone/api/status').status_code == 200
     assert len(runtime['device_registry'].active) == 2
+
+
+def test_join_denial_and_bad_approver_password_never_enroll_new_device(tmp_path):
+    owner, runtime = make_client(tmp_path, server_sessions=True)
+    assert owner.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'}).status_code == 200
+    assert owner.post('/iphone/api/access/password/setup', json={
+        'password': 'correct horse battery staple',
+    }).status_code == 200
+
+    requester = TestClient(owner.app, base_url='https://testserver')
+    login = requester.post('/iphone/api/access/password/login', json={
+        'password': 'correct horse battery staple', 'name': 'Unknown browser',
+    })
+    assert login.status_code == 200
+    pending = login.json()
+    assert pending['status'] == 'approval_required'
+    assert requester.cookies.get('pa_join') is not None
+    assert requester.cookies.get('pa_session') is None
+    assert len(runtime['device_registry'].active) == 1
+
+    bad = owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'incorrect password', 'approve': True,
+    })
+    assert bad.status_code == 401
+    assert requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    }).json()['status'] == 'pending'
+
+    denial = owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': False,
+    })
+    assert denial.status_code == 200
+    assert denial.json()['status'] == 'denied'
+    final = requester.post('/iphone/api/access/join/status', json={
+        'request_id': pending['request_id'],
+    })
+    assert final.status_code == 200
+    assert final.json()['status'] == 'denied'
+    assert requester.cookies.get('pa_device') is None
+    assert requester.cookies.get('pa_session') is None
+    assert len(runtime['device_registry'].active) == 1
+    assert owner.post(f"/iphone/api/access/join/{pending['request_id']}/decision", json={
+        'password': 'correct horse battery staple', 'approve': True,
+    }).status_code == 409
 
 
 def test_access_options_and_passkey_registration_require_owner_trust(tmp_path):
@@ -1132,6 +1262,8 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'device_name': 'Ada phone browser',
     })
     assert created.status_code == 200, created.text
+    assert 'no-store' in created.headers['cache-control']
+    assert created.headers['pragma'] == 'no-cache'
     result = created.json()
     identity = runtime['owner_access'].identity()
     assert result['identity']['owner_id'] == identity['owner_id']
@@ -1142,7 +1274,52 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     assert client.cookies.get('pa_setup_claim')
     assert client.cookies.get('pa_session')
     assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
+    # Explicit regeneration atomically invalidates the old hashed credentials,
+    # and must never happen on refresh or retry.
+    original_codes = list(result['recovery_codes'])
+    regenerated = client.post('/iphone/api/first-run/recovery-codes')
+    assert regenerated.status_code == 200, regenerated.text
+    assert 'no-store' in regenerated.headers['cache-control']
+    replacements = regenerated.json()['recovery_codes']
+    assert replacements and replacements != original_codes
+    assert runtime['owner_access'].recovery_codes_remaining() == len(replacements)
+    assert runtime['owner_access'].consume_recovery_code(original_codes[0]) is False
+    assert all('recovery_codes' not in str(event) for event in events.history() if isinstance(event, dict)) if hasattr(events, 'history') else True
+
     assert client.get('/iphone/api/status').status_code == 423
+    # Profile pictures must be authorized by the SAME first-device setup
+    # ceremony, bound to the canonical owner and private to trusted devices.
+    stranger = TestClient(app, base_url='https://testserver')
+    assert stranger.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'blue',
+    }).status_code == 401
+    assert stranger.get('/iphone/api/access/profile/avatar').status_code == 401
+    saved_avatar = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'forest',
+    })
+    assert saved_avatar.status_code == 200, saved_avatar.text
+    assert saved_avatar.json()['saved'] is True
+    assert client.get('/iphone/api/access/profile/avatar').json() == {
+        'source': 'preset', 'preset_id': 'forest',
+    }
+    assert client.get('/iphone/api/access/profile/avatar/image').status_code == 404
+    import io
+    from PIL import Image
+    content = io.BytesIO()
+    Image.new('RGB', (8, 8), (40, 200, 255)).save(content, format='JPEG')
+    uploaded = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'upload', 'image_b64': base64.b64encode(content.getvalue()).decode(),
+    })
+    assert uploaded.status_code == 200, uploaded.text
+    image = client.get('/iphone/api/access/profile/avatar/image')
+    assert image.status_code == 200 and image.content.startswith(b'\x89PNG')
+    assert image.headers['cache-control'] == 'private, no-store'
+    assert stranger.get('/iphone/api/access/profile/avatar/image').status_code == 401
+    invalid = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'upload', 'image_b64': base64.b64encode(b'<svg/>').decode(),
+    })
+    assert invalid.status_code == 422
+    assert client.get('/iphone/api/access/profile/avatar/image').content == image.content
     model_choice = client.post('/iphone/api/first-run/model', json={
         'provider_id': 'deepseek', 'model': 'deepseek-chat',
         'api_key': 'secret-test-provider-key-1234567890',
@@ -1155,6 +1332,10 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     })
     assert completed.status_code == 200, completed.text
     assert setup.ready is True
+    assert client.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'horizon',
+    }).status_code == 409
+    assert client.get('/iphone/api/access/profile/avatar').json()['source'] == 'upload'
     assert client.get('/iphone/api/status').status_code == 200
     duplicate = client.post('/iphone/api/first-run/create', json={
         'bootstrap_secret': bootstrap, 'first_name': 'Different',

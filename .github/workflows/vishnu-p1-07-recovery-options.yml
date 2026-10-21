@@ -1,0 +1,40 @@
+name: Vishnu P1-07 Recovery Options Visual and Security Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/genesis-recovery-options.js'
+      - 'pwa/genesis-recovery-options.css'
+      - 'pwa/genesis.css'
+      - 'tests/genesis_recovery_options_browser.mjs'
+      - 'tests/test_p3_iphone_pwa.py'
+      - '.github/workflows/vishnu-p1-07-recovery-options.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery-options:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Verify P1-07 reference visuals, P1-08 selection and recovery boundaries
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/genesis-recovery-options.js
+          node --check tests/genesis_recovery_options_browser.mjs
+          VISHNU_RECOVERY_OPTIONS_SCREENSHOTS=artifacts/genesis-recovery-options node tests/genesis_recovery_options_browser.mjs
+      - name: Upload real browser screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-07-desktop-mobile
+          path: artifacts/genesis-recovery-options/*.png
+          retention-days: 14
+          if-no-files-found: warn

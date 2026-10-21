@@ -39,6 +39,7 @@ from agent.executor import ConfirmationRequired, ExecutionCancelled
 from models.router import ModelError
 from security.owner_access import OwnerAccessStore
 from security.owner_access import FirstRunClaimBusy
+from onboarding.owner_avatar import read_owner_avatar, store_owner_avatar
 from security.request_context import current_trusted_request
 
 
@@ -91,6 +92,12 @@ class FirstRunCreateBody(BaseModel):
     display_name: str = Field(default='', max_length=120)
     password: SecretStr = Field(min_length=12, max_length=256)
     device_name: str = Field(default='First trusted browser', max_length=120)
+
+
+class FirstRunAvatarBody(BaseModel):
+    source: Literal['none', 'preset', 'upload']
+    preset_id: str = Field(default='', max_length=16)
+    image_b64: str = Field(default='', max_length=2_796_204)
 
 
 class FirstRunRestoreOwnerBody(BaseModel):
@@ -526,6 +533,9 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             '</body>',
             '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">'
             '<script src="/iphone/vishnu-os-workspaces.js" defer></script>'
+            '<script src="/iphone/neural-sphere.js" defer></script>'
+            '<script src="/iphone/runtime-assistant.js" defer></script>'
+            '<script src="/iphone/recovery-complete.js" defer></script>'
             '<script src="/iphone/first-run.js" defer></script>'
             '<script src="/iphone/first-run-actions.js" defer></script></body>',
         )
@@ -556,11 +566,121 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                         media_type='application/javascript',
                         headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/neural-sphere.js', include_in_schema=False)
+    def neural_sphere_script():
+        return Response((web_dir / 'neural-sphere.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.js', include_in_schema=False)
+    def runtime_assistant_script():
+        return Response((web_dir / 'runtime-assistant.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/runtime-assistant.css', include_in_schema=False)
+    def runtime_assistant_stylesheet():
+        return Response((web_dir / 'runtime-assistant.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/recovery-complete.js', include_in_schema=False)
+    def recovery_complete_script():
+        return Response((web_dir / 'recovery-complete.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript',
+                        headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/recovery-complete.css', include_in_schema=False)
+    def recovery_complete_stylesheet():
+        return Response((web_dir / 'recovery-complete.css').read_text(encoding='utf-8'),
+                        media_type='text/css',
+                        headers={'Cache-Control': 'no-cache'})
+
     @router.get('/genesis.css', include_in_schema=False)
     def genesis_stylesheet():
         return Response((web_dir / 'genesis.css').read_text(encoding='utf-8'),
                         media_type='text/css',
                         headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-welcome.css', include_in_schema=False)
+    def genesis_welcome_styles():
+        return Response((web_dir / 'genesis-welcome.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-neural-sphere.js', include_in_schema=False)
+    def genesis_neural_sphere_script():
+        return Response((web_dir / 'genesis-neural-sphere.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-verification.css', include_in_schema=False)
+    def genesis_verification_css():
+        return Response((web_dir / 'genesis-verification.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-verification.js', include_in_schema=False)
+    def genesis_verification_js():
+        return Response((web_dir / 'genesis-verification.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-recovery-options.css', include_in_schema=False)
+    def genesis_recovery_options_css():
+        return Response((web_dir / 'genesis-recovery-options.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-recovery-options.js', include_in_schema=False)
+    def genesis_recovery_options_js():
+        return Response((web_dir / 'genesis-recovery-options.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-connect.css', include_in_schema=False)
+    def genesis_connect_css():
+        return Response((web_dir / 'genesis-connect.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-connect.js', include_in_schema=False)
+    def genesis_connect_js():
+        return Response((web_dir / 'genesis-connect.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-login.css', include_in_schema=False)
+    def genesis_login_styles():
+        return Response((web_dir / 'genesis-login.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-login.js', include_in_schema=False)
+    def genesis_login_script():
+        return Response((web_dir / 'genesis-login.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-recovery.css', include_in_schema=False)
+    def genesis_recovery_styles():
+        return Response((web_dir / 'genesis-recovery.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-recovery.js', include_in_schema=False)
+    def genesis_recovery_script():
+        return Response((web_dir / 'genesis-recovery.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-security.css', include_in_schema=False)
+    def genesis_security_styles():
+        return Response((web_dir / 'genesis-security.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-security.js', include_in_schema=False)
+    def genesis_security_script():
+        return Response((web_dir / 'genesis-security.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-identity.css', include_in_schema=False)
+    def genesis_identity_styles():
+        return Response((web_dir / 'genesis-identity.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-identity.js', include_in_schema=False)
+    def genesis_identity_script():
+        return Response((web_dir / 'genesis-identity.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
 
     @router.get('/assets/genesis/{asset_name}', include_in_schema=False)
     def genesis_asset(asset_name: str):
@@ -568,6 +688,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             'vishnu-core.png': 'image/png',
             'cosmic-desktop.png': 'image/png',
             'cosmic-mobile.png': 'image/png',
+            'avatar-blue.svg': 'image/svg+xml',
+            'avatar-mountain.svg': 'image/svg+xml',
+            'avatar-forest.svg': 'image/svg+xml',
+            'avatar-horizon.svg': 'image/svg+xml',
         }
         media_type = allowed.get(asset_name)
         if media_type is None:
@@ -916,6 +1040,77 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             'recovery_codes': codes, 'recovery_codes_shown_once': True,
         }
 
+    @router.put('/api/first-run/avatar')
+    def first_run_avatar(body: FirstRunAvatarBody, request: Request,
+                         pa_setup_claim: str | None = Cookie(default=None),
+                         pa_device: str | None = Cookie(default=None),
+                         pa_token: str | None = Cookie(default=None)):
+        """Persist only the first owner's chosen photo after secure creation.
+
+        Never allow anonymous photo uploads or infer device trust from the
+        supplied image. Reuse the existing one-use setup claim and trusted
+        first-device credential; no second profile or identity store.
+        """
+        require_https(request)
+        if first_run_setup is None or first_run_setup.ready or not pa_setup_claim:
+            raise HTTPException(409, 'A verified first-device setup is required')
+        state_value = first_run_setup.snapshot()
+        if (state_value.get('status') != 'setup_in_progress'
+                or state_value.get('mode') != 'create'
+                or 'security' not in state_value.get('completed_steps', [])):
+            raise HTTPException(409, 'Secure Vishnu before saving a profile photo')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        if state_value.get('first_device_id') != device_id:
+            raise HTTPException(403, 'Only the first trusted device can save this photo')
+        identity = owner_access.identity()
+        if identity is None:
+            raise HTTPException(409, 'The canonical owner identity is unavailable')
+        try:
+            result = store_owner_avatar(
+                first_run_setup.data_dir, identity['owner_id'],
+                source=body.source, preset_id=body.preset_id, image_b64=body.image_b64,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit('owner.profile.avatar_updated', device_id=device_id, source=body.source)
+        return result
+
+    @router.get('/api/access/profile/avatar')
+    def access_profile_avatar(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None)):
+        auth_device(pa_device, pa_token)
+        identity = owner_access.identity()
+        if identity is None or first_run_setup is None:
+            raise HTTPException(404, 'No owner profile exists')
+        try:
+            meta, _ = read_owner_avatar(first_run_setup.data_dir, identity['owner_id'])
+        except (ValueError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return JSONResponse(meta, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/api/access/profile/avatar/image')
+    def access_profile_avatar_image(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None)):
+        auth_device(pa_device, pa_token)
+        identity = owner_access.identity()
+        if identity is None or first_run_setup is None:
+            raise HTTPException(404, 'No profile photo exists')
+        try:
+            meta, image = read_owner_avatar(first_run_setup.data_dir, identity['owner_id'])
+        except (ValueError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if meta['source'] != 'upload' or image is None:
+            raise HTTPException(404, 'No uploaded profile photo exists')
+        return Response(image, media_type='image/png',
+                        headers={'Cache-Control': 'private, no-store',
+                                 'X-Content-Type-Options': 'nosniff'})
+
     @router.post('/api/first-run/create')
     def first_run_create(body: FirstRunCreateBody, request: Request, response: Response,
                          pa_setup_claim: str | None = Cookie(default=None),
@@ -989,6 +1184,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             httponly=True, secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
             samesite='strict', path='/iphone', max_age=900,
         )
+        response.headers['Cache-Control'] = 'no-store, private'
+        response.headers['Pragma'] = 'no-cache'
         emit('owner.security.configured', device_id=device['id'], method='password')
         return {
             'ok': True,
@@ -1256,7 +1453,31 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         response.delete_cookie('pa_setup_claim', path='/iphone')
         emit('owner.first_run.completed', device_id=device_id,
              owner_id=result.get('identity', {}).get('owner_id'))
-        return {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+        payload = {'ok': True, 'status': 'ready', 'vishnu_id': owner_access.identity()['vishnu_id']}
+        # This evidence is returned only to a trusted owner device after the
+        # canonical first-run authority has completed the restore workflow.
+        if result.get('mode') == 'restore':
+            restore = result.get('restore') if isinstance(result.get('restore'), dict) else {}
+            evidence = restore.get('result') if isinstance(restore.get('result'), dict) else {}
+            try:
+                restored = max(0, int(evidence.get('restored', 0) or 0))
+            except (ValueError, TypeError):
+                restored = 0
+            verified = bool(evidence.get('ok') and evidence.get('encrypted') and
+                            evidence.get('identity_preserved'))
+            skipped_security = len(evidence.get('skipped_security_state') or [])
+            payload['recovery_result'] = {
+                'recoveryType': 'encrypted_data',
+                'identityStatus': 'completed',
+                'dataStatus': 'completed' if verified else ('partial' if restored else 'pending'),
+                'deviceStatus': 'completed',
+                'restoredItems': restored,
+                'skippedSecurityItems': skipped_security,
+                'securityActionsRequired': ['Review your trusted devices in Settings.'],
+                'warnings': [] if verified else ['Some recovery data could not be verified. Review the backup before relying on it.'],
+                'canContinueToHome': True,
+            }
+        return payload
 
     @router.post('/api/first-run/model')
     def first_run_model(body: FirstRunModelBody, request: Request,
@@ -1329,7 +1550,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         return {'ok': True, 'settings': settings_result}
 
     @router.post('/api/first-run/recovery-codes')
-    def first_run_recovery_codes(request: Request,
+    def first_run_recovery_codes(request: Request, response: Response,
                                  pa_setup_claim: str | None = Cookie(default=None),
                                  pa_device: str | None = Cookie(default=None),
                                  pa_token: str | None = Cookie(default=None)):
@@ -1351,6 +1572,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         codes = owner_access.regenerate_recovery_codes()
         first_run_setup.invalidate_recovery_confirmation()
         emit('owner.first_run.recovery_codes_regenerated', device_id=device_id)
+        response.headers['Cache-Control'] = 'no-store, private'
+        response.headers['Pragma'] = 'no-cache'
         return {'recovery_codes': codes, 'shown_once': True}
 
     @router.post('/api/first-run/resume')
@@ -1492,6 +1715,26 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             response.delete_cookie('pa_join', path='/iphone/api/access/join')
         return result
 
+    @router.post('/api/access/join/cancel')
+    def cancel_device_join(body: OwnerJoinStatusBody, request: Request, response: Response,
+                           pa_join: str | None = Cookie(default=None)):
+        """Only the join requester holding its original scoped cookie may
+        cancel this exact unapproved request. No owner/device trust is created.
+        """
+        require_https(request)
+        if not pa_join:
+            raise HTTPException(401, 'The pending join credential is missing.')
+        status = registry.join_status(body.request_id, pa_join)
+        if status is None:
+            raise HTTPException(404, 'The join request is unavailable or expired.')
+        if status.get('status') != 'pending':
+            raise HTTPException(409, 'This request is no longer pending.')
+        if not registry.decide_join(body.request_id, approve=False, decided_by='requester_cancelled'):
+            raise HTTPException(409, 'The join request could not be cancelled.')
+        response.delete_cookie('pa_join', path='/iphone/api/access/join')
+        emit('device.join.cancelled', request_id=body.request_id)
+        return {'status': 'cancelled'}
+
     @router.post('/api/access/google/login')
     def google_login(body: GoogleLoginBody, request: Request, response: Response,
                      pa_device: str | None = Cookie(default=None),
@@ -1575,7 +1818,18 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         clear_access_attempts(key)
         device = trust_browser(response, body.name, 'web-pwa-recovery')
         emit('owner.recovery.used', device_id=device['id'])
-        return {'ok': True, 'device_id': device['id']}
+        return {
+            'ok': True, 'device_id': device['id'],
+            'recovery_result': {
+                'recoveryType': 'owner_access',
+                'identityStatus': 'completed',
+                'dataStatus': 'not_applicable',
+                'deviceStatus': 'completed',
+                'securityActionsRequired': ['Review your trusted devices in Settings.'],
+                'warnings': ['A recovery code restores owner access only. No encrypted backup data was restored.'],
+                'canContinueToHome': True,
+            },
+        }
 
     @router.post('/api/access/passkey/register/options')
     def passkey_register_options(

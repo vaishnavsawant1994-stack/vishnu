@@ -1,0 +1,41 @@
+name: Vishnu P1-01 Welcome Visual Qualification
+
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/genesis.css'
+      - 'pwa/genesis-welcome.css'
+      - 'pwa/genesis-neural-sphere.js'
+      - 'tests/genesis_welcome_browser.mjs'
+      - '.github/workflows/vishnu-p1-01-welcome.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  welcome-visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Qualify exact desktop/mobile welcome, 3D mount, and safe navigation
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/genesis-neural-sphere.js
+          VISHNU_WELCOME_SCREENSHOTS=artifacts/genesis-welcome node tests/genesis_welcome_browser.mjs
+      - name: Upload P1-01 comparison evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-01-desktop-mobile
+          path: artifacts/genesis-welcome/*.png
+          if-no-files-found: warn
+          retention-days: 14

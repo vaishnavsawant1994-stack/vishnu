@@ -31,6 +31,22 @@ PUBLIC_PATHS = {
     '/iphone/campaign-demo.css',
     '/iphone/campaign-demo-data.js',
     '/iphone/genesis.css',
+    '/iphone/genesis-welcome.css',
+    '/iphone/genesis-neural-sphere.js',
+    '/iphone/genesis-identity.css',
+    '/iphone/genesis-identity.js',
+    '/iphone/genesis-security.css',
+    '/iphone/genesis-security.js',
+    '/iphone/genesis-recovery.css',
+    '/iphone/genesis-recovery.js',
+    '/iphone/genesis-login.css',
+    '/iphone/genesis-login.js',
+    '/iphone/genesis-connect.css',
+    '/iphone/genesis-connect.js',
+    '/iphone/genesis-recovery-options.css',
+    '/iphone/genesis-recovery-options.js',
+    '/iphone/genesis-verification.css',
+    '/iphone/genesis-verification.js',
     '/iphone/first-run.js',
     '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
@@ -194,6 +210,12 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                 # First-run policy writes are separately authorized by the
                 # setup claim and first-device credential in iphone_pwa.py.
                 '/iphone/api/first-run/data-policy',
+                # Photos are not public during setup: these paths still need
+                # an active session, trusted device, owner identity, and (for
+                # updates) the canonical first-device setup claim.
+                '/iphone/api/first-run/avatar',
+                '/iphone/api/access/profile/avatar',
+                '/iphone/api/access/profile/avatar/image',
             }
             if path.startswith('/iphone/api/') and path not in allowed_during_setup and path not in PUBLIC_PATHS:
                 response = JSONResponse(

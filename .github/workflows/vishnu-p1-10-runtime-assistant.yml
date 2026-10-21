@@ -1,0 +1,42 @@
+name: Vishnu P1-10 Conditional Runtime Visual and Security Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/runtime-assistant.js'
+      - 'pwa/runtime-assistant.css'
+      - 'pwa/neural-sphere.js'
+      - 'pwa/genesis-neural-sphere.js'
+      - 'pwa/first-run.js'
+      - 'server/iphone_pwa.py'
+      - 'tests/runtime_assistant_browser.mjs'
+      - '.github/workflows/vishnu-p1-10-runtime-assistant.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  runtime-assistant:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Validate conditional runtime selection, HTTPS boundaries, offline handling, and responsive screenshots
+        run: |
+          node --check pwa/runtime-assistant.js
+          node --check pwa/neural-sphere.js
+          node --check pwa/genesis-neural-sphere.js
+          node --check tests/runtime_assistant_browser.mjs
+          node tests/runtime_assistant_browser.mjs
+      - name: Upload P1-10 browser screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-10-runtime-desktop-mobile
+          path: artifacts/p1-10-preview-*.png
+          retention-days: 14
+          if-no-files-found: warn

@@ -42,24 +42,39 @@ async function verifyReturningOwnerEntry(){
   await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
   await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
-  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
+  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"restore_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
   await page.waitForTimeout(200);
+  await page.locator('.genesis-connect').waitFor({state:'visible'});
+  assert.equal(await page.locator('.vc-method').count(),5,'P1-06 offers five visible reference methods');
+  assert.match(await page.locator('.vc-qr-symbol').innerText(),/QR pairing.*not issued/s,'fresh runtime never fabricates a QR token');
+  await page.locator('[data-vc-method="account"]').click();
+  await page.locator('[data-vc-continue]').click();
   await page.locator('.returning-shell').waitFor({state:'visible'});
-  assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state instead of a Face ID dead end');
+  assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state before restoration');
   await page.locator('[data-auth-action="restore"]').click();
-  assert.match(await page.locator('.returning-notice').innerText(),/not backup data/i,'recovery-code sign-in is not mislabeled as backup restoration');
-  assert.match(await page.locator('.genesis-copy h1').innerText(),/Recover owner access/i,'recovery route clearly names its purpose');
-  await page.locator('[data-auth-action="welcome"]').click();
-  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
-  assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'unauthenticated welcome-back screen hides OS navigation');
+  await page.getByRole('heading',{name:'Recovery Options'}).waitFor();
+  assert.equal(await page.locator('.vo-choice').count(),3,'P1-07 must show distinct recovery purposes');
+  await page.locator('[data-vo-mode=restore_data]').click();
+  await page.locator('[data-vo-continue]').click();
+  await page.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+  assert.equal(await page.locator('#v8Archive').count(),1,'Eligible new runtime offers encrypted archive selection');
+  assert.equal(await page.locator('#v8KeyFile').count(),1,'Separate recovery-key picker required');
+  assert.equal(await page.locator('#v8Passphrase').count(),1,'Recovery passphrase required');
+  assert.equal(await page.locator('[data-v8-method=backup]').getAttribute('class').then(c=>c.includes('selected')),true);
+  await page.locator('[data-v8-back]').click();
+  await page.getByRole('heading',{name:'Recovery Options'}).waitFor();
+  await page.locator('[data-vo-back]').click();
+  await page.getByRole('heading',{name:'Welcome to Vishnu.'}).waitFor();
+  assert.equal(await page.locator('[data-genesis-join]').count(),1,'Sign-in remains separate from recovery');
+  assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'onboarding hides OS navigation');
   await page.screenshot({path:'artifacts/returning-owner-fresh-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'artifacts/returning-owner-fresh-mobile.png',fullPage:true});
-  await page.locator('[data-auth-action="create"]').click();
-  await page.locator('.genesis-screen[data-step="1"]').waitFor({state:'visible'});
+  await page.locator('[data-genesis-create]').click();
+  await page.locator('.genesis-screen[data-step="2"]').waitFor({state:'visible'});
   await page.close();
 }
 async function verifyConfiguredOwnerMethods(){
@@ -73,14 +88,14 @@ async function verifyConfiguredOwnerMethods(){
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
-  await page.locator('.returning-shell').waitFor({state:'visible'});
-  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkeys stay hidden');
-  await page.locator('[data-auth-action="methods"]').click();
-  assert.equal(await page.locator('[data-auth-action="password"]').count(),1,'configured password is offered');
-  assert.equal(await page.locator('[data-auth-action="recovery"]').count(),1,'configured recovery is offered');
-  await page.locator('[data-auth-action="password"]').click();
-  await page.locator('#returningPassword').fill('test-only-password');
-  await page.locator('[data-auth-action="password-submit"]').click();
+  await page.locator('.genesis-connect').waitFor({state:'visible'});
+  await page.locator('[data-vc-method=account]').click();
+  await page.locator('[data-vc-continue]').click();
+  await page.locator('.genesis-login .vl-panel').waitFor({state:'visible'});
+  assert.equal(await page.locator('#vlPassword').count(),1,'configured password is offered via P1-05');
+  assert.equal(await page.locator('[data-vl-recovery]').count(),1,'recovery navigation remains available');
+  await page.locator('#vlPassword').fill('test-only-password');
+  await page.locator('[data-vl-submit]').click();
   assert.equal(passwordLoginAttempts,1,'password action reaches the canonical owner login endpoint');
   await page.close();
 }
@@ -194,8 +209,9 @@ try{
   await desktop.waitForFunction(()=>document.body.innerText.includes('General chat · No project context'));
   assert.notEqual(await desktop.evaluate(()=>window.vishnuChatBridge.current.id),'project-chat-p1','switching to general opens a separate general conversation');
 
+  // Open one canonical search route per test. Double-opening the module
+  // races its asynchronous shell render and can hide a freshly mounted input.
   await desktop.evaluate(()=>window.openModule('search'));
-  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('New conversation');
@@ -205,9 +221,11 @@ try{
   const searchConversationId=await desktop.locator('[data-gs-open="conversation"]').first().getAttribute('data-gs-id');
   await desktop.locator('[data-gs-open="conversation"]').first().click();
   await desktop.waitForFunction(id=>window.vishnuChatBridge.current.id===id,searchConversationId,'search result activates its existing conversation ID');
+  await desktop.waitForFunction(()=>!document.querySelector('#modulePanel')?.classList.contains('open') && !document.body.classList.contains('global-search-mode'),null,{timeout:10000}); // Wait for async conversation navigation to close Search before reopening it.
 
+  // Use one authentic search entry per test. Double-opening the module
+  // races its asynchronous shell render and can hide a freshly mounted input.
   await desktop.evaluate(()=>window.openModule('search'));
-  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('Test Project');

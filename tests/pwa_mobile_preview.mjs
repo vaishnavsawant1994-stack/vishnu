@@ -279,28 +279,47 @@ try {
   assert.equal(await page.locator("#todayMeetingsList .today-row").count(),2,"Today demo must show two sample meetings");
   assert.equal(await page.locator("#todayPlansList .today-row").count(),1,"Today demo must show one sample plan");
   assert.equal(await page.locator("#todayDemoNotice").isVisible(),true,"sample data must be clearly labeled as preview-only");
-  assert.equal(await page.locator("#todayScreenNewChat").isVisible(),true,"Today must keep New chat available in its bottom action row");
-  const todayFooterLayout=await page.evaluate(()=>{const chat=document.querySelector("#todayScreenNewChat").getBoundingClientRect(),add=document.querySelector("#todayScreenAdd").getBoundingClientRect();return{chatBottom:chat.bottom,addBottom:add.bottom,viewport:innerHeight,left:chat.left,right:add.right,width:innerWidth}});
-  assert.ok(Math.abs(todayFooterLayout.chatBottom-todayFooterLayout.addBottom)<=1,"Today footer buttons must share one bottom baseline");
-  assert.ok(todayFooterLayout.left>=-1&&todayFooterLayout.right<=todayFooterLayout.width+1,"Today footer buttons must stay within the mobile viewport");
-  assertSharedComposerBottomInset(todayFooterLayout.chatBottom,todayFooterLayout.viewport,"Today footer actions");
-  const todayDemoConversationCount=conversationCreateCount;
-  await page.click("#todayScreenNewChat");
-  assert.equal(conversationCreateCount,todayDemoConversationCount,"Today demo New chat must not create a real conversation");
-  await page.evaluate(()=>document.querySelector("#toast")?.classList.add("hidden"));
-  assert.equal(await page.locator("#todayTasksList .today-chip.priority-high").textContent(),"High");
-  assert.equal(await page.locator("#todayTasksList .today-chip.priority-medium").textContent(),"Medium");
-  assert.equal(await page.locator("#todayTasksList .today-chip.priority-low").textContent(),"Low");
-  assert.equal(await page.locator("#todayTasksList .today-task-check:not([disabled])").count(),0,"demo tasks must not persist sample completions");
-  assert.equal(await page.locator("#todayPlanCount").textContent(),"1");
-  const demoItemsBeforeAdd=everydayItems.length;
-  await page.click("#todayScreenAdd");
-  assert.equal(await page.locator("#todayDialog").isVisible(),true,"Today Add must open the movable creation dialog, including in preview mode");
-  assert.equal(everydayItems.length,demoItemsBeforeAdd,"opening the preview add dialog must not create real records");
-  assert.equal(await page.locator("#todayTasksList .today-task-check:disabled").count(),4,"preview sample task controls must remain disabled");
-  await page.click("#todayCancel");
-  assert.equal(await page.locator("#todayDialog").isVisible(),false,"cancel must close an untouched creation dialog without an unnecessary discard prompt");
-  await page.screenshot({path:"artifacts/personal-ai-today-demo-390x844.png",fullPage:true});
+  // Screen 25 replaced the legacy footer with the Command Center's mobile dock.
+  // Validate whichever presentation is active instead of requiring hidden legacy chrome.
+  if(await page.evaluate(()=>document.body.classList.contains('today-command-mode'))){
+    assert.equal(await page.locator('#todayCommandDashboard .today-board').isVisible(),true,
+      'The new Today Command view must be visible');
+    const mobileCreate=page.locator('#todayCommandDashboard .today-board-mobile-nav [data-today-nav="Create"]');
+    assert.equal(await mobileCreate.isVisible(),true,'Command Today provides a visible mobile Create action');
+    const before=everydayItems.length;
+    await mobileCreate.click();
+    assert.equal(await page.locator("#todayDialog").isVisible(),true,
+      'Command Today Create opens a functional creation dialog');
+    assert.equal(everydayItems.length,before,'Preview Create never persists sample records');
+    await page.locator("#todayCancel").click();
+    assert.equal(await page.locator("#todayDialog").isVisible(),false,'Cancel safely closes preview creation');
+    assert.equal(await page.locator("#todayTasksList .today-task-check:disabled").count(),4,
+      'Preview sample tasks remain non-mutating even when legacy rows are not shown');
+    await page.screenshot({path:"artifacts/personal-ai-today-demo-390x844.png",fullPage:true});
+  }else{
+    assert.equal(await page.locator("#todayScreenNewChat").isVisible(),true,"Today must keep New chat available in its bottom action row");
+    const todayFooterLayout=await page.evaluate(()=>{const chat=document.querySelector("#todayScreenNewChat").getBoundingClientRect(),add=document.querySelector("#todayScreenAdd").getBoundingClientRect();return{chatBottom:chat.bottom,addBottom:add.bottom,viewport:innerHeight,left:chat.left,right:add.right,width:innerWidth}});
+    assert.ok(Math.abs(todayFooterLayout.chatBottom-todayFooterLayout.addBottom)<=1,"Today footer buttons must share one bottom baseline");
+    assert.ok(todayFooterLayout.left>=-1&&todayFooterLayout.right<=todayFooterLayout.width+1,"Today footer buttons must stay within the mobile viewport");
+    assertSharedComposerBottomInset(todayFooterLayout.chatBottom,todayFooterLayout.viewport,"Today footer actions");
+    const todayDemoConversationCount=conversationCreateCount;
+    await page.click("#todayScreenNewChat");
+    assert.equal(conversationCreateCount,todayDemoConversationCount,"Today demo New chat must not create a real conversation");
+    await page.evaluate(()=>document.querySelector("#toast")?.classList.add("hidden"));
+    assert.equal(await page.locator("#todayTasksList .today-chip.priority-high").textContent(),"High");
+    assert.equal(await page.locator("#todayTasksList .today-chip.priority-medium").textContent(),"Medium");
+    assert.equal(await page.locator("#todayTasksList .today-chip.priority-low").textContent(),"Low");
+    assert.equal(await page.locator("#todayTasksList .today-task-check:not([disabled])").count(),0,"demo tasks must not persist sample completions");
+    assert.equal(await page.locator("#todayPlanCount").textContent(),"1");
+    const demoItemsBeforeAdd=everydayItems.length;
+    await page.click("#todayScreenAdd");
+    assert.equal(await page.locator("#todayDialog").isVisible(),true,"Today Add must open the movable creation dialog, including in preview mode");
+    assert.equal(everydayItems.length,demoItemsBeforeAdd,"opening the preview add dialog must not create real records");
+    assert.equal(await page.locator("#todayTasksList .today-task-check:disabled").count(),4,"preview sample task controls must remain disabled");
+    await page.click("#todayCancel");
+    assert.equal(await page.locator("#todayDialog").isVisible(),false,"cancel must close an untouched creation dialog without an unnecessary discard prompt");
+    await page.screenshot({path:"artifacts/personal-ai-today-demo-390x844.png",fullPage:true});
+    }
   await page.evaluate(()=>{closeTodayScreen();todayScreenDemo=false});
 
   // All three approved surfaces share one explicitly enabled, non-persistent preview dataset.
@@ -683,6 +702,17 @@ try {
   assert.ok(drawerState.footer.bottom <= 845 && drawerState.footer.height >= 44, "account actions must remain visible and touchable");
   assert.ok(await page.locator("#sidebarNewChat").isVisible(), "new chat must be a primary action");
   assert.ok(await page.locator("#sidebarSearchToggle").isVisible(), "chat search must be a primary action");
+  const sidebarActions = await page.evaluate(() => {
+    const search = document.querySelector('#appDrawer #sidebarSearchToggle').getBoundingClientRect();
+    const command = document.querySelector('#appDrawer [data-command-center-entry]').getBoundingClientRect();
+    return {search:{left:search.left,right:search.right,top:search.top,bottom:search.bottom},
+      command:{left:command.left,right:command.right,top:command.top,bottom:command.bottom}};
+  });
+  assert.ok(sidebarActions.search.right <= sidebarActions.command.left ||
+    sidebarActions.command.right <= sidebarActions.search.left ||
+    sidebarActions.search.bottom <= sidebarActions.command.top ||
+    sidebarActions.command.bottom <= sidebarActions.search.top,
+    'Search chats and Command Center must have distinct, nonoverlapping touch targets on mobile');
   await page.click("#sidebarPinCurrent");
   await page.waitForFunction(()=>document.querySelector("#sidebarPinnedList")?.textContent.includes("Project Planning"));
   assert.deepEqual(sidebarPreferences.pinned_sidebar_items,["chat:c1"],"Pin current must persist the active conversation in trusted-browser preferences");

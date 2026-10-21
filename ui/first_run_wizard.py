@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from math import cos, pi, sin, sqrt
+import platform
+import os
 
-from PyQt6.QtCore import Qt, QUrl, QRectF
+from PyQt6.QtCore import Qt, QUrl, QRectF, QPointF, QElapsedTimer, QTimer
 from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -35,12 +38,56 @@ class VishnuCore(QWidget):
         asset = Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'vishnu-core.png'
         self.pixmap = QPixmap(str(asset))
         self.setAccessibleName(f'Vishnu intelligence core, {state} state')
+        self.elapsed = QElapsedTimer()
+        self.elapsed.start()
+        self.motion = QTimer(self)
+        self.motion.setInterval(40)
+        self.motion.timeout.connect(self.update)
+        self.motion.start()
+        self.points = [
+            (cos(i * 2.39996323) * sqrt(max(0.0, 1 - (1 - 2 * (i + .5) / 62)**2)),
+             1 - 2 * (i + .5) / 62,
+             sin(i * 2.39996323) * sqrt(max(0.0, 1 - (1 - 2 * (i + .5) / 62)**2)))
+            for i in range(62)
+        ]
+
+    def hideEvent(self, event):  # noqa: N802 - Qt API
+        self.motion.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):  # noqa: N802 - Qt API
+        if os.getenv('VISHNU_REDUCE_MOTION', '0') != '1':
+            self.motion.start()
+        super().showEvent(event)
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         if not self.pixmap.isNull():
             painter.drawPixmap(self.rect(), self.pixmap)
+        angle = self.elapsed.elapsed() * 2 * pi / 32000 if self.motion.isActive() else 0
+        radius = min(self.width(), self.height()) * .40
+        mid = QPointF(self.width() / 2, self.height() / 2)
+        projected = []
+        for x, y, z in self.points:
+            dx = x * cos(angle) + z * sin(angle)
+            dz = z * cos(angle) - x * sin(angle)
+            perspective = 2.6 / (2.6 - dz * .55)
+            projected.append((QPointF(mid.x() + dx * radius * perspective,
+                                      mid.y() + y * radius * perspective), dz))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for i, (origin, depth) in enumerate(projected):
+            for j in ((i + 1) % len(projected), (i + 9) % len(projected)):
+                target, other_depth = projected[j]
+                painter.setPen(QPen(QColor(70, 210, 255, 74 if depth + other_depth > 0 else 20),
+                                    max(0.6, min(self.width(), self.height()) / 650)))
+                painter.drawLine(origin, target)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for position, depth in projected:
+            intensity = (depth + 1) / 2
+            dot = min(self.width(), self.height()) * (.002 + intensity * .004)
+            painter.setBrush(QColor(60, 221, 255, int(62 + intensity * 160)))
+            painter.drawEllipse(position, dot, dot)
 
 
 class FirstRunWizard(QDialog):
@@ -85,7 +132,7 @@ class FirstRunWizard(QDialog):
         self.stack = QStackedWidget()
         # Keep native forms aligned to the same centered content column as the
         # responsive web Genesis instead of stretching fields edge-to-edge.
-        self.stack.setMaximumWidth(720)
+        self.stack.setMaximumWidth(1180)
         root.addWidget(self.stack, 1, Qt.AlignmentFlag.AlignHCenter)
         self.stack.addWidget(self._welcome_page())       # 0
         self.stack.addWidget(self._owner_page())            # 1 / Genesis 02
@@ -128,13 +175,14 @@ class FirstRunWizard(QDialog):
     def _stylesheet(self) -> str:
         background = (Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'cosmic-desktop.png').as_posix()
         return """
-        QDialog#firstRunWizard { background-color:#02060b; border-image:url('__BACKGROUND__') 0 0 0 0 stretch stretch; color:#f5faff; font-family:"Segoe UI"; }
+        QDialog#firstRunWizard { background-color:#02060b; color:#f5faff; font-family:"Segoe UI"; }
         QDialog#firstRunWizard QWidget { background:transparent; color:#f5faff; font-family:"Segoe UI"; }
         QLabel#brand { color:#f5faff; font-size:22px; font-weight:450; letter-spacing:7px; }
         QLabel#title { font-size:38px; font-weight:350; color:#f5faff; }
         QLabel#subtitle { color:#a7bacb; font-size:15px; }
         QLabel#progress { color:#4ddcff; font-size:12px; letter-spacing:2px; }
         QLabel#section { font-size:25px; font-weight:450; color:#f5faff; }
+        QFrame#setupPanel { background:rgba(3,12,22,220); border:1px solid #174466; border-radius:18px; }
         QLabel#hint { color:#687f94; font-size:12px; }
         QPushButton { background:rgba(5,18,30,184); border:1px solid rgba(61,174,235,90); border-radius:13px; padding:12px 18px; color:#f5faff; }
         QPushButton:hover, QPushButton:focus { border-color:#4ddcff; background:#071d2d; }
@@ -149,20 +197,41 @@ class FirstRunWizard(QDialog):
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
-        page.setMaximumWidth(920)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 8, 20, 0)
-        layout.setSpacing(14)
-        core_size = 300 if heading == 'Welcome to Vishnu' else 190
-        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity', core_size)
-        layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+        page.setMaximumWidth(1160)
+        welcome = heading == 'Welcome to Vishnu'
+        core = VishnuCore(
+            'ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity',
+            300 if welcome else 390,
+        )
+        if welcome:
+            # P1-01 is intentionally centered, unlike the split-screen forms.
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(20, 8, 20, 0)
+            layout.setSpacing(14)
+            layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+        else:
+            # Owner-approved P1-02+ reference: 3D sphere left, dark form panel right.
+            columns = QHBoxLayout(page)
+            columns.setContentsMargins(14, 10, 14, 14)
+            columns.setSpacing(28)
+            art = QVBoxLayout()
+            art.addStretch(1)
+            art.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+            art.addStretch(1)
+            columns.addLayout(art, 1)
+            card = QFrame()
+            card.setObjectName('setupPanel')
+            layout = QVBoxLayout(card)
+            layout.setContentsMargins(24, 22, 24, 22)
+            layout.setSpacing(14)
+            columns.addWidget(card, 1)
         heading_label = QLabel(heading)
         heading_label.setObjectName('section')
-        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter if welcome else Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(heading_label)
         copy_label = QLabel(copy)
         copy_label.setObjectName('subtitle')
-        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter if welcome else Qt.AlignmentFlag.AlignLeft)
         copy_label.setWordWrap(True)
         layout.addWidget(copy_label)
         return page, layout
@@ -174,12 +243,13 @@ class FirstRunWizard(QDialog):
         return button
 
     def _update_progress(self, index: int):
-        steps = {1: 1, 2: 2, 4: 3}
+        # Welcome is step 1; login, join and recovery are distinct journeys.
+        steps = {1: 2, 2: 3, 4: 4}
         step = steps.get(index)
         self.genesis_progress.setVisible(step is not None)
         if step is not None:
-            dots = ' '.join('●' if item <= step else '○' for item in range(1, 4))
-            self.genesis_progress.setText(f'Step {step} of 3   {dots}')
+            dots = ' '.join('●' if item <= step else '○' for item in range(1, 5))
+            self.genesis_progress.setText(f'Step {step} of 4   {dots}')
 
     def _welcome_page(self):
         page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
@@ -229,6 +299,13 @@ class FirstRunWizard(QDialog):
         self.password_confirm.setPlaceholderText('Enter the same password again')
         form.addRow('Owner password', self.password)
         form.addRow('Confirm password', self.password_confirm)
+        self.device_name = QLineEdit()
+        family = platform.system().lower()
+        default_device_name = 'My Mac' if family == 'darwin' else ('My Windows PC' if family == 'windows' else 'My Linux Computer')
+        self.device_name.setText(default_device_name)
+        self.device_name.setMaxLength(120)
+        self.device_name.setPlaceholderText('Name this device')
+        form.addRow('First trusted device', self.device_name)
         layout.addLayout(form)
         hint = QLabel('A passkey can be added later from Security settings when supported. Vishnu stores a password hash, never this plaintext password.')
         hint.setObjectName('hint')
@@ -249,6 +326,13 @@ class FirstRunWizard(QDialog):
         self.recovery_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.recovery_label.setStyleSheet('background:#080d11;border:1px solid #1b2b34;border-radius:12px;padding:18px;font-family:monospace;')
         layout.addWidget(self.recovery_label)
+        self.download_codes_button = QPushButton('Save recovery codes as a private file')
+        self.download_codes_button.clicked.connect(self._download_recovery_codes)
+        layout.addWidget(self.download_codes_button)
+        self.recovery_summary = QLabel('Quick review: owner, security, trusted device, privacy, and AI.')
+        self.recovery_summary.setObjectName('hint')
+        self.recovery_summary.setWordWrap(True)
+        layout.addWidget(self.recovery_summary)
         self.saved_codes = QCheckBox('I saved these recovery codes in a safe place')
         layout.addWidget(self.saved_codes)
         layout.addStretch(1)
@@ -508,7 +592,40 @@ class FirstRunWizard(QDialog):
         self.password_confirm.clear()
         self.saved_codes.setChecked(False)
         self.recovery_label.setText('\n'.join(self.recovery_codes))
+        owner = self.display_name.text().strip() or self.first_name.text().strip()
+        self.recovery_summary.setText(
+            f'Owner: {owner}\n'
+            'Sign-in: owner password; optional passkey in Settings\n'
+            'First device: this trusted computer\n'
+            'Storage: device-only (no automatic sync)\n'
+            'AI provider: configure later\n'
+            'Privacy: local-only, approval for important actions'
+        )
         self.stack.setCurrentIndex(4)
+
+    def _download_recovery_codes(self):
+        if not self.recovery_codes:
+            QMessageBox.warning(self, 'Recovery codes', 'No new codes are available to save.')
+            return
+        filename, _ = QFileDialog.getSaveFileName(
+            self, 'Save one-time recovery codes privately',
+            'Vishnu-Recovery-Codes.txt', 'Text files (*.txt)',
+        )
+        if not filename:
+            return
+        try:
+            descriptor = os.open(filename, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
+                output.write('\n'.join(self.recovery_codes) + '\n')
+            QMessageBox.information(
+                self, 'Recovery codes saved',
+                'Codes saved to your chosen location. Store them privately, preferably offline. '
+                'This file is not an encrypted data backup.',
+            )
+        except FileExistsError:
+            QMessageBox.warning(self, 'Recovery codes', 'Choose a new filename; that file already exists.')
+        except OSError:
+            QMessageBox.warning(self, 'Recovery codes', 'Could not save the file to that location.')
 
     def _confirm_recovery_codes(self):
         if not self.saved_codes.isChecked():
@@ -524,6 +641,10 @@ class FirstRunWizard(QDialog):
         try:
             # Keep Create to three user-facing stages while applying the
             # existing secure defaults through the canonical authorities.
+            device_name = self.device_name.text().strip()
+            if not device_name:
+                raise ValueError('Name your first trusted computer before continuing')
+            self.coordinator.ensure_first_device(device_name)
             self.coordinator.configure_preferences(
                 privacy_mode='local_only', autonomy_mode='ask', memory_enabled=True,
             )

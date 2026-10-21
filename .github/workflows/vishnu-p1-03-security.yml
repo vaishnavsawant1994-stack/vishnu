@@ -1,0 +1,42 @@
+name: Vishnu P1-03 Security Visual Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/first-run-actions.js'
+      - 'pwa/genesis.css'
+      - 'pwa/genesis-security.css'
+      - 'pwa/genesis-security.js'
+      - 'pwa/genesis-neural-sphere.js'
+      - 'tests/genesis_security_browser.mjs'
+      - '.github/workflows/vishnu-p1-03-security.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  security-screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Verify P1-03 forms, WebGL, owner-device binding, recovery and screenshots
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/first-run-actions.js
+          node --check pwa/genesis-security.js
+          node --check tests/genesis_security_browser.mjs
+          VISHNU_SECURITY_SCREENSHOTS=artifacts/genesis-security node tests/genesis_security_browser.mjs
+      - name: Upload P1-03 screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-03-desktop-mobile
+          path: artifacts/genesis-security/*.png
+          if-no-files-found: warn
+          retention-days: 14
