@@ -186,3 +186,18 @@
 @media(max-height:850px) and (min-width:901px){
  .genesis .genesis-security input:not([type=checkbox]):not([type=radio]){height:44px;min-height:44px;}
 }
+
+/* Final desktop reference calibration: luminous outer mesh and concentrated
+   blue reflection, scoped to P1-03 with no extra graphic assets. */
+@media(min-width:901px){
+ .vs-sphere::after{
+   border-color:rgba(31,197,255,.57);
+   box-shadow:0 0 25px rgba(0,145,254,.30),inset 0 0 30px rgba(0,146,255,.22);
+ }
+ .vs-ground{
+   background:radial-gradient(ellipse at 50% 50%,rgba(6,214,255,.64),rgba(0,115,225,.30) 27%,transparent 69%);
+   box-shadow:0 0 41px rgba(0,138,247,.34);
+ }
+ .vs-ground::before{border-color:rgba(45,190,255,.58);box-shadow:0 0 19px rgba(17,169,254,.58),inset 0 0 9px rgba(15,153,246,.48);}
+ .vs-ground::after{border-color:rgba(61,201,255,.64);box-shadow:0 0 16px rgba(0,197,254,.49);}
+}
