@@ -329,6 +329,7 @@
             return;
           }
           if(!result?.ok)throw new Error('Vishnu did not confirm authentication.');
+          s.returnToConnect=false;
           const session=await window.check();
           if(!session)throw new Error('Your session was not confirmed. Retry sign-in.');
         };
@@ -358,7 +359,11 @@
             s.pendingPostAuthAction='devices';
             return 'Sign in first. Vishnu will open your trusted devices after verification.';
           },
-          onBack:()=>{s.pendingPostAuthAction='';s.accessIntent='';show();render(1);},
+          onBack:()=>{
+            s.pendingPostAuthAction='';s.accessIntent='';
+            if(s.returnToConnect){s.returnToConnect=false;renderConnect();return;}
+            show();render(1);
+          },
         });
       }).catch(()=>{
         const root=document.getElementById('vlRoot');
@@ -548,11 +553,11 @@
           s.accessIntent='';
           renderReturning('login');
         },
-        onAuthenticate:()=>{s.accessIntent='';renderReturning('login');},
+        onAuthenticate:()=>{s.accessIntent='';s.returnToConnect=true;renderReturning('login');},
         onCheck:request_id=>api('/access/join/status',{method:'POST',body:JSON.stringify({request_id})}),
         onComplete:async()=>{
           sessionStorage.removeItem('vishnuPendingJoin');
-          s.accessIntent='';
+          s.accessIntent='';s.returnToConnect=false;
           const result=await window.check();
           if(!result)throw new Error('Approval completed but session was not confirmed. Retry verification.');
         },
