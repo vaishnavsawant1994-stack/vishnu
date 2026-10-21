@@ -108,6 +108,9 @@ jobs:
           node --check pwa/genesis-neural-sphere.js
           node --check pwa/first-run.js
           node --check tests/genesis_welcome_browser.mjs
+          node tests/pwa_mobile_preview_runner.mjs
+          node tests/vishnu_home_responsive.mjs
+          node tests/p2_01_home_browser.mjs
           VISHNU_WELCOME_SCREENSHOTS=artifacts/genesis-welcome node tests/genesis_welcome_browser.mjs
           PROJECT_SCREENSHOT_DIR=artifacts/project-workspace node tests/projects_workspace_browser.mjs
           node tests/projects_canonical_work_browser.mjs
@@ -122,9 +125,6 @@ jobs:
           OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
           VISUALIZE_SCREENSHOT_DIR=artifacts/visualize node tests/visualize_workspace_browser_runner.mjs
           VISHNU_OS_SCREENSHOT_DIR=artifacts/vishnu-os node tests/vishnu_os_workspaces_browser.mjs
-          node tests/pwa_mobile_preview_runner.mjs
-          node tests/vishnu_home_responsive.mjs
-          node tests/p2_01_home_browser.mjs
           node tests/standalone_pwa_responsive.mjs
           ENGINEERING_UI_SCREENSHOT_DIR=artifacts/engineering-ui node tests/engineering_ui/cross_browser_qualification.mjs
           node tests/engineering_ui/breakpoint_network_qualification.mjs
