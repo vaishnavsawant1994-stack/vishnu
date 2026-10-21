@@ -51,7 +51,7 @@ class SmokeInstrumentedTest {
                 findButton(root, "I already have Vishnu")!!.performClick()
                 assertTrue("QR pairing must be reachable", findButton(root, "Scan Vishnu QR")!!.isShown)
                 assertTrue("Native join does not silently create owner trust",
-                    findButton(root, "Connect this device")!!.visibility != View.VISIBLE)
+                    !findButton(root, "Connect this device")!!.isShown)
                 findButton(root, "Advanced manual fallback")!!.performClick()
                 assertTrue("Explicit fallback exposes the secure endpoint",
                     findField(root, "https://your-vishnu.example.com")!!.isShown)
