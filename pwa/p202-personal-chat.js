@@ -89,6 +89,21 @@
       drawerHeader.append(newChat);
       refs.drawerTitle=qs('h2',drawerHeader);
     }
+    const mobileNav=create('nav','p202-mobile-nav');
+    mobileNav.id='p202MobileNav';mobileNav.setAttribute('aria-label','Personal Chat navigation');
+    [
+      ['Home','⌂',()=>navigate('home')],
+      ['Chat','▢',()=>$('message')?.focus()],
+      ['Today','▣',()=>bridge()?.openTodayScreen?.('all')],
+      ['Work','▦',()=>navigate('workflows')],
+      ['More','•••',()=>$('historyButton')?.click()]
+    ].forEach(([label,glyph,handler])=>{
+      const tab=button('', 'p202-mobile-tab p202-mobile-tab-'+label.toLowerCase(),handler);
+      tab.append(create('span','',glyph),create('small','',label));
+      if(label==='Chat')tab.setAttribute('aria-current','page');
+      mobileNav.append(tab);
+    });
+    document.body.append(mobileNav);
     const topbar=qs('.topbar');
     if(topbar&&!$('p202MobileActions')){
       const actions=create('div','p202-mobile-actions');actions.id='p202MobileActions';
@@ -97,6 +112,8 @@
       const owner=button('◯','p202-mobile-profile',()=>navigate('owner'));
       owner.setAttribute('aria-label','Open owner profile');
       actions.append(bell,owner);topbar.append(actions);refs.ownerButton=owner;
+      const brand=create('span','p202-mobile-brand','VISHNU');brand.setAttribute('aria-hidden','true');
+      topbar.append(brand);
     }
     const model=button('Vishnu AI ▾','p202-model',()=>openModelInfo());
     model.setAttribute('aria-label','View Vishnu AI routing and model availability');
@@ -116,6 +133,11 @@
       if(btn&&active()){
         event.preventDefault();event.stopImmediatePropagation();
         navigate('search');
+      }
+    },true);
+    document.addEventListener('click',event=>{
+      if(event.target.closest?.('#chatDetailsMenuItem,#chatDetailsTop,[data-chat-detail="more"]')){
+        document.body.dataset.p202DetailsExplicit='true';
       }
     },true);
     $('message')?.addEventListener('input',()=>{
@@ -231,6 +253,10 @@
     const profileControl=qs('.reference-desktop-tools .reference-profile');
     if(profileControl&&profile)profileControl.textContent=refs.ownerButton?.textContent||'◯';
     if(id!==lastId){
+      delete document.body.dataset.p202DetailsExplicit;
+      document.body.classList.remove('chat-details-open');
+      $('chatDetailDesktop')?.classList.add('hidden');
+      $('chatDetailDesktop')?.setAttribute('aria-hidden','true');
       // Conversations remain owned by the canonical store; only unsent local drafts are restored.
       const before=key(lastId),after=key(id);
       if(lastId!==null||drafts.has(after)){
@@ -299,6 +325,11 @@
     document.body.classList.toggle('p202-personal-chat',enabled);
     if(!enabled)return;
     updateHeader();
+    if(document.body.classList.contains('chat-details-open')&&!document.body.dataset.p202DetailsExplicit){
+      document.body.classList.remove('chat-details-open');
+      $('chatDetailDesktop')?.classList.add('hidden');
+      $('chatDetailDesktop')?.setAttribute('aria-hidden','true');
+    }
     refreshGreeting();
     enhanceResponses();
   }
