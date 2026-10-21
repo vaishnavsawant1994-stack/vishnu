@@ -354,7 +354,7 @@
             })});
             return completeLogin(result);
           },
-          onRecover:()=>renderReturning('restore'),
+          onRecover:()=>{s.recoveryOrigin='login';renderRecoveryOptions();},
           onManage:()=>{
             s.pendingPostAuthAction='devices';
             return 'Sign in first. Vishnu will open your trusted devices after verification.';
@@ -571,6 +571,71 @@
     });
   }
   function renderJoinPending(join){renderConnect(join);}
+  function renderRecoveryOptions(mode='recover_login'){
+    disposeWelcome();
+    const mountId=++welcomeMountId;
+    s.recoveryMode=['recover_login','restore_data','replacement_device'].includes(mode)?mode:'recover_login';
+    panel.className='genesis';
+    panel.setAttribute('aria-label','Recovery Options');
+    panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login genesis-recovery-options" data-step="P1-07"><div id="voRoot">Loading recovery options…</div></main>';
+    import('/iphone/genesis-recovery-options.js').then(({mountRecoveryOptionsScreen})=>{
+      const root=document.getElementById('voRoot');
+      if(mountId!==welcomeMountId||!root||!root.isConnected)return;
+      disposeWelcome=mountRecoveryOptionsScreen(root,s.options,{
+        mode:s.recoveryMode,
+        onBack:()=>{s.accessIntent='';if(s.recoveryOrigin==='login')renderReturning('login');else{show();render(1);}},
+        onContinue:mode=>{s.recoveryMode=mode;renderRecoveryVerification(mode);},
+      });
+    }).catch(()=>{
+      const root=document.getElementById('voRoot');
+      if(mountId!==welcomeMountId||!root)return;
+      root.textContent='Recovery options could not load. Nothing has been changed. ';
+      const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';
+      retry.addEventListener('click',()=>renderRecoveryOptions(s.recoveryMode));root.append(retry);
+    });
+  }
+  function renderRecoveryVerification(mode=s.recoveryMode||'recover_login'){
+    if(!['recover_login','restore_data','replacement_device'].includes(mode))return renderRecoveryOptions();
+    disposeWelcome();
+    const mountId=++welcomeMountId;
+    s.recoveryMode=mode;
+    panel.className='genesis';
+    panel.setAttribute('aria-label','Recovery Verification');
+    panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login genesis-recovery-options" data-step="P1-08"><div id="voRoot">Loading recovery verification…</div></main>';
+    import('/iphone/genesis-recovery-options.js').then(({mountRecoveryVerificationScreen})=>{
+      const root=document.getElementById('voRoot');
+      if(mountId!==welcomeMountId||!root||!root.isConnected)return;
+      disposeWelcome=mountRecoveryVerificationScreen(root,mode,s.options,{
+        onBack:()=>renderRecoveryOptions(mode),
+        onContinue:()=>renderRecoveryOptions(mode),
+        onVerifyCode:async({code,mode})=>{
+          // The canonical owner authority validates and consumes the code.
+          // Never pass it in the URL, session storage, logs or UI history.
+          const result=await api('/access/recovery/login',{method:'POST',
+            body:JSON.stringify({code,name:'Vishnu recovery browser'})});
+          if(!result?.ok)throw new Error('Vishnu could not verify recovery access.');
+          s.accessIntent='';s.recoveryOrigin='';s.recoveryMode='';
+          if(mode==='replacement_device')s.pendingPostAuthAction='devices';
+          const session=await window.check();
+          if(!session)throw new Error('Recovery was verified, but this browser session has not been confirmed. Retry securely.');
+        },
+        onRestore:async()=>{
+          if(!s.options.restore_available||s.options.restore_setup_in_progress)
+            throw new Error('Encrypted restore requires an eligible new Vishnu runtime. This runtime is not accepting a restore.');
+          // Existing .vdr/.vrk/passphrase authentication, staging, integrity
+          // checks and restart confirmation remain canonical. Never copy keys.
+          renderReturning('restore');
+        },
+      });
+    }).catch(()=>{
+      const root=document.getElementById('voRoot');
+      if(mountId!==welcomeMountId||!root)return;
+      root.textContent='Secure recovery verification could not load. Nothing has been changed. ';
+      const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';
+      retry.addEventListener('click',()=>renderRecoveryVerification(mode));root.append(retry);
+    });
+  }
+
   async function handleReturningAction(action) {
     const status = $('returningStatus');
     try {
@@ -580,7 +645,8 @@
       if (action === 'methods') { renderReturning('methods'); return; }
       if (action === 'welcome') { renderReturning('welcome'); return; }
       if (action === 'restore') {
-        renderReturning('restore');
+        s.recoveryOrigin='welcome';
+        renderRecoveryOptions();
         return;
       }
       if (action === 'device') { s.pendingPostAuthAction = 'devices'; renderReturning('methods'); $('returningStatus').textContent = 'Verify your identity to continue to trusted devices.'; return; }
@@ -606,7 +672,7 @@
         if (result.status === 'approval_required') { renderJoinPending(result); return; }
         await check();
       }
-      if (action === 'recovery') renderReturning('restore');
+      if (action === 'recovery'){s.recoveryOrigin='login';renderRecoveryOptions();}
       if (action === 'google') { s.accessIntent = ''; renderReturning('google'); }
     } catch (error) {
       const message = error?.name === 'NotAllowedError' ? 'Authentication was cancelled or unavailable.' : error?.message || 'Vishnu could not complete sign-in.';
@@ -638,7 +704,9 @@
 
   window.vishnuFirstRun = { state: s, render, setError, showLegacy, $,
     showLogin:()=>{show();renderReturning('login');},
-    showConnect:join=>{show();renderConnect(join||null);}
+    showConnect:join=>{show();renderConnect(join||null);},
+    showRecoveryOptions:()=>{show();s.recoveryOrigin='welcome';renderRecoveryOptions();},
+    showRecoveryVerification:mode=>{show();renderRecoveryVerification(mode);}
   };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
   window.check = async (...args) => {
@@ -651,7 +719,7 @@
       else if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
       else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
       else if (s.accessIntent === 'join') { show(); renderConnect(); }
-      else if (s.accessIntent === 'restore') { show(); renderReturning('restore'); }
+      else if (s.accessIntent === 'restore') { show(); s.recoveryOrigin='welcome'; renderRecoveryOptions(); }
       else if (s.options.creation_available || s.options.restore_available) show();
       else if (!result) {
         // No active trusted session on a configured runtime: show the real
