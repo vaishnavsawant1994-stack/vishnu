@@ -65,6 +65,17 @@ try{
    assert(await page.locator('.vo-window-dots').isVisible());
   }else assert.equal(await page.locator('.vo-window-dots').isVisible(),false);
   await page.screenshot({path:resolve(directory,`p1-07-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
+  if(vp.width<=900){
+    await page.locator('[data-vo-continue]').scrollIntoViewIfNeeded();
+    const action=await page.locator('[data-vo-continue]').boundingBox();
+    assert(action&&action.y>=0&&action.y+action.height<=vp.height+1,'Mobile Continue must be reachable by normal scrolling');
+    await page.screenshot({path:resolve(directory,`p1-07-mobile-bottom-${vp.width}x${vp.height}.png`),
+      animations:'disabled'});
+  }
+  await page.locator('[data-vo-mode=recover_login]').focus();
+  await page.keyboard.press('ArrowDown');
+  assert.equal(await page.locator('[data-vo-mode=restore_data]').getAttribute('aria-checked'),'true',
+    'Keyboard arrows must update the radio selection');
   await page.locator('[data-vo-mode=restore_data]').click();
   assert.equal(await page.locator('[data-vo-mode=restore_data]').getAttribute('aria-checked'),'true');
   assert.equal(await page.locator('[data-vo-mode=recover_login]').getAttribute('aria-checked'),'false');
