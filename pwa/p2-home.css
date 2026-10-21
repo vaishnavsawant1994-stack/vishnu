@@ -604,3 +604,16 @@ html body.v-ref.p2-home-ready.today-command-mode .reference-mobile-nav {
   display:none!important;
   pointer-events:none!important;
 }
+
+
+/* Drawers and modal conversation management must stay above Home navigation.
+ * In particular, never intercept New Chat / archive / delete controls behind
+ * the mobile bottom bar (PWA preview regression). */
+@media(max-width:1023px) {
+  body.v-ref.p2-home-ready.conversation-drawer-open .reference-mobile-nav,
+  body.v-ref.p2-home-ready:has(#conversationDrawer:not(.hidden)) .reference-mobile-nav,
+  body.v-ref.p2-home-ready:has(#appDrawer:not(.hidden)) .reference-mobile-nav {
+    display:none!important;
+    pointer-events:none!important;
+  }
+}
