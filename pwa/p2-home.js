@@ -153,19 +153,70 @@
     lower.append(work);
     elements.workPanel = work.querySelector('.p2-work-content');
     const tools = make('section', 'p2-panel p2-tools-panel');
-    tools.innerHTML = '<div class="p2-panel-heading"><h2>Quick Tools</h2><span>Start with Vishnu</span></div><div class="p2-tool-grid"></div>';
+    tools.innerHTML = '<div class="p2-panel-heading"><h2>Quick Tools</h2><button type="button" data-p2-edit-tools>Edit</button></div><div class="p2-tool-grid"></div>';
     const grid = tools.querySelector('.p2-tool-grid');
-    [
+    const definitions = [
       ['Summarize', '▤', 'Summarize '], ['Analyze', '▥', 'Analyze '],
       ['Plan', '☷', 'Help me plan '], ['Code', '⌘', 'Help me code '],
       ['Create Image', '▧', 'Create an image of '],
       ['Research', '⌕', 'Research ']
-    ].forEach(([title, symbol, draft]) => {
-      const btn = actionButton('', 'p2-tool', () => bridge()?.setDraft?.(draft));
-      btn.append(make('span', '', symbol), make('small', '', title));
-      btn.title = 'Prepare a ' + title + ' request; availability depends on configured capabilities';
-      grid.append(btn);
-    });
+    ];
+    const storageKey = 'vishnu.p2.quick-tools.v1';
+    const allowed = new Set(definitions.map(item => item[0]));
+    const readSelection = () => {
+      try {
+        const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+        return Array.isArray(saved) && saved.length && saved.every(id => allowed.has(id)) ? [...new Set(saved)] : definitions.map(item => item[0]);
+      } catch { return definitions.map(item => item[0]); }
+    };
+    let visibleTools = readSelection();
+    const renderTools = () => {
+      grid.replaceChildren();
+      visibleTools.forEach(id => {
+        const found = definitions.find(item => item[0] === id);
+        if (!found) return;
+        const [title, symbol, draft] = found;
+        const btn = actionButton('', 'p2-tool', () => bridge()?.setDraft?.(draft));
+        btn.append(make('span', '', symbol), make('small', '', title));
+        btn.title = 'Prepare a ' + title + ' request; availability depends on configured capabilities';
+        grid.append(btn);
+      });
+    };
+    renderTools();
+    tools.querySelector('[data-p2-edit-tools]').onclick = () => {
+      const dialog = make('dialog', 'p2-edit-tools');
+      const heading = make('h2', '', 'Customize Quick Tools');
+      const note = make('p', '', 'Select shortcuts to show on this device. This does not enable unavailable AI capabilities.');
+      const choices = make('div', 'p2-tool-choices');
+      definitions.forEach(([title]) => {
+        const label = make('label', '');
+        const box = make('input');
+        box.type = 'checkbox'; box.value = title; box.checked = visibleTools.includes(title);
+        label.append(box, document.createTextNode(' ' + title));
+        choices.append(label);
+      });
+      const buttons = make('div', 'p2-dialog-buttons');
+      const cancel = actionButton('Cancel', 'p2-tool-cancel', () => dialog.close());
+      const save = actionButton('Save shortcuts', 'p2-tool-save', () => {
+        const selected = [...choices.querySelectorAll('input:checked')].map(item => item.value);
+        if (!selected.length) return bridge()?.showToast?.('Choose at least one shortcut.');
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(selected));
+          visibleTools = selected;
+          renderTools();
+          dialog.close();
+          bridge()?.showToast?.('Quick Tools saved on this device.');
+        } catch {
+          bridge()?.showToast?.('This browser blocked saving the shortcut preference.');
+        }
+      });
+      buttons.append(cancel,save);
+      dialog.append(heading,note,choices,buttons);
+      document.body.append(dialog);
+      dialog.addEventListener('close', () => dialog.remove(), {once:true});
+      dialog.showModal();
+      choices.querySelector('input')?.focus();
+    };
     lower.append(tools);
     $('homeProjectsSection')?.classList.add('p2-secondary-projects');
     intro.querySelector('.today-panel')?.classList.add('p2-secondary-today');
