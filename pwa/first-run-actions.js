@@ -152,7 +152,7 @@
     const data = new Uint8Array(buffer);
     let raw = '';
     for (const byte of data) raw += String.fromCharCode(byte);
-    return btoa(raw).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+    return btoa(raw).split('+').join('-').split('/').join('_').replace(/=+$/, '');
   };
   const creationOptions = options => ({
     ...options,
