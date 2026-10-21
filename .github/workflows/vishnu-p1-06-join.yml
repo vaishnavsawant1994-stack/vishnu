@@ -1,0 +1,41 @@
+name: Vishnu P1-06 Device Join Visual and Security Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/genesis-connect.js'
+      - 'pwa/genesis-connect.css'
+      - 'pwa/genesis.css'
+      - 'server/iphone_pwa.py'
+      - 'tests/genesis_connect_browser.mjs'
+      - 'tests/test_p3_iphone_pwa.py'
+      - '.github/workflows/vishnu-p1-06-join.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  connect-device:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Validate P1-06 joining UI, exact request approval and screenshots
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/genesis-connect.js
+          node --check tests/genesis_connect_browser.mjs
+          VISHNU_CONNECT_SCREENSHOTS=artifacts/genesis-connect node tests/genesis_connect_browser.mjs
+      - name: Upload desktop and mobile screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-06-desktop-mobile
+          path: artifacts/genesis-connect/*.png
+          retention-days: 14
+          if-no-files-found: warn
