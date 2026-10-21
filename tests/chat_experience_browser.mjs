@@ -217,7 +217,7 @@ try{
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
   assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
   await desktop.keyboard.press('Control+Shift+P');
-  await desktop.getByRole('heading',{name:'Command Center'}).waitFor({state:'visible'});
+  await desktop.locator('.cc-dialog h1').getByText('Command Center', { exact: true }).waitFor({state:'visible'});
   await desktop.screenshot({path:'artifacts/command-center-desktop.png',fullPage:false});
   await desktop.locator('[data-cc-query]').fill('Projects');
   await desktop.locator('[data-cc-run="Projects"]').click();
