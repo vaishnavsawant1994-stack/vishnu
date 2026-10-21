@@ -119,3 +119,21 @@
 
 .vl-mobile-back{display:none;background:#03101d;color:#f3faff;border:1px solid #2a506c;border-radius:999px;min-height:46px;min-width:125px;align-items:center;justify-content:center;cursor:pointer;margin-top:15px;}
 @media(max-width:900px){.genesis-login .vl-mobile-back{display:inline-flex;align-self:flex-start;}}
+
+/* Final calibration against the approved 1536x1024 reference. Restrict
+   geometry adjustments to the desktop login screen, not the earlier pages. */
+@media(min-width:901px) and (min-height:900px){
+ .genesis-login .vl-sphere{width:clamp(350px,39vw,590px);height:clamp(350px,39vw,590px);transform:translateY(-75px);}
+ .genesis-login .vl-ground{bottom:18%;filter:blur(2px);background:radial-gradient(ellipse at center,rgba(10,221,255,.83),rgba(1,117,236,.37) 27%,transparent 73%);
+   box-shadow:0 0 28px rgba(0,148,255,.37);}
+ .genesis-login .vl-ground::before{border-color:rgba(53,206,255,.77);box-shadow:0 0 24px rgba(2,167,255,.73),0 0 8px rgba(2,167,255,.71),inset 0 0 15px rgba(3,172,255,.64);}
+ .genesis-login .vl-ground::after{border-color:rgba(67,212,255,.79);box-shadow:0 0 18px rgba(13,178,255,.78);}
+ .genesis-login .vl-panel{width:calc(100% - 43px);margin-top:46px;padding-top:24px;padding-bottom:16px;}
+ .genesis-login .vl-eyebrow{margin-bottom:9px;}
+ .genesis-login .vl-description{margin-top:10px;margin-bottom:16px;}
+ .vl-tabs{margin-bottom:14px;}
+ .vl-forgot{padding:6px 0;}
+ .vl-remember{margin-bottom:14px;}
+ .vl-or{margin:17px 0;}
+ .vl-trust{margin-top:17px;}
+}
