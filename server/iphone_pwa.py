@@ -579,6 +579,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         return Response((web_dir / 'genesis-neural-sphere.js').read_text(encoding='utf-8'),
                         media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/genesis-connect.css', include_in_schema=False)
+    def genesis_connect_css():
+        return Response((web_dir / 'genesis-connect.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/genesis-connect.js', include_in_schema=False)
+    def genesis_connect_js():
+        return Response((web_dir / 'genesis-connect.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
     @router.get('/genesis-login.css', include_in_schema=False)
     def genesis_login_styles():
         return Response((web_dir / 'genesis-login.css').read_text(encoding='utf-8'),
