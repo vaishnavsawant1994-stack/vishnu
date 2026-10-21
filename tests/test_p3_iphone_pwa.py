@@ -301,7 +301,11 @@ def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
     generated = client.post('/iphone/api/access/recovery/regenerate', json={}).json()['codes']
     client.post('/iphone/api/logout', json={})
 
-    assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 200
+    recovered = client.post('/iphone/api/access/recovery/login', json={'code': generated[0]})
+    assert recovered.status_code == 200
+    assert recovered.json()['recovery_result']['identityStatus'] == 'completed'
+    assert recovered.json()['recovery_result']['dataStatus'] == 'not_applicable'
+    assert recovered.json()['recovery_result']['deviceStatus'] == 'completed'
     client.post('/iphone/api/logout', json={})
     assert client.post('/iphone/api/access/recovery/login', json={'code': generated[0]}).status_code == 401
 
@@ -398,6 +402,10 @@ def test_web_portable_restore_preserves_identity_restores_data_and_secures_repla
         'autonomy_mode': 'ask', 'passkey_unavailable_confirmed': True,
     })
     assert complete.status_code == 200, complete.text
+    assert complete.json()['recovery_result']['recoveryType'] == 'encrypted_data'
+    assert complete.json()['recovery_result']['identityStatus'] == 'completed'
+    assert complete.json()['recovery_result']['deviceStatus'] == 'completed'
+    assert complete.json()['recovery_result']['dataStatus'] in {'completed', 'partial', 'pending'}
     assert setup.ready is True
     assert runtime['owner_access'].identity()['owner_id'] == identity['owner_id']
 

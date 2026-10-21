@@ -50,8 +50,8 @@ async function verifyReturningOwnerEntry(){
   await page.locator('.returning-shell').waitFor({state:'visible'});
   assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state instead of a Face ID dead end');
   await page.locator('[data-auth-action="restore"]').click();
-  assert.match(await page.locator('.returning-notice').innerText(),/not backup data/i,'recovery-code sign-in is not mislabeled as backup restoration');
-  assert.match(await page.locator('.genesis-copy h1').innerText(),/Recover owner access/i,'recovery route clearly names its purpose');
+  assert.match(await page.locator('.returning-notice').innerText(),/encrypted recovery package and its recovery key/i,'fresh-runtime recovery describes encrypted backup rather than recovery-code sign-in');
+  assert.match(await page.locator('.genesis-copy h1').innerText(),/Restore Vishnu/i,'fresh-runtime recovery clearly names encrypted backup restoration');
   await page.locator('[data-auth-action="welcome"]').click();
   assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
   assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'unauthenticated welcome-back screen hides OS navigation');
@@ -217,7 +217,7 @@ try{
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
   assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
   await desktop.keyboard.press('Control+Shift+P');
-  await desktop.getByRole('heading',{name:'Command Center'}).waitFor({state:'visible'});
+  await desktop.locator('.cc-dialog h1').getByText('Command Center', { exact: true }).waitFor({state:'visible'});
   await desktop.screenshot({path:'artifacts/command-center-desktop.png',fullPage:false});
   await desktop.locator('[data-cc-query]').fill('Projects');
   await desktop.locator('[data-cc-run="Projects"]').click();

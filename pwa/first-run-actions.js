@@ -183,7 +183,7 @@
     await setupApi('/first-run/data-policy', {
       method: 'PUT', body: JSON.stringify({ default_policy: 'device_only' }),
     });
-    await setupApi('/first-run/complete', {
+    const completed = await setupApi('/first-run/complete', {
       method: 'POST',
       body: JSON.stringify({
         recovery_saved: true,
@@ -192,6 +192,9 @@
         passkey_unavailable_confirmed: !passkeyCreated,
       }),
     });
+    // Show P1-09 only when the canonical backend confirms finalization.
+    if (completed?.ok === true && completed.status === 'ready' &&
+        completed.recovery_result && flow.showRecoveryResult(completed.recovery_result)) return;
     setError('Your Vishnu is ready. Enter to start using it.');
     setTimeout(() => window.check(), 700);
   }

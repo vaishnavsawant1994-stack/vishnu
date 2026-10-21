@@ -1,6 +1,6 @@
-const CACHE='personal-ai-iphone-v49';
+const CACHE='personal-ai-iphone-v50';
 const SHELL=[
-  '/iphone/','/iphone/manifest.webmanifest','/iphone/genesis.css','/iphone/first-run.js','/iphone/first-run-actions.js','/iphone/campaign-demo.css','/iphone/campaign-demo.js','/iphone/campaign-demo-data.js','/iphone/global-search.css','/iphone/global-search.js','/iphone/command-center.css','/iphone/command-center.js','/iphone/workspaces-ui.css','/iphone/workspaces-ui.js',
+  '/iphone/','/iphone/manifest.webmanifest','/iphone/genesis.css','/iphone/first-run.js','/iphone/first-run-actions.js','/iphone/recovery-complete.css','/iphone/recovery-complete.js','/iphone/campaign-demo.css','/iphone/campaign-demo.js','/iphone/campaign-demo-data.js','/iphone/global-search.css','/iphone/global-search.js','/iphone/command-center.css','/iphone/command-center.js','/iphone/workspaces-ui.css','/iphone/workspaces-ui.js',
   '/iphone/assets/genesis/vishnu-core.png','/iphone/assets/genesis/cosmic-desktop.png','/iphone/assets/genesis/cosmic-mobile.png','/iphone/projects-workspace.css','/iphone/projects-workspace.js',
   '/iphone/reference-home.css','/iphone/reference-home.js',
   '/iphone/projects-workspace-views.css','/iphone/projects-workspace-views.js','/iphone/home-chat-redesign.js',

@@ -170,8 +170,8 @@
           ? '<div id="googleLogin" class="google-login" aria-label="Sign in with Google"></div><button class="returning-text-action" type="button" data-auth-action="methods">← Other sign-in methods</button>'
         : `<div class="returning-actions">${supportedPasskey ? authButton('passkey', 'Continue with passkey', 'Use this device’s secure authentication.', null, true) : ''}${authButton('methods', 'Use another sign-in method', 'Choose from methods configured for this Vishnu.')}${authButton('device', 'Connect another device', 'Sign in first, then manage trusted devices.')}</div><div class="returning-recovery"><span>Lost access to your Vishnu?</span><button type="button" class="returning-text-action" data-auth-action="restore">Restore Vishnu →</button></div>`;
     panel.className = 'genesis';
-    const title = view === 'restore' ? 'Recover owner <em>access</em>' : freshRuntime ? 'Welcome to <em>Vishnu</em>' : 'Welcome back to <em>Vishnu</em>';
-    const subtitle = view === 'restore' ? 'Use a saved one-time recovery code to verify ownership and sign in.' : freshRuntime ? 'This runtime is ready for a new owner setup or a verified restore.' : 'Sign in to continue with your personal Vishnu.';
+    const title = view === 'restore' ? (freshRuntime ? 'Restore <em>Vishnu</em>' : 'Recover owner <em>access</em>') : freshRuntime ? 'Welcome to <em>Vishnu</em>' : 'Welcome back to <em>Vishnu</em>';
+    const subtitle = view === 'restore' ? (freshRuntime ? 'Restore available data with your verified encrypted recovery package and separate key.' : 'Use a saved one-time recovery code to verify ownership and sign in.') : freshRuntime ? 'This runtime is ready for a new owner setup or a verified restore.' : 'Sign in to continue with your personal Vishnu.';
     panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><button class="genesis-back" type="button" data-auth-action="${view === 'restore' ? 'welcome' : 'back'}">← ${view === 'restore' ? 'Back to Welcome' : 'Back to Welcome'}</button><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu intelligence core. Ready for owner authentication."></div><div class="genesis-copy"><h1>${title}</h1><p>${subtitle}</p></div>${body}<p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
     if (view === 'restore') {
       const notice = document.createElement('div');
@@ -203,7 +203,7 @@
         : 'Keyboard navigation, visible focus and reduced motion are supported.';
     }));
     panel.querySelector('#portableRestoreStart')?.addEventListener('click', submitPortableRestore);
-    if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } });
+    if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; const login = await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); if (!showRecoveryResult(login.recovery_result)) await check(); } catch (error) { if ($('returningStatus')) $('returningStatus').textContent = error.message; } });
     if (view === 'google') renderGoogleLogin();
   }
   async function submitPortableRestore(event) {
@@ -374,10 +374,35 @@
     priorNavigationState = [];
   }
 
-  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $ };
+  function showRecoveryResult(result) {
+    // UI evidence must originate from an authenticated recovery API response;
+    // never synthesize green checks from local state or uploaded file names.
+    if (!result || result.identityStatus !== 'completed' ||
+        !['completed', 'partial', 'pending', 'not_applicable'].includes(result.dataStatus) ||
+        !window.vishnuRecoveryComplete) return false;
+    s.recoveryResult = result;
+    show();
+    window.vishnuRecoveryComplete.mount(panel, result, {
+      async continueToHome() {
+        // /status validates the current owner/browser session on the server.
+        // A network failure, revoked browser or unavailable runtime blocks Home.
+        const authorized = await originalCheck();
+        if (!authorized) {
+          panel.classList.remove('hidden');
+          throw new Error('Vishnu could not verify this trusted browser or runtime. Reconnect and try again.');
+        }
+        s.recoveryResult = null;
+        hide();
+      },
+    });
+    return true;
+  }
+
+  window.vishnuFirstRun = { state: s, render, setError, showLegacy, showRecoveryResult, $ };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
   window.check = async (...args) => {
     const result = await originalCheck(...args);
+    if (s.recoveryResult) { panel.classList.remove('hidden'); return result; }
     try {
       s.options = await originalLoad() || {};
       const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
