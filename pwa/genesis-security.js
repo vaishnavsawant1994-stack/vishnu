@@ -88,6 +88,14 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
  const device=$('#vsDeviceName');
  device.value=state.deviceName===undefined?deviceGuess().name:state.deviceName;
  state.deviceName=device.value;
+ const lockRegisteredName=()=>{
+   if(!state.identityCreated)return;
+   device.readOnly=true;
+   $('[data-vs-clear-name]').disabled=true;
+   $('[data-vs-clear-name]').title='Change this name later in Trusted Devices';
+   device.title='This device name was securely registered; change it later in Trusted Devices';
+ };
+ lockRegisteredName();
  const validate=()=>{
    if(state.identityCreated)return true;
    const value=pw.value;
@@ -129,6 +137,8 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
    if(!deviceValid())return;
    if(!validate()){pw.focus();return;}
    pending=true;button.disabled=true;
+   const back=$('[data-vs-back]');
+   back.disabled=true;
    const passkeyButton=$('[data-vs-passkey]');
    passkeyButton.disabled=true;
    try{await fn();}
@@ -138,7 +148,9 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
    }
    finally{
      pending=false;
+     lockRegisteredName();
      if(button.isConnected)button.disabled=false;
+     if(back.isConnected)back.disabled=false;
      if(passkeyButton.isConnected)passkeyButton.disabled=!hasWebAuthn && !state.passkeyCreated;
    }
  };
@@ -165,7 +177,7 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
      }else status.textContent='Passkey setup was cancelled or unavailable. Your password still works.';
    }catch(e){status.textContent=e?.message||'Passkey setup failed. Try again or use your password.';}
  },'passkey');});
- $('[data-vs-back]').addEventListener('click',()=>onBack());
+ $('[data-vs-back]').addEventListener('click',()=>{if(!pending)onBack();});
  $('[data-vs-language]').addEventListener('click',()=>$('#vsLanguageDialog').showModal());
  $('[data-vs-close]').addEventListener('click',()=>$('#vsLanguageDialog').close());
  const sphere=$('[data-vs-sphere]');
