@@ -71,6 +71,7 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var firstName: EditText
     private lateinit var lastName: EditText
     private lateinit var displayName: EditText
+    private lateinit var firstDeviceName: EditText
     private lateinit var bootstrap: EditText
     private lateinit var ownerPassword: EditText
     private lateinit var ownerPasswordAgain: EditText
@@ -243,7 +244,7 @@ class ConnectActivity : AppCompatActivity() {
         val backToWelcome = Button(this).apply { text = "Back to Welcome"; visibility = View.GONE }
         styleButton(backToWelcome, false)
         backToWelcome.setOnClickListener {
-            if (createBox.visibility == View.VISIBLE && genesisStep > 2) {
+            if (createBox.visibility == View.VISIBLE && genesisStep > 2 && prefs.getString("pending_recovery_codes", null).isNullOrBlank()) {
                 genesisStep -= 1
                 renderGenesisStep()
                 return@setOnClickListener
@@ -261,7 +262,7 @@ class ConnectActivity : AppCompatActivity() {
             welcomeGroup.visibility = View.GONE
             backToWelcome.text = "Back"
             backToWelcome.visibility = View.VISIBLE
-            genesisStep = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) 2 else 5
+            genesisStep = if (prefs.getString("pending_recovery_codes", null).isNullOrBlank()) 2 else 4
             renderGenesisStep()
         }
         join.setOnClickListener {
@@ -287,7 +288,7 @@ class ConnectActivity : AppCompatActivity() {
             welcomeGroup.visibility = View.GONE
             backToWelcome.visibility = View.VISIBLE
             backToWelcome.text = "Back"
-            genesisStep = 5
+            genesisStep = 4
             renderGenesisStep()
         }
 
@@ -354,42 +355,45 @@ class ConnectActivity : AppCompatActivity() {
             textSize = 13f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, 0, 0, dp(12))
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
         firstRunBase = EditText(this).apply {
             hint = "Secure Vishnu runtime URL (https://…)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
             setText(prefs.getString("base", "") ?: "")
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
         bootstrap = EditText(this).apply {
             hint = "One-time runtime setup code"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
         firstName = EditText(this).apply { hint = "First name"; tag = "genesis-2" }
         lastName = EditText(this).apply { hint = "Last name"; tag = "genesis-2" }
-        displayName = EditText(this).apply { hint = "Display name"; tag = "genesis-2" }
+        displayName = EditText(this).apply { hint = "Display name (optional)"; tag = "genesis-2" }
+        firstDeviceName = EditText(this).apply {
+            hint = "Name this device"; setText(android.os.Build.MODEL.take(120)); tag = "genesis-3"
+        }
         ownerPassword = EditText(this).apply {
             hint = "Owner password (12 characters minimum)"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
         ownerPasswordAgain = EditText(this).apply {
             hint = "Confirm owner password"
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
-        listOf(firstRunBase, bootstrap, firstName, lastName, displayName, ownerPassword, ownerPasswordAgain)
+        listOf(firstRunBase, bootstrap, firstName, lastName, displayName, ownerPassword, ownerPasswordAgain, firstDeviceName)
             .forEach(::styleField)
         val securityNote = TextView(this).apply {
             text = "This first-device ceremony starts with your owner password and one-time recovery codes. After setup, use Protect Vishnu with a passkey when this runtime publishes the signed Android app association."
             textSize = 12f
             setTextColor(PersonalAITheme.ColorToken.secondaryText)
             setPadding(0, dp(4), 0, dp(10))
-            tag = "genesis-4"
+            tag = "genesis-3"
         }
-        createButton = Button(this).apply { text = "Create owner security →"; tag = "genesis-4" }
+        createButton = Button(this).apply { text = "Create owner security →"; tag = "genesis-3" }
         styleButton(createButton, true)
         createStatus = TextView(this).apply {
             textSize = 13f
@@ -402,12 +406,12 @@ class ConnectActivity : AppCompatActivity() {
             setTextColor(PersonalAITheme.ColorToken.text)
             background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border)
             setPadding(dp(14), dp(14), dp(14), dp(14))
-            tag = "genesis-5"
+            tag = "genesis-4"
         }
         recoverySaved = CheckBox(this).apply {
             text = "I saved these recovery codes somewhere outside this phone."
             setTextColor(PersonalAITheme.ColorToken.text)
-            tag = "genesis-5"
+            tag = "genesis-4"
         }
         val privacyLabel = TextView(this).apply {
             text = "Where may Vishnu use your data?"
@@ -430,7 +434,7 @@ class ConnectActivity : AppCompatActivity() {
         dataPolicyChoice = Spinner(this).apply {
             adapter = ArrayAdapter(this@ConnectActivity, android.R.layout.simple_spinner_dropdown_item,
                 listOf("Device Only", "Progress Only — Recommended", "Sync Everywhere", "On Demand"))
-            setSelection(1)
+            setSelection(0)
             tag = "genesis-7"
         }
         modelProvider = Spinner(this).apply {
@@ -458,7 +462,7 @@ class ConnectActivity : AppCompatActivity() {
         }
         finishButton = Button(this).apply {
             text = "Create my Vishnu →"
-            tag = "genesis-10"
+            tag = "genesis-4"
         }
         styleButton(finishButton, true)
         fun stepButton(step: Int, label: String, next: () -> Unit) = Button(this).apply {
@@ -483,9 +487,9 @@ class ConnectActivity : AppCompatActivity() {
         val modelNext = stepButton(8, "Continue") { genesisStep = 9; renderGenesisStep() }
         val privacyNext = stepButton(9, "Continue") { genesisStep = 10; renderGenesisStep() }
         val reviewSummary = TextView(this).apply {
-            text = "Owner identity configured\nSecurity and recovery configured\nThis device trusted\nData placement selected\nIntelligence selected\nPrivacy owner controlled"
+            text = "QUICK REVIEW\nOwner security: password\nFirst device: independently trusted\nData: device only on the selected runtime\nAI provider: configure later\nPrivacy: local only by default"
             textSize = 15f; setTextColor(PersonalAITheme.ColorToken.text); setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border); tag = "genesis-10"
+            background = rounded(PersonalAITheme.ColorToken.surface, PersonalAITheme.ColorToken.border); tag = "genesis-4"
         }
         form.addView(genesisProgress)
         form.addView(genesisHeading)
@@ -495,29 +499,16 @@ class ConnectActivity : AppCompatActivity() {
         form.addView(lastName)
         form.addView(displayName)
         form.addView(identityNext)
-        form.addView(authenticationChoice)
-        form.addView(securityNext)
         form.addView(firstRunBase)
         form.addView(bootstrap)
         form.addView(ownerPassword)
         form.addView(ownerPasswordAgain)
+        form.addView(firstDeviceName)
         form.addView(securityNote)
         form.addView(createButton)
         form.addView(createStatus)
         form.addView(recoveryCodes)
         form.addView(recoverySaved)
-        form.addView(recoveryNext)
-        form.addView(deviceSummary)
-        form.addView(deviceNext)
-        form.addView(dataPolicyChoice)
-        form.addView(dataNext)
-        form.addView(privacyLabel)
-        form.addView(privacyChoice)
-        form.addView(modelProvider)
-        form.addView(modelName)
-        form.addView(providerKey)
-        form.addView(modelNext)
-        form.addView(privacyNext)
         form.addView(reviewSummary)
         form.addView(finishButton)
 
@@ -528,7 +519,7 @@ class ConnectActivity : AppCompatActivity() {
                 if (codes.length() >= 4) {
                     recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown only during setup.\n\n" +
                         (0 until codes.length()).joinToString("\n") { codes.optString(it) }
-                    genesisStep = 5
+                    genesisStep = 4
                     createStatus.text = "Resume setup by confirming you saved the recovery codes."
                 }
             }
@@ -539,17 +530,11 @@ class ConnectActivity : AppCompatActivity() {
 
     private fun renderGenesisStep(container: LinearLayout = createBox) {
         val titles = mapOf(
-            2 to ("Create your Vishnu identity" to "This is how Vishnu will know and address you."),
-            3 to ("Secure your Vishnu" to "Choose how Vishnu should verify it’s you."),
-            4 to ("Configure your authentication" to "Set up the authentication method you selected."),
-            5 to ("Protect your Vishnu" to "Store recovery codes so Vishnu can be restored safely."),
-            6 to ("Register this device" to "Make this Android device part of your trusted Vishnu network."),
-            7 to ("Choose where your data lives" to "Choose the policy for newly governed data."),
-            8 to ("Set up Vishnu’s intelligence" to "Choose how Vishnu should think and which AI providers it may use."),
-            9 to ("Choose what Vishnu can access" to "You stay in control. Permissions remain owner governed."),
-            10 to ("Your Vishnu is ready to be created" to "Review your setup, then create your Vishnu."),
+            2 to ("What should Vishnu call you?" to "Tell Vishnu your name. Personalize later."),
+            3 to ("Secure Your Vishnu" to "Create a password and name your first device."),
+            4 to ("Save Your Recovery Codes" to "One-time access recovery codes are not a data backup."),
         )
-        genesisProgress.text = "Step $genesisStep of 10\n" + (1..10).joinToString(" ") { if (it <= genesisStep) "●" else "○" }
+        genesisProgress.text = "Create Vishnu · Step $genesisStep of 4\n" + (1..4).joinToString(" ") { if (it <= genesisStep) "●" else "○" }
         genesisHeading.text = titles[genesisStep]?.first.orEmpty()
         genesisSubtitle.text = titles[genesisStep]?.second.orEmpty()
         for (index in 0 until container.childCount) {
@@ -617,7 +602,7 @@ class ConnectActivity : AppCompatActivity() {
                 .put("recovery_code", recovery)
                 .put("device_id", deviceId)
                 .put("device_token", deviceToken)
-                .put("device_name", android.os.Build.MODEL.take(120))
+                .put("device_name", firstDeviceName.text.toString().trim().take(120))
                 .put("platform", "android")
             button.isEnabled = false
             restoreStatus.text = "Verifying recovery and trusting this phone…"
@@ -664,6 +649,7 @@ class ConnectActivity : AppCompatActivity() {
             val first = firstName.text.toString().trim()
             val password = ownerPassword.text.toString()
             if (first.isBlank()) throw IllegalArgumentException("Enter your first name.")
+            if (firstDeviceName.text.toString().trim().isBlank()) throw IllegalArgumentException("Name this device.")
             if (password.length < 12) throw IllegalArgumentException("Use an owner password with at least 12 characters.")
             if (password != ownerPasswordAgain.text.toString()) throw IllegalArgumentException("The passwords did not match.")
             if (bootstrap.text.toString().length < 32) throw IllegalArgumentException("Enter the one-time setup code provided for this runtime.")
@@ -720,7 +706,7 @@ class ConnectActivity : AppCompatActivity() {
                             val text = (0 until codes.length()).joinToString("\n") { index -> codes.optString(index) }
                             prefs.edit().putString("pending_recovery_codes", codes.toString()).apply()
                             recoveryCodes.text = "Save these one-time codes somewhere outside this phone. They are shown here only during setup.\n\n$text"
-                            genesisStep = 5
+                            genesisStep = 4
                             renderGenesisStep()
                             createStatus.text = "Your identity and first trusted device are ready. Save recovery codes before continuing."
                             bootstrap.setText("")
