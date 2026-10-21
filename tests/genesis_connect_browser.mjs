@@ -150,7 +150,7 @@ try{
  });
  await retry.locator('.vc-request').waitFor({state:'visible'});
  await retry.locator('[data-vc-continue]').click();
- await retry.locator('#vcStatus').getByText(/Retry session verification/i).waitFor();
+ await retry.waitForFunction(()=>document.querySelector('#vcStatus')?.textContent?.includes('Retry session verification'));
  assert.equal(await retry.locator('[data-vc-continue]').isEnabled(),true,
    'An approved request must allow retrying session verification');
  assert.equal(await retry.locator('.vc-request').isVisible(),true,
