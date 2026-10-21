@@ -25,10 +25,10 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     assert "projects-work-visualization-runtime.js" in loader
     sw = Path("pwa/sw.js").read_text()
     assert "project-autonomy-controls.js" in sw
-    # P2-01 v61 refreshes the installed shell with its new canonical Home assets
+    # P2-02A v62 refreshes the installed shell with its new canonical Home assets
     # while retaining the bounded local-first continuation cache.
     # The cache version assertion remains strict to catch stale PWA bundles.
-    assert "personal-ai-iphone-v61" in sw
+    assert "personal-ai-iphone-v62" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw
