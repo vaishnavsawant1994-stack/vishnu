@@ -117,6 +117,7 @@ jobs:
           node tests/workorder_detail_browser.mjs
           node tests/work_attention_center_browser.mjs
           node tests/chat_experience_browser.mjs
+          node tests/p202_personal_chat_browser.mjs
           node tests/adaptive_composer_browser.mjs
           AGENT_WORKFORCE_SCREENSHOT_DIR=artifacts/agent-workforce node tests/agent_workforce_browser.mjs
           OUR_PRODUCTS_SCREENSHOT_DIR=artifacts/our-products node tests/our_products_browser.mjs
