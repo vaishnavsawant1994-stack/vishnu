@@ -128,7 +128,8 @@
     field.placeholder = 'https://your-vishnu.example'; field.value = address;
     field.addEventListener('input', () => {
       address = field.value; awaitingConfirmation = false;
-      activePanel.querySelector('[data-runtime-open]')?.remove();
+      const action = activePanel.querySelector('[data-runtime-open]');
+      if (action) action.textContent = 'Validate address and review navigation';
       setStatus('');
     });
     section.append(label, field);
