@@ -77,18 +77,66 @@ struct VishnuGenesisCore: View {
     let state: String
     var size: CGFloat = 190
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var rotation = 0.0
 
     var body: some View {
-        Image("vishnu-genesis-core")
-        .resizable()
-        .interpolation(.high)
-        .scaledToFit()
+        ZStack {
+            // Preserve the approved canonical visual asset and cyan color palette.
+            Image("vishnu-genesis-core")
+                .resizable()
+                .interpolation(.high)
+                .scaledToFit()
+            // Native perspective-projected network rather than a flat image-only spin.
+            // Honor iOS Reduce Motion and avoid any network or sensor permission.
+            TimelineView(.animation(paused: reduceMotion)) { timeline in
+                Canvas { context, canvasSize in
+                    let radius = min(canvasSize.width, canvasSize.height) * 0.40
+                    let angle = reduceMotion ? 0.0 :
+                        timeline.date.timeIntervalSinceReferenceDate * (Double.pi * 2.0 / 32.0)
+                    let points: [(x: CGFloat, y: CGFloat, z: CGFloat)] = (0..<62).map { index in
+                        let y = 1.0 - 2.0 * (Double(index) + 0.5) / 62.0
+                        let ring = sqrt(max(0.0, 1.0 - y * y))
+                        let longitude = Double(index) * 2.39996323
+                        let x = cos(longitude) * ring
+                        let z = sin(longitude) * ring
+                        let rotatedX = x * cos(angle) + z * sin(angle)
+                        let rotatedZ = z * cos(angle) - x * sin(angle)
+                        let perspective = 2.6 / (2.6 - rotatedZ * 0.55)
+                        return (
+                            x: canvasSize.width / 2 + CGFloat(rotatedX * perspective) * radius,
+                            y: canvasSize.height / 2 + CGFloat(y * perspective) * radius,
+                            z: CGFloat(rotatedZ)
+                        )
+                    }
+                    for index in points.indices {
+                        let first = points[index]
+                        for neighbor in [(index + 1) % points.count, (index + 9) % points.count] {
+                            let second = points[neighbor]
+                            var line = Path()
+                            line.move(to: CGPoint(x: first.x, y: first.y))
+                            line.addLine(to: CGPoint(x: second.x, y: second.y))
+                            context.stroke(line,
+                                with: .color(Color(red: 70 / 255, green: 210 / 255, blue: 1)
+                                    .opacity(first.z + second.z > 0 ? 0.29 : 0.08)),
+                                lineWidth: max(0.6, min(canvasSize.width, canvasSize.height) / 650)
+                            )
+                        }
+                    }
+                    for point in points {
+                        let depth = (point.z + 1) / 2
+                        let dot = min(canvasSize.width, canvasSize.height) * (0.002 + depth * 0.004)
+                        let rect = CGRect(x: point.x - dot, y: point.y - dot, width: dot * 2, height: dot * 2)
+                        context.fill(Path(ellipseIn: rect),
+                            with: .color(Color(red: 60 / 255, green: 221 / 255, blue: 1)
+                                .opacity(0.25 + depth * 0.62)))
+                    }
+                }
+            }
+            .accessibilityHidden(true)
+        }
         .frame(width: size, height: size)
-        .rotationEffect(.degrees(rotation))
         .shadow(color: PersonalAITheme.ColorToken.accent.opacity(0.38), radius: 22)
-        .accessibilityLabel("Vishnu intelligence core. \(state).")
-        .onAppear { guard !reduceMotion else { return }; withAnimation(.linear(duration: 30).repeatForever(autoreverses: false)) { rotation = 360 } }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Vishnu intelligence core. \(state). Rotating cyan three-dimensional network.")
     }
 }
 
