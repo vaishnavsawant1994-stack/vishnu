@@ -166,6 +166,17 @@
      ['Vishnu AI',()=>modelDialog()]
    ].forEach(([name,action])=>composerTools.append(btn(name,'',action)));
    shell.append(composerTools);
+   const mobileNav=make('nav','p202b-mobile-nav');mobileNav.id='p202bMobileNav';
+   mobileNav.setAttribute('aria-label','Work conversation mobile navigation');
+   [['Home','⌂',()=>nav('home')],['Chat','▢',()=>{$('message')?.focus()}],
+    ['Today','▣',()=>bridge()?.openTodayScreen?.('all')],['Work','▦',()=>nav('workflows')],
+    ['More','•••',()=>$('historyButton')?.click()]].forEach(([label,glyph,act])=>{
+     const el=btn('',label==='Chat'?'active':'',act);
+     el.append(make('span','',glyph),make('small','',label));
+     if(label==='Chat')el.setAttribute('aria-current','page');
+     mobileNav.append(el);
+   });
+   shell.append(mobileNav);
    const existing=$('voicePanel');
    // The original message stream and composer remain in their canonical DOM;
    // this shell is layout/navigation only and must not duplicate either.
