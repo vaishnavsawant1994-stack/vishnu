@@ -55,7 +55,7 @@
 }
 .runtime-host .rta-canvas:active { cursor: grabbing; }
 .runtime-host .rta-platform {
-  width: min(100%, 700px); height: 168px; left: 50%; top: min(69vh,670px);
+  width: min(100%, 700px); height: 168px; left: 50%; top: min(62vh,615px);
   position: absolute; z-index: 0; transform: translateX(-50%); pointer-events: none;
   background: radial-gradient(ellipse at 50% 50%,rgba(0,209,255,.46),rgba(0,93,224,.13) 39%,transparent 70%);
   animation: rta-light 5.5s ease-in-out infinite alternate;
