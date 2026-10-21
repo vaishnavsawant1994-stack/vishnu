@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 const assets=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css',
  'genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css',
  'genesis-security.js','genesis-recovery.css','genesis-recovery.js','genesis-login.css',
- 'genesis-login.js','assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
+ 'genesis-login.js','genesis-connect.css','genesis-connect.js','assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg'];
 const files=new Map();
 for(const name of assets)files.set('/iphone/'+name,await readFile(new URL('../pwa/'+name,import.meta.url)));
@@ -137,8 +137,8 @@ try{
  await join.evaluate(()=>{window.__mode='approval';});
  await join.locator('#vlPassword').fill('owner-authenticated');
  await join.locator('[data-vl-submit]').click();
- await join.locator('.join-verification-code').waitFor();
- assert.match(await join.locator('.genesis-stage').innerText(),/trusted device must approve/i);
+ await join.locator('#vcVerificationCode').waitFor();
+ assert.match(await join.locator('.vc-request').innerText(),/trusted device/i);
  assert.equal(await join.evaluate(()=>window.__session),false);
  await join.close();
  // A mocked authenticator verifies that passkey login serializes a real
