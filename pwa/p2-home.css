@@ -463,3 +463,72 @@ html body.v-ref.p2-home-ready.home-landing #composer.has-text #sendButton svg {
    width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important
  }
 }
+
+
+/* Core network rings are decorative; the existing live neural canvas
+ * remains the source of runtime movement and state. */
+html body.v-ref.p2-home-ready.home-landing .home-sphere-stage {isolation:isolate}
+html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::before {
+  display:block!important;content:""!important;
+  position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:min(86%,255px);height:auto;aspect-ratio:1;
+  border:1px solid rgba(5,177,255,.66);border-radius:50%;
+  background:radial-gradient(circle,rgba(2,44,118,.03) 50%,rgba(0,153,255,.09) 76%,transparent 79%);
+  box-shadow:0 0 15px rgba(0,170,255,.6),inset 0 0 24px rgba(0,125,255,.35);
+  z-index:0;pointer-events:none
+}
+html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::after {
+  display:block!important;content:""!important;
+  position:absolute;left:50%;top:50%;translate:-50% -50%;
+  width:min(108%,310px);height:126px;
+  border:1px solid rgba(21,184,255,.6);border-radius:50%;
+  transform:rotate(-25deg);
+  box-shadow:0 0 10px rgba(0,133,255,.45);
+  pointer-events:none;z-index:1;
+  animation:p2-core-orbit 20s ease-in-out infinite alternate
+}
+html body.v-ref.p2-home-ready.home-landing .home-sphere-stage .core-stage {
+  position:relative;z-index:1
+}
+@keyframes p2-core-orbit {
+  from {transform:rotate(-30deg)}
+  to {transform:rotate(30deg)}
+}
+body[data-state="thinking"].p2-home-ready .home-sphere-stage::after,
+body[data-state="understanding"].p2-home-ready .home-sphere-stage::after {
+  animation-duration:6s
+}
+body[data-state="error"].p2-home-ready .home-sphere-stage::after,
+body[data-state="approval"].p2-home-ready .home-sphere-stage::after {
+  animation-play-state:paused
+}
+body.v-ref.p2-home-ready .p2-edit-tools {
+  width:min(440px,calc(100vw - 24px));max-width:calc(100vw - 24px);
+  padding:22px;border:1px solid rgba(37,143,232,.7);border-radius:19px;
+  background:#04172f;color:#e7f2ff;box-shadow:0 20px 65px rgba(0,0,0,.7)
+}
+body.v-ref.p2-home-ready .p2-edit-tools::backdrop {background:rgba(0,8,24,.83)}
+body.v-ref.p2-home-ready .p2-edit-tools h2 {font-size:19px;margin:0 0 8px}
+body.v-ref.p2-home-ready .p2-edit-tools p {font-size:13px;line-height:1.5;color:#b5cdec;margin:0 0 16px}
+body.v-ref.p2-home-ready .p2-tool-choices {display:grid;gap:10px}
+body.v-ref.p2-home-ready .p2-tool-choices label {
+  display:flex;align-items:center;gap:11px;padding:8px 10px;
+  border:1px solid rgba(56,128,229,.2);border-radius:10px;min-height:43px
+}
+body.v-ref.p2-home-ready .p2-tool-choices input {accent-color:#008dff;width:18px;height:18px}
+body.v-ref.p2-home-ready .p2-dialog-buttons {display:flex;justify-content:flex-end;gap:9px;margin-top:19px}
+body.v-ref.p2-home-ready .p2-dialog-buttons button {
+  padding:10px 14px;border:1px solid #2178d1;border-radius:10px;
+  background:#072b5a;color:#eff8ff;cursor:pointer
+}
+@media(max-width:900px) {
+  html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::after {width:210px;height:78px}
+  html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::before {width:145px}
+  html body.v-ref.p2-home-ready.home-landing .topbar {
+    position:fixed!important;top:0;left:0;right:0;z-index:61;
+    background:linear-gradient(180deg,rgba(2,12,31,.99),rgba(3,18,43,.96))!important
+  }
+}
+@media(prefers-reduced-motion:reduce) {
+  html body.v-ref.p2-home-ready.home-landing .home-sphere-stage::after {animation:none!important}
+}
