@@ -1,5 +1,6 @@
 @import url('/iphone/genesis-welcome.css');
 @import url('/iphone/genesis-identity.css');
+@import url('/iphone/genesis-security.css');
 :root {
   --genesis-bg: #02060b;
   --genesis-panel: rgba(8, 22, 35, .72);
