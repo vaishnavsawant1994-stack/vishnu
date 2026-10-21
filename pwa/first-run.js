@@ -569,10 +569,19 @@
         onAuthenticate:()=>{s.accessIntent='';s.returnToConnect=true;renderReturning('login');},
         onCheck:request_id=>api('/access/join/status',{method:'POST',body:JSON.stringify({request_id})}),
         onComplete:async()=>{
+          // Inspect the real trusted-session cookie before changing routing state.
+          // The wrapped window.check() may replace the pending join screen on
+          // failure, which otherwise strands an approved user without a retry.
+          const result=await originalCheck();
+          if(!result)throw new Error('Approval completed but session was not confirmed. Retry verification.');
           sessionStorage.removeItem('vishnuPendingJoin');
           s.accessIntent='';s.returnToConnect=false;
-          const result=await window.check();
-          if(!result)throw new Error('Approval completed but session was not confirmed. Retry verification.');
+          hide();
+          if(s.pendingPostAuthAction){
+            const destination=s.pendingPostAuthAction;
+            s.pendingPostAuthAction='';
+            setTimeout(()=>window.vishnuChatBridge?.openModule(destination),0);
+          }
         },
       });
     }).catch(()=>{
