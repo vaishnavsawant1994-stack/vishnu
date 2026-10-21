@@ -6,7 +6,7 @@ import {chromium} from 'playwright';
 
 const assetNames=[
  'first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
- 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css','genesis-recovery.js','genesis-recovery.css','genesis-login.js','genesis-login.css','genesis-connect.css','genesis-connect.js',
+ 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css','genesis-recovery.js','genesis-recovery.css','genesis-login.js','genesis-login.css','genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg',
 ];
