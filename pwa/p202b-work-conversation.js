@@ -184,10 +184,10 @@
  ref.link=btn('Link Project','p202b-small-link',()=>guarded(linkProjectPicker));about.querySelector('h3').append(ref.link);
    ref.context=make('div','p202b-context-body');
    about.append(ref.context);context.append(about);
-   const files=section('Files & Resources');files.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>openFiles()));
+   const files=section('Files & Resources');files.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>linkedProject?guarded(uploadProjectFile):openFiles()));
    ref.files=make('div');setLoading(ref.files,'No files are linked to this conversation.');files.append(ref.files);context.append(files);
    const tasks=section('Tasks');
-   tasks.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>addTask()));
+   tasks.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>linkedProject?guarded(addLinkedTask):addTask()));
    ref.tasks=make('div');setLoading(ref.tasks,'No conversation-linked tasks.');tasks.append(ref.tasks);context.append(tasks);
    const approvals=section('Approvals');ref.approvals=make('div');setLoading(ref.approvals,'No Project linked.');approvals.append(ref.approvals);context.append(approvals);
  const plans=section('Active Work');
@@ -396,6 +396,51 @@
    const all=results[2].status==='fulfilled'?results[2].value?.approvals:[];
    showLinkedResources(project,plan,(Array.isArray(all)?all:[]).filter(a=>a.project_id===pid));
  }
+ async function addLinkedTask(){
+   const title=window.prompt('New Project task title');
+   if(!title?.trim()||!linkedProjectId)return;
+   await bridge().api('/projects/'+encodeURIComponent(linkedProjectId)+'/tasks',{
+     method:'POST',body:JSON.stringify({title:title.trim().slice(0,180)})
+   });
+   await reload();inform('Task created in linked Project.');
+ }
+ async function uploadProjectFile(){
+   if(!linkedProjectId)return linkProjectPicker();
+   const projectId=linkedProjectId;
+   const picker=make('input');picker.type='file';picker.hidden=true;
+   picker.accept='.pdf,.docx,.xlsx,.csv,.txt,.md,.png,.jpg,.jpeg,.webp';
+   document.body.append(picker);
+   picker.addEventListener('change',()=>guarded(async()=>{
+     const file=picker.files?.[0];if(!file)return;
+     if(!file.size||file.size>12*1024*1024)throw new Error('File must be between 1 byte and 12 MB.');
+     if(!/[.](pdf|docx|xlsx|csv|txt|md|png|jpg|jpeg|webp)$/i.test(file.name))
+       throw new Error('Unsupported Project file type.');
+     const raw=await new Promise((resolve,reject)=>{
+       const reader=new FileReader();
+       reader.onload=()=>resolve(String(reader.result||'').split(',')[1]||'');
+       reader.onerror=()=>reject(new Error('Unable to read the selected file.'));
+       reader.readAsDataURL(file);
+     });
+     if(linkedProjectId!==projectId)throw new Error('Linked Project changed during upload.');
+     await bridge().api('/projects/'+encodeURIComponent(projectId)+'/files/upload',{
+       method:'POST',body:JSON.stringify({filename:file.name,media_type:file.type||'application/octet-stream',content_base64:raw})
+     });
+     await reload();inform('File uploaded to the linked Project.');
+   }).finally(()=>picker.remove()),{once:true});
+   picker.click();
+ }
+ function showLinkedPlan(){
+   const plan=linkedWork?.p10_plan;
+   if(!plan)return alertDialog('Project WorkPlan','No canonical WorkPlan exists for the linked Project.',[
+     ['Open Project planner',()=>nav('projects')]
+   ]);
+   resourceDialog('Canonical Project WorkPlan',plan.tasks||[],t=>[
+     String(t.objective||t.id||'Step')+' · '+String(t.status||'WAITING'),
+     ()=>alertDialog('WorkPlan step',String(t.objective||'')+' · '+String(t.status||''),[
+       ['Open governed Work',()=>nav('workflows')]
+     ])
+   ]);
+ }
  function openFiles(){
    if(linkedProject) return resourceDialog('Files & Deliverables',linkedProject.files||[],f=>[String(f.title||'File')+' · '+String(f.kind||'file'),()=>openProjectFile(f)]);
    alertDialog('Files & Resources','This Work chat currently has no canonical conversation-attachment association. Adding a file to Knowledge is a separate, persistent action and requires explicit owner choice.',[
@@ -415,6 +460,9 @@
    });
    if(name==='Chat'){ref.search.classList.add('hidden');return}
    if(name==='More')return openMenu();
+   if(name==='Files')return openFiles();
+   if(name==='Tasks'&&linkedProject)return addTask();
+   if(name==='Plans'&&linkedProject)return showLinkedPlan();
    const map={
      Files:['Files & Resources','No file is linked to this conversation. Knowledge sources live separately until explicitly attached.'],
      Tasks:['Tasks','Standalone conversation tasks are not yet linked. You can open the existing Today task creator.'],
