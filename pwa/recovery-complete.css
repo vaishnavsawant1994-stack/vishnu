@@ -50,7 +50,7 @@
   color: #64d8ef; letter-spacing: .025em;
 }
 .rc-host .rc-grid {
-  display: grid; grid-template-columns: minmax(0, 49%) minmax(0, 51%);
+  display: grid; grid-template-columns: minmax(0, 50.8%) minmax(0, 49.2%);
   min-height: calc(100dvh - 127px); padding: 9px 36px 27px 30px; gap: 0;
 }
 .rc-host .rc-art {
