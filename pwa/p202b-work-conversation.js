@@ -16,6 +16,7 @@
  let selected=false, lastId=null, syncing=false, refreshController=null, refreshTimer=null, status={};
  let resumePending=false, resumeBusy=false, checkedConversationId=null, checkingId=null;
  const ref={}, drafts=new Map();
+ let linkedProjectId=null, linkedProject=null, linkedWork=null, linkedApprovals=[];
  const statusNotice=txt=>{if(ref.notice)ref.notice.textContent=txt;};
  const inform=msg=>bridge()?.showToast?.(msg);
  const guarded=async job=>{try{return await job()}catch(e){inform(e?.message||'This action is not available right now.')}};
@@ -180,6 +181,7 @@
    const context=make('aside','p202b-context');
    context.setAttribute('aria-label','Work conversation details and resources');
    const about=section('Conversation Context');
+ ref.link=btn('Link Project','p202b-small-link',()=>guarded(linkProjectPicker));about.querySelector('h3').append(ref.link);
    ref.context=make('div','p202b-context-body');
    about.append(ref.context);context.append(about);
    const files=section('Files & Resources');files.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>openFiles()));
@@ -187,7 +189,8 @@
    const tasks=section('Tasks');
    tasks.querySelector('h3').append(btn('＋ Add','p202b-small-link',()=>addTask()));
    ref.tasks=make('div');setLoading(ref.tasks,'No conversation-linked tasks.');tasks.append(ref.tasks);context.append(tasks);
-   const plans=section('Active Work');
+   const approvals=section('Approvals');ref.approvals=make('div');setLoading(ref.approvals,'No Project linked.');approvals.append(ref.approvals);context.append(approvals);
+ const plans=section('Active Work');
    plans.querySelector('h3').append(btn('View all ›','p202b-small-link',()=>nav('workflows')));
    ref.work=make('div');setLoading(ref.work,'Loading current Work state…');plans.append(ref.work);context.append(plans);
    const quick=section('Quick Actions');
@@ -275,11 +278,13 @@
    document.body.append(modal);modal.addEventListener('close',()=>modal.remove(),{once:true});modal.showModal();
  }
  function openFiles(){
+   if(linkedProject) return resourceDialog('Files & Deliverables',linkedProject.files||[],f=>[String(f.title||'File')+' · '+String(f.kind||'file'),()=>openProjectFile(f)]);
    alertDialog('Files & Resources','This Work chat currently has no canonical conversation-attachment association. Adding a file to Knowledge is a separate, persistent action and requires explicit owner choice.',[
      ['Open Library',()=>nav('knowledge')],['Add to Knowledge',()=>$('attachmentInput')?.click()]
    ]);
  }
  function addTask(){
+   if(linkedProject)return resourceDialog('Project Tasks',linkedProject.tasks||[],t=>[String(t.title||'Task')+' · '+String(t.status||'planned'),()=>openProjectTask(t)]);
    if(typeof bridge()?.openTodayExistingCreate==='function')bridge().openTodayExistingCreate('task');
    else bridge()?.openTodayScreen?.('all');
  }
@@ -344,6 +349,7 @@
    });
  }
  function renderOverview(){
+   if(ref.link)ref.link.textContent=linkedProjectId?'Change Project':'Link Project';
    const id=currentId(),title=bridge()?.current?.title||'New Work Conversation';
    ref.title.textContent=title==='New conversation'?'New Work Conversation':title;
    ref.context.replaceChildren(make('strong','',ref.title.textContent),make('p','p202b-empty','Work · saved conversation context'));
@@ -364,6 +370,8 @@
    });
  }
  function renderResources(){
+   linkedProject=null;linkedWork=null;linkedApprovals=[];
+   if(ref.approvals)setLoading(ref.approvals,'No linked Project approvals.');
    setLoading(ref.files,'No files are linked to this conversation. Open Library to browse authorized resources.');
    setLoading(ref.tasks,'No linked conversation tasks. Use Add to create a task in Today.');
  }
@@ -373,10 +381,10 @@
    const timeout=setTimeout(()=>ctl.abort(),8500);
    try{
      const req=async p=>bridge().api(p,{signal:ctl.signal});
-     const settled=await Promise.allSettled([req('/work/summary'),req('/status')]);
+     const settled=await Promise.allSettled([req('/work/summary'),req('/status'),loadLinkedProject(ctl.signal)]);
      if(!isActive()||ctl.signal.aborted)return;
-     if(settled[0].status==='fulfilled')showWork(settled[0].value);
-     else setLoading(ref.work,'Work status temporarily unavailable.');
+     if(!linkedProjectId&&settled[0].status==='fulfilled')showWork(settled[0].value);
+     else if(!linkedProjectId)setLoading(ref.work,'Work status temporarily unavailable.');
      if(settled[1].status==='fulfilled')status=settled[1].value;
    }finally{clearTimeout(timeout);if(refreshController===ctl)refreshController=null}
  }
@@ -399,6 +407,7 @@
      const data=await bridge().api('/conversations/'+encodeURIComponent(id));
      if(currentId()!==id)return;
      const work=data?.conversation?.context?.conversation_kind==='work';
+   if(work&&id===currentId())linkedProjectId=data.conversation.context.work_project_id||null;
      if(work && !projectScoped()){
        if(!selected)toggle(true);
      }else if(selected)toggle(false);
@@ -439,6 +448,7 @@
    if(lastId!==currentId()){
      const old=lastId;lastId=currentId();
      if(old)drafts.set(old,$('message')?.value||'');
+     linkedProjectId=bridge()?.current?.context?.work_project_id||null;
      renderOverview();refreshHistory();
      renderResources();
    }
