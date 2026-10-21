@@ -515,33 +515,57 @@
   }
   let joinPollTimer = 0;
   const safeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
-  function renderJoinPending(join) {
+  function renderConnect(join = null) {
     disposeWelcome();
-    ++welcomeMountId;
-    const publicJoin = { request_id: join.request_id, verification_code: join.verification_code, name: join.name, expires_at: join.expires_at };
-    sessionStorage.setItem('vishnuPendingJoin', JSON.stringify(publicJoin));
-    panel.setAttribute('aria-label', 'Approve this device');
-    panel.className = 'genesis';
-    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><button class="genesis-back" type="button" data-join-cancel>← Cancel</button><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu device approval"></div><div class="genesis-copy"><h1>Approve this <em>device</em></h1><p>Sign-in was verified. A trusted device must approve this request before this browser is added.</p></div><article class="genesis-card selected"><h3>${safeText(join.name || 'New web browser')}</h3><p>Verification code</p><strong class="join-verification-code">${safeText(join.verification_code || '')}</strong><p>Open Settings → Devices on an existing trusted device, check that the code matches, then approve. This request expires shortly.</p></article><p id="joinStatus" class="genesis-error" role="status" aria-live="polite">Waiting for approval…</p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
-    panel.querySelector('[data-join-cancel]')?.addEventListener('click', () => { clearTimeout(joinPollTimer); sessionStorage.removeItem('vishnuPendingJoin'); renderReturning('welcome'); });
-    const poll = async () => {
-      try {
-        const result = await api('/access/join/status', { method: 'POST', body: JSON.stringify({ request_id: join.request_id }) });
-        if (result.status === 'complete') {
-          clearTimeout(joinPollTimer); sessionStorage.removeItem('vishnuPendingJoin'); await check(); return;
-        }
-        if (result.status === 'denied' || result.status === 'expired') {
+    const mountId=++welcomeMountId;
+    if(join?.request_id){
+      // Only publicly displayable request metadata is retained. The secret
+      // join token remains exclusively in the httpOnly, scoped cookie.
+      sessionStorage.setItem('vishnuPendingJoin',JSON.stringify({
+        request_id:join.request_id,verification_code:join.verification_code,
+        name:join.name,expires_at:join.expires_at
+      }));
+    }
+    panel.className='genesis';
+    panel.setAttribute('aria-label','Connect this device to your Vishnu');
+    panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login genesis-connect" data-step="P1-06"><div id="vcRoot" role="status" aria-live="polite">Loading device connection…</div></main>';
+    import('/iphone/genesis-connect.js').then(({mountConnectScreen})=>{
+      const root=document.getElementById('vcRoot');
+      if(mountId!==welcomeMountId||!root||!root.isConnected)return;
+      disposeWelcome=mountConnectScreen(root,join,{
+        onBack:async()=>{
+          if(join?.request_id){
+            // Do not claim a cancelled request before backend confirmation.
+            try{
+              await api('/access/join/cancel',{method:'POST',body:JSON.stringify({request_id:join.request_id})});
+            }catch(error){
+              const message=root.querySelector('#vcStatus');
+              if(message)message.textContent='Could not cancel the pending request. Ask a trusted device to deny it or wait for expiry. '+(error.message||'');
+              return;
+            }
+            sessionStorage.removeItem('vishnuPendingJoin');
+          }
+          s.accessIntent='';
+          renderReturning('login');
+        },
+        onAuthenticate:()=>{s.accessIntent='';renderReturning('login');},
+        onCheck:request_id=>api('/access/join/status',{method:'POST',body:JSON.stringify({request_id})}),
+        onComplete:async()=>{
           sessionStorage.removeItem('vishnuPendingJoin');
-          $('joinStatus').textContent = result.status === 'denied' ? 'This request was denied. No device was added.' : 'This request expired. Sign in again to request approval.';
-          return;
-        }
-      } catch (error) {
-        if ($('joinStatus')) $('joinStatus').textContent = error.message || 'Unable to check approval right now.';
-      }
-      joinPollTimer = setTimeout(poll, 3000);
-    };
-    joinPollTimer = setTimeout(poll, 1200);
+          s.accessIntent='';
+          const result=await window.check();
+          if(!result)throw new Error('Approval completed but session was not confirmed. Retry verification.');
+        },
+      });
+    }).catch(()=>{
+      const root=document.getElementById('vcRoot');
+      if(mountId!==welcomeMountId||!root)return;
+      root.textContent='Device connection could not load. Your trusted devices have not changed. ';
+      const retry=document.createElement('button');retry.type='button';retry.textContent='Retry';
+      retry.addEventListener('click',()=>renderConnect(join));root.append(retry);
+    });
   }
+  function renderJoinPending(join){renderConnect(join);}
   async function handleReturningAction(action) {
     const status = $('returningStatus');
     try {
@@ -607,7 +631,10 @@
     priorNavigationState = [];
   }
 
-  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $, showLogin:()=>{show();renderReturning('login');} };
+  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $,
+    showLogin:()=>{show();renderReturning('login');},
+    showConnect:join=>{show();renderConnect(join||null);}
+  };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
   window.check = async (...args) => {
     const result = await originalCheck(...args);
@@ -618,7 +645,8 @@
       else if (s.options.restore_restart_required) { show(); renderRestoreRestartRequired(); }
       else if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
       else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
-      else if (s.accessIntent === 'join' || s.accessIntent === 'restore') { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); }
+      else if (s.accessIntent === 'join') { show(); renderConnect(); }
+      else if (s.accessIntent === 'restore') { show(); renderReturning('restore'); }
       else if (s.options.creation_available || s.options.restore_available) show();
       else if (!result) {
         // No active trusted session on a configured runtime: show the real
