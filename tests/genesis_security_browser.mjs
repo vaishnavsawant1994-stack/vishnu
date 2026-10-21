@@ -163,5 +163,38 @@ try{
   assert.deepEqual(errors,[],'No JS browser exceptions: '+errors.join('; '));
   await page.close();
  }
+ const fallback=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+ await fallback.addInitScript(()=>{
+   const original=HTMLCanvasElement.prototype.getContext;
+   HTMLCanvasElement.prototype.getContext=function(type,...args){
+     if(type==='webgl'||type==='webgl2')return null;
+     return original.call(this,type,...args);
+   };
+ });
+ await fallback.route('http://127.0.0.1:4173/**',route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(files.has(path))return route.fulfill({status:200,
+     contentType:path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript',
+     body:files.get(path)});
+   if(path==='/iphone/'||path==='/')return route.fulfill({status:200,contentType:'text/html',
+     body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/>
+     <link rel="stylesheet" href="/iphone/genesis.css"/></head><body>
+     <section id="enrollPanel" class="hidden"></section><script>
+       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
+       window.check=async()=>null;
+       window.api=async()=>({ok:true});
+     </script><script src="/iphone/first-run.js"></script><script src="/iphone/first-run-actions.js"></script></body></html>`});
+   return route.fulfill({status:404,body:''});
+ });
+ await fallback.goto('http://127.0.0.1:4173/iphone/?genesisStep=2');
+ await fallback.locator('.genesis-identity .vi-form').waitFor();
+ await fallback.locator('#firstRunFirstName').fill('Fallback Owner');
+ await fallback.locator('.vi-continue').click();
+ await fallback.locator('.genesis-security .vs-main').waitFor();
+ assert.equal(await fallback.locator('.vs-sphere.vw-static-fallback').count(),1,
+   'When WebGL is unavailable keep actual controls and a restrained visual fallback');
+ assert.equal(await fallback.locator('#firstRunPassword').count(),1);
+ await fallback.close();
+
  console.log('P1-03 responsive rendering, real WebGL, password validation, visibility, device binding, recovery and Back: PASS');
 }finally{await browser.close();}
