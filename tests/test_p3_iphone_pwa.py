@@ -204,6 +204,14 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     # FastAPI runtime itself (the existing browser test server can otherwise
     # hide missing production routes by injecting those files).
     for path, marker in (
+        ('/iphone/genesis-welcome.css', 'vw-sphere'),
+        ('/iphone/genesis-neural-sphere.js', 'mountNeuralSphere'),
+        ('/iphone/genesis-identity.css', 'genesis-identity'),
+        ('/iphone/genesis-identity.js', 'mountIdentityScreen'),
+        ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-horizon.svg', '<svg'),
         ('/iphone/campaign-demo.js', 'campaignDemo'),
         ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
         ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
