@@ -225,6 +225,27 @@
       });
       return;
     }
+    if (s.step === 4) {
+      panel.setAttribute('aria-label', 'Save Your Recovery Codes');
+      panel.innerHTML = '<main class="genesis-shell genesis-screen genesis-security genesis-recovery-screen" data-step="4"><div id="vrRoot" role="status" aria-live="polite">Loading recovery codes…</div></main>';
+      import('/iphone/genesis-recovery.js').then(({mountRecoveryScreen})=>{
+        const root=document.getElementById('vrRoot');
+        if(mountId!==welcomeMountId || !root || !root.isConnected)return;
+        disposeWelcome=mountRecoveryScreen(root,s,{
+          onBack:()=>render(3),
+          onFinish:()=>window.vishnuFirstRun.finishRecovery(),
+          onRegenerate:()=>window.vishnuFirstRun.regenerateRecoveryCodes(),
+        });
+      }).catch(()=>{
+        const root=document.getElementById('vrRoot');
+        if(mountId!==welcomeMountId || !root)return;
+        root.textContent='Recovery screen could not load. Your recovery codes were not regenerated. ';
+        const retry=document.createElement('button');
+        retry.type='button';retry.textContent='Retry loading';
+        retry.addEventListener('click',()=>render(4));root.append(retry);
+      });
+      return;
+    }
     panel.setAttribute('aria-label', 'Vishnu owner setup');
     panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${journeyStep} of 3${dots(journeyStep)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, setup step ${journeyStep} of 3"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
     bind();
