@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+from math import cos, pi, sin, sqrt
+import os
 
-from PyQt6.QtCore import Qt, QUrl, QRectF
+from PyQt6.QtCore import Qt, QUrl, QRectF, QPointF, QElapsedTimer, QTimer
 from PyQt6.QtGui import QColor, QDesktopServices, QLinearGradient, QPainter, QPen, QPixmap, QRadialGradient
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -35,12 +37,56 @@ class VishnuCore(QWidget):
         asset = Path(__file__).resolve().parents[1] / 'pwa' / 'assets' / 'genesis' / 'vishnu-core.png'
         self.pixmap = QPixmap(str(asset))
         self.setAccessibleName(f'Vishnu intelligence core, {state} state')
+        self.elapsed = QElapsedTimer()
+        self.elapsed.start()
+        self.motion = QTimer(self)
+        self.motion.setInterval(40)
+        self.motion.timeout.connect(self.update)
+        self.motion.start()
+        self.points = [
+            (cos(i * 2.39996323) * sqrt(max(0.0, 1 - (1 - 2 * (i + .5) / 62)**2)),
+             1 - 2 * (i + .5) / 62,
+             sin(i * 2.39996323) * sqrt(max(0.0, 1 - (1 - 2 * (i + .5) / 62)**2)))
+            for i in range(62)
+        ]
+
+    def hideEvent(self, event):  # noqa: N802 - Qt API
+        self.motion.stop()
+        super().hideEvent(event)
+
+    def showEvent(self, event):  # noqa: N802 - Qt API
+        if os.getenv('VISHNU_REDUCE_MOTION', '0') != '1':
+            self.motion.start()
+        super().showEvent(event)
 
     def paintEvent(self, event):  # noqa: N802 - Qt API
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         if not self.pixmap.isNull():
             painter.drawPixmap(self.rect(), self.pixmap)
+        angle = self.elapsed.elapsed() * 2 * pi / 32000 if self.motion.isActive() else 0
+        radius = min(self.width(), self.height()) * .40
+        mid = QPointF(self.width() / 2, self.height() / 2)
+        projected = []
+        for x, y, z in self.points:
+            dx = x * cos(angle) + z * sin(angle)
+            dz = z * cos(angle) - x * sin(angle)
+            perspective = 2.6 / (2.6 - dz * .55)
+            projected.append((QPointF(mid.x() + dx * radius * perspective,
+                                      mid.y() + y * radius * perspective), dz))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        for i, (origin, depth) in enumerate(projected):
+            for j in ((i + 1) % len(projected), (i + 9) % len(projected)):
+                target, other_depth = projected[j]
+                painter.setPen(QPen(QColor(70, 210, 255, 74 if depth + other_depth > 0 else 20),
+                                    max(0.6, min(self.width(), self.height()) / 650)))
+                painter.drawLine(origin, target)
+        painter.setPen(Qt.PenStyle.NoPen)
+        for position, depth in projected:
+            intensity = (depth + 1) / 2
+            dot = min(self.width(), self.height()) * (.002 + intensity * .004)
+            painter.setBrush(QColor(60, 221, 255, int(62 + intensity * 160)))
+            painter.drawEllipse(position, dot, dot)
 
 
 class FirstRunWizard(QDialog):
