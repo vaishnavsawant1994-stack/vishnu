@@ -67,18 +67,24 @@
   position: absolute; z-index: 0; pointer-events: none;
   width: min(92%, 610px); height: 150px;
   top: clamp(440px, 58vh, 540px); left: 50%; transform: translateX(-50%);
-  background: radial-gradient(ellipse at 50% 45%, rgba(0,206,255,.3), rgba(0,80,160,.07) 40%, transparent 67%);
+  background: radial-gradient(ellipse at 50% 45%, rgba(0,206,255,.55), rgba(0,109,205,.26) 43%, rgba(0,65,160,.06) 70%, transparent 82%);
   animation: rc-light 6s ease-in-out infinite alternate;
 }
 .rc-host .rc-platform::before {
   content: ""; position: absolute; inset: 35% 10% 23%;
-  border-radius: 50%; background: radial-gradient(ellipse, rgba(0,180,255,.39), transparent 64%);
-  filter: blur(16px);
+  border-radius: 50%; background: radial-gradient(ellipse, rgba(0,192,255,.62), rgba(0,100,240,.24) 40%, transparent 76%);
+  filter: blur(24px);
+}
+.rc-host .rc-platform::after {
+  content: ""; position: absolute; width: 26%; height: 90%;
+  left: 37%; top: -36%; pointer-events: none;
+  background: radial-gradient(ellipse at 50% 62%, rgba(31,228,255,.48), rgba(0,156,255,.22) 32%, transparent 74%);
+  filter: blur(25px); opacity: .82;
 }
 .rc-host .rc-platform span {
   position: absolute; left: 50%; top: 50%; border: 1px solid rgba(0,160,255,.75);
   border-radius: 50%; transform: translate(-50%, -50%) rotateX(66deg);
-  box-shadow: 0 0 12px rgba(0,184,255,.5), inset 0 0 14px rgba(0,96,255,.13);
+  box-shadow: 0 0 19px rgba(0,184,255,.74), inset 0 0 24px rgba(0,96,255,.25);
 }
 .rc-host .rc-platform span:nth-child(1) { width: 94%; height: 100%; }
 .rc-host .rc-platform span:nth-child(2) { width: 75%; height: 85%; border-width: 2px; border-color: #00c5ff; }
