@@ -112,6 +112,30 @@ try{
  await page.locator('dialog[open]').waitFor();
  assert.match(await page.locator('dialog[open]').innerText(),/not linked|No file/i);
  await page.locator('dialog[open]').getByText('Close').click();
+ // Resource cards become populated only when the owner links a real Project.
+ await page.locator('.p202b-context').getByRole('button',{name:'Link Project'}).click();
+ await page.locator('dialog[open]').getByRole('button',{name:'Assigned Project'}).click();
+ await page.waitForFunction(()=>document.querySelector('.p202b-context')?.textContent.includes('Assigned brief.md'));
+ assert.equal(active.conversation.context.work_project_id,'project-1','linked Project persisted in continuity');
+ assert.ok(linkedProjectWrites>=1,'owner-confirmed Project link request recorded');
+ assert.match(await page.locator('.p202b-context').innerText(),/Review design brief/);
+ assert.match(await page.locator('.p202b-context').innerText(),/WorkPlan/);
+ assert.match(await page.locator('.p202b-context').innerText(),/Approve scoped task/);
+ assert.doesNotMatch(await page.locator('.p202b-context').innerText(),/Unrelated approval/);
+ await page.locator('.p202b-tab[data-tab=Files]').click();
+ await page.locator('dialog[open]').getByRole('button',{name:/Assigned brief.md/}).click();
+ await page.locator('dialog[open]').getByRole('button',{name:'Preview text'}).click();
+ assert.match(await page.locator('dialog[open]').innerText(),/Signed Project document preview/);
+ await page.locator('dialog[open]').getByRole('button',{name:'Close'}).click();
+ await page.locator('.p202b-context .p202b-resource').filter({hasText:'Review design brief'}).click();
+ await page.locator('dialog[open]').getByRole('button',{name:'Mark done'}).click();
+ await page.waitForFunction(()=>document.querySelector('.p202b-context')?.textContent.includes('done'));
+ assert.equal(projectTaskStatus,'done','task updated through the Project API');
+ assert.equal(taskWrites,1,'single Project task mutation');
+ await page.locator('.p202b-context').getByRole('button',{name:'Change Project'}).click();
+ await page.locator('dialog[open]').getByRole('button',{name:'Unlink Project'}).click();
+ await page.waitForFunction(()=>document.querySelector('.p202b-context')?.textContent.includes('Independent Project WorkOrder'));
+ assert.equal(active.conversation.context.work_project_id,null,'unlink persisted');
  for(const [width,height] of [[320,650],[375,812],[390,844],[430,932],[768,1024],[1024,768],[1280,800],[1440,900],[1920,1080]]){
    await page.setViewportSize({width,height});
    const layout=await page.evaluate(()=>{
