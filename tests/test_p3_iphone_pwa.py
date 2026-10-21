@@ -210,6 +210,8 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         ('/iphone/genesis-identity.js', 'mountIdentityScreen'),
         ('/iphone/genesis-security.css', 'genesis-security'),
         ('/iphone/genesis-security.js', 'mountSecurityScreen'),
+        ('/iphone/genesis-recovery.css', 'vr-code-grid'),
+        ('/iphone/genesis-recovery.js', 'mountRecoveryScreen'),
         ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),
@@ -1142,6 +1144,8 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
         'device_name': 'Ada phone browser',
     })
     assert created.status_code == 200, created.text
+    assert 'no-store' in created.headers['cache-control']
+    assert created.headers['pragma'] == 'no-cache'
     result = created.json()
     identity = runtime['owner_access'].identity()
     assert result['identity']['owner_id'] == identity['owner_id']
@@ -1152,6 +1156,18 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     assert client.cookies.get('pa_setup_claim')
     assert client.cookies.get('pa_session')
     assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
+    # Explicit regeneration atomically invalidates the old hashed credentials,
+    # and must never happen on refresh or retry.
+    original_codes = list(result['recovery_codes'])
+    regenerated = client.post('/iphone/api/first-run/recovery-codes')
+    assert regenerated.status_code == 200, regenerated.text
+    assert 'no-store' in regenerated.headers['cache-control']
+    replacements = regenerated.json()['recovery_codes']
+    assert replacements and replacements != original_codes
+    assert runtime['owner_access'].recovery_codes_remaining() == len(replacements)
+    assert runtime['owner_access'].consume_recovery_code(original_codes[0]) is False
+    assert all('recovery_codes' not in str(event) for event in events.history() if isinstance(event, dict)) if hasattr(events, 'history') else True
+
     assert client.get('/iphone/api/status').status_code == 423
     # Profile pictures must be authorized by the SAME first-device setup
     # ceremony, bound to the canonical owner and private to trusted devices.
