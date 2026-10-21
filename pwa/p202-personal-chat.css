@@ -444,3 +444,49 @@ body.p202-personal-chat button:focus-visible{
  body.p202-personal-chat .p202-welcome-core,
  body.p202-personal-chat .p202-prompt{transition:none!important;animation:none!important}
 }
+
+
+/* Existing Home introduction is only reused for the empty Chat state.
+   Never show it alongside a persisted transcript. */
+body.p202-personal-chat:not(.chat-new-empty):not(.chat-empty-state) .home-intro{
+ display:none!important
+}
+body.p202-personal-chat .p202-mobile-nav,
+body.p202-personal-chat .p202-mobile-brand{display:none}
+@media(min-width:1280px){
+ body.p202-personal-chat .chat-detail-desktop:not(.hidden):not([aria-hidden="true"]){
+  display:none!important
+ }
+ body.p202-personal-chat[data-p202-details-explicit="true"].chat-details-open .chat-detail-desktop:not(.hidden){
+  display:block!important
+ }
+}
+@media(max-width:760px){
+ body.p202-personal-chat .reference-mobile-nav{display:none!important}
+ body.p202-personal-chat .topbar .header-core{
+   position:relative!important;grid-column:2!important;grid-row:1!important;
+   transform:translateX(-48px)!important
+ }
+ body.p202-personal-chat .topbar .p202-mobile-brand{
+   display:block!important;position:absolute;left:50%;top:17px;translate:-25% 0;
+   z-index:3;font-size:16px;color:#e7f4ff;font-weight:600;letter-spacing:.24em;
+   pointer-events:none
+ }
+ body.p202-personal-chat .p202-mobile-nav{
+   display:grid;position:fixed;left:0;right:0;bottom:0;z-index:45;
+   grid-template-columns:repeat(5,minmax(0,1fr));
+   height:calc(63px + env(safe-area-inset-bottom));
+   padding:0 4px env(safe-area-inset-bottom);
+   background:rgba(2,11,29,.98);border-top:1px solid rgba(53,131,232,.34)
+ }
+ body.p202-personal-chat .p202-mobile-tab{
+   display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+   min-width:0;height:58px;padding:5px 1px;color:#a5c0e3;
+   background:transparent;border:0;border-radius:11px;cursor:pointer
+ }
+ body.p202-personal-chat .p202-mobile-tab span{font-size:20px}
+ body.p202-personal-chat .p202-mobile-tab small{font-size:10px}
+ body.p202-personal-chat .p202-mobile-tab[aria-current="page"]{
+   color:#53caff;background:linear-gradient(150deg,#0756ae,#04285b)
+ }
+}
