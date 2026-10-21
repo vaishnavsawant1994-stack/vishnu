@@ -152,3 +152,19 @@
   width:calc(100% - 7px);max-width:calc(100% - 7px);margin-right:7px;
  }
 }
+
+/* 1536x1024 owner screenshot alignment: correct vertical sphere/platform
+   anchoring; balanced card widths and deliberate empty-space budget. */
+@media(min-width:901px) and (min-height:901px){
+ .genesis-verification .vo-sphere{transform:translate(31px,-31px);}
+ .genesis-verification .vo-ground{bottom:9%;}
+ .genesis-verification .v8-methods,.genesis-verification .v8-safety{
+  margin-left:-5px;margin-right:-25px;width:calc(100% + 30px);max-width:calc(100% + 30px);
+ }
+ .genesis-verification .v8-method[data-v8-method="backup"]:not(.selected){
+  min-height:248px;box-sizing:border-box;
+ }
+ .genesis-verification .v8-safety{
+  min-height:104px;margin-top:21px;box-sizing:border-box;
+ }
+}
