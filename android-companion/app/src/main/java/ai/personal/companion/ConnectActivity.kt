@@ -782,25 +782,16 @@ class ConnectActivity : AppCompatActivity() {
             return
         }
         val origin = prefs.getString("pending_base", null) ?: return
-        val providers = listOf("skip", "local", "openai", "gemini", "openrouter", "deepseek", "xai", "groq", "cerebras", "mistral", "custom")
-        val provider = providers.getOrElse(modelProvider.selectedItemPosition) { "skip" }
-        if (provider !in setOf("skip", "local")) {
-            if (modelName.text.toString().trim().isEmpty()) {
-                createStatus.text = "Enter the model name for the selected provider."
-                return
-            }
-            if (providerKey.text.toString().length < 16) {
-                createStatus.text = "Enter the provider API key, or choose Configure later."
-                return
-            }
-        }
+        // The approved four-step creation journey defers AI provider configuration.
+        // Never read invisible legacy selectors to silently connect a cloud provider.
+        val provider = "skip"
         val credentials = JSONObject()
             .put("setup_claim", prefs.getString("pending_setup_claim", ""))
             .put("device_id", prefs.getString("pending_device", ""))
             .put("device_token", prefs.getString("pending_bearer", ""))
             .put("provider_id", provider)
-            .put("model", modelName.text.toString().trim())
-            .put("api_key", providerKey.text.toString())
+            .put("model", "")
+            .put("api_key", "")
         finishButton.isEnabled = false
         createStatus.text = "Saving your AI choice securely…"
         val modelRequest = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/model")
@@ -835,8 +826,8 @@ class ConnectActivity : AppCompatActivity() {
             .put("device_id", prefs.getString("pending_device", ""))
             .put("device_token", prefs.getString("pending_bearer", ""))
             .put("recovery_saved", true)
-            .put("privacy_mode", listOf("local_only", "local_preferred", "external_allowed").getOrElse(privacyChoice.selectedItemPosition) { "local_only" })
-            .put("data_policy", listOf("device_only", "progress_only", "sync_everywhere", "on_demand").getOrElse(dataPolicyChoice.selectedItemPosition) { "progress_only" })
+            .put("privacy_mode", "local_only")
+            .put("data_policy", "device_only")
             .put("model_choice", if (modelConfigured) "configured" else "configure_later")
         createStatus.text = "Verifying your recovery and privacy choices…"
         val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/complete")
