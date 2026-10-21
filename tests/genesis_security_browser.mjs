@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-const assetNames=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js',
+const assetNames=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js','genesis-recovery.css','genesis-recovery.js',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg','assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg'];
 const files=new Map();
 for(const name of assetNames)files.set('/iphone/'+name,await readFile(new URL('../pwa/'+name,import.meta.url)));
@@ -114,7 +114,7 @@ try{
   assert.equal(payload.device_name,'Personal Linux Desktop');
   assert.equal(payload.first_name,info.state.firstName);
   assert.equal(info.calls.filter(x=>x.path==='/first-run/create').length,1);
-  await page.locator('.genesis-tertiary[data-genesis-back]').click();
+  await page.locator('[data-vr-back]').click();
   await page.locator('.genesis-security').waitFor();
   assert.equal(await page.locator('#vsDeviceName').inputValue(),'Personal Linux Desktop');
   assert.equal(await page.locator('#vsDeviceName').getAttribute('readonly'),'',
