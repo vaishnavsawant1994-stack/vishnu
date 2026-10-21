@@ -50,7 +50,7 @@ def test_work_project_association_survives_restart_without_changing_personal(tmp
     assert first.thread(personal_id)["context"] == {}
     restarted = ContinuityService(db)
     assert restarted.thread(work_id)["context"]["work_project_id"] == "project-verified"
-    assert restarted.export_thread(work_id)["thread"]["context"]["work_project_id"] == "project-verified"
+    assert restarted.export_thread(work_id)["conversation"]["context"]["work_project_id"] == "project-verified"
     restarted.update_context(work_id, {"work_project_id": None})
     assert restarted.thread(work_id)["context"]["conversation_kind"] == "work"
     assert restarted.thread(work_id)["context"]["work_project_id"] is None
