@@ -8,7 +8,7 @@ await mkdir('artifacts/p202b',{recursive:true});
 const browser=await chromium.launch({headless:true});
 const errors=[];
 const createdAt=new Date().toISOString();
-const convo={id:'c-work-1',title:'Current discussion',updated_at:createdAt,preview:'Help review the quarterly plan'};
+const convo={id:'c-work-1',title:'Current discussion',updated_at:createdAt,preview:'Help review the quarterly plan',context:{conversation_kind:'work'}};
 let conversations=[convo],active={conversation:convo,events:[
  {event_id:'u1',kind:'user_message',created_at:createdAt,payload:{text:'Help review the quarterly plan'}},
  {event_id:'a1',kind:'assistant_message',created_at:createdAt,payload:{text:'Here are the areas to review. This is advice, not a running WorkOrder.'}}
@@ -20,10 +20,16 @@ const fixture=async route=>{
  if(path==='/status')response={owner_display_name:'Test Owner',model:{state:'ready'},conversation:active,conversations,active_qualification:true};
  else if(path==='/preferences')response={};
  else if(path==='/projects')response={projects:[]};
- else if(path==='/conversations'&&method==='GET')response={conversations};
+ else if(path==='/conversations'&&method==='GET'){
+   const kind=new URL(request.url()).searchParams.get('kind');
+   response={active_conversation_id:active.conversation.id,
+     conversations:kind?conversations.filter(c=>(c.context?.conversation_kind||'personal')===kind):conversations};
+ }
  else if(path==='/conversations'&&method==='POST'){
    created++;
-   const c={id:'c-work-'+(created+1),title:'New conversation',updated_at:new Date().toISOString()};
+   const body=JSON.parse(request.postData()||'{}');
+   assert.equal(body.context_type,'work','new Work chat must be persisted as Work in canonical API');
+   const c={id:'c-work-'+(created+1),title:'New Work Conversation',updated_at:new Date().toISOString(),context:{conversation_kind:'work'}};
    conversations=[c,...conversations];active={conversation:c,events:[]};response=active;
  }
  else if(path.startsWith('/conversations/')&&method==='GET')response=active;
@@ -58,6 +64,7 @@ try{
  assert.equal(await page.locator('#messageStream .message-entry').count(),2,'one canonical user + assistant transcript');
  assert.equal(await page.locator('#neuralCanvas').count(),1,'canonical neural canvas reused once');
  assert.equal(await page.locator('#p202Header').isVisible(),false,'Personal-only header suppressed in Work view');
+ assert.equal(active.conversation.context.conversation_kind,'work','Work scope is canonical, not a relabeled personal transcript');
  assert.equal(await page.locator('#p202bShell').isVisible(),true);
  assert.equal(await page.locator('.p202b-tab').count(),7,'seven approved Work tabs');
  assert.equal(await page.locator('.p202b-quick-button').count(),6,'six approved Work quick actions');
