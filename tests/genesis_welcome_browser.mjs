@@ -13,7 +13,7 @@ const dir = process.env.VISHNU_WELCOME_SCREENSHOTS || 'artifacts/genesis-welcome
 await mkdir(dir, { recursive: true });
 const browser = await chromium.launch({ headless: true, args: ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader'] });
 try {
-  for (const viewport of [{width:1536,height:961},{width:1366,height:768},{width:390,height:844},{width:360,height:800}]) {
+  for (const viewport of [{width:1536,height:961},{width:1448,height:1086},{width:1200,height:900},{width:1024,height:768},{width:1366,height:768},{width:390,height:844},{width:360,height:800}]) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -44,6 +44,7 @@ try {
     await page.locator('#vwSphereCanvas').waitFor();
     await page.waitForFunction(() => window.vishnuFirstRun?.state?.options?.creation_available === true);
     assert.equal(await page.locator('h1').textContent(), 'Welcome to Vishnu.');
+    await page.waitForTimeout(180); // Allow asynchronous 3D module mount before capturing the evidence frame.
     for (const label of ['Create My Vishnu', 'I Already Have Vishnu', 'Restore My Vishnu', 'Language', 'Help']) {
       assert.equal(await page.getByRole('button', {name: new RegExp(label)}).count(), 1, label);
     }
@@ -53,19 +54,30 @@ try {
       const cards = [...document.querySelectorAll('.vw-card')].map(e => e.getBoundingClientRect());
       const primary = document.querySelector('.vw-primary').getBoundingClientRect();
       const footer = document.querySelector('.vw-footer').getBoundingClientRect();
-      return { docWidth:document.documentElement.scrollWidth, innerWidth, sphere:{x:sphere.x,y:sphere.y,width:sphere.width},
-        headingY:heading.y, primaryY:primary.y, cardsY:cards[0].y, footerY:footer.y,
-        cardsSideBySide: Math.abs(cards[0].y-cards[1].y)<3 };
+      return {docWidth:document.documentElement.scrollWidth,docHeight:document.documentElement.scrollHeight,innerWidth,innerHeight,
+        sphere:{x:sphere.x,y:sphere.y,width:sphere.width,bottom:sphere.bottom},
+        headingY:heading.y,primaryY:primary.y,primaryWidth:primary.width,
+        cardsY:cards[0].y,footerY:footer.y,footerBottom:footer.bottom,
+        cardsSideBySide:Math.abs(cards[0].y-cards[1].y)<3 };
     });
     assert(metrics.docWidth <= viewport.width+1, `Horizontal overflow on ${viewport.width}px: ${JSON.stringify(metrics)}`);
     assert(metrics.sphere.width >= 185 && metrics.sphere.width <= 390, `Sphere size out of range: ${JSON.stringify(metrics)}`);
     assert(metrics.sphere.y < metrics.headingY && metrics.headingY < metrics.primaryY && metrics.primaryY < metrics.cardsY,
       `Welcome content order changed: ${JSON.stringify(metrics)}`);
     assert.equal(metrics.cardsSideBySide, viewport.width > 700);
-    if (viewport.width === 1536) {
-      assert(metrics.sphere.x > 500 && metrics.sphere.x < 700, `Sphere not horizontally centered: ${JSON.stringify(metrics)}`);
+    if (viewport.width === 1536 || viewport.width === 1448) {
+      assert(metrics.sphere.x > 475 && metrics.sphere.x < 700, `Sphere not horizontally centered: ${JSON.stringify(metrics)}`);
+      assert(metrics.footerBottom <= viewport.height, `Footer is cropped: ${JSON.stringify(metrics)}`);
+      assert(metrics.docHeight <= viewport.height+1, `Desktop should fit without scrolling: ${JSON.stringify(metrics)}`);
+    }
+    if (viewport.width === 1448) {
+      assert(metrics.sphere.y > 50 && metrics.sphere.y < 165, `4:3 sphere outside image alignment range: ${JSON.stringify(metrics)}`);
+      assert(metrics.primaryY > 625 && metrics.primaryY < 770, `4:3 action outside image alignment range: ${JSON.stringify(metrics)}`);
+      assert(metrics.cardsY > metrics.primaryY + 60 && metrics.cardsY < 900, `4:3 cards outside image alignment range: ${JSON.stringify(metrics)}`);
+      console.log('Approved 4:3 frame:', JSON.stringify(metrics));
     }
     const fileName = viewport.width===1536 ? 'p1-01-desktop.png' :
+      viewport.width===1448 ? 'p1-01-desktop-4x3.png' :
       viewport.width===390 ? 'p1-01-mobile.png' : `p1-01-${viewport.width}.png`;
     await page.screenshot({ path: resolve(dir,fileName), fullPage: true, animations:'disabled' });
     if (viewport.width === 1536) {
