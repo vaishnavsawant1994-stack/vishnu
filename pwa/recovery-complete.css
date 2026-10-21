@@ -182,6 +182,16 @@
   .rc-host .rc-core { height: min(54vw, 525px); }
   .rc-host .rc-platform { top: min(52vw, 530px); }
 }
+@media (min-width: 801px) and (max-height: 800px) {
+  .rc-host .rc-header { min-height: 76px; padding-top: 12px; }
+  .rc-host .rc-grid { min-height: calc(100dvh - 110px); }
+  .rc-host .rc-title-row { margin-bottom: 10px; }
+  .rc-host .rc-status-card { min-height: 78px; padding-top: 8px; padding-bottom: 8px; }
+  .rc-host .rc-next { min-height: 112px; padding-top: 10px; padding-bottom: 10px; }
+  .rc-host .rc-actions { min-height: 63px; }
+  .rc-host .rc-core { height: min(58vh, 540px); }
+  .rc-host .rc-platform { top: min(58vh, 540px); }
+}
 @media (max-width: 800px) {
   .rc-host .recovery-complete { margin: 8px; min-height: calc(100dvh - 16px); overflow: visible; }
   .rc-host .rc-header { padding: 17px 18px 0; min-height: 66px; }
