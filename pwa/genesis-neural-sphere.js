@@ -16,7 +16,6 @@ export function mountNeuralSphere(canvas) {
     uniform float u_ratio;
     uniform float u_scale;
     uniform float u_time;
-    uniform float u_emphasis;
     varying float v_depth;
     varying float v_phase;
     void main() {
@@ -35,6 +34,7 @@ export function mountNeuralSphere(canvas) {
     precision mediump float;
     uniform float u_mode;
     uniform float u_time;
+    uniform float u_emphasis;
     varying float v_depth;
     varying float v_phase;
     void main() {
