@@ -102,6 +102,8 @@ jobs:
           node --check pwa/p202-personal-chat.js
           node tests/chat_experience_browser.mjs
           node tests/p202_personal_chat_browser.mjs
+          node --check pwa/p202b-work-conversation.js
+          node tests/p202b_work_conversation_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
           mkdir -p artifacts/our-products
