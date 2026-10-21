@@ -490,3 +490,16 @@ body.p202-personal-chat .p202-mobile-brand{display:none}
    color:#53caff;background:linear-gradient(150deg,#0756ae,#04285b)
  }
 }
+
+
+/* Shared navigation entry on the pre-P2 Home shell. Only Chat becomes active
+   when this verified Personal Chat surface is selected. */
+.reference-desktop-sidebar .p202-nav-chat{display:flex;align-items:center;gap:11px}
+.reference-desktop-sidebar .p202-nav-chat span{font-size:19px}
+body.p202-personal-chat .reference-desktop-sidebar .p202-nav-chat.active,
+body.p202-personal-chat #appDrawer .p202-nav-chat.active{
+ color:#edf9ff!important;
+ border-left:3px solid #04b4ff!important;
+ background:linear-gradient(105deg,rgba(0,99,242,.69),rgba(1,42,120,.54))!important
+}
+body.p202-personal-chat #appDrawer .p202-nav-glyph{font-size:19px;width:22px;display:inline-grid;place-items:center}
