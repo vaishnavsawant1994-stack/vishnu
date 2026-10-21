@@ -71,7 +71,7 @@ const encodeBuffer=buffer=>{
  const bytes=new Uint8Array(buffer);
  let ascii='';
  for(const byte of bytes)ascii+=String.fromCharCode(byte);
- return btoa(ascii).replace(/\\+/g,'-').replace(/\\//g,'_').replace(/=+$/,'');
+ return btoa(ascii).split('+').join('-').split('/').join('_').replace(/=+$/,'');
 };
 const decodeText=str=>{
  const text=String(str||'').replace(/-/g,'+').replace(/_/g,'/');
