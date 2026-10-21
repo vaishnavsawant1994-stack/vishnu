@@ -34,7 +34,17 @@ try {
   await mkdir('artifacts',{recursive:true});
   for(const [width,height] of [[1536,1024],[1920,1080],[1366,768],[820,1180],[390,844],[430,932],[360,800]]) {
     await page.setViewportSize({width,height});
-    await page.screenshot({path:'artifacts/p1-10-preview-'+width+'x'+height+'.png',fullPage:width<=820});
+    await page.screenshot({path:'artifacts/p1-10-preview-'+width+'x'+height+'.png',fullPage:false});
+    if (width <= 820) {
+      // The P1-10 modal itself scrolls. A page-level fullPage screenshot only
+      // captures the viewport when the scroll owner is the fixed modal.
+      await page.locator('.runtime-assistant').screenshot({
+        path:'artifacts/p1-10-preview-'+width+'x'+height+'-full.png',
+      });
+      await page.locator('[data-runtime-continue]').scrollIntoViewIfNeeded();
+      assert.equal(await page.locator('[data-runtime-continue]').isVisible(),true);
+      await page.locator('#rtaTitle').scrollIntoViewIfNeeded();
+    }
     const size = await page.evaluate(() => ({
       document:document.documentElement.scrollWidth, viewport:window.innerWidth,
     }));
