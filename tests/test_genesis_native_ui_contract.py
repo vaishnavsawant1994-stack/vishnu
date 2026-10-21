@@ -56,7 +56,11 @@ def test_android_uses_canonical_genesis_design_and_four_step_create() -> None:
         assert f'"genesis-{step}"' in activity
     for title in ("What should Vishnu call you?", "Secure Your Vishnu", "Save Your Recovery Codes"):
         assert title in activity
-    assert 'firstDeviceName.text.toString().trim()' in activity
+    create_payload = activity.split("private fun createNativeFirstRun()", 1)[1].split(
+        "private fun completeNativeFirstRun()", 1
+    )[0]
+    assert '.put("device_name", firstDeviceName.text.toString().trim().take(120))' in create_payload
+    assert '.put("device_name", android.os.Build.MODEL' not in create_payload
     assert "CreateDocument" in activity and "Copy All Codes" in activity
     assert 'setSelection(0)' in activity  # conservative device_only
     assert '.put("data_policy"' in activity
