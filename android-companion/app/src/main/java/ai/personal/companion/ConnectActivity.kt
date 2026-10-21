@@ -724,7 +724,7 @@ class ConnectActivity : AppCompatActivity() {
                 .put("password", password)
                 .put("device_id", deviceId)
                 .put("device_token", deviceToken)
-                .put("device_name", android.os.Build.MODEL.take(120))
+                .put("device_name", firstDeviceName.text.toString().trim().take(120))
                 .put("platform", "android")
             val request = Request.Builder().url("${origin.trimEnd('/')}/iphone/api/first-run/native/create")
                 .post(payload.toString().toRequestBody("application/json".toMediaType()))
