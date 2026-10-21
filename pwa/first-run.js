@@ -206,6 +206,25 @@
       });
       return;
     }
+    if (s.step === 3) {
+      panel.setAttribute('aria-label', 'Secure Your Vishnu');
+      panel.innerHTML = '<main class="genesis-shell genesis-screen genesis-security" data-step="3"><div id="vsRoot" role="status" aria-live="polite">Loading the secure setup screen…</div></main>';
+      import('/iphone/genesis-security.js').then(({ mountSecurityScreen }) => {
+        const root = document.getElementById('vsRoot');
+        if (mountId !== welcomeMountId || !root || !root.isConnected) return;
+        disposeWelcome = mountSecurityScreen(root, s, {
+          onBack: () => render(2),
+          onContinue: () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', {detail:{step:3}})),
+          onPasskey: options => window.vishnuFirstRun.startPasskeySetup(options),
+        });
+      }).catch(() => {
+        const root = document.getElementById('vsRoot');
+        if (mountId !== welcomeMountId || !root) return;
+        root.innerHTML = '<div class="vi-load-error" role="alert"><p>The security screen could not load. Your setup has not been changed.</p><button type="button" data-vs-retry>Retry</button></div>';
+        root.querySelector('[data-vs-retry]')?.addEventListener('click', () => render(3));
+      });
+      return;
+    }
     panel.setAttribute('aria-label', 'Vishnu owner setup');
     panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${journeyStep} of 3${dots(journeyStep)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, setup step ${journeyStep} of 3"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
     bind();
