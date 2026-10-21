@@ -131,7 +131,7 @@ class FirstRunWizard(QDialog):
         self.stack = QStackedWidget()
         # Keep native forms aligned to the same centered content column as the
         # responsive web Genesis instead of stretching fields edge-to-edge.
-        self.stack.setMaximumWidth(720)
+        self.stack.setMaximumWidth(1180)
         root.addWidget(self.stack, 1, Qt.AlignmentFlag.AlignHCenter)
         self.stack.addWidget(self._welcome_page())       # 0
         self.stack.addWidget(self._owner_page())            # 1 / Genesis 02
@@ -181,6 +181,7 @@ class FirstRunWizard(QDialog):
         QLabel#subtitle { color:#a7bacb; font-size:15px; }
         QLabel#progress { color:#4ddcff; font-size:12px; letter-spacing:2px; }
         QLabel#section { font-size:25px; font-weight:450; color:#f5faff; }
+        QFrame#setupPanel { background:rgba(3,12,22,220); border:1px solid #174466; border-radius:18px; }
         QLabel#hint { color:#687f94; font-size:12px; }
         QPushButton { background:rgba(5,18,30,184); border:1px solid rgba(61,174,235,90); border-radius:13px; padding:12px 18px; color:#f5faff; }
         QPushButton:hover, QPushButton:focus { border-color:#4ddcff; background:#071d2d; }
@@ -195,20 +196,41 @@ class FirstRunWizard(QDialog):
 
     def _page(self, heading: str, copy: str) -> tuple[QWidget, QVBoxLayout]:
         page = QWidget()
-        page.setMaximumWidth(920)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(20, 8, 20, 0)
-        layout.setSpacing(14)
-        core_size = 300 if heading == 'Welcome to Vishnu' else 190
-        core = VishnuCore('ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity', core_size)
-        layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+        page.setMaximumWidth(1160)
+        welcome = heading == 'Welcome to Vishnu'
+        core = VishnuCore(
+            'ready' if 'Review' in heading else 'security' if 'Secure' in heading else 'identity',
+            300 if welcome else 390,
+        )
+        if welcome:
+            # P1-01 is intentionally centered, unlike the split-screen forms.
+            layout = QVBoxLayout(page)
+            layout.setContentsMargins(20, 8, 20, 0)
+            layout.setSpacing(14)
+            layout.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+        else:
+            # Owner-approved P1-02+ reference: 3D sphere left, dark form panel right.
+            columns = QHBoxLayout(page)
+            columns.setContentsMargins(14, 10, 14, 14)
+            columns.setSpacing(28)
+            art = QVBoxLayout()
+            art.addStretch(1)
+            art.addWidget(core, 0, Qt.AlignmentFlag.AlignHCenter)
+            art.addStretch(1)
+            columns.addLayout(art, 1)
+            card = QFrame()
+            card.setObjectName('setupPanel')
+            layout = QVBoxLayout(card)
+            layout.setContentsMargins(24, 22, 24, 22)
+            layout.setSpacing(14)
+            columns.addWidget(card, 1)
         heading_label = QLabel(heading)
         heading_label.setObjectName('section')
-        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        heading_label.setAlignment(Qt.AlignmentFlag.AlignCenter if welcome else Qt.AlignmentFlag.AlignLeft)
         layout.addWidget(heading_label)
         copy_label = QLabel(copy)
         copy_label.setObjectName('subtitle')
-        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        copy_label.setAlignment(Qt.AlignmentFlag.AlignCenter if welcome else Qt.AlignmentFlag.AlignLeft)
         copy_label.setWordWrap(True)
         layout.addWidget(copy_label)
         return page, layout
