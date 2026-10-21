@@ -78,8 +78,8 @@
       for (let i = 0; i < edges.length; i++) {
         const [a, b] = edges[i], p = projected[a], q = projected[b];
         const depth = (p.depth + q.depth) / 2;
-        const alpha = .19 + Math.max(0, depth) * .36;
-        context.strokeStyle = 'rgba(55,201,255,' + alpha + ')';
+        const alpha = .25 + Math.max(0, depth) * .42;
+        context.strokeStyle = 'rgba(63,214,255,' + alpha + ')';
         context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke();
         if (i % 17 === 0) {
           const t = (now * .00011 + i * .061) % 1;
@@ -87,21 +87,21 @@
           context.beginPath(); context.arc(p.x + (q.x - p.x) * t, p.y + (q.y - p.y) * t, 1.15, 0, Math.PI * 2); context.fill();
         }
       }
-      context.strokeStyle = 'rgba(47,198,255,.72)';
-      context.lineWidth = 1.1; context.shadowBlur = 15; context.shadowColor = '#05bfff';
+      context.strokeStyle = 'rgba(59,217,255,.94)';
+      context.lineWidth = 1.5; context.shadowBlur = 22; context.shadowColor = '#05bfff';
       context.beginPath(); context.arc(centerX, centerY, radius, 0, Math.PI * 2); context.stroke();
       for (let i = 0; i < projected.length; i++) {
         const p = projected[i], n = nodes[i];
         const brightness = .58 + Math.max(0, p.depth) * .42;
         const pulse = motion.matches ? 1 : .83 + Math.sin(now * .0014 + n.phase) * .17;
-        context.fillStyle = 'rgba(47,214,255,' + brightness + ')';
-        context.shadowBlur = n.size > 2 ? 24 : 12;
+        context.fillStyle = n.size > 3 ? 'rgba(210,252,255,.97)' : 'rgba(59,219,255,' + Math.min(1, brightness + .12) + ')';
+        context.shadowBlur = n.size > 2 ? 31 : 15;
         context.beginPath(); context.arc(p.x, p.y, n.size * p.lens * pulse, 0, Math.PI * 2); context.fill();
       }
       context.shadowBlur = 0;
       const core = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * .28);
       core.addColorStop(0, 'rgba(170,252,255,.92)');
-      core.addColorStop(.21, 'rgba(0,188,255,.52)');
+      core.addColorStop(.21, 'rgba(0,198,255,.62)');
       core.addColorStop(1, 'rgba(0,140,255,0)');
       context.fillStyle = core; context.beginPath(); context.arc(centerX, centerY, radius * .28, 0, Math.PI * 2); context.fill();
     }
