@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 
 const root = new URL('../pwa/', import.meta.url);
 const assets = new Map();
-for (const name of ['first-run.js', 'genesis.css', 'genesis-welcome.css', 'genesis-neural-sphere.js', 'genesis-identity.css', 'genesis-identity.js', 'genesis-security.css', 'genesis-security.js', 'genesis-recovery.css', 'genesis-recovery.js', 'genesis-login.css', 'genesis-login.js', 'genesis-connect.css', 'genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js', 'assets/genesis/avatar-blue.svg', 'assets/genesis/avatar-mountain.svg', 'assets/genesis/avatar-forest.svg', 'assets/genesis/avatar-horizon.svg']) {
+for (const name of ['first-run.js', 'genesis.css', 'genesis-welcome.css', 'genesis-neural-sphere.js', 'genesis-identity.css', 'genesis-identity.js', 'genesis-security.css', 'genesis-security.js', 'genesis-recovery.css', 'genesis-recovery.js', 'genesis-login.css', 'genesis-login.js', 'genesis-connect.css', 'genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js','genesis-verification.css','genesis-verification.js', 'assets/genesis/avatar-blue.svg', 'assets/genesis/avatar-mountain.svg', 'assets/genesis/avatar-forest.svg', 'assets/genesis/avatar-horizon.svg']) {
   assets.set('/iphone/' + name, await readFile(new URL(name, root), 'utf8'));
 }
 const dir = process.env.VISHNU_WELCOME_SCREENSHOTS || 'artifacts/genesis-welcome';
