@@ -104,9 +104,6 @@
     if (state.identityCreated) {
       if (stayOnSecurity) return;
       render(4);
-      const recoveryCodes = Array.isArray(state.recoveryCodes) ? state.recoveryCodes : [];
-      $('firstRunCodes').textContent = recoveryCodes.join('\n') ||
-        'Recovery codes were already generated. If you did not save them, generate a fresh set below.';
       return;
     }
     const password = $('firstRunPassword')?.value || '';
@@ -138,9 +135,7 @@
     state.recoveryCodes = result.recovery_codes || [];
     if (stayOnSecurity) busy(false);
     if (!stayOnSecurity) {
-      render(4);
-      $('firstRunCodes').textContent = state.recoveryCodes.join('\n');
-      if (state.options.setup_recovery_saved) $('firstRunRecoverySaved').checked = true;
+      render(4); // Module uses the one-time in-memory codes directly.
     }
   }
 
@@ -259,6 +254,19 @@
     state.avatarSaved = true;
   }
 
+  async function regenerateRecoveryCodes(){
+    // This function can only be invoked by the P1-04 explicit confirmation
+    // dialog, never by a render/refresh/resume side effect.
+    const result=await setupApi('/first-run/recovery-codes',{method:'POST',body:'{}'});
+    if(!Array.isArray(result.recovery_codes)||!result.recovery_codes.length)
+      throw new Error('The runtime did not return new recovery codes.');
+    state.recoveryCodes=result.recovery_codes;
+    state.recoverySaved=false;
+    state.options.setup_recovery_saved=false;
+    return result.recovery_codes;
+  }
+  flow.regenerateRecoveryCodes=regenerateRecoveryCodes;
+
   async function finish() {
     if (!$('firstRunRecoverySaved')?.checked) {
       throw new Error('Save your recovery codes somewhere secure, then confirm to continue.');
@@ -297,9 +305,16 @@
         passkey_unavailable_confirmed: !passkeyCreated,
       }),
     });
+    state.recoveryCodes=[]; // Stop retaining one-time credentials after acceptance.
+    state.recoverySaved=false;
+    busy(false);
     setError('Your Vishnu is ready. Enter to start using it.');
     setTimeout(() => window.check(), 700);
   }
+  flow.finishRecovery=async()=>{
+    try {return await finish();}
+    catch(error) {busy(false);throw error;}
+  };
 
   window.addEventListener('vishnu:genesis-next', async event => {
     setError('');
