@@ -69,7 +69,13 @@ try{
   const width=await page.evaluate(()=>document.documentElement.scrollWidth);
   assert(width<=vp.width+1,'No horizontal overflow at '+vp.width+': '+width);
   if(vp.width>900)assert.equal(await page.locator('.vr-code-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),3);
-  else assert.equal(await page.locator('.vr-code-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2);
+  else {
+    assert.equal(await page.locator('.vr-code-grid').evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(' ').length),2);
+    const globe=await page.locator('.vs-sphere').boundingBox();
+    const hero=await page.locator('.vs-hero').boundingBox();
+    assert(globe&&hero&&globe.y>=hero.y-1&&globe.y+globe.height<=hero.y+hero.height+1,
+      'Mobile WebGL globe must fit fully inside its visual region: '+JSON.stringify({globe,hero}));
+  }
   await page.screenshot({path:resolve(out,`p1-04-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
   if(vp.width<=900){
     await page.locator('.vr-nav').scrollIntoViewIfNeeded();
