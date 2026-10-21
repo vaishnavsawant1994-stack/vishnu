@@ -569,12 +569,36 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                         media_type='text/css',
                         headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/genesis-welcome.css', include_in_schema=False)
+    def genesis_welcome_styles():
+        return Response((web_dir / 'genesis-welcome.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-neural-sphere.js', include_in_schema=False)
+    def genesis_neural_sphere_script():
+        return Response((web_dir / 'genesis-neural-sphere.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-identity.css', include_in_schema=False)
+    def genesis_identity_styles():
+        return Response((web_dir / 'genesis-identity.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/genesis-identity.js', include_in_schema=False)
+    def genesis_identity_script():
+        return Response((web_dir / 'genesis-identity.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
     @router.get('/assets/genesis/{asset_name}', include_in_schema=False)
     def genesis_asset(asset_name: str):
         allowed = {
             'vishnu-core.png': 'image/png',
             'cosmic-desktop.png': 'image/png',
             'cosmic-mobile.png': 'image/png',
+            'avatar-blue.svg': 'image/svg+xml',
+            'avatar-mountain.svg': 'image/svg+xml',
+            'avatar-forest.svg': 'image/svg+xml',
+            'avatar-horizon.svg': 'image/svg+xml',
         }
         media_type = allowed.get(asset_name)
         if media_type is None:
