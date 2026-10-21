@@ -1,0 +1,235 @@
+/* P1-10 Runtime Connection Assistant · Vishnu Phase 1 visual reference.
+   Scoped to #enrollPanel.runtime-host, no additional design system. */
+#enrollPanel.runtime-host {
+  position: fixed; inset: 0; z-index: 1000; width: 100%; height: 100dvh;
+  overflow: auto; border: 0; padding: 0; margin: 0; background: #00060e;
+}
+.runtime-host .runtime-assistant {
+  --rta-bg: #00060e; --rta-border: rgba(22,99,155,.51);
+  --rta-cyan: #00c8ff; --rta-blue: #086cf6;
+  --rta-text: #f4f8ff; --rta-muted: #a9bed6;
+  margin: 12px; min-height: calc(100dvh - 24px); position: relative; isolation: isolate;
+  border: 1px solid rgba(45,114,179,.48); border-radius: 18px; box-sizing: border-box;
+  color: var(--rta-text); background: radial-gradient(ellipse at 24% 50%,rgba(0,72,143,.14),transparent 43%),
+  linear-gradient(135deg,#00050d,#020914 75%,#00060e);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.runtime-host .runtime-assistant * { box-sizing: border-box; }
+.runtime-host .rta-header {
+  flex: 0 0 112px; display: flex; align-items: flex-start;
+  justify-content: space-between; gap: 15px; padding: 33px 39px 6px;
+}
+.runtime-host .rta-brand { display: flex; align-items: center; gap: 19px; }
+.runtime-host .rta-brand-mark {
+  width: 65px; height: 65px; flex: 0 0 65px; border-radius: 50%;
+  border: 1.5px solid #24baff; box-shadow: 0 0 27px rgba(0,174,255,.4), inset 0 0 15px rgba(21,135,231,.3);
+  display: grid; place-items: center; position: relative;
+}
+.runtime-host .rta-brand-mark::before {
+  content: ""; display: block; width: 34px; height: 43px; border-radius: 50%;
+  background: linear-gradient(90deg,#0ad6fc 0 35%,#011634 35% 57%,#79eeff 57% 100%);
+  box-shadow: 0 0 8px #08caff;
+}
+.runtime-host .rta-brand-mark i { position: absolute; width: 1px; height: 42px; left: 50%; background: #032444; }
+.runtime-host .rta-brand strong { display: block; font-size: 24px; font-weight: 630; line-height: 1.35; }
+.runtime-host .rta-brand small { display: block; color: #b6c9e2; font-size: 14px; }
+.runtime-host .rta-right { display: flex; align-items: center; gap: 30px; margin-top: 3px; }
+.runtime-host .rta-locale { display: flex; align-items: center; gap: 12px; font-size: 15px; }
+.runtime-host .rta-screen {
+  color: #35daf9; display: grid; place-items: center; width: 101px; height: 45px; border-radius: 999px;
+  background: rgba(9,25,48,.55); border: 1px solid rgba(40,129,215,.52);
+}
+.runtime-host .rta-layout {
+  flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: minmax(0,49%) minmax(0,51%);
+  padding: 6px 33px 0 27px; gap: 0;
+}
+.runtime-host .rta-art {
+  position: relative; min-width: 0; min-height: 720px;
+  display: flex; align-items: flex-start; justify-content: center;
+}
+.runtime-host .rta-canvas {
+  display: block; z-index: 1; position: relative; width: min(100%, 690px);
+  height: min(72vh, 695px); touch-action: none; cursor: grab;
+  filter: drop-shadow(0 0 22px rgba(0,150,255,.27));
+}
+.runtime-host .rta-canvas:active { cursor: grabbing; }
+.runtime-host .rta-platform {
+  width: min(100%, 700px); height: 168px; left: 50%; top: min(62vh,615px);
+  position: absolute; z-index: 0; transform: translateX(-50%); pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%,rgba(0,209,255,.46),rgba(0,93,224,.13) 39%,transparent 70%);
+  animation: rta-light 5.5s ease-in-out infinite alternate;
+}
+.runtime-host .rta-platform::after {
+  content: ""; position: absolute; inset: 38% -4% -40%;
+  background: linear-gradient(180deg,rgba(0,148,242,.22),transparent);
+  filter: blur(14px);
+}
+.runtime-host .rta-platform i {
+  position: absolute; left: 50%; top: 48%; border-radius: 50%;
+  transform: translate(-50%,-50%) rotateX(66deg);
+  border: 1px solid rgba(0,197,255,.68); box-shadow: 0 0 13px rgba(0,150,255,.45);
+}
+.runtime-host .rta-platform i:nth-child(1) { width: 94%; height: 94%; }
+.runtime-host .rta-platform i:nth-child(2) { width: 76%; height: 79%; border-width: 2px; border-color: #00cfff; }
+.runtime-host .rta-platform i:nth-child(3) { width: 52%; height: 69%; }
+.runtime-host .rta-platform i:nth-child(4) { width: 29%; height: 49%; }
+.runtime-host .rta-panel {
+  min-width: 0; align-self: start; padding: 28px 27px 20px;
+  border: 1px solid rgba(29,85,143,.45); border-radius: 16px;
+  background: linear-gradient(120deg,rgba(2,11,23,.81),rgba(1,7,17,.69));
+  box-shadow: inset 0 0 23px rgba(8,45,88,.11);
+}
+.runtime-host .rta-eyebrow { margin: 0 0 9px; font-size: 12px; font-weight: 600; letter-spacing: .29em; color: #86c7ed; }
+.runtime-host h1 {
+  font-size: clamp(28px,3vw,44px); line-height: 1.15; letter-spacing: -.025em;
+  font-weight: 690; margin: 0 0 12px;
+}
+.runtime-host h1 em { font-style: normal; color: #0b77ff; }
+.runtime-host .rta-intro { color: #bdd3eb; font-size: clamp(16px,1.4vw,21px); line-height: 1.42; margin: 0 0 20px; }
+.runtime-host .rta-choices { display: grid; gap: 15px; }
+.runtime-host .rta-choice {
+  min-width: 0; width: 100%; min-height: 118px; display: flex; align-items: center; gap: 27px;
+  border: 1px solid rgba(23,93,154,.54); background: linear-gradient(100deg,rgba(6,23,42,.91),rgba(3,12,25,.85));
+  color: #f6f9ff; padding: 16px 21px; border-radius: 16px;
+  cursor: pointer; text-align: left; font: inherit; transition: border-color .2s,box-shadow .2s,background .2s;
+}
+.runtime-host .rta-choice:hover { border-color: rgba(3,185,255,.7); }
+.runtime-host .rta-choice.selected,.runtime-host .rta-choice[aria-checked="true"] {
+  border-color: #06ccff;
+  background: linear-gradient(110deg,rgba(9,40,72,.74),rgba(3,20,39,.83));
+  box-shadow: 0 0 19px rgba(0,167,255,.26),inset 0 0 17px rgba(0,99,245,.13);
+}
+.runtime-host .rta-icon {
+  display: grid; place-items: center; border-radius: 14px; width: 94px; height: 86px;
+  flex: 0 0 94px; background: radial-gradient(circle at 42% 43%,rgba(0,116,250,.26),rgba(4,24,47,.65));
+  border: 1px solid rgba(13,95,168,.55); box-shadow: inset 0 0 12px rgba(3,87,222,.11);
+  color: #0c9bff; filter: drop-shadow(0 0 7px rgba(0,151,255,.23));
+}
+.runtime-host .rta-choice-copy { min-width: 0; display: grid; gap: 8px; }
+.runtime-host .rta-choice-copy strong { font-size: 21px; line-height: 1.17; font-weight: 645; }
+.runtime-host .rta-choice-copy small { color: #adbfda; font-size: 15px; line-height: 1.38; }
+.runtime-host .rta-chevron { color: #00afff; display: grid; place-items: center; margin-left: auto; flex: 0 0 30px; }
+.runtime-host .rta-explainer {
+  border: 1px solid rgba(23,93,154,.54); background: linear-gradient(100deg,rgba(5,22,40,.75),rgba(2,12,28,.7));
+  border-radius: 15px; margin-top: 17px; padding: 17px 21px; display: flex; align-items: flex-start; gap: 27px;
+}
+.runtime-host .rta-explainer-icon { color: #00aaff; display: grid; place-items: center; width: 48px; min-width: 48px; margin-top: 5px; }
+.runtime-host .rta-explainer h2 { font-size: 17px; margin: 0 0 8px; font-weight: 650; }
+.runtime-host .rta-explainer p { margin: 0; color: #afc0d7; font-size: 14px; line-height: 1.48; }
+.runtime-host .rta-flow {
+  margin-top: 13px; border: 1px solid rgba(25,104,175,.5); border-radius: 14px;
+  padding: 16px; background: rgba(4,18,34,.94); display: grid; gap: 11px;
+}
+.runtime-host .rta-flow h3 { margin: 0; font-size: 17px; }
+.runtime-host .rta-flow p { margin: 0; font-size: 14px; color: #bad0e6; line-height: 1.48; }
+.runtime-host .rta-flow label { font-size: 13px; font-weight: 600; color: #cbe6f4; }
+.runtime-host .rta-flow input[type="url"] {
+  min-width: 0; width: 100%; background: #061525; border: 1px solid #23679c;
+  border-radius: 10px; padding: 13px; color: #f5faff; font: inherit; font-size: 15px;
+}
+.runtime-host .rta-flow a { color: #80dbff; font-size: 14px; text-decoration: underline; text-underline-offset: 3px; }
+.runtime-host .rta-inline-action,.runtime-host .rta-provider-link {
+  background: rgba(0,114,224,.2); border: 1px solid #078cee; border-radius: 10px; color: #ebf9ff;
+  cursor: pointer; padding: 12px 16px; font: inherit; font-size: 14px; font-weight: 590; width: fit-content; min-height: 44px;
+  text-decoration: none !important; display: flex; align-items: center;
+}
+.runtime-host .rta-consent { display: flex; gap: 10px; align-items: flex-start; font-weight: 400 !important; line-height: 1.4; }
+.runtime-host .rta-consent input { accent-color: #0af; margin-top: 4px; width: 18px; height: 18px; flex: 0 0 18px; }
+.runtime-host #rtaStatus { margin: 8px 0 0; font-size: 13px; color: #b9deef; line-height: 1.4; min-height: 0; overflow-wrap: anywhere; }
+.runtime-host #rtaStatus:empty { margin: 0; }
+.runtime-host #rtaStatus[data-kind="error"] { color: #ffb5bf; }
+.runtime-host #rtaStatus[data-kind="success"] { color: #6ae8c8; }
+.runtime-host .rta-footer {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 24px; min-height: 113px; padding: 14px 22px 28px 36px;
+}
+.runtime-host .rta-footer button {
+  border-radius: 999px; min-height: 63px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 16px;
+  color: #fff; font: inherit; font-size: 20px;
+}
+.runtime-host .rta-back {
+  background: rgba(3,10,22,.78); border: 1px solid rgba(33,91,170,.52); min-width: 191px;
+}
+.runtime-host .rta-continue {
+  background: linear-gradient(130deg,#008fff,#0965f8);
+  border: 1px solid rgba(22,132,250,.72); min-width: 305px;
+  box-shadow: 0 0 21px rgba(0,89,237,.23);
+}
+.runtime-host button:focus-visible,.runtime-host input:focus-visible,.runtime-host a:focus-visible {
+  outline: 3px solid #b1f4ff; outline-offset: 3px;
+}
+.runtime-host button:disabled { opacity: .55; cursor: not-allowed; }
+@keyframes rta-light { to { opacity: .7; } }
+@media (min-width: 801px) and (max-height: 850px) {
+  .runtime-host .rta-header { flex-basis: 88px; padding-top: 18px; }
+  .runtime-host .rta-art { min-height: 570px; }
+  .runtime-host .rta-canvas { height: min(67vh,575px); }
+  .runtime-host .rta-platform { top: min(65vh,570px); }
+  .runtime-host .rta-panel { padding-top: 16px; padding-bottom: 14px; }
+  .runtime-host .rta-choice { min-height: 92px; padding: 10px; gap: 14px; }
+  .runtime-host .rta-icon { flex-basis: 62px; width: 62px; height: 61px; }
+  .runtime-host .rta-choice-copy strong { font-size: 17px; }
+  .runtime-host .rta-choice-copy small { font-size: 13px; }
+  .runtime-host .rta-explainer { padding: 10px 14px; }
+  .runtime-host .rta-footer { min-height: 83px; padding-top: 7px; padding-bottom: 13px; }
+}
+@media (max-width: 1180px) and (min-width: 801px) {
+  .runtime-host .rta-layout { grid-template-columns: 44% 56%; padding: 5px 18px; }
+  .runtime-host .rta-panel { padding: 20px 14px; }
+  .runtime-host .rta-choice { gap: 12px; padding: 12px; }
+  .runtime-host .rta-choice-copy strong { font-size: 17px; }
+  .runtime-host .rta-icon { flex: 0 0 61px; width: 61px; height: 62px; }
+  .runtime-host .rta-icon svg { width: 38px; }
+}
+@media (max-width: 800px) {
+  #enrollPanel.runtime-host { overflow-x: hidden; overflow-y: auto; }
+  .runtime-host .runtime-assistant { margin: 7px; min-height: calc(100dvh - 14px); overflow: visible; }
+  .runtime-host .rta-header { flex-basis: auto; padding: 15px 15px 0; min-height: 66px; }
+  .runtime-host .rta-brand { gap: 9px; }
+  .runtime-host .rta-brand-mark { width: 42px; height: 42px; flex: 0 0 42px; }
+  .runtime-host .rta-brand-mark::before { width: 25px; height: 31px; }
+  .runtime-host .rta-brand-mark i { height: 31px; }
+  .runtime-host .rta-brand strong { font-size: 18px; }
+  .runtime-host .rta-brand small { display: none; }
+  .runtime-host .rta-right { gap: 10px; }
+  .runtime-host .rta-locale { font-size: 12px; gap: 6px; }
+  .runtime-host .rta-locale svg { width: 21px; }
+  .runtime-host .rta-screen { width: 66px; height: 33px; font-size: 12px; }
+  .runtime-host .rta-layout { display: flex; flex-direction: column; min-height: 0; padding: 3px 14px 0; }
+  .runtime-host .rta-art { min-height: 276px; height: 276px; flex: 0 0 276px; }
+  .runtime-host .rta-canvas { width: min(100%,320px); height: 280px; }
+  .runtime-host .rta-platform { top: 223px; width: min(100%,350px); height: 85px; }
+  .runtime-host .rta-panel { padding: 19px 15px; border-radius: 14px; }
+  .runtime-host .rta-eyebrow { font-size: 10px; margin-bottom: 7px; }
+  .runtime-host h1 { font-size: clamp(26px,7vw,36px); margin-bottom: 9px; }
+  .runtime-host .rta-intro { font-size: 14px; margin-bottom: 17px; }
+  .runtime-host .rta-choices { gap: 10px; }
+  .runtime-host .rta-choice { min-height: 88px; gap: 12px; padding: 11px; border-radius: 12px; }
+  .runtime-host .rta-icon { flex: 0 0 52px; width: 52px; height: 56px; border-radius: 10px; }
+  .runtime-host .rta-icon svg { width: 32px; }
+  .runtime-host .rta-choice-copy { gap: 4px; }
+  .runtime-host .rta-choice-copy strong { font-size: 15px; }
+  .runtime-host .rta-choice-copy small { font-size: 12px; }
+  .runtime-host .rta-chevron { flex: 0 0 19px; }
+  .runtime-host .rta-chevron svg { width: 20px; }
+  .runtime-host .rta-explainer { gap: 13px; padding: 11px; border-radius: 12px; }
+  .runtime-host .rta-explainer-icon { width: 33px; min-width: 33px; }
+  .runtime-host .rta-explainer-icon svg { width: 32px; }
+  .runtime-host .rta-explainer h2 { font-size: 14px; }
+  .runtime-host .rta-explainer p { font-size: 12px; }
+  .runtime-host .rta-footer { min-height: 80px; padding: 11px 13px max(18px,env(safe-area-inset-bottom)); gap: 13px; }
+  .runtime-host .rta-footer button { min-height: 51px; font-size: 14px; }
+  .runtime-host .rta-back { min-width: 0; flex: 0 0 32%; }
+  .runtime-host .rta-continue { min-width: 0; flex: 1; }
+}
+@media (max-width: 370px) {
+  .runtime-host .rta-locale { font-size: 0; }
+  .runtime-host .rta-locale svg { font-size: initial; }
+  .runtime-host .rta-choice-copy strong { font-size: 14px; }
+  .runtime-host .rta-layout { padding-left: 9px; padding-right: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .runtime-host .rta-platform { animation: none; }
+  .runtime-host * { transition: none !important; }
+}
