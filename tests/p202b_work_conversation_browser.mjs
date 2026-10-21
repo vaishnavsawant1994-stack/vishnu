@@ -12,14 +12,31 @@ const convo={id:'c-work-1',title:'Current discussion',updated_at:createdAt,previ
 let conversations=[convo],active={conversation:convo,events:[
  {event_id:'u1',kind:'user_message',created_at:createdAt,payload:{text:'Help review the quarterly plan'}},
  {event_id:'a1',kind:'assistant_message',created_at:createdAt,payload:{text:'Here are the areas to review. This is advice, not a running WorkOrder.'}}
-]},workLoaded=0,turns=0,created=0;
+ ]},workLoaded=0,turns=0,created=0,projectTaskStatus='planned',linkedProjectWrites=0,taskWrites=0;
 const apiPath=url=>new URL(url).pathname.replace('/iphone/api','');
 const fixture=async route=>{
  const request=route.request(),path=apiPath(request.url()),method=request.method();
  let response={};
  if(path==='/status')response={owner_display_name:'Test Owner',model:{state:'ready'},conversation:active,conversations,active_qualification:true};
  else if(path==='/preferences')response={};
- else if(path==='/projects')response={projects:[]};
+ 
+ else if(path==='/projects')response={projects:[{id:'project-1',name:'Assigned Project',status:'active'}]};
+ else if(path==='/projects/project-1'&&method==='GET')response={project:{
+   id:'project-1',name:'Assigned Project',status:'active',
+   files:[{id:'file-p1',title:'Assigned brief.md',kind:'upload',size_bytes:128}],
+   tasks:[{id:'task-p1',title:'Review design brief',status:projectTaskStatus}],approvals:[]}};
+ else if(path==='/projects/project-1/work'&&method==='GET')response={
+   state:'planned',p10_plan:{id:'plan-p1',state:'RUNNING',
+    tasks:[{id:'step-p1',objective:'Review implementation evidence',status:'WAITING'}]}};
+ else if(path==='/approvals-center')response={authority:'approval_manager',approvals:[
+   {id:'approval-p1',title:'Approve scoped task',status:'pending',project_id:'project-1'},
+   {id:'approval-unrelated',title:'Unrelated approval',status:'pending',project_id:'other-project'}]};
+ else if(path==='/projects/project-1/files/file-p1/index')response={extracted_text:'Signed Project document preview'};
+ else if(path==='/projects/project-1/tasks/task-p1'&&method==='PATCH'){
+   const body=JSON.parse(request.postData()||'{}');
+   assert.ok(['done','planned'].includes(body.status));
+   projectTaskStatus=body.status;taskWrites++;response={project:{id:'project-1'}};
+ }
  else if(path==='/conversations'&&method==='GET'){
    const kind=new URL(request.url()).searchParams.get('kind');
    response={active_conversation_id:active.conversation.id,
@@ -31,6 +48,15 @@ const fixture=async route=>{
    assert.equal(body.context_type,'work','new Work chat must be persisted as Work in canonical API');
    const c={id:'c-work-'+(created+1),title:'New Work Conversation',updated_at:new Date().toISOString(),context:{conversation_kind:'work'}};
    conversations=[c,...conversations];active={conversation:c,events:[]};response=active;
+ }
+ 
+ else if(path.startsWith('/conversations/')&&path.endsWith('/work-project')&&method==='PUT'){
+   const body=JSON.parse(request.postData()||'{}');
+   assert.equal(body.confirm,true,'Project link requires explicit confirmation');
+   assert.ok(body.project_id===null||body.project_id==='project-1');
+   assert.equal(active.conversation.context.conversation_kind,'work');
+   active.conversation.context.work_project_id=body.project_id;
+   linkedProjectWrites++;response={conversation:active.conversation};
  }
  else if(path.startsWith('/conversations/')&&method==='GET')response=active;
  else if(path.startsWith('/conversations/')&&path.endsWith('/activate'))response=active;
