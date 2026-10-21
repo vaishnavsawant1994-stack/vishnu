@@ -1,7 +1,6 @@
 /* P2-02B Work Conversation: opt-in presentation over canonical conversation APIs.
- * Work mode is currently a device-local view marker, NOT an authorization boundary.
- * Project task execution and resources remain server-controlled and unlinked unless
- * a canonical, owner-approved association exists. Never synthesize WorkPlan progress.
+ * Work UI preference is device-local; conversation type and optional Project association
+ * persist in canonical continuity. Neither confers new authorization or execution scope. Never synthesize WorkPlan progress.
  */
 (() => {
  'use strict';
@@ -110,7 +109,8 @@
        ['Search messages',openMobileSearch],
        ['Files',()=>switchTab('Files')],['Tasks',()=>switchTab('Tasks')],
        ['Research',()=>switchTab('Research')],['Code',()=>switchTab('Code')],
-       ['Plans',()=>switchTab('Plans')],['Conversation options',openCanonicalMenu]
+       ['Plans',()=>switchTab('Plans')],['Link Project',()=>guarded(linkProjectPicker)],
+       ['Conversation options',openCanonicalMenu]
      ]);
    }
    openCanonicalMenu();
@@ -155,7 +155,7 @@
    historyActions.append(btn('⌕ History','',()=>{$('historyButton')?.click();document.getElementById('appConversations')?.click()}));
    history.append(historyActions);
    ref.history=make('div','p202b-history-list');
-   ref.history.setAttribute('aria-label','Saved conversations; Work context is not server-classified');
+   ref.history.setAttribute('aria-label','Saved Work conversations in the owner continuity ledger');
    history.append(make('p','p202b-note','Only Work conversations from the existing owner-authorized continuity ledger.'),ref.history);
    layout.append(history);
    const main=make('div','p202b-main');
@@ -314,7 +314,7 @@
    dialog.append(search,list,footer);document.body.append(dialog);
    dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
  }
- function resourceDialog(title,items,mapper){
+ function resourceDialog(title,items,mapper,actions=[]){
    const dialog=make('dialog','p202b-modal p202b-resources-modal');
    dialog.append(make('h2','',title),make('p','','Resources remain in the existing authorized Project.'));
    const list=make('div','p202b-project-choices');
@@ -323,7 +323,10 @@
      list.append(btn(label,'p202b-project-choice',()=>{dialog.close();action()}));
    });
    if(!items.length)list.append(make('p','p202b-empty','No Project resources found.'));
-   dialog.append(list,btn('Close','p202b-primary',()=>dialog.close()));
+   const footer=make('div','p202b-modal-actions');
+   actions.forEach(([label,act])=>footer.append(btn(label,'',()=>{dialog.close();act()})));
+   footer.append(btn('Close','p202b-primary',()=>dialog.close()));
+   dialog.append(list,footer);
    document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
  }
  function openProjectFile(file){
@@ -429,26 +432,63 @@
    }).finally(()=>picker.remove()),{once:true});
    picker.click();
  }
+ async function createLinkedPlan(){
+   if(!linkedProjectId)throw new Error('Link a Project before creating a plan.');
+   const pid=linkedProjectId;
+   const query=window.prompt('Describe the desired Project outcome to plan');
+   if(!query?.trim())return;
+   if(!window.confirm('Create a new plan in the existing Project? No execution will start automatically.'))return;
+   await bridge().api('/projects/'+encodeURIComponent(pid)+'/work/plan',{
+     method:'POST',body:JSON.stringify({query:query.trim().slice(0,2000)})
+   });
+   await reload();inform('Canonical Project WorkPlan created.');
+ }
+ async function linkedPlanAction(planId,action){
+   if(!linkedProjectId||!planId||!['pause','resume'].includes(action))
+     throw new Error('A linked canonical plan is required.');
+   if(!window.confirm((action==='pause'?'Pause':'Resume')+' this existing Project WorkPlan?'))return;
+   await bridge().api('/projects/'+encodeURIComponent(linkedProjectId)+'/work/'+encodeURIComponent(planId)+'/'+action,{
+     method:'POST',body:'{}'
+   });
+   await reload();inform('Project WorkPlan '+action+' confirmed.');
+ }
+ async function createLinkedArtifact(){
+   if(!linkedProjectId)throw new Error('Link a Project before creating an artifact.');
+   const title=window.prompt('Title for a Project text artifact');
+   if(!title?.trim())return;
+   const content=window.prompt('Artifact text (a saved Project deliverable)');
+   if(!content?.trim())return;
+   if(!window.confirm('Save this text as a persistent Project deliverable?'))return;
+   const pid=linkedProjectId;
+   await bridge().api('/projects/'+encodeURIComponent(pid)+'/deliverables',{
+     method:'POST',body:JSON.stringify({title:title.trim().slice(0,180),content:content.trim().slice(0,12000)})
+   });
+   await reload();inform('Artifact saved to canonical Project deliverables.');
+ }
  function showLinkedPlan(){
    const plan=linkedWork?.p10_plan;
    if(!plan)return alertDialog('Project WorkPlan','No canonical WorkPlan exists for the linked Project.',[
-     ['Open Project planner',()=>nav('projects')]
+     ['Open Project planner',()=>nav('projects')],['Create Project plan',()=>guarded(createLinkedPlan)]
    ]);
    resourceDialog('Canonical Project WorkPlan',plan.tasks||[],t=>[
      String(t.objective||t.id||'Step')+' · '+String(t.status||'WAITING'),
      ()=>alertDialog('WorkPlan step',String(t.objective||'')+' · '+String(t.status||''),[
        ['Open governed Work',()=>nav('workflows')]
      ])
+   ],[
+     ['Pause',()=>guarded(()=>linkedPlanAction(plan.id,'pause'))],
+     ['Resume',()=>guarded(()=>linkedPlanAction(plan.id,'resume'))],
+     ['Open governed Work',()=>nav('workflows')]
    ]);
  }
  function openFiles(){
-   if(linkedProject) return resourceDialog('Files & Deliverables',linkedProject.files||[],f=>[String(f.title||'File')+' · '+String(f.kind||'file'),()=>openProjectFile(f)]);
+   if(linkedProject) return resourceDialog('Files & Deliverables',linkedProject.files||[],f=>[String(f.title||'File')+' · '+String(f.kind||'file'),()=>openProjectFile(f)],[[ 'Upload File',()=>guarded(uploadProjectFile)],['Create Text Artifact',()=>guarded(createLinkedArtifact)]]);
    alertDialog('Files & Resources','This Work chat currently has no canonical conversation-attachment association. Adding a file to Knowledge is a separate, persistent action and requires explicit owner choice.',[
      ['Open Library',()=>nav('knowledge')],['Add to Knowledge',()=>$('attachmentInput')?.click()]
    ]);
  }
  function addTask(){
-   if(linkedProject)return resourceDialog('Project Tasks',linkedProject.tasks||[],t=>[String(t.title||'Task')+' · '+String(t.status||'planned'),()=>openProjectTask(t)]);
+   if(linkedProject)return resourceDialog('Project Tasks',linkedProject.tasks||[],t=>[String(t.title||'Task')+' · '+String(t.status||'planned'),()=>openProjectTask(t)],[['Add Project Task',()=>guarded(addLinkedTask)]]);
    if(typeof bridge()?.openTodayExistingCreate==='function')bridge().openTodayExistingCreate('task');
    else bridge()?.openTodayScreen?.('all');
  }
