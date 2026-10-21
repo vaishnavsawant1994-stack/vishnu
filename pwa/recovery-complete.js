@@ -229,20 +229,24 @@
   function mount(panel, result, actions = {}) {
     cleanup?.();
     const rows = cards(result);
-    const fullyRecovered = rows.every(row => row.status === 'completed');
     const accessOnly = result.recoveryType === 'owner_access';
+    const complete = result.identityStatus === 'completed' && result.deviceStatus === 'completed'
+      && (result.dataStatus === 'completed' || result.dataStatus === 'not_applicable');
+    const fullyRecovered = complete && !accessOnly && result.dataStatus === 'completed';
+    const eyebrow = complete ? 'RECOVERY COMPLETE' : 'RECOVERY NEEDS ATTENTION';
     const heading = fullyRecovered ? 'Your <em>Vishnu</em> Has Been Recovered'
-      : accessOnly ? 'Your <em>Vishnu</em> Access Is Restored'
-      : 'Your <em>Vishnu</em> Recovery Is Ready';
+      : complete && accessOnly ? 'Your <em>Vishnu</em> Access Is Restored'
+      : 'Your <em>Vishnu</em> Recovery Needs Attention';
     const message = fullyRecovered
       ? 'Your identity, recovery access, and available data have been restored successfully. You can now continue into Vishnu.'
-      : accessOnly ? 'Your owner access is restored. No encrypted backup data was restored during this sign-in.'
-      : 'Your owner access has been restored. Review the status below for anything that still needs attention.';
+      : complete && accessOnly ? 'Your owner access is restored. No encrypted backup data was restored during this sign-in.'
+      : 'Some recovery steps still need attention. Review the verified statuses below before continuing.';
     const canContinue = result.canContinueToHome === true &&
       result.identityStatus === 'completed' && result.deviceStatus === 'completed';
     panel.setAttribute('aria-label', 'P1-09 Recovery Complete');
     panel.className = 'genesis rc-host';
-    panel.innerHTML = '<main class="recovery-complete" aria-labelledby="rcTitle">' +
+    panel.innerHTML = '<main class="recovery-complete" data-recovery-overall="' + (complete ? 'complete' : 'needs-attention') +
+      '" aria-labelledby="rcTitle">' +
       '<header class="rc-header"><div class="rc-brand"><span class="rc-brand-mark" aria-hidden="true"><i></i></span>' +
       '<span><strong>Vishnu 2.0</strong><small>Your Personal AI Companion</small></span></div>' +
       '<div class="rc-header-right"><span class="rc-locale" aria-label="Interface language: English">' +
@@ -250,8 +254,8 @@
       '<div class="rc-grid"><section class="rc-art" aria-label="Animated three-dimensional Vishnu neural core">' +
       '<canvas class="rc-core" id="rcCore" role="img" aria-label="Slowly rotating cyan neural network with connected nodes. Drag to rotate."></canvas>' +
       '<div class="rc-platform" aria-hidden="true"><span></span><span></span><span></span><span></span></div></section>' +
-      '<section class="rc-details"><div class="rc-eyebrow">RECOVERY COMPLETE</div>' +
-      '<div class="rc-title-row"><div class="rc-shield">' + svg('shield', 86) + '</div>' +
+      '<section class="rc-details"><div class="rc-eyebrow">' + eyebrow + '</div>' +
+      '<div class="rc-title-row"><div class="rc-shield">' + svg(complete ? 'shield' : 'partial', 86) + '</div>' +
       '<div><h1 id="rcTitle">' + heading + '</h1><p class="rc-description">' + message + '</p></div></div>' +
       '<div class="rc-card-stack">' + rows.map(row => cardMarkup(row, result)).join('') + '</div>' +
       '<section class="rc-next"><span class="rc-next-icon">' + svg('bulb', 37) + '</span>' +
@@ -277,12 +281,12 @@
     backButton.addEventListener('click', () => {
       const summary = panel.querySelector('.rc-eyebrow');
       const detail = panel.querySelector('.rc-description');
-      if (summary.textContent === 'RECOVERY COMPLETE') {
+      if (summary.textContent !== 'RECOVERY SUMMARY') {
         summary.textContent = 'RECOVERY SUMMARY';
         detail.textContent = 'These statuses come from Vishnu’s verified recovery result. Use Continue to Vishnu to validate your current session and enter Home.';
         backButton.textContent = '← Return to recovery result';
       } else {
-        summary.textContent = 'RECOVERY COMPLETE';
+        summary.textContent = eyebrow;
         detail.textContent = message;
         backButton.innerHTML = svg('back', 21) + ' Back';
       }
