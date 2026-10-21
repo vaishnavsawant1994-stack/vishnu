@@ -226,6 +226,12 @@
       event.stopImmediatePropagation();
       module('owner');
     }, true);
+    const headerActions = document.querySelector('.topbar-actions');
+    if (headerActions && !headerActions.querySelector('.p2-mobile-notifications')) {
+      const notifications = actionButton('♧', 'p2-mobile-notifications', navigate.notification);
+      notifications.setAttribute('aria-label', 'Open notifications and approvals');
+      headerActions.prepend(notifications);
+    }
     const owner = document.querySelector('[data-reference-owner]');
     if (owner) owner.textContent = 'Owner';
   }
