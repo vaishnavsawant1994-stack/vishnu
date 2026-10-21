@@ -42,7 +42,7 @@ async function verifyReturningOwnerEntry(){
   await page.route('**/iphone/first-run.js',route=>route.fulfill({status:200,contentType:'application/javascript',body:firstRunSource}));
   await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
-  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
+  await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"restore_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
@@ -55,10 +55,16 @@ async function verifyReturningOwnerEntry(){
   await page.locator('.returning-shell').waitFor({state:'visible'});
   assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state before restoration');
   await page.locator('[data-auth-action="restore"]').click();
-  assert.match(await page.locator('.returning-notice').innerText(),/encrypted recovery package/i,
-    'a fresh runtime must ask for the encrypted recovery package rather than treating a login code as a backup');
-  assert.equal(await page.locator('#restoreArchive').count(), 1,
-    'fresh runtime recovery requires the verified archive and separate key');
+  await page.getByRole('heading',{name:'Recovery Options'}).waitFor();
+  assert.equal(await page.locator('.vo-choice').count(),3,'P1-07 must show distinct recovery purposes');
+  await page.locator('[data-vo-mode=restore_data]').click();
+  await page.locator('[data-vo-continue]').click();
+  await page.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
+  assert.equal(await page.locator('[data-vo-backup]').count(),1,'Eligible fresh runtime offers authenticated backup restore');
+  await page.locator('[data-vo-backup]').click();
+  await page.locator('#restoreArchive').waitFor({state:'visible'});
+  assert.equal(await page.locator('#restoreKeyFile').count(),1,
+    'fresh runtime recovery requires verified archive and separate key');
   assert.match(await page.locator('.genesis-copy h1').innerText(),/Restore your Vishnu/i,'fresh-runtime data restoration is clearly distinguished from sign-in recovery');
   await page.locator('[data-auth-action="welcome"]').click();
   assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
