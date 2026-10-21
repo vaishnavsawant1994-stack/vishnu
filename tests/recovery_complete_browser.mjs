@@ -37,7 +37,7 @@ try {
   assert.match(await page.locator('.rc-eyebrow').innerText(), /RECOVERY SUMMARY/);
   await page.locator('.rc-back').click();
   assert.match(await page.locator('.rc-eyebrow').innerText(), /RECOVERY COMPLETE/);
-  await page.locator('.rc-continue').dblclick();
+  await page.evaluate(() => { const button = document.querySelector('.rc-continue'); button.click(); button.click(); });
   assert.equal(await page.evaluate(() => window.calls), 1, 'double submit must not repeat navigation');
 
   await mount({
