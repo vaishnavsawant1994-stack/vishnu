@@ -203,7 +203,7 @@
         : 'Keyboard navigation, visible focus and reduced motion are supported.';
     }));
     panel.querySelector('#portableRestoreStart')?.addEventListener('click', submitPortableRestore);
-    if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); await check(); } catch (error) { $('returningStatus').textContent = error.message; } });
+    if (view === 'restore') $('recoveryLogin')?.addEventListener('click', async () => { try { s.accessIntent = ''; const login = await api('/access/recovery/login', { method: 'POST', body: JSON.stringify({ code: $('recoveryCode').value, name: 'Vishnu owner recovery browser' }) }); if (!showRecoveryResult(login.recovery_result)) await check(); } catch (error) { if ($('returningStatus')) $('returningStatus').textContent = error.message; } });
     if (view === 'google') renderGoogleLogin();
   }
   async function submitPortableRestore(event) {
@@ -374,10 +374,35 @@
     priorNavigationState = [];
   }
 
-  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $ };
+  function showRecoveryResult(result) {
+    // UI evidence must originate from an authenticated recovery API response;
+    // never synthesize green checks from local state or uploaded file names.
+    if (!result || result.identityStatus !== 'completed' ||
+        !['completed', 'partial', 'pending', 'not_applicable'].includes(result.dataStatus) ||
+        !window.vishnuRecoveryComplete) return false;
+    s.recoveryResult = result;
+    show();
+    window.vishnuRecoveryComplete.mount(panel, result, {
+      async continueToHome() {
+        // /status validates the current owner/browser session on the server.
+        // A network failure, revoked browser or unavailable runtime blocks Home.
+        const authorized = await originalCheck();
+        if (!authorized) {
+          panel.classList.remove('hidden');
+          throw new Error('Vishnu could not verify this trusted browser or runtime. Reconnect and try again.');
+        }
+        s.recoveryResult = null;
+        hide();
+      },
+    });
+    return true;
+  }
+
+  window.vishnuFirstRun = { state: s, render, setError, showLegacy, showRecoveryResult, $ };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
   window.check = async (...args) => {
     const result = await originalCheck(...args);
+    if (s.recoveryResult) { panel.classList.remove('hidden'); return result; }
     try {
       s.options = await originalLoad() || {};
       const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
