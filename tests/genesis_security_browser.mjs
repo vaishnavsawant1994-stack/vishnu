@@ -103,6 +103,8 @@ try{
     // remain inert; otherwise recovery credentials could be reissued.
     await page.locator('.vs-continue').evaluate(el=>el.click());
     assert.equal(await page.locator('.vs-continue').isDisabled(),true);
+    assert.equal(await page.locator('.vs-back').isDisabled(),true,
+      'Back cannot abandon an active owner creation or passkey ceremony');
   }
   await page.locator('#firstRunRecoverySaved').waitFor();
   const info=await page.evaluate(()=>({calls:window.__apiCalls,state:window.vishnuFirstRun.state}));
@@ -115,6 +117,9 @@ try{
   await page.locator('.genesis-tertiary[data-genesis-back]').click();
   await page.locator('.genesis-security').waitFor();
   assert.equal(await page.locator('#vsDeviceName').inputValue(),'Personal Linux Desktop');
+  assert.equal(await page.locator('#vsDeviceName').getAttribute('readonly'),'',
+    'Once registered, first-device name may not change without a governed rename');
+  assert.equal(await page.locator('[data-vs-clear-name]').isDisabled(),true);
   assert.equal(await page.locator('#firstRunPassword').inputValue(),'','Do not persist plaintext passwords in UI state');
 
   if (vp.width === 1536) {
