@@ -24,6 +24,7 @@
   const drafts = new Map(); // ephemeral only; never sync personal draft text to unapproved storage.
   const key = id => id ? 'conversation:'+String(id) : 'personal:new';
   let lastId=null, lastActive=false, profile=null, scheduled=false, modelState=null;
+  const contextById = new Map();
   const refs = {};
 
   function installShell(){
@@ -240,14 +241,37 @@
     const owner=String(profile?.owner_display_name||profile?.owner?.display_name||profile?.owner?.name||'').trim();
     refs.hello.textContent=owner?time+', '+owner+' 👋':time+' 👋';
   }
+  async function verifyConversationContext(id){
+    if(!id||contextById.has(id))return;
+    contextById.set(id,{status:'checking',name:''});
+    queueSync();
+    try{
+      const data=await bridge().api('/projects');
+      if(!Array.isArray(data?.projects))throw new Error('Project context projection unavailable');
+      const project=data.projects.find(row=>String(row.conversation_id||'')===String(id));
+      contextById.set(id,project?
+        {status:'project',name:String(project.name||'Project')}:{status:'personal',name:''});
+    }catch{
+      contextById.set(id,{status:'unverified',name:''});
+    }
+    if(bridge()?.current?.id===id)queueSync();
+  }
   function updateHeader(){
     const current=bridge()?.current||{};
     const id=current.id||null;
     const title=String(current.title||'').trim();
     if(refs.title)refs.title.textContent=title&&title!=='Current conversation'&&title!=='New conversation'?title:'New Chat';
     const chip=$('vContextChip')?.querySelector('span')?.textContent||'';
-    const isProject=/project/i.test(chip),unknown=/unavailable|checking/i.test(chip);
-    if(refs.scope)refs.scope.textContent=isProject?chip+' ▾':unknown?'Context unverified ▾':'Personal Conversation ▾';
+    const cached=id?contextById.get(id):{status:'personal',name:''};
+    const explicitProject=/^Project\s*[·:]/i.test(chip);
+    if(refs.scope){
+      refs.scope.textContent=explicitProject?chip+' ▾':
+        cached?.status==='project'?'Project · '+cached.name+' ▾':
+        cached?.status==='personal'?'Personal Conversation ▾':
+        cached?.status==='checking'?'Checking conversation context… ▾':
+        'Context unverified ▾';
+    }
+    if(id&&!cached)verifyConversationContext(id);
     if(refs.drawerTitle)refs.drawerTitle.textContent='Chats';
     if(refs.model)refs.model.textContent='◈ Vishnu AI ▾';
     const profileControl=qs('.reference-desktop-tools .reference-profile');
