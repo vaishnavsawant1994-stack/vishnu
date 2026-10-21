@@ -150,6 +150,10 @@
     button.disabled = true;
     try {
       const options = await window.loadAccessOptions();
+      // Keep the UI state consistent with the authoritative status just fetched.
+      // A disconnected or stale cached state must never enable duplicate owner creation.
+      if (!options || typeof options !== 'object') throw new Error('Access options unavailable');
+      s.options = options;
       if (options.setup_in_progress) {
         renderPendingSetup();
       } else if (options.creation_available) {
