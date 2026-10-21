@@ -14,13 +14,14 @@
  const inChat=()=>ready()&&document.body.classList.contains('chat-experience')&&!document.body.classList.contains('home-landing');
  const projectScoped=()=>/^\s*Project\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
  let selected=false, lastId=null, syncing=false, refreshController=null, refreshTimer=null, status={};
+ let resumePending=false, resumeBusy=false;
  const ref={}, drafts=new Map();
  const statusNotice=txt=>{if(ref.notice)ref.notice.textContent=txt;};
  const inform=msg=>bridge()?.showToast?.(msg);
  const guarded=async job=>{try{return await job()}catch(e){inform(e?.message||'This action is not available right now.')}};
  const nav=dest=>bridge()?.openModule?.(dest);
  const toggle=enable=>{
-   selected=Boolean(enable);
+   selected=Boolean(enable);resumePending=false;
    try{if(selected)sessionStorage.setItem('vishnu.work.chat.view','on');else sessionStorage.removeItem('vishnu.work.chat.view')}catch{}
    if(!selected)document.body.classList.remove('p202-work-chat');
    queue();
@@ -42,7 +43,7 @@
    });
  }
  function startWorkView(){
-   selected=true;
+   selected=true;resumePending=false;
    try{sessionStorage.setItem('vishnu.work.chat.view','on')}catch{}
    if(!inChat()){
      const id=currentId();
@@ -335,8 +336,21 @@
      if(settled[1].status==='fulfilled')status=settled[1].value;
    }finally{clearTimeout(timeout);if(refreshController===ctl)refreshController=null}
  }
+ async function resumeExistingWorkView(){
+   if(!resumePending||resumeBusy||!selected||!ready()||!document.body.classList.contains('home-landing'))return;
+   resumePending=false;resumeBusy=true;
+   try{
+     const result=await bridge().api('/conversations?limit=1');
+     const id=result?.active_conversation_id||result?.conversations?.[0]?.id;
+     if(id && selected && ready())await bridge().openConversation(id);
+   }catch{
+     inform('Work conversation could not be resumed. Open a saved conversation from History.');
+   }finally{resumeBusy=false;queue()}
+ }
  function sync(){
    syncing=false;
+   if(resumePending && selected && ready() && document.body.classList.contains('home-landing'))
+     void resumeExistingWorkView();
    const show=isActive();
    document.body.classList.toggle('p202-work-chat',show);
    if(ref.shell)ref.shell.hidden=!show;
@@ -357,6 +371,7 @@
  function queue(){if(syncing)return;syncing=true;queueMicrotask(sync)}
  function start(){
    try{selected=sessionStorage.getItem('vishnu.work.chat.view')==='on'}catch{}
+   resumePending=selected;
    mount();
    const shell=$('p202bShell');ref.shell=shell;
    queue();
