@@ -598,9 +598,18 @@ html body.v-ref.p2-home-ready:has(#enrollPanel:not(.hidden)) .reference-mobile-n
 }
 
 
-/* Conversation management overlays take precedence over the Home bottom bar.
- * The nav must not intercept controls within open app/conversation drawers. */
-@media (max-width:1023px) {
+/* Today is a full-screen canonical experience with its own bottom navigation.
+ * P2 Home controls must yield to it even if Home remains mounted behind it. */
+html body.v-ref.p2-home-ready.today-command-mode .reference-mobile-nav {
+  display:none!important;
+  pointer-events:none!important;
+}
+
+
+/* Drawers and modal conversation management must stay above Home navigation.
+ * In particular, never intercept New Chat / archive / delete controls behind
+ * the mobile bottom bar (PWA preview regression). */
+@media(max-width:1023px) {
   body.v-ref.p2-home-ready.conversation-drawer-open .reference-mobile-nav,
   body.v-ref.p2-home-ready:has(#conversationDrawer:not(.hidden)) .reference-mobile-nav,
   body.v-ref.p2-home-ready:has(#appDrawer:not(.hidden)) .reference-mobile-nav {
