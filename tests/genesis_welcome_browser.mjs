@@ -13,7 +13,7 @@ const dir = process.env.VISHNU_WELCOME_SCREENSHOTS || 'artifacts/genesis-welcome
 await mkdir(dir, { recursive: true });
 const browser = await chromium.launch({ headless: true, args: ['--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader'] });
 try {
-  for (const viewport of [{width:1536,height:961},{width:1448,height:1086},{width:1200,height:900},{width:1024,height:768},{width:1366,height:768},{width:390,height:844},{width:360,height:800}]) {
+  for (const viewport of [{width:1536,height:961},{width:1920,height:1080},{width:1366,height:768},{width:1024,height:768},{width:768,height:1024},{width:430,height:932},{width:393,height:852},{width:390,height:844},{width:360,height:800}]) {
     const page = await browser.newPage({ viewport, deviceScaleFactor: 1, reducedMotion: 'reduce' });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -64,20 +64,20 @@ try {
     assert(metrics.sphere.width >= 185 && metrics.sphere.width <= 390, `Sphere size out of range: ${JSON.stringify(metrics)}`);
     assert(metrics.sphere.y < metrics.headingY && metrics.headingY < metrics.primaryY && metrics.primaryY < metrics.cardsY,
       `Welcome content order changed: ${JSON.stringify(metrics)}`);
-    assert.equal(metrics.cardsSideBySide, viewport.width > 700);
-    if (viewport.width === 1536 || viewport.width === 1448) {
-      assert(metrics.sphere.x > 475 && metrics.sphere.x < 700, `Sphere not horizontally centered: ${JSON.stringify(metrics)}`);
-      assert(metrics.footerBottom <= viewport.height, `Footer is cropped: ${JSON.stringify(metrics)}`);
+    assert.equal(metrics.cardsSideBySide, viewport.width > 800);
+    if (viewport.width === 1536) {
+      // Primary source of truth is the originally approved 1536 x 961 screenshot.
+      assert(metrics.sphere.x > 550 && metrics.sphere.x < 610, `Original sphere alignment changed: ${JSON.stringify(metrics)}`);
+      assert(metrics.sphere.y >= 55 && metrics.sphere.y <= 120, `Original sphere vertical alignment changed: ${JSON.stringify(metrics)}`);
+      assert(metrics.headingY >= 490 && metrics.headingY <= 550, `Original headline alignment changed: ${JSON.stringify(metrics)}`);
+      assert(metrics.primaryY >= 610 && metrics.primaryY <= 680, `Original primary action alignment changed: ${JSON.stringify(metrics)}`);
+      assert(metrics.cardsY >= 700 && metrics.cardsY <= 765, `Original card alignment changed: ${JSON.stringify(metrics)}`);
+    }
+    if (viewport.width === 1536 || viewport.width === 1920) {
+      assert(metrics.footerBottom <= viewport.height, `Desktop footer is cropped: ${JSON.stringify(metrics)}`);
       assert(metrics.docHeight <= viewport.height+1, `Desktop should fit without scrolling: ${JSON.stringify(metrics)}`);
     }
-    if (viewport.width === 1448) {
-      assert(metrics.sphere.y > 50 && metrics.sphere.y < 165, `4:3 sphere outside image alignment range: ${JSON.stringify(metrics)}`);
-      assert(metrics.primaryY > 625 && metrics.primaryY < 770, `4:3 action outside image alignment range: ${JSON.stringify(metrics)}`);
-      assert(metrics.cardsY > metrics.primaryY + 60 && metrics.cardsY < 900, `4:3 cards outside image alignment range: ${JSON.stringify(metrics)}`);
-      console.log('Approved 4:3 frame:', JSON.stringify(metrics));
-    }
     const fileName = viewport.width===1536 ? 'p1-01-desktop.png' :
-      viewport.width===1448 ? 'p1-01-desktop-4x3.png' :
       viewport.width===390 ? 'p1-01-mobile.png' : `p1-01-${viewport.width}.png`;
     await page.screenshot({ path: resolve(dir,fileName), fullPage: true, animations:'disabled' });
     if (viewport.width === 1536) {
