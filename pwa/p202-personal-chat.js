@@ -6,7 +6,7 @@
   if (window.__vishnuP202A) return;
   const $ = id => document.getElementById(id);
   const bridge = () => window.vishnuChatBridge;
-  const active = () => document.body.classList.contains('chat-experience') && !$('voicePanel')?.classList.contains('hidden');
+  const active = () => document.body.classList.contains('chat-experience') && !$('voicePanel')?.classList.contains('hidden') && (()=>{const id=bridge()?.current?.id;return !id || contextById.get(id)?.status==='personal';})();
   const qs = (sel,root=document) => root.querySelector(sel);
   const create = (tag,cls,txt) => {
     const e=document.createElement(tag); if(cls)e.className=cls;
@@ -338,6 +338,9 @@
   }
   function sync(){
     scheduled=false;
+    const chatVisible=document.body.classList.contains('chat-experience') && !$('voicePanel')?.classList.contains('hidden');
+    const currentId=bridge()?.current?.id;
+    if(chatVisible && currentId && !contextById.has(currentId))verifyConversationContext(currentId);
     const enabled=active();
     if(enabled!==lastActive){
       lastActive=enabled;
