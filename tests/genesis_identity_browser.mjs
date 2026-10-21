@@ -81,6 +81,13 @@ try{
   assert.equal(await page.locator('[data-vi-avatar="mountain"]').getAttribute('aria-pressed'),'false');
   await page.locator('#viAvatarFile').setInputFiles({name:'not-image.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});
   assert.match(await page.locator('#viAvatarError').innerText(),/PNG, JPEG or WebP/i);
+  await page.locator('#viAvatarFile').setInputFiles({name:'owner-preview.png',mimeType:'image/png',
+   buffer:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGPUWHWHgYGBiYGBgYGBAQATngGybaReSgAAAABJRU5ErkJggg==','base64')});
+  await page.waitForFunction(()=>window.vishnuFirstRun?.state?.avatarSource==='upload');
+  assert.equal(await page.locator('#viSelectedAvatarPreview').isVisible(),true,'Validated upload appears in preview');
+  await page.locator('[data-vi-remove]').click();
+  assert.equal(await page.locator('#viSelectedAvatarPreview').isVisible(),false,'Remove clears preview');
+
   await page.locator('[data-genesis-next]').click();
   await page.getByRole('heading',{name:'Secure your Vishnu'}).waitFor();
   const state=await page.evaluate(()=>({first:window.vishnuFirstRun?.state?.firstName,display:window.vishnuFirstRun?.state?.displayName}));
