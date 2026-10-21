@@ -642,3 +642,35 @@ html body.v-ref.p2-home-ready.p202-personal-chat #composer:not(.has-text) #sendB
     bottom:calc(73px + env(safe-area-inset-bottom))!important;
   }
 }
+
+
+/* Mobile readability, accessible hit areas, and keyboard-aware composer.
+   The existing canonical send/microphone elements keep their native handlers. */
+@media(max-width:760px){
+  html body.v-ref.p2-home-ready.p202-personal-chat .p202-mobile-actions button{
+    min-width:44px!important;min-height:44px!important;width:44px!important;height:44px!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat #composer{
+    grid-template-columns:40px minmax(0,1fr) 40px 44px!important;
+    min-height:58px!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat #composer #attachmentButton,
+  html body.v-ref.p2-home-ready.p202-personal-chat #composer #micButton{
+    min-height:42px!important;min-width:40px!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat #composer #sendButton{
+    min-height:42px!important;min-width:44px!important;
+  }
+  body.p202-personal-chat .p202-prompt{
+    min-height:44px!important;font-size:12px!important;
+  }
+  body.p202-personal-chat .p202-welcome-helper{font-size:12px!important}
+  body.p202-personal-chat .p202-welcome-main{font-size:14px!important}
+  html body.v-ref.p2-home-ready.p202-personal-chat.p202-keyboard-visible .p202-mobile-nav{
+    display:none!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.p202-keyboard-visible #composer,
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing.p202-keyboard-visible #composer{
+    bottom:calc(12px + var(--p202-keyboard-inset,0px))!important;
+  }
+}
