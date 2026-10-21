@@ -210,6 +210,7 @@ class QualificationTakeoverBody(QualificationStartBody):
 
 class ConversationCreateBody(BaseModel):
     title: str = Field(default='New conversation', max_length=120)
+    context_type: Literal['personal', 'work'] = 'personal'
 
 
 class ConversationRenameBody(BaseModel):
@@ -2162,6 +2163,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         q: str = '',
         limit: int = 50,
         include_closed: bool = False,
+        kind: Literal['personal', 'work'] | None = None,
         pa_device: str | None = Cookie(default=None),
         pa_token: str | None = Cookie(default=None),
     ):
@@ -2169,11 +2171,21 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
         active = continuity.active_for_device(device_id)
+        bounded_limit = max(1, min(limit, 100))
+        # Existing continuity ledger stores context_json as canonical metadata.
+        # Filtering is display-only; it does not grant new permissions.
+        # Keep the legacy response unchanged when no kind is requested.
+        rows = continuity.list_threads(
+            q, limit=200 if kind else bounded_limit, include_closed=include_closed,
+        )
+        if kind:
+            rows = [
+                row for row in rows
+                if ('work' if row.get('context', {}).get('conversation_kind') == 'work' else 'personal') == kind
+            ][:bounded_limit]
         return {
             'active_conversation_id': active['id'] if active else None,
-            'conversations': continuity.list_threads(
-                q, limit=max(1, min(limit, 100)), include_closed=include_closed,
-            ),
+            'conversations': rows,
         }
 
     @router.post('/api/conversations')
@@ -2185,7 +2197,10 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         device_id = auth_device(pa_device, pa_token)
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
-        thread_id = continuity.create_thread(body.title.strip() or 'New conversation', device_id=device_id)
+        context = {'conversation_kind': 'work'} if body.context_type == 'work' else {}
+        thread_id = continuity.create_thread(
+            body.title.strip() or 'New conversation', device_id=device_id, context=context,
+        )
         return {'conversation': continuity.thread(thread_id), 'events': []}
 
     @router.get('/api/conversations/{conversation_id}')
