@@ -39,6 +39,7 @@ from agent.executor import ConfirmationRequired, ExecutionCancelled
 from models.router import ModelError
 from security.owner_access import OwnerAccessStore
 from security.owner_access import FirstRunClaimBusy
+from onboarding.owner_avatar import read_owner_avatar, store_owner_avatar
 from security.request_context import current_trusted_request
 
 
@@ -91,6 +92,12 @@ class FirstRunCreateBody(BaseModel):
     display_name: str = Field(default='', max_length=120)
     password: SecretStr = Field(min_length=12, max_length=256)
     device_name: str = Field(default='First trusted browser', max_length=120)
+
+
+class FirstRunAvatarBody(BaseModel):
+    source: Literal['none', 'preset', 'upload']
+    preset_id: str = Field(default='', max_length=16)
+    image_b64: str = Field(default='', max_length=2_796_204)
 
 
 class FirstRunRestoreOwnerBody(BaseModel):
@@ -915,6 +922,77 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             'device': {key: device[key] for key in ('id', 'name', 'platform')},
             'recovery_codes': codes, 'recovery_codes_shown_once': True,
         }
+
+    @router.put('/api/first-run/avatar')
+    def first_run_avatar(body: FirstRunAvatarBody, request: Request,
+                         pa_setup_claim: str | None = Cookie(default=None),
+                         pa_device: str | None = Cookie(default=None),
+                         pa_token: str | None = Cookie(default=None)):
+        """Persist only the first owner's chosen photo after secure creation.
+
+        Never allow anonymous photo uploads or infer device trust from the
+        supplied image. Reuse the existing one-use setup claim and trusted
+        first-device credential; no second profile or identity store.
+        """
+        require_https(request)
+        if first_run_setup is None or first_run_setup.ready or not pa_setup_claim:
+            raise HTTPException(409, 'A verified first-device setup is required')
+        state_value = first_run_setup.snapshot()
+        if (state_value.get('status') != 'setup_in_progress'
+                or state_value.get('mode') != 'create'
+                or 'security' not in state_value.get('completed_steps', [])):
+            raise HTTPException(409, 'Secure Vishnu before saving a profile photo')
+        try:
+            owner_access.acquire_first_run_claim(pa_setup_claim, ttl=900)
+        except (FirstRunClaimBusy, RuntimeError) as exc:
+            raise HTTPException(401, 'The first-device setup session expired') from exc
+        device_id = auth_device(pa_device, pa_token)
+        if state_value.get('first_device_id') != device_id:
+            raise HTTPException(403, 'Only the first trusted device can save this photo')
+        identity = owner_access.identity()
+        if identity is None:
+            raise HTTPException(409, 'The canonical owner identity is unavailable')
+        try:
+            result = store_owner_avatar(
+                first_run_setup.data_dir, identity['owner_id'],
+                source=body.source, preset_id=body.preset_id, image_b64=body.image_b64,
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+        emit('owner.profile.avatar_updated', device_id=device_id, source=body.source)
+        return result
+
+    @router.get('/api/access/profile/avatar')
+    def access_profile_avatar(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None)):
+        auth_device(pa_device, pa_token)
+        identity = owner_access.identity()
+        if identity is None:
+            raise HTTPException(404, 'No owner profile exists')
+        try:
+            meta, _ = read_owner_avatar(first_run_setup.data_dir, identity['owner_id'])
+        except (ValueError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return JSONResponse(meta, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/api/access/profile/avatar/image')
+    def access_profile_avatar_image(
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None)):
+        auth_device(pa_device, pa_token)
+        identity = owner_access.identity()
+        if identity is None or first_run_setup is None:
+            raise HTTPException(404, 'No profile photo exists')
+        try:
+            meta, image = read_owner_avatar(first_run_setup.data_dir, identity['owner_id'])
+        except (ValueError, OSError) as exc:
+            raise HTTPException(409, str(exc)) from exc
+        if meta['source'] != 'upload' or image is None:
+            raise HTTPException(404, 'No uploaded profile photo exists')
+        return Response(image, media_type='image/png',
+                        headers={'Cache-Control': 'private, no-store',
+                                 'X-Content-Type-Options': 'nosniff'})
 
     @router.post('/api/first-run/create')
     def first_run_create(body: FirstRunCreateBody, request: Request, response: Response,
