@@ -1,0 +1,41 @@
+name: Vishnu P1-09 Recovery Result Visual and Safety Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/recovery-complete.js'
+      - 'pwa/recovery-complete.css'
+      - 'pwa/neural-sphere.js'
+      - 'pwa/first-run.js'
+      - 'server/iphone_pwa.py'
+      - 'tests/recovery_complete_browser.mjs'
+      - 'tests/test_p3_iphone_pwa.py'
+      - '.github/workflows/vishnu-p1-09-recovery-complete.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  recovery-result:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Verify recovered/partial/access-only states, safe session navigation, and responsive screenshots
+        run: |
+          node --check pwa/recovery-complete.js
+          node --check pwa/neural-sphere.js
+          node --check tests/recovery_complete_browser.mjs
+          node tests/recovery_complete_browser.mjs
+      - name: Upload P1-09 browser screenshot evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-09-recovery-desktop-mobile
+          path: artifacts/p1-09-preview-*.png
+          retention-days: 14
+          if-no-files-found: warn
