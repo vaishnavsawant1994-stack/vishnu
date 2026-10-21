@@ -433,3 +433,33 @@ body.v-ref.p2-home-ready .p2-mobile-notifications {display:none}
     outline:2px solid #74e2ff;outline-offset:2px
   }
 }
+
+
+/* Screenshot composer affordances, while retaining the existing file picker/send transport. */
+html body.v-ref.p2-home-ready.home-landing #composer .attach-button {
+  position:relative;display:grid!important;place-items:center!important;
+  width:48px!important;height:48px!important;min-width:48px!important;
+  min-height:48px!important;border:1px solid rgba(0,166,255,.75)!important;
+  border-radius:50%!important;color:#b9e8ff!important;background:rgba(0,47,104,.3)!important;
+}
+html body.v-ref.p2-home-ready.home-landing #composer .attach-button svg {display:none!important}
+html body.v-ref.p2-home-ready.home-landing #composer .attach-button::after {
+  content:"+";font-size:27px;line-height:1;font-weight:300;position:absolute;inset:0;
+  display:grid;place-items:center;color:#eaf9ff
+}
+html body.v-ref.p2-home-ready.home-landing #composer.has-text #sendButton {
+  background:linear-gradient(135deg,#007cfa,#05c2ff)!important;
+  border:1px solid #40cdff!important;box-shadow:0 0 16px rgba(0,130,255,.36)!important;
+  color:#fff!important
+}
+html body.v-ref.p2-home-ready.home-landing #composer.has-text #sendButton::before {
+  background:linear-gradient(135deg,#008dff,#00b8f3)!important
+}
+html body.v-ref.p2-home-ready.home-landing #composer.has-text #sendButton svg {
+  stroke:#fff!important
+}
+@media(max-width:900px) {
+ html body.v-ref.p2-home-ready.home-landing #composer .attach-button {
+   width:42px!important;height:42px!important;min-width:42px!important;min-height:42px!important
+ }
+}
