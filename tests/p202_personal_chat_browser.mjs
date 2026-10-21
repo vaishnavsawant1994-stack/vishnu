@@ -42,6 +42,7 @@ async function fixture(route){
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block',hasTouch:false});
  page.on('pageerror',e=>errors.push(e.message));
+ await page.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
  await page.route('**/iphone/api/**',fixture);
  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
  // Vishnu intentionally starts on Home; open the saved Personal conversation
