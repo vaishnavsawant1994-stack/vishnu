@@ -44,6 +44,10 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/iphone/api/**',fixture);
  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ // Vishnu intentionally starts on Home; open the saved Personal conversation
+ // using the canonical transport before testing the dedicated Chat screen.
+ await page.waitForFunction(()=>window.vishnuChatBridge&&document.body.classList.contains('home-landing'));
+ await page.evaluate(()=>window.vishnuChatBridge.openConversation('personal-1'));
  await page.waitForFunction(()=>document.body.classList.contains('p202-personal-chat'),null,{timeout:20000});
  await page.locator('#p202Header').waitFor({state:'visible'});
  assert.equal(await page.locator('#p202Header .p202-conversation-name').innerText(),'My daily planning');
