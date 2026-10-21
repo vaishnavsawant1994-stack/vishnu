@@ -47,8 +47,13 @@ async function verifyReturningOwnerEntry(){
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
   await page.waitForTimeout(200);
+  await page.locator('.genesis-connect').waitFor({state:'visible'});
+  assert.equal(await page.locator('.vc-method').count(),5,'P1-06 offers five visible reference methods');
+  assert.match(await page.locator('.vc-qr-symbol').innerText(),/QR pairing.*not issued/s,'fresh runtime never fabricates a QR token');
+  await page.locator('[data-vc-method="account"]').click();
+  await page.locator('[data-vc-continue]').click();
   await page.locator('.returning-shell').waitFor({state:'visible'});
-  assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state instead of a Face ID dead end');
+  assert.match(await page.locator('.returning-notice').innerText(),/No existing Vishnu is configured/i,'fresh runtime gives an honest state before restoration');
   await page.locator('[data-auth-action="restore"]').click();
   assert.match(await page.locator('.returning-notice').innerText(),/encrypted recovery package/i,
     'a fresh runtime must ask for the encrypted recovery package rather than treating a login code as a backup');
@@ -76,14 +81,14 @@ async function verifyConfiguredOwnerMethods(){
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
   await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'load'});
   await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
-  await page.locator('.returning-shell').waitFor({state:'visible'});
-  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkeys stay hidden');
-  await page.locator('[data-auth-action="methods"]').click();
-  assert.equal(await page.locator('[data-auth-action="password"]').count(),1,'configured password is offered');
-  assert.equal(await page.locator('[data-auth-action="recovery"]').count(),1,'configured recovery is offered');
-  await page.locator('[data-auth-action="password"]').click();
-  await page.locator('#returningPassword').fill('test-only-password');
-  await page.locator('[data-auth-action="password-submit"]').click();
+  await page.locator('.genesis-connect').waitFor({state:'visible'});
+  await page.locator('[data-vc-method=account]').click();
+  await page.locator('[data-vc-continue]').click();
+  await page.locator('.genesis-login .vl-panel').waitFor({state:'visible'});
+  assert.equal(await page.locator('#vlPassword').count(),1,'configured password is offered via P1-05');
+  assert.equal(await page.locator('[data-vl-recovery]').count(),1,'recovery navigation remains available');
+  await page.locator('#vlPassword').fill('test-only-password');
+  await page.locator('[data-vl-submit]').click();
   assert.equal(passwordLoginAttempts,1,'password action reaches the canonical owner login endpoint');
   await page.close();
 }
