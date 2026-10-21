@@ -84,11 +84,16 @@
     let seed = 271828;
     const rand = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
     const nodes = [], edges = [];
-    const count = 160, golden = Math.PI * (3 - Math.sqrt(5));
+    const count = 195, golden = Math.PI * (3 - Math.sqrt(5));
     for (let i = 0; i < count; i++) {
       const y = 1 - (2 * i) / (count - 1), r = Math.sqrt(1 - y * y);
-      nodes.push({ x: Math.cos(golden * i) * r, y, z: Math.sin(golden * i) * r,
-        size: i % 15 === 0 ? 2.6 : .9 + rand() * 1.1, phase: rand() * 7 });
+      // Keep a transparent outer shell while giving the network real inner
+      // branches and occasional brighter high-activity nodes.
+      const inward = i % 4 === 0 ? .36 + rand() * .58 : 1;
+      nodes.push({ x: Math.cos(golden * i) * r * inward, y: y * inward,
+        z: Math.sin(golden * i) * r * inward,
+        size: i % 11 === 0 ? 3.1 + rand() * 1.5 : 1.05 + rand() * 1.3,
+        phase: rand() * 7 });
     }
     for (let i = 0; i < count; i++) {
       const near = [];
@@ -101,6 +106,10 @@
       near.sort((a, b) => a[1] - b[1]);
       for (const [j] of near.slice(0, 4)) if (i < j) edges.push([i, j]);
     }
+    const specks = Array.from({ length: 110 }, () => ({
+      angle: rand() * Math.PI * 2, radius: .95 + rand() * .48,
+      size: .4 + rand() * 1.05, phase: rand() * Math.PI * 2,
+    }));
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let width = 1, height = 1, dpr = 1, raf = 0, yaw = -.25, pitch = .11;
     let drag = null, previous = 0, paused = false;
@@ -130,13 +139,21 @@
       bloom.addColorStop(.55, 'rgba(0,95,200,.08)');
       bloom.addColorStop(1, 'rgba(0,95,200,0)');
       context.fillStyle = bloom; context.fillRect(0, 0, width, height);
+      // Flecks of ambient neural energy extend only slightly beyond the core.
+      for (const fleck of specks) {
+        const x = centerX + Math.cos(fleck.angle) * fleck.radius * radius;
+        const y = centerY + Math.sin(fleck.angle) * fleck.radius * radius;
+        const alpha = motion.matches ? .27 : .2 + .22 * (1 + Math.sin(now * .001 + fleck.phase)) / 2;
+        context.fillStyle = 'rgba(16,171,255,' + alpha + ')';
+        context.beginPath(); context.arc(x, y, fleck.size, 0, Math.PI * 2); context.fill();
+      }
       const projected = nodes.map(node => project(node, radius));
       context.lineWidth = .65;
       for (let i = 0; i < edges.length; i++) {
         const [a, b] = edges[i], p = projected[a], q = projected[b];
         const depth = (p.depth + q.depth) / 2;
-        const alpha = .13 + Math.max(0, depth) * .23;
-        context.strokeStyle = 'rgba(50,195,255,' + alpha + ')';
+        const alpha = .19 + Math.max(0, depth) * .36;
+        context.strokeStyle = 'rgba(55,201,255,' + alpha + ')';
         context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke();
         if (i % 17 === 0) {
           const t = (now * .00011 + i * .061) % 1;
@@ -149,16 +166,16 @@
       context.beginPath(); context.arc(centerX, centerY, radius, 0, Math.PI * 2); context.stroke();
       for (let i = 0; i < projected.length; i++) {
         const p = projected[i], n = nodes[i];
-        const brightness = .45 + Math.max(0, p.depth) * .5;
+        const brightness = .58 + Math.max(0, p.depth) * .42;
         const pulse = motion.matches ? 1 : .83 + Math.sin(now * .0014 + n.phase) * .17;
         context.fillStyle = 'rgba(47,214,255,' + brightness + ')';
-        context.shadowBlur = n.size > 2 ? 19 : 8;
+        context.shadowBlur = n.size > 2 ? 24 : 12;
         context.beginPath(); context.arc(p.x, p.y, n.size * p.lens * pulse, 0, Math.PI * 2); context.fill();
       }
       context.shadowBlur = 0;
       const core = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * .28);
-      core.addColorStop(0, 'rgba(150,250,255,.73)');
-      core.addColorStop(.21, 'rgba(0,188,255,.36)');
+      core.addColorStop(0, 'rgba(170,252,255,.92)');
+      core.addColorStop(.21, 'rgba(0,188,255,.52)');
       core.addColorStop(1, 'rgba(0,140,255,0)');
       context.fillStyle = core; context.beginPath(); context.arc(centerX, centerY, radius * .28, 0, Math.PI * 2); context.fill();
     }
