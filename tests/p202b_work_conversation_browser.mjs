@@ -51,7 +51,7 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
  await page.waitForFunction(()=>window.__vishnuP202B&&window.vishnuChatBridge,{timeout:20000});
  await page.evaluate(()=>window.__vishnuP202B.open());
  await page.waitForFunction(()=>document.body.classList.contains('p202-work-chat'),null,{timeout:20000});
