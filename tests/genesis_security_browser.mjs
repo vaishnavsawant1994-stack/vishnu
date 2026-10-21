@@ -100,6 +100,48 @@ try{
   await page.locator('.genesis-security').waitFor();
   assert.equal(await page.locator('#vsDeviceName').inputValue(),'Personal Linux Desktop');
   assert.equal(await page.locator('#firstRunPassword').inputValue(),'','Do not persist plaintext passwords in UI state');
+
+  if (vp.width === 1536) {
+    // A deterministic fake authenticator exercises the actual presentation ->
+    // WebAuthn serialization -> canonical API sequence, not fake UI success.
+    // This is browser contract evidence, NOT physical Face ID acceptance.
+    await page.evaluate(() => {
+      window.PublicKeyCredential = class MockPublicKeyCredential {};
+      Object.defineProperty(navigator, 'credentials', {configurable:true, value:{
+        create: async ({publicKey}) => ({
+          id:'credential-test',type:'public-key',rawId:new Uint8Array([1,2,3]).buffer,
+          response:{clientDataJSON:new Uint8Array([4,5,6]).buffer,
+                    attestationObject:new Uint8Array([7,8,9]).buffer,
+                    getTransports:()=>['internal']},
+          getClientExtensionResults:()=>({}),
+        }),
+      }});
+      const oldApi = window.api;
+      window.api = async (path, options={}) => {
+        if(path==='/access/passkey/register/options'){
+          window.__apiCalls.push({path,method:options.method});
+          return {challenge_id:'test-challenge',public_key:{
+            rp:{id:'localhost',name:'Vishnu'},
+            challenge:'AQID',user:{id:'AQID',name:'owner',displayName:'Owner'},
+            pubKeyCredParams:[{alg:-7,type:'public-key'}],
+          }};
+        }
+        return oldApi(path,options);
+      };
+      window.vishnuFirstRun.render(3);
+    });
+    await page.locator('[data-vs-passkey]').waitFor({state:'visible'});
+    await page.locator('[data-vs-passkey]').click();
+    await page.waitForFunction(()=>window.vishnuFirstRun.state.passkeyCreated===true);
+    assert.match(await page.locator('#vsPasskeyStatus').innerText(),/verified and registered/i);
+    const apiCalls = await page.evaluate(()=>window.__apiCalls);
+    assert(apiCalls.some(x=>x.path==='/access/passkey/register/options'));
+    const completion=apiCalls.find(x=>x.path==='/access/passkey/register/complete');
+    assert(completion,'Verified backend passkey completion must be required');
+    assert.equal(JSON.parse(completion.body).credential.response.attestationObject,'BwgJ');
+    assert.equal(apiCalls.filter(x=>x.path==='/first-run/create').length,1,'Passkey registration cannot create another owner');
+  }
+
   await page.locator('[data-vs-back]').click();
   await page.locator('.genesis-identity').waitFor();
   assert.deepEqual(errors,[],'No JS browser exceptions: '+errors.join('; '));
