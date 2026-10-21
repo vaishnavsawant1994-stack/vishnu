@@ -77,7 +77,7 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
  if(!root)return()=>{};
  root.innerHTML=shell(join);
  const $=selector=>root.querySelector(selector);
- let selected='qr',disposed=false,checking=false,timer=0,clock=0;
+ let selected='qr',disposed=false,checking=false,terminated=false,timer=0,clock=0;
  const status=$('#vcStatus');const pending=Boolean(join?.request_id);
  const say=(message,error=false)=>{if(disposed)return;status.textContent=message;status.dataset.error=String(error);};
  function choose(id){
@@ -105,23 +105,35 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
   if(disposed||!pending)return;
   const remaining=Math.ceil(Number(join.expires_at)-Date.now()/1000);
   if(!Number.isFinite(remaining)){ $('#vcExpiry').textContent='Expiration unknown; reauthentication may be needed.';return;}
-  if(remaining<=0){$('#vcExpiry').textContent='Join request expired. Start a new verified sign-in.';say('This request expired. No device was connected.',true);clearTimeout(timer);return;}
+  if(remaining<=0){
+   terminated=true;
+   $('#vcExpiry').textContent='Join request expired. Start a new verified sign-in.';
+   say('This request expired. No device was connected.',true);
+   $('[data-vc-continue]').disabled=true;
+   clearTimeout(timer);clearInterval(clock);
+   return;
+  }
   $('#vcExpiry').textContent='Expires in '+Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');
  }
  if(pending){expiry();clock=setInterval(expiry,1000);}
  async function poll(){
-  if(disposed||!pending||checking)return;
+  if(disposed||!pending||checking||terminated)return;
+  if(Number(join.expires_at)<=Date.now()/1000){expiry();return;}
   checking=true;
   try{
    const result=await onCheck(join.request_id);
    if(disposed)return;
    if(result?.status==='complete'){
+    terminated=true;
+    $('[data-vc-continue]').disabled=true;
     clearTimeout(timer);clearInterval(clock);
     say('Vishnu confirmed the approval. Verifying this device session…');
     await onComplete();
     return;
    }
    if(result?.status==='denied'||result?.status==='expired'||result?.status==='completed'){
+    terminated=true;
+    $('[data-vc-continue]').disabled=true;
     clearTimeout(timer);clearInterval(clock);
     say(result.status==='denied'?'The trusted owner denied this request. No device was added.':'This join request is no longer active. Sign in again.',true);
     $('#vcExpiry').textContent='Request '+result.status;return;
@@ -136,12 +148,12 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
  async function checkAndSchedule(){
   if(disposed||!pending)return;
   await poll();
-  if(!disposed && !status.textContent.match(/denied|expired|no longer active/i) && Number(join.expires_at)>Date.now()/1000)
+  if(!disposed && !terminated && Number(join.expires_at)>Date.now()/1000)
    timer=setTimeout(checkAndSchedule,3000);
  }
  if(pending)timer=setTimeout(checkAndSchedule,1200);
  $('[data-vc-continue]').addEventListener('click',()=>{
-  if(pending){void poll();return;}
+  if(pending){if(!terminated)void poll();return;}
   if(notReady[selected]){say(notReady[selected]+' Select Request Approval or Sign in with Your Account to continue.',true);return;}
   onAuthenticate();
  });
