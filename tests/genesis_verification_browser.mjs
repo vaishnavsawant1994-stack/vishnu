@@ -78,8 +78,18 @@ try{
   if(size.width>900){
    const sphere=await page.locator('.vo-sphere').boundingBox(),panel=await page.locator('.vo-panel').boundingBox();
    assert(sphere&&panel&&sphere.x+sphere.width<=panel.x+40,'Sphere and form cannot overlap');
+   const safety=await page.locator('.v8-safety').boundingBox();
+   const primary=await page.locator('[data-v8-submit]').boundingBox();
+   assert(safety&&primary&&safety.y+safety.height<=primary.y-2,
+    'Desktop safety notice must never overlap Verify & Continue');
    assert(await page.locator('.vo-window-dots').isVisible());
-  }else assert.equal(await page.locator('.vo-window-dots').isVisible(),false);
+  }else{
+   assert.equal(await page.locator('.vo-window-dots').isVisible(),false);
+   const last=await page.locator('[data-v8-group="5"]').boundingBox();
+   const codeCard=await page.locator('[data-v8-method=code]').boundingBox();
+   if(size.width>=350)assert(last&&codeCard&&last.x+last.width<=codeCard.x+codeCard.width-3,
+    'Mobile last code input must not extend outside the card');
+  }
   await page.screenshot({path:resolve(output,`p1-08-${size.width}x${size.height}.png`),fullPage:true,animations:'disabled'});
   if(size.width<=900){
    await page.locator('[data-v8-submit]').scrollIntoViewIfNeeded();
