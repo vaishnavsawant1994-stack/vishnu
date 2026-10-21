@@ -424,8 +424,8 @@ class FirstRunCoordinator:
                     pass
         return {'device_id': device_id, 'owner_id': identity['owner_id']}
 
-    def ensure_first_device(self) -> dict:
-        """Register this platform as Device 1 when creation has no device yet."""
+    def ensure_first_device(self, device_name: str | None = None) -> dict:
+        """Register this platform as Device 1, with an owner-supplied display name when available."""
         runtime = self._runtime_required()
         state = self._read_state()
         registry = runtime.get('device_registry')
@@ -456,8 +456,11 @@ class FirstRunCoordinator:
             platform_name = 'windows'
         if not hasattr(registry, 'enroll'):
             raise RuntimeError('The canonical device registry cannot enroll the first device')
+        requested_name = str(device_name or '').strip()
+        if requested_name and (len(requested_name) > 120 or any(ord(char) < 32 for char in requested_name)):
+            raise ValueError('The first device name must contain no control characters and be at most 120 characters')
         device, _discarded_device_secret = registry.enroll(
-            f'First trusted {platform_name} device', platform_name,
+            requested_name or f'First trusted {platform_name} device', platform_name,
         )
         self.record_first_device(device['id'])
         return {'device_id': device['id'], 'owner_id': identity['owner_id']}
