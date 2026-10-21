@@ -82,9 +82,37 @@
    dialog.addEventListener('close',()=>dialog.remove(),{once:true});
    dialog.showModal();
  }
- function openMenu(){
+ function openCanonicalMenu(){
    if($('chatMenuButton')&&!$('chatMenuButton').classList.contains('hidden'))$('chatMenuButton').click();
    else $('chatDetailsTop')?.click();
+ }
+ function openMobileSearch(){
+   const dialog=make('dialog','p202b-modal p202b-search-modal');
+   dialog.append(make('h2','','Search this Work conversation'));
+   const input=make('input');
+   input.type='search';input.placeholder='Search loaded messages…';
+   input.setAttribute('aria-label','Search messages in this conversation');
+   const list=make('div','p202b-search-results');
+   input.addEventListener('input',()=>renderSearch(input.value,list));
+   list.addEventListener('click',event=>{
+     if(event.target.closest?.('.p202b-search-hit'))dialog.close();
+   },true);
+   const close=btn('Close','p202b-primary',()=>dialog.close());
+   dialog.append(input,list,close);
+   document.body.append(dialog);
+   dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+   dialog.showModal();input.focus();
+ }
+ function openMenu(){
+   if(window.matchMedia('(max-width:900px)').matches){
+     return alertDialog('Work conversation sections','Choose a section or open the conversation options.',[
+       ['Search messages',openMobileSearch],
+       ['Files',()=>switchTab('Files')],['Tasks',()=>switchTab('Tasks')],
+       ['Research',()=>switchTab('Research')],['Code',()=>switchTab('Code')],
+       ['Plans',()=>switchTab('Plans')],['Conversation options',openCanonicalMenu]
+     ]);
+   }
+   openCanonicalMenu();
  }
  function section(title,cls){
    const el=make('section','p202b-card '+(cls||''));el.append(make('h3','',title));return el;
