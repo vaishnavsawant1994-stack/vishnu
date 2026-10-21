@@ -8,7 +8,7 @@
   const bridge = () => window.vishnuChatBridge;
   // The canonical context projection, never a client-side guess, identifies a Project chat.
   // A Project conversation keeps its existing Project UI rather than acquiring Personal controls.
-  const projectContext = () => /^\\s*Project\\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
+  const projectContext = () => /^\s*Project\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
   const active = () => document.body.classList.contains('chat-experience') &&
     !$('voicePanel')?.classList.contains('hidden') && !projectContext();
   const qs = (sel,root=document) => root.querySelector(sel);
