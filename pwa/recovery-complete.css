@@ -189,6 +189,7 @@
   .rc-host .rc-brand-mark { width: 45px; height: 45px; flex: 0 0 45px; }
   .rc-host .rc-brand-mark::before { width: 25px; height: 32px; }
   .rc-host .rc-brand strong { font-size: 17px; }
+  .rc-host .rc-brand small { display: none; }
   .rc-host .rc-brand small { font-size: 10px; }
   .rc-host .rc-header-right { gap: 10px; padding-top: 5px; font-size: 12px; }
   .rc-host .rc-locale { gap: 5px; }
