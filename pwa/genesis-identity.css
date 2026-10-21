@@ -199,3 +199,6 @@ button.vi-continue:disabled{opacity:.5;cursor:wait;}
  .vi-hero::before{opacity:.28;transform:scale(.53);}
  .vi-hero::after{width:60%;height:15px;bottom:0;filter:blur(12px);}
 }
+
+.vi-load-error{margin:auto;max-width:520px;padding:24px;border:1px solid #326c94;border-radius:14px;background:#061726;color:#e5f9ff;text-align:center;}
+.vi-load-error button{margin-top:12px;padding:9px 22px;border:1px solid #31bfe9;border-radius:11px;background:#086fa4;color:white;cursor:pointer;}
