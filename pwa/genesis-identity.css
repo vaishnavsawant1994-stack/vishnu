@@ -172,3 +172,30 @@ button.vi-continue:disabled{opacity:.5;cursor:wait;}
  .vi-subtitle{margin-bottom:20px;}
  .vi-form-fields{gap:16px;}
 }
+
+/* Reference atmosphere: sparse low-intensity particles and contained reflected
+   cyan light. These are decorative, noninteractive, and not a galaxy background. */
+.vi-hero{isolation:isolate;}
+.vi-hero::before{
+  content:"";pointer-events:none;position:absolute;z-index:-1;
+  left:20%;top:12%;width:3px;height:3px;border-radius:50%;
+  background:rgba(31,179,246,.45);filter:blur(.8px);
+  box-shadow:
+   82px -25px 9px 1px rgba(0,137,246,.25),161px 12px 7px rgba(43,202,255,.34),
+   -54px 70px 7px rgba(37,196,255,.39),255px 101px 5px rgba(11,159,245,.24),
+   42px 144px 11px rgba(24,194,248,.19),310px 177px 7px rgba(48,192,251,.35),
+   -33px 220px 5px rgba(38,155,218,.28),197px 278px 8px rgba(22,178,254,.24),
+   337px 323px 9px rgba(29,132,215,.18),-63px 351px 5px rgba(27,181,241,.27),
+   101px 418px 8px rgba(31,206,252,.23),269px 438px 6px rgba(26,152,238,.22);
+}
+.vi-hero::after{
+  bottom:9%;height:36px;width:81%;
+  background:
+    linear-gradient(180deg,transparent 43%,rgba(10,142,247,.19) 49%,transparent 58%),
+    radial-gradient(ellipse,rgba(10,218,255,.56),rgba(0,126,217,.24) 31%,transparent 78%);
+  filter:blur(17px);
+}
+@media(max-width:900px){
+ .vi-hero::before{opacity:.28;transform:scale(.53);}
+ .vi-hero::after{width:60%;height:15px;bottom:0;filter:blur(12px);}
+}
