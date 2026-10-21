@@ -83,9 +83,9 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
     assert "loadGlobalAwareness" in loader
     assert "visual.onload=loadGlobalAwareness" in loader
 
-    # v63 refreshes the P2-02B Work Conversation shell while retaining canonical work and
+    # v64 refreshes the P2-02B Work Conversation Project-link shell while retaining canonical work and
     # global-awareness assets in the same offline cache.
-    assert "personal-ai-iphone-v63" in sw
+    assert "personal-ai-iphone-v64" in sw
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "'/iphone/adaptive-composer.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw
