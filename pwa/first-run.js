@@ -188,6 +188,19 @@
       }).catch(() => { $('vwSphereCanvas')?.parentElement?.classList.add('vw-static-fallback'); });
       return;
     }
+    if (s.step === 2) {
+      panel.setAttribute('aria-label', 'Vishnu owner identity');
+      panel.innerHTML = '<main class="genesis-shell genesis-screen genesis-identity" data-step="2"><div id="viRoot"></div></main>';
+      import('/iphone/genesis-identity.js').then(({ mountIdentityScreen }) => {
+        const root = document.getElementById('viRoot');
+        if (mountId !== welcomeMountId || !root || !root.isConnected) return;
+        disposeWelcome = mountIdentityScreen(root, s, {
+          onBack: () => render(1),
+          onContinue: () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: {step: 2} })),
+        });
+      }).catch(() => {setError('This screen could not load. Please refresh and try again.');});
+      return;
+    }
     panel.setAttribute('aria-label', 'Vishnu owner setup');
     panel.innerHTML = `<main class="genesis-shell genesis-screen" data-step="${s.step}"><header class="genesis-top"><button class="genesis-back ${progress ? '' : 'hidden'}" type="button" data-genesis-back>&larr; Back</button><div class="genesis-brand">VISHNU</div><div class="genesis-progress ${progress ? '' : 'hidden'}">Step ${journeyStep} of 3${dots(journeyStep)}</div></header><section class="genesis-stage"><div class="genesis-core" data-state="${coreState(s.step)}" role="img" aria-label="Vishnu intelligence core, setup step ${journeyStep} of 3"><div class="genesis-network"></div></div>${content(s.step)}</section>${footer}</main>`;
     bind();
