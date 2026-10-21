@@ -35,6 +35,8 @@ PUBLIC_PATHS = {
     '/iphone/genesis-neural-sphere.js',
     '/iphone/genesis-identity.css',
     '/iphone/genesis-identity.js',
+    '/iphone/genesis-security.css',
+    '/iphone/genesis-security.js',
     '/iphone/first-run.js',
     '/iphone/first-run-actions.js',
     '/iphone/api/access/options',
