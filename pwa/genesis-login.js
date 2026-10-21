@@ -62,6 +62,7 @@ return `<header class="vs-header vl-header">
    <button type="button" class="vl-alternative" data-vl-biometric>${face}<strong data-vl-bio-label>Use Device Authenticator</strong>${arrow}</button>
    <div class="vl-trust">${laptop}<span><strong data-vl-trust-title>Device trust is checked on sign-in</strong><small data-vl-trust-desc>New devices require approval from an existing trusted device.</small></span><button type="button" data-vl-devices>Manage Devices</button></div>
    <p id="returningStatus" class="vl-status" role="status" aria-live="polite"></p>
+   <button type="button" class="vl-mobile-back" data-vl-back>← Back</button>
   </section>
  </div>
  <dialog class="vs-dialog" id="vlLanguageDialog" aria-labelledby="vlLanguageTitle"><h2 id="vlLanguageTitle">Language</h2><p>English is currently available for secure sign-in. More languages will appear when supported.</p><button type="button" data-vl-language-close>Close</button></dialog>`;
@@ -172,8 +173,12 @@ export function mountLoginScreen(root,options,{onPassword,onPasskey,onRecover,on
  $('[data-vl-biometric]').addEventListener('click',passkey);
  $('[data-vl-bio-tab-action]').addEventListener('click',passkey);
  $('[data-vl-recovery]').addEventListener('click',()=>{if(!pending)onRecover();});
- $('[data-vl-back]').addEventListener('click',()=>{if(!pending)onBack();});
- $('[data-vl-devices]').addEventListener('click',()=>{if(!pending)onManage();});
+ root.querySelectorAll('[data-vl-back]').forEach(button=>button.addEventListener('click',()=>{if(!pending)onBack();}));
+ $('[data-vl-devices]').addEventListener('click',()=>{
+   if(pending)return;
+   const outcome=onManage();
+   if(typeof outcome==='string')say(outcome);
+ });
  $('[data-vl-language]').addEventListener('click',()=>$('#vlLanguageDialog').showModal());
  $('[data-vl-language-close]').addEventListener('click',()=>$('#vlLanguageDialog').close());
  let dispose=()=>{};
