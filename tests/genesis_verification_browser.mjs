@@ -88,7 +88,8 @@ try{
    const last=await page.locator('[data-v8-group="5"]').boundingBox();
    const codeCard=await page.locator('[data-v8-method=code]').boundingBox();
    if(size.width>=350)assert(last&&codeCard&&last.x+last.width<=codeCard.x+codeCard.width-3,
-    'Mobile last code input must not extend outside the card');
+    'Mobile last code input must not extend outside card at '+size.width+
+    ': last right '+(last?.x+last?.width)+'; card right '+(codeCard?.x+codeCard?.width));
   }
   await page.screenshot({path:resolve(output,`p1-08-${size.width}x${size.height}.png`),fullPage:true,animations:'disabled'});
   if(size.width<=900){
