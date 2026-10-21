@@ -25,7 +25,7 @@ return `<header class="vs-header vl-header">
  </header>
  <div class="vs-body vl-body">
   <div class="vs-hero vl-hero" aria-hidden="true">
-   <div class="vw-sphere vs-sphere vl-sphere"><canvas data-vl-sphere data-neural-emphasis="security"></canvas></div>
+   <div class="vw-sphere vs-sphere vl-sphere"><canvas data-vl-sphere data-neural-emphasis="login"></canvas></div>
    <div class="vs-ground vl-ground"><span></span></div>
    <button type="button" class="vl-back" data-vl-back>← <span>Back</span></button>
   </div>
