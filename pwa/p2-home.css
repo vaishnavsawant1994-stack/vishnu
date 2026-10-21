@@ -384,7 +384,7 @@ body.v-ref.p2-home-ready .p2-work-order:hover {
   html body.v-ref.p2-home-ready.home-landing .topbar-actions {
     grid-column:3!important;grid-row:1!important;justify-self:end!important
   }
-  body.v-ref.p2-home-ready .reference-mobile-nav {
+  body.v-ref.p2-home-ready.home-landing .reference-mobile-nav {
     display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;
     left:0!important;right:0!important;bottom:0!important;
     width:100%!important;height:calc(64px + env(safe-area-inset-bottom))!important;
@@ -392,12 +392,12 @@ body.v-ref.p2-home-ready .p2-work-order:hover {
     border-radius:0!important;border:1px solid rgba(40,117,213,.22)!important;
     background:rgba(2,12,29,.97)!important;z-index:80!important
   }
-  body.v-ref.p2-home-ready .reference-mobile-nav button {
+  body.v-ref.p2-home-ready.home-landing .reference-mobile-nav button {
     height:58px!important;min-width:0;gap:3px!important;cursor:pointer
   }
-  body.v-ref.p2-home-ready .reference-mobile-nav button span {font-size:21px!important}
-  body.v-ref.p2-home-ready .reference-mobile-nav button small {font-size:10px!important}
-  body.v-ref.p2-home-ready .reference-mobile-nav button.active {
+  body.v-ref.p2-home-ready.home-landing .reference-mobile-nav button span {font-size:21px!important}
+  body.v-ref.p2-home-ready.home-landing .reference-mobile-nav button small {font-size:10px!important}
+  body.v-ref.p2-home-ready.home-landing .reference-mobile-nav button.active {
     color:#51c6ff!important;background:linear-gradient(135deg,#075cad,#021e51)!important;
     border-radius:12px!important
   }
@@ -588,4 +588,11 @@ html body.v-ref.p2-home-ready.home-landing #composer #sendButton svg {
   html body.v-ref.p2-home-ready.home-landing #composer #sendButton {
     grid-column:4!important;grid-row:1!important
   }
+}
+
+/* P1 security boundary: Home chrome must never overlap first-device creation,
+ * join, login or restore screens, even if the old Home class remains set. */
+html body.v-ref.p2-home-ready:has(#enrollPanel:not(.hidden)) .reference-mobile-nav {
+  display:none!important;
+  pointer-events:none!important;
 }
