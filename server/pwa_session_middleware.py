@@ -194,6 +194,12 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
                 # First-run policy writes are separately authorized by the
                 # setup claim and first-device credential in iphone_pwa.py.
                 '/iphone/api/first-run/data-policy',
+                # Photos are not public during setup: these paths still need
+                # an active session, trusted device, owner identity, and (for
+                # updates) the canonical first-device setup claim.
+                '/iphone/api/first-run/avatar',
+                '/iphone/api/access/profile/avatar',
+                '/iphone/api/access/profile/avatar/image',
             }
             if path.startswith('/iphone/api/') and path not in allowed_during_setup and path not in PUBLIC_PATHS:
                 response = JSONResponse(
