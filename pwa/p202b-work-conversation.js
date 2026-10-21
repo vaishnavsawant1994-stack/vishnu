@@ -389,6 +389,19 @@
    if(resumePending && selected && ready() && document.body.classList.contains('home-landing'))
      void resumeExistingWorkView();
    const show=isActive();
+   if(show && document.body.classList.contains('chat-details-open')){
+     document.body.classList.remove('chat-details-open');
+     $('chatDetailDesktop')?.classList.add('hidden');
+     $('chatDetailDesktop')?.setAttribute('aria-hidden','true');
+   }
+   const searchButton=document.querySelector('.reference-desktop-tools [data-reference-search]');
+   if(searchButton){
+     const node=[...searchButton.childNodes].find(child=>child.nodeType===3);
+     if(node){
+       if(!searchButton.dataset.p202bOriginal)searchButton.dataset.p202bOriginal=node.textContent||' Search anything… ';
+       node.textContent=show?' Search in this conversation… ':searchButton.dataset.p202bOriginal;
+     }
+   }
    document.body.classList.toggle('p202-work-chat',show);
    if(ref.shell)ref.shell.hidden=!show;
    const shell=$('p202bShell');if(shell)shell.hidden=!show;
