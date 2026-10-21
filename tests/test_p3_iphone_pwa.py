@@ -218,6 +218,8 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         ('/iphone/genesis-connect.js', 'mountConnectScreen'),
         ('/iphone/genesis-recovery-options.css', 'vo-choice'),
         ('/iphone/genesis-recovery-options.js', 'mountRecoveryOptionsScreen'),
+        ('/iphone/genesis-verification.css', 'v8-method'),
+        ('/iphone/genesis-verification.js', 'mountRecoveryVerificationScreen'),
         ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),

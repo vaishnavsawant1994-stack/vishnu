@@ -1,0 +1,170 @@
+/* P1-08 screenshot-calibrated recovery verification. P1-07 remains unchanged. */
+.genesis-verification .vo-panel{margin-top:-7px;min-height:775px;max-width:747px;padding:26px 30px 21px;}
+.genesis-verification .vo-eyebrow{font-size:13px;margin:0 0 16px;letter-spacing:.4em!important;}
+.genesis-verification .vo-panel h1{font-size:clamp(32px,2.82vw,44px);letter-spacing:-.035em;}
+.genesis-verification .vo-description{font-size:clamp(16px,1.34vw,20px);margin:13px 0 18px;line-height:1.55;}
+.v8-methods{display:flex;flex-direction:column;}
+.v8-method{background:linear-gradient(112deg,rgba(4,17,31,.95),rgba(4,13,28,.97));border:1px solid rgba(39,98,156,.43);
+ border-radius:17px;padding:13px 22px 14px;transition:border-color .17s,box-shadow .17s;}
+.v8-method.selected{border-color:#08b7ff;box-shadow:inset 0 0 17px rgba(6,100,237,.17),0 0 14px rgba(0,144,255,.50);}
+.v8-method-heading{border:0;color:#f6fbff;background:none;display:flex;align-items:center;width:100%;gap:24px;padding:0;text-align:left;cursor:pointer;}
+.v8-method-icon{height:69px;width:80px;display:grid;place-items:center;flex:none;border-radius:13px;background:#071c37;border:1px solid rgba(23,68,123,.49);}
+.v8-method-icon svg{width:45px;height:45px;color:#107aff;filter:drop-shadow(0 0 8px rgba(0,126,255,.75));}
+.v8-method-title{flex:1;min-width:0;display:flex;flex-direction:column;gap:7px;}
+.v8-method-title strong{font-size:19px;font-weight:660;line-height:1.3;}
+.v8-method-title small{font-size:15px;color:#b4cce0;line-height:1.35;}
+.v8-info{color:#1798ff;font-size:22px;align-self:flex-start;}
+.v8-code-groups{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-top:3px;}
+.v8-code-groups input{height:50px;min-width:0;width:100%;box-sizing:border-box;border-radius:11px;border:1px solid #215179;
+ background:linear-gradient(110deg,#091b30,#081626);color:#f3faff;text-align:center;letter-spacing:.12em;
+ font:500 18px ui-monospace,SFMono-Regular,Consolas,monospace;text-transform:uppercase;outline-offset:3px;}
+.v8-code-groups input::placeholder{color:rgba(160,184,204,.30);}
+.v8-code-groups input:focus-visible{border-color:#51d7ff;box-shadow:0 0 10px rgba(0,172,255,.29);}
+.v8-or{display:flex;align-items:center;gap:21px;color:#e6eef7;font-size:15px;margin:10px 2px;}
+.v8-or span{height:1px;background:linear-gradient(90deg,transparent,#1b425e);flex:1;}
+.v8-or span:last-child{background:linear-gradient(90deg,#1b425e,transparent);}
+.v8-or b{font-size:14px;font-weight:500;}
+.v8-backup-fields{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+.v8-file-line{display:flex;align-items:center;gap:10px;min-width:0;}
+.v8-file-line>span{display:flex;align-items:center;gap:13px;min-width:0;min-height:43px;border:1px solid #214668;border-radius:10px;
+ background:#081a2d;padding:0 14px;flex:1;color:#adc8da;font-size:14px;overflow:hidden;}
+.v8-file-line>span>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.v8-file-line svg,.v8-password-line svg{height:22px;width:22px;flex:none;color:#b9ddf4;}
+.v8-browse{position:relative;min-width:125px;min-height:43px;box-sizing:border-box;padding:0 13px;display:flex;align-items:center;
+ justify-content:center;gap:11px;border:1px solid #275e93;border-radius:10px;background:#091d35;color:#27b6ff;font-size:14px;cursor:pointer;}
+.v8-browse>svg{color:#159efb;}
+.v8-browse input[type=file]{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:0;}
+.v8-browse:focus-within{outline:2px solid #63deff;outline-offset:2px;}
+.v8-password-line{display:flex;align-items:center;gap:13px;border:1px solid #214668;border-radius:10px;min-height:44px;background:#081a2d;padding:0 13px;}
+.v8-password-line input{flex:1;min-width:0;height:43px;border:none!important;box-shadow:none!important;background:transparent!important;color:#fff;font-size:14px;outline:none;}
+.v8-password-line button{background:none;border:0;color:#ceeaf8;display:grid;place-items:center;padding:7px;cursor:pointer;}
+.v8-method-limit{color:#acc7d9;font-size:12px;line-height:1.4;margin:1px 0 0;}
+.v8-safety{display:flex;align-items:center;gap:24px;min-height:100px;margin-top:14px;padding:12px 23px;
+ border:1px solid rgba(41,105,167,.45);border-radius:15px;background:linear-gradient(110deg,rgba(4,23,41,.98),rgba(4,17,32,.94));}
+.v8-safety>svg{height:52px;width:52px;flex:none;color:#0bb6ff;filter:drop-shadow(0 0 9px rgba(0,136,255,.6));}
+.v8-safety span{display:flex;flex-direction:column;gap:7px;}
+.v8-safety strong{font-size:16px;font-weight:650;color:#f3faff;}
+.v8-safety small{font-size:13px;line-height:1.5;color:#b8cee2;}
+.v8-status{font-size:13px;line-height:1.4;color:#83dfff;margin:8px 0 0;}
+.v8-status:empty{display:none;}
+.v8-status[data-error=true]{color:#ffb4c3;}
+.genesis-verification .v8-footer{padding-bottom:28px;}
+.genesis-verification button:focus-visible,.genesis-verification input:focus-visible{outline:2px solid #62ddff;outline-offset:3px;}
+.genesis-verification button:disabled{opacity:.57;cursor:progress;}
+@media(min-width:901px) and (max-height:900px){
+ .genesis-verification .vo-panel{min-height:0;padding:16px 23px 13px;margin-top:-2px;}
+ .genesis-verification .vo-eyebrow{margin-bottom:7px;}
+ .genesis-verification .vo-panel h1{font-size:32px;}
+ .genesis-verification .vo-description{font-size:15px;margin:8px 0 10px;}
+ .v8-method{padding:8px 13px;}
+ .v8-method-icon{height:47px;width:53px;}
+ .v8-method-icon svg{height:32px;width:32px;}
+ .v8-method-title strong{font-size:16px;}
+ .v8-method-title small{font-size:12px;}
+ .v8-code-groups input{height:36px;font-size:14px;}
+ .v8-or{margin:4px;}
+ .v8-file-line>span,.v8-browse,.v8-password-line{min-height:35px;}
+ .v8-password-line input{height:34px;}
+ .v8-backup-fields{gap:4px;}
+ .v8-safety{min-height:60px;margin-top:7px;padding:7px 12px;}
+ .v8-safety svg{height:33px;width:33px;}
+ .v8-safety strong{font-size:13px;}
+ .v8-safety small{font-size:11px;}
+ .v8-method-limit{font-size:11px;}
+}
+@media(max-width:900px){
+ .genesis-verification .vo-panel{margin:7px 0 0;max-width:none;min-height:0;padding:18px 14px;}
+ .genesis-verification .vo-panel h1{font-size:30px;}
+ .genesis-verification .vo-description{font-size:13px;margin:9px 0 15px;}
+ .v8-method{padding:10px;border-radius:12px;}
+ .v8-method-heading{gap:12px;}
+ .v8-method-icon{width:46px;height:49px;}
+ .v8-method-icon svg{width:30px;height:30px;}
+ .v8-method-title strong{font-size:14px;}
+ .v8-method-title small{font-size:11px;}
+ .v8-info{font-size:15px;}
+ .v8-code-groups{gap:5px;}
+ .v8-code-groups input{height:43px;padding:0;font-size:13px;letter-spacing:0;border-radius:8px;}
+ .v8-or{margin:8px 0;}
+ .v8-file-line>span{font-size:11px;padding:0 7px;gap:5px;}
+ .v8-browse{min-width:80px;gap:5px;font-size:11px;padding:0 5px;}
+ .v8-browse svg{height:17px;width:17px;}
+ .v8-password-line input{font-size:12px;}
+ .v8-safety{min-height:80px;gap:12px;padding:11px;margin-top:12px;}
+ .v8-safety>svg{width:34px;height:34px;}
+ .v8-safety strong{font-size:13px;}
+ .v8-safety small{font-size:11px;}
+ .genesis-verification .v8-footer{padding-bottom:calc(22px + env(safe-area-inset-bottom,0px));}
+}
+@media(max-width:350px){
+ .v8-code-groups{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;}
+ .v8-method-title small{font-size:10px;}
+}
+@media(prefers-reduced-motion:reduce){.genesis-verification *{animation:none!important;transition:none!important;}}
+
+/* Final screenshot comparison: compact resting backup card matches the
+   owner's reference. The required second key file + security guidance
+   reveal on backup selection, never removing the governed restore path. */
+.genesis-verification .v8-method:not(.selected) .v8-key-file,
+.genesis-verification .v8-method:not(.selected) .v8-method-limit,
+.genesis-verification .v8-method:not(.selected) .v8-bootstrap{display:none;}
+.genesis-verification .v8-code-groups{width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow:hidden;}
+.genesis-verification .v8-code-groups input{min-width:0;max-width:100%;box-sizing:border-box;}
+@media(min-width:901px){
+ .genesis-verification .vo-sphere{transform:translate(31px,-78px);}
+ .genesis-verification .vo-ground{bottom:16.5%;}
+ .genesis-verification .vo-hero::after{transform:translateY(-45px);}
+ .genesis-verification .v8-safety{min-height:99px;margin-top:15px;}
+}
+@media(max-width:900px){
+ .genesis-verification .v8-code-groups{grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;}
+ .genesis-verification .v8-code-groups input{width:100%;min-width:0;max-width:100%;font-size:12px;letter-spacing:0;}
+}
+@media(max-width:350px){
+ .genesis-verification .v8-code-groups{grid-template-columns:repeat(3,minmax(0,1fr));}
+}
+
+/* Flex intrinsic sizing: the backup form and code grid must not widen either
+   method card on mobile. This prevents visually clipped sixth code box. */
+.genesis-verification .v8-methods,.genesis-verification .v8-method{
+ min-width:0;width:100%;max-width:100%;box-sizing:border-box;
+}
+.genesis-verification .v8-method-heading,
+.genesis-verification .v8-backup-fields,
+.genesis-verification .v8-file-line{min-width:0;max-width:100%;box-sizing:border-box;}
+.genesis-verification .v8-code-groups{box-sizing:border-box;width:100%;max-width:100%;min-width:0;grid-auto-flow:row;}
+
+/* On narrow screens the six secure code segments wrap into two rows of
+   three, preserving legibility and eliminating off-card clipping. */
+@media(max-width:900px){
+ .genesis-verification .v8-code-groups{
+  display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-auto-rows:43px;
+  width:100%;max-width:100%;box-sizing:border-box;gap:7px;overflow:hidden;
+ }
+ .genesis-verification .v8-code-groups input{
+  box-sizing:border-box;min-width:0;max-width:100%;width:100%;height:43px;
+ }
+}
+
+@media(max-width:900px){
+ /* Allow for subpixel rounding at 375px and device-scale borders. */
+ .genesis-verification .v8-code-groups{
+  width:calc(100% - 7px);max-width:calc(100% - 7px);margin-right:7px;
+ }
+}
+
+/* 1536x1024 owner screenshot alignment: correct vertical sphere/platform
+   anchoring; balanced card widths and deliberate empty-space budget. */
+@media(min-width:901px) and (min-height:901px){
+ .genesis-verification .vo-sphere{transform:translate(31px,-31px);}
+ .genesis-verification .vo-ground{bottom:9%;}
+ .genesis-verification .v8-methods,.genesis-verification .v8-safety{
+  margin-left:-5px;margin-right:-25px;width:calc(100% + 30px);max-width:calc(100% + 30px);
+ }
+ .genesis-verification .v8-method[data-v8-method="backup"]:not(.selected){
+  min-height:248px;box-sizing:border-box;
+ }
+ .genesis-verification .v8-safety{
+  min-height:104px;margin-top:21px;box-sizing:border-box;
+ }
+}

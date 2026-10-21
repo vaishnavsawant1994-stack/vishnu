@@ -59,21 +59,22 @@ async function verifyReturningOwnerEntry(){
   assert.equal(await page.locator('.vo-choice').count(),3,'P1-07 must show distinct recovery purposes');
   await page.locator('[data-vo-mode=restore_data]').click();
   await page.locator('[data-vo-continue]').click();
-  await page.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
-  assert.equal(await page.locator('[data-vo-backup]').count(),1,'Eligible fresh runtime offers authenticated backup restore');
-  await page.locator('[data-vo-backup]').click();
-  await page.locator('#restoreArchive').waitFor({state:'visible'});
-  assert.equal(await page.locator('#restoreKeyFile').count(),1,
-    'fresh runtime recovery requires verified archive and separate key');
-  assert.match(await page.locator('.genesis-copy h1').innerText(),/Restore your Vishnu/i,'fresh-runtime data restoration is clearly distinguished from sign-in recovery');
-  await page.locator('[data-auth-action="welcome"]').click();
-  assert.equal(await page.locator('[data-auth-action="passkey"]').count(),0,'unconfigured passkey is not presented as an action');
-  assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'unauthenticated welcome-back screen hides OS navigation');
+  await page.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+  assert.equal(await page.locator('#v8Archive').count(),1,'Eligible new runtime offers encrypted archive selection');
+  assert.equal(await page.locator('#v8KeyFile').count(),1,'Separate recovery-key picker required');
+  assert.equal(await page.locator('#v8Passphrase').count(),1,'Recovery passphrase required');
+  assert.equal(await page.locator('[data-v8-method=backup]').getAttribute('class').then(c=>c.includes('selected')),true);
+  await page.locator('[data-v8-back]').click();
+  await page.getByRole('heading',{name:'Recovery Options'}).waitFor();
+  await page.locator('[data-vo-back]').click();
+  await page.getByRole('heading',{name:'Welcome to Vishnu.'}).waitFor();
+  assert.equal(await page.locator('[data-genesis-join]').count(),1,'Sign-in remains separate from recovery');
+  assert.equal(await page.locator('.reference-desktop-sidebar').isVisible(),false,'onboarding hides OS navigation');
   await page.screenshot({path:'artifacts/returning-owner-fresh-desktop.png',fullPage:true});
   await page.setViewportSize({width:390,height:844});
   await page.screenshot({path:'artifacts/returning-owner-fresh-mobile.png',fullPage:true});
-  await page.locator('[data-auth-action="create"]').click();
-  await page.locator('.genesis-screen[data-step="1"]').waitFor({state:'visible'});
+  await page.locator('[data-genesis-create]').click();
+  await page.locator('.genesis-screen[data-step="2"]').waitFor({state:'visible'});
   await page.close();
 }
 async function verifyConfiguredOwnerMethods(){

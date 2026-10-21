@@ -7,7 +7,7 @@ import {chromium} from 'playwright';
 const assets=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css',
  'genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css',
  'genesis-security.js','genesis-recovery.css','genesis-recovery.js','genesis-login.css',
- 'genesis-login.js','genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js','assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
+ 'genesis-login.js','genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js','genesis-verification.css','genesis-verification.js','assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg'];
 const files=new Map();
 for(const name of assets)files.set('/iphone/'+name,await readFile(new URL('../pwa/'+name,import.meta.url)));
@@ -170,8 +170,8 @@ try{
  await recover.getByRole('heading',{name:'Recovery Options'}).waitFor();
  assert.equal(await recover.locator('.vo-choice').count(),3);
  await recover.locator('[data-vo-continue]').click();
- await recover.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
- assert.equal(await recover.locator('#voRecoveryCode').count(),1);
+ await recover.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+ assert.equal(await recover.locator('[data-v8-group]').count(),6);
  await recover.close();
  const {page:back}=await fixturePage({width:1536,height:1024});
  await back.locator('.vl-back').click();
