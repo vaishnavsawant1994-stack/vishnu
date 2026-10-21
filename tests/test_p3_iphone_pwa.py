@@ -208,6 +208,8 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         ('/iphone/genesis-neural-sphere.js', 'mountNeuralSphere'),
         ('/iphone/genesis-identity.css', 'genesis-identity'),
         ('/iphone/genesis-identity.js', 'mountIdentityScreen'),
+        ('/iphone/genesis-security.css', 'genesis-security'),
+        ('/iphone/genesis-security.js', 'mountSecurityScreen'),
         ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
         ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),

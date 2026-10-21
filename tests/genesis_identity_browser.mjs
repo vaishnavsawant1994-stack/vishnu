@@ -6,7 +6,7 @@ import {chromium} from 'playwright';
 
 const assetNames=[
  'first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
- 'genesis-identity.js','genesis-identity.css',
+ 'genesis-identity.js','genesis-identity.css','genesis-security.js','genesis-security.css',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg',
  'assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg',
 ];
@@ -90,10 +90,10 @@ try{
   assert.equal(await page.locator('#viSelectedAvatarPreview').isVisible(),false,'Remove clears preview');
 
   await page.locator('[data-genesis-next]').click();
-  await page.getByRole('heading',{name:'Secure your Vishnu'}).waitFor();
+  await page.getByRole('heading',{name:'Secure Your Vishnu'}).waitFor();
   const state=await page.evaluate(()=>({first:window.vishnuFirstRun?.state?.firstName,display:window.vishnuFirstRun?.state?.displayName}));
   assert.deepEqual(state,{first:'Alexander',display:'Alex'});
-  await page.locator('.genesis-tertiary[data-genesis-back]').click();
+  await page.locator('[data-vs-back]').click();
   await page.locator('#firstRunFirstName').waitFor();
   assert.equal(await page.locator('#firstRunFirstName').inputValue(),'Alexander');
   assert.equal(await page.locator('#firstRunDisplayName').inputValue(),'Alex');
@@ -107,7 +107,7 @@ try{
     await page.locator('#firstRunPassword').fill('vishnu-test-password-123');
     await page.locator('#firstRunPasswordAgain').fill('vishnu-test-password-123');
     await page.evaluate(()=>{window.vishnuFirstRun.state.auth='password';});
-    await page.locator('.genesis-primary[data-genesis-next]').click();
+    await page.locator('.vs-continue[data-genesis-next]').click();
     await page.locator('#firstRunRecoverySaved').waitFor();
     await page.locator('#firstRunRecoverySaved').check();
     await page.locator('.genesis-primary[data-genesis-next]').click();
