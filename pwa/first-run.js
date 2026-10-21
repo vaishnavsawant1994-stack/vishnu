@@ -190,7 +190,7 @@
     }
     if (s.step === 2) {
       panel.setAttribute('aria-label', 'Vishnu owner identity');
-      panel.innerHTML = '<main class="genesis-shell genesis-screen genesis-identity" data-step="2"><div id="viRoot"></div></main>';
+      panel.innerHTML = '<main class="genesis-shell genesis-screen genesis-identity" data-step="2"><div id="viRoot" role="status" aria-live="polite">Loading your identity screen…</div></main>';
       import('/iphone/genesis-identity.js').then(({ mountIdentityScreen }) => {
         const root = document.getElementById('viRoot');
         if (mountId !== welcomeMountId || !root || !root.isConnected) return;
@@ -198,7 +198,12 @@
           onBack: () => render(1),
           onContinue: () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: {step: 2} })),
         });
-      }).catch(() => {setError('This screen could not load. Please refresh and try again.');});
+      }).catch(() => {
+        const root = document.getElementById('viRoot');
+        if (mountId !== welcomeMountId || !root) return;
+        root.innerHTML = '<div class="vi-load-error" role="alert"><p>The identity screen could not load. Your Vishnu account has not been changed.</p><button type="button" data-vi-retry>Retry</button></div>';
+        root.querySelector('[data-vi-retry]')?.addEventListener('click', () => render(2));
+      });
       return;
     }
     panel.setAttribute('aria-label', 'Vishnu owner setup');
@@ -488,6 +493,11 @@
   }
   function hide() {
     disposeWelcome();
+    // Uploads are transient previews. Never retain image bytes or object URLs
+    // once the first-run surface is dismissed.
+    if (s.avatarPreviewUrl) URL.revokeObjectURL(s.avatarPreviewUrl);
+    s.avatarPreviewUrl = null;
+    s.avatarFile = null;
     ++welcomeMountId;
     document.body.classList.remove('genesis-active'); panel.classList.add('hidden');
     for (const { element, ariaHidden, inert } of priorNavigationState) {
