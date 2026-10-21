@@ -123,3 +123,13 @@
 @media(max-width:350px){
  .genesis-verification .v8-code-groups{grid-template-columns:repeat(3,minmax(0,1fr));}
 }
+
+/* Flex intrinsic sizing: the backup form and code grid must not widen either
+   method card on mobile. This prevents visually clipped sixth code box. */
+.genesis-verification .v8-methods,.genesis-verification .v8-method{
+ min-width:0;width:100%;max-width:100%;box-sizing:border-box;
+}
+.genesis-verification .v8-method-heading,
+.genesis-verification .v8-backup-fields,
+.genesis-verification .v8-file-line{min-width:0;max-width:100%;box-sizing:border-box;}
+.genesis-verification .v8-code-groups{box-sizing:border-box;width:100%;max-width:100%;min-width:0;grid-auto-flow:row;}
