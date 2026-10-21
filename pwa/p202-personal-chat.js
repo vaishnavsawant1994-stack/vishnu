@@ -10,7 +10,8 @@
   // A Project conversation keeps its existing Project UI rather than acquiring Personal controls.
   const projectContext = () => /^\s*Project\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
   const active = () => document.body.classList.contains('chat-experience') &&
-    !$('voicePanel')?.classList.contains('hidden') && !projectContext();
+    !$('voicePanel')?.classList.contains('hidden') && !projectContext() &&
+    !(window.__vishnuP202B?.isActive?.());
   const qs = (sel,root=document) => root.querySelector(sel);
   const create = (tag,cls,txt) => {
     const e=document.createElement(tag); if(cls)e.className=cls;
