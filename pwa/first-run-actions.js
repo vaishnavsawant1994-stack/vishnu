@@ -157,12 +157,41 @@
     }
   }
 
+  async function persistOwnerAvatar() {
+    const source = state.avatarSource || 'none';
+    if (source === 'none' || state.avatarSaved) return;
+    let image_b64 = '';
+    if (source === 'upload') {
+      if (!state.avatarFile) throw new Error('The selected photo is no longer available. Return to Your Identity and select it again.');
+      // FileReader keeps raw pixels out of local/session storage; the backend
+      // re-encodes validated pixels and binds the file to the canonical owner.
+      image_b64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error('Cannot read the selected photo. Choose another image.'));
+        reader.onload = () => {
+          const data = String(reader.result || '');
+          const sep = data.indexOf(',');
+          if (sep < 0) reject(new Error('The selected photo is invalid.'));
+          else resolve(data.slice(sep + 1));
+        };
+        reader.readAsDataURL(state.avatarFile);
+      });
+    }
+    await setupApi('/first-run/avatar', { method: 'PUT', body: JSON.stringify({
+      source, preset_id: source === 'preset' ? (state.avatarId || '') : '', image_b64,
+    })});
+    state.avatarSaved = true;
+  }
+
   async function finish() {
     if (!$('firstRunRecoverySaved')?.checked) {
       throw new Error('Save your recovery codes somewhere secure, then confirm to continue.');
     }
 
     busy(true, 'Finishing secure setup…');
+    // Avatar persistence is optional, but a selected picture must not be
+    // silently discarded or announced as saved when the upload fails.
+    await persistOwnerAvatar();
     await setupApi('/first-run/recovery-saved', {
       method: 'POST', body: JSON.stringify({ saved: true }),
     });
