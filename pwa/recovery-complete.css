@@ -96,6 +96,10 @@
   animation: rc-success-in .65s ease-out both;
 }
 .rc-host .rc-shield svg { width: 77px; height: 89px; }
+.rc-host .recovery-complete[data-recovery-overall="needs-attention"] .rc-eyebrow { color: #e4ae37; }
+.rc-host .recovery-complete[data-recovery-overall="needs-attention"] .rc-shield {
+  color: #e4ae37; filter: drop-shadow(0 0 8px rgba(228,174,55,.28));
+}
 .rc-host .rc-title-row > div:last-child { min-width: 0; }
 .rc-host #rcTitle {
   margin: 0 0 8px; font-weight: 650; line-height: 1.19;
