@@ -18,7 +18,7 @@
       const inward = i % 4 === 0 ? .36 + rand() * .58 : 1;
       nodes.push({ x: Math.cos(golden * i) * r * inward, y: y * inward,
         z: Math.sin(golden * i) * r * inward,
-        size: i % 11 === 0 ? 3.1 + rand() * 1.5 : 1.05 + rand() * 1.3,
+        size: i % 11 === 0 ? 3.8 + rand() * 2.2 : 1.45 + rand() * 1.6,
         phase: rand() * 7 });
     }
     for (let i = 0; i < count; i++) {
@@ -32,9 +32,9 @@
       near.sort((a, b) => a[1] - b[1]);
       for (const [j] of near.slice(0, 4)) if (i < j) edges.push([i, j]);
     }
-    const specks = Array.from({ length: 110 }, () => ({
+    const specks = Array.from({ length: 145 }, () => ({
       angle: rand() * Math.PI * 2, radius: .95 + rand() * .48,
-      size: .4 + rand() * 1.05, phase: rand() * Math.PI * 2,
+      size: .55 + rand() * 1.2, phase: rand() * Math.PI * 2,
     }));
     const motion = matchMedia('(prefers-reduced-motion: reduce)');
     let width = 1, height = 1, dpr = 1, raf = 0, yaw = -.25, pitch = .11;
@@ -61,15 +61,15 @@
       const centerX = width / 2, centerY = height * .49;
       const radius = Math.min(width * .45, height * .46);
       const bloom = context.createRadialGradient(centerX, centerY, radius * .03, centerX, centerY, radius * 1.32);
-      bloom.addColorStop(0, 'rgba(0,185,255,.29)');
-      bloom.addColorStop(.55, 'rgba(0,95,200,.08)');
+      bloom.addColorStop(0, 'rgba(0,185,255,.48)');
+      bloom.addColorStop(.55, 'rgba(0,95,200,.17)');
       bloom.addColorStop(1, 'rgba(0,95,200,0)');
       context.fillStyle = bloom; context.fillRect(0, 0, width, height);
       // Flecks of ambient neural energy extend only slightly beyond the core.
       for (const fleck of specks) {
         const x = centerX + Math.cos(fleck.angle) * fleck.radius * radius;
         const y = centerY + Math.sin(fleck.angle) * fleck.radius * radius;
-        const alpha = motion.matches ? .27 : .2 + .22 * (1 + Math.sin(now * .001 + fleck.phase)) / 2;
+        const alpha = motion.matches ? .40 : .31 + .22 * (1 + Math.sin(now * .001 + fleck.phase)) / 2;
         context.fillStyle = 'rgba(16,171,255,' + alpha + ')';
         context.beginPath(); context.arc(x, y, fleck.size, 0, Math.PI * 2); context.fill();
       }
@@ -78,7 +78,7 @@
       for (let i = 0; i < edges.length; i++) {
         const [a, b] = edges[i], p = projected[a], q = projected[b];
         const depth = (p.depth + q.depth) / 2;
-        const alpha = .25 + Math.max(0, depth) * .42;
+        const alpha = .35 + Math.max(0, depth) * .5;
         context.strokeStyle = 'rgba(63,214,255,' + alpha + ')';
         context.beginPath(); context.moveTo(p.x, p.y); context.lineTo(q.x, q.y); context.stroke();
         if (i % 17 === 0) {
@@ -88,22 +88,22 @@
         }
       }
       context.strokeStyle = 'rgba(59,217,255,.94)';
-      context.lineWidth = 1.5; context.shadowBlur = 22; context.shadowColor = '#05bfff';
+      context.lineWidth = 1.8; context.shadowBlur = 29; context.shadowColor = '#05bfff';
       context.beginPath(); context.arc(centerX, centerY, radius, 0, Math.PI * 2); context.stroke();
       for (let i = 0; i < projected.length; i++) {
         const p = projected[i], n = nodes[i];
         const brightness = .58 + Math.max(0, p.depth) * .42;
         const pulse = motion.matches ? 1 : .83 + Math.sin(now * .0014 + n.phase) * .17;
         context.fillStyle = n.size > 3 ? 'rgba(210,252,255,.97)' : 'rgba(59,219,255,' + Math.min(1, brightness + .12) + ')';
-        context.shadowBlur = n.size > 2 ? 31 : 15;
+        context.shadowBlur = n.size > 2.4 ? 35 : 22;
         context.beginPath(); context.arc(p.x, p.y, n.size * p.lens * pulse, 0, Math.PI * 2); context.fill();
       }
       context.shadowBlur = 0;
-      const core = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * .28);
-      core.addColorStop(0, 'rgba(170,252,255,.92)');
-      core.addColorStop(.21, 'rgba(0,198,255,.62)');
+      const core = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * .34);
+      core.addColorStop(0, 'rgba(170,252,255,.97)');
+      core.addColorStop(.21, 'rgba(0,198,255,.78)');
       core.addColorStop(1, 'rgba(0,140,255,0)');
-      context.fillStyle = core; context.beginPath(); context.arc(centerX, centerY, radius * .28, 0, Math.PI * 2); context.fill();
+      context.fillStyle = core; context.beginPath(); context.arc(centerX, centerY, radius * .34, 0, Math.PI * 2); context.fill();
     }
     function frame(now) {
       raf = 0;
