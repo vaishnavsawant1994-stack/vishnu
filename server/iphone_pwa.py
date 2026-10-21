@@ -217,6 +217,12 @@ class ConversationRenameBody(BaseModel):
     title: str = Field(min_length=1, max_length=120)
 
 
+class ConversationWorkProjectBody(BaseModel):
+    # Link an existing Project; never create a second project or WorkPlan authority.
+    project_id: str | None = Field(default=None, max_length=80)
+    confirm: Literal[True]
+
+
 class IphonePwaState:
     def __init__(self):
         self._lock = threading.RLock()
@@ -2202,6 +2208,45 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             body.title.strip() or 'New conversation', device_id=device_id, context=context,
         )
         return {'conversation': continuity.thread(thread_id), 'events': []}
+
+    @router.put('/api/conversations/{conversation_id}/work-project')
+    def conversation_work_project(
+        conversation_id: str,
+        body: ConversationWorkProjectBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = auth_device(pa_device, pa_token)
+        session = current_trusted_request()
+        if session is None or session.device_id != device_id:
+            raise HTTPException(401, 'An active trusted owner session is required to link Work resources')
+        if continuity is None:
+            raise HTTPException(503, 'Conversation continuity is unavailable')
+        thread = continuity.thread(conversation_id)
+        if not thread or thread.get('closed_at'):
+            raise HTTPException(404, 'Conversation not found')
+        if (thread.get('context') or {}).get('conversation_kind') != 'work':
+            raise HTTPException(409, 'Only a Work conversation can be linked to a Project')
+        project_id = (body.project_id or '').strip() or None
+        project = None
+        if project_id is not None:
+            projects = runtime.get('project_store') or runtime.get('base_project_store')
+            if projects is None:
+                raise HTTPException(503, 'Canonical Projects are unavailable')
+            project = projects.get(project_id)
+            if project is None:
+                raise HTTPException(404, 'Project is missing, archived, or unavailable')
+        # The single existing continuity ledger remains the source of truth.
+        # No task, file, plan, artifact or approval is copied into the chat.
+        continuity.update_context(conversation_id, {'work_project_id': project_id})
+        emit('continuity.work_project.link_changed',
+             conversation_id=conversation_id, project_id=project_id, device_id=device_id)
+        return {
+            'conversation': continuity.thread(conversation_id),
+            'linked_project': (
+                {'id': project['id'], 'name': project['name']} if project else None
+            ),
+        }
 
     @router.get('/api/conversations/{conversation_id}')
     def conversation_get(
