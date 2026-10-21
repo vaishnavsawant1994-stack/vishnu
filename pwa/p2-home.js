@@ -300,7 +300,8 @@
     const locale = navigator.language || undefined;
     elements.time.textContent = new Intl.DateTimeFormat(locale, {hour:'numeric', minute:'2-digit'}).format(now);
     elements.date.textContent = new Intl.DateTimeFormat(locale, {weekday:'long', day:'numeric', month:'long', year:'numeric'}).format(now);
-    const name = model.status?.owner_display_name || model.status?.owner?.display_name || model.status?.owner?.name || '';
+    const name = model.status?.owner_display_name || model.status?.owner?.display_name || model.status?.owner?.name ||
+      (typeof window.ownerDisplayName === 'function' ? window.ownerDisplayName() : '');
     if (home() && $('homeGreeting')) {
       const hour = now.getHours();
       const part = hour < 12 ? 'Good Morning' : hour < 18 ? 'Good Afternoon' : 'Good Evening';
