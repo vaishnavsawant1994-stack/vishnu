@@ -209,9 +209,9 @@ try{
   await desktop.waitForFunction(()=>document.body.innerText.includes('General chat · No project context'));
   assert.notEqual(await desktop.evaluate(()=>window.vishnuChatBridge.current.id),'project-chat-p1','switching to general opens a separate general conversation');
 
-  // Use one authentic search entry per test. Double-opening the module
+  // Open one canonical search route per test. Double-opening the module
   // races its asynchronous shell render and can hide a freshly mounted input.
-  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
+  await desktop.evaluate(()=>window.openModule('search'));
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('New conversation');
@@ -224,7 +224,7 @@ try{
 
   // Use one authentic search entry per test. Double-opening the module
   // races its asynchronous shell render and can hide a freshly mounted input.
-  await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
+  await desktop.evaluate(()=>window.openModule('search'));
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('Test Project');
