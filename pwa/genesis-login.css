@@ -137,3 +137,20 @@
  .vl-or{margin:17px 0;}
  .vl-trust{margin-top:17px;}
 }
+
+/* Holographic accent rings and sparse atmospheric sparks from the supplied
+   P1-05 reference. They are CSS decoration; the sphere itself remains 3D. */
+@media(min-width:901px){
+ .genesis-login .vl-ground{z-index:0;filter:blur(.8px);pointer-events:none;}
+ .genesis-login .vl-ground span{position:absolute;inset:6px 27%;border-radius:50%;
+   border:1px solid rgba(66,219,255,.82);
+   box-shadow:0 0 13px rgba(23,194,255,.75),inset 0 0 17px rgba(4,180,255,.55);}
+ .genesis-login .vl-hero::after{content:"";position:absolute;pointer-events:none;
+   top:19%;left:19%;width:2px;height:2px;border-radius:50%;
+   background:rgba(19,177,252,.60);filter:blur(.7px);
+   box-shadow:-100px 105px 5px rgba(23,133,232,.55),177px -26px 8px rgba(4,187,255,.40),
+   282px 85px 7px rgba(32,185,255,.55),-132px 251px 8px rgba(36,133,233,.50),
+   332px 320px 8px rgba(5,155,250,.43),-78px 449px 7px rgba(34,167,245,.40),
+   273px 490px 7px rgba(12,186,255,.50),406px 410px 8px rgba(8,161,251,.45);
+ }
+}
