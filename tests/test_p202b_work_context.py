@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from devices.continuity import ContinuityService
-from server.iphone_pwa import ConversationCreateBody
+from server.iphone_pwa import ConversationCreateBody, ConversationWorkProjectBody
 
 
 def test_work_scope_persists_without_new_table(tmp_path):
@@ -34,3 +34,35 @@ def test_work_create_body_opt_in_and_invalid_type_fail_closed():
     assert ConversationCreateBody(title="Work", context_type="work").context_type == "work"
     with pytest.raises(ValidationError):
         ConversationCreateBody(title="Unsafe", context_type="project")
+
+
+def test_work_project_association_survives_restart_without_changing_personal(tmp_path):
+    db = tmp_path / "continuity.sqlite3"
+    first = ContinuityService(db)
+    work_id = first.create_thread(
+        "Planning", device_id="device-1", context={"conversation_kind": "work"}
+    )
+    personal_id = first.create_thread("Personal", device_id="device-1")
+    first.update_context(work_id, {"work_project_id": "project-verified"})
+    assert first.thread(work_id)["context"] == {
+        "conversation_kind": "work", "work_project_id": "project-verified"
+    }
+    assert first.thread(personal_id)["context"] == {}
+    restarted = ContinuityService(db)
+    assert restarted.thread(work_id)["context"]["work_project_id"] == "project-verified"
+    assert restarted.export_thread(work_id)["thread"]["context"]["work_project_id"] == "project-verified"
+    restarted.update_context(work_id, {"work_project_id": None})
+    assert restarted.thread(work_id)["context"]["conversation_kind"] == "work"
+    assert restarted.thread(work_id)["context"]["work_project_id"] is None
+    assert restarted.thread(personal_id)["context"] == {}
+
+
+def test_project_link_request_requires_confirmation_and_bounded_id():
+    assert ConversationWorkProjectBody(project_id="project-1", confirm=True).project_id == "project-1"
+    assert ConversationWorkProjectBody(project_id=None, confirm=True).project_id is None
+    with pytest.raises(ValidationError):
+        ConversationWorkProjectBody(project_id="project-1", confirm=False)
+    with pytest.raises(ValidationError):
+        ConversationWorkProjectBody(project_id="a" * 81, confirm=True)
+    with pytest.raises(ValidationError):
+        ConversationWorkProjectBody(project_id="project-1")
