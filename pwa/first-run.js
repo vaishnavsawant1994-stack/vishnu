@@ -620,6 +620,12 @@
       else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
       else if (s.accessIntent === 'join' || s.accessIntent === 'restore') { show(); renderReturning(s.accessIntent === 'restore' ? 'restore' : 'welcome'); }
       else if (s.options.creation_available || s.options.restore_available) show();
+      else if (!result) {
+        // No active trusted session on a configured runtime: show the real
+        // returning-owner page instead of leaving the prior login hidden.
+        show();
+        renderReturning('login');
+      }
       else if (result) {
         hide();
         if (s.pendingPostAuthAction) {
