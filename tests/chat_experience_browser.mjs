@@ -220,6 +220,7 @@ try{
   assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
   await desktop.keyboard.press('Control+Shift+P');
   await desktop.locator('.cc-dialog[open] .cc-heading h1').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('dialog.cc-dialog[open]').count(),1,'Command Center initializes as a singleton despite a repeated script mount');
   await desktop.screenshot({path:'artifacts/command-center-desktop.png',fullPage:false});
   await desktop.locator('[data-cc-query]').fill('Projects');
   await desktop.locator('[data-cc-run="Projects"]').click();
