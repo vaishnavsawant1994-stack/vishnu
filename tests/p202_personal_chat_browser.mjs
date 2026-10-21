@@ -102,6 +102,21 @@ try{
  assert.equal(await page.locator('#p202Header').isVisible(),false,'Chat header fully hidden on Home');
  assert.equal(await page.locator('#p202MobileNav').isVisible(),false,'Chat-only mobile tabs do not leak into Home');
  assert.equal(await page.locator('#p202ModelPlacement').isVisible(),false,'Chat model control not shown on Home');
+ // A conversation explicitly bound to a project must not be relabeled Personal.
+ const projectPage=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
+ await projectPage.route('**/iphone/api/**',route=>{
+   if(parsePath(route.request().url())==='/projects'){
+     return route.fulfill({status:200,contentType:'application/json',
+       body:JSON.stringify({projects:[{id:'project-1',name:'Private Project',conversation_id:'personal-1'}]})});
+   }
+   return fixture(route);
+ });
+ await projectPage.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ await projectPage.waitForFunction(()=>window.__vishnuP202A&&document.body.classList.contains('chat-experience'));
+ await projectPage.waitForTimeout(300);
+ assert.equal(await projectPage.locator('#p202Header').isVisible(),false,
+   'Personal Chat design never mislabels a verified Project conversation');
+ await projectPage.close();
  assert.deepEqual(errors,[],'no uncaught browser exceptions');
  console.log('P2-02A Personal Chat browser state, plan, composer, context, responsive and route isolation checks passed.');
 }finally{await browser.close()}
