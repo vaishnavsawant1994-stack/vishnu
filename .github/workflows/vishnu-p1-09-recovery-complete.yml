@@ -5,6 +5,7 @@ on:
       - 'pwa/recovery-complete.js'
       - 'pwa/recovery-complete.css'
       - 'pwa/neural-sphere.js'
+      - 'pwa/genesis-neural-sphere.js'
       - 'pwa/first-run.js'
       - 'server/iphone_pwa.py'
       - 'tests/recovery_complete_browser.mjs'
@@ -29,6 +30,7 @@ jobs:
         run: |
           node --check pwa/recovery-complete.js
           node --check pwa/neural-sphere.js
+          node --check pwa/genesis-neural-sphere.js
           node --check tests/recovery_complete_browser.mjs
           node tests/recovery_complete_browser.mjs
       - name: Upload P1-09 browser screenshot evidence

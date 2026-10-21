@@ -2,15 +2,19 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
-const [sphere, assistant, css] = await Promise.all([
+const [sphere, assistant, css, canonical] = await Promise.all([
   readFile(new URL('../pwa/neural-sphere.js', import.meta.url),'utf8'),
   readFile(new URL('../pwa/runtime-assistant.js', import.meta.url),'utf8'),
   readFile(new URL('../pwa/runtime-assistant.css', import.meta.url),'utf8'),
+  readFile(new URL('../pwa/genesis-neural-sphere.js', import.meta.url),'utf8'),
 ]);
-const browser = await chromium.launch({ headless:true });
+const browser = await chromium.launch({ headless:true, args:['--enable-webgl','--use-gl=angle','--use-angle=swiftshader'] });
 try {
   const page = await browser.newPage({ viewport:{width:1536,height:1024}, reducedMotion:'reduce' });
   await page.route('http://localhost/**', route => {
+    if (new URL(route.request().url()).pathname === '/iphone/genesis-neural-sphere.js') {
+      return route.fulfill({status:200,contentType:'text/javascript',body:canonical});
+    }
     if (route.request().url().endsWith('/iphone/api/access/options')) {
       return route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true}'});
     }
@@ -28,6 +32,8 @@ try {
   });
   assert.match(await page.locator('#rtaTitle').innerText(), /Runtime Connection Assistant/);
   assert.equal(await page.locator('.rta-canvas').count(),1);
+  await page.waitForFunction(() => document.querySelector('#rtaCanvas')?.dataset.neuralRenderer === 'webgl');
+  assert.equal(await page.locator('#rtaCanvas').getAttribute('data-neural-renderer'), 'webgl', 'P1-10 must use the canonical WebGL neural geometry');
   assert.equal(await page.locator('[role="radio"]').count(),3);
   assert.equal(await page.locator('[role="radio"][aria-checked="true"]').count(),1);
   assert.equal(await page.locator('img').count(),0,'live 3D is drawn by shared neural renderer');
@@ -81,6 +87,11 @@ try {
   await page.locator('[data-runtime-open]').click();
   assert.match(await page.locator('#rtaStatus').innerText(),/has NOT verified/);
   assert.equal(await page.locator('[data-runtime-open]').isEnabled(),true);
+  // Programmatic changes without an input event cannot bypass destination review.
+  await page.evaluate(() => { document.querySelector('#rtaAddress').value='https://different.example.test'; });
+  await page.locator('[data-runtime-open]').click();
+  assert.match(await page.locator('#rtaStatus').innerText(), /different\.example\.test.*NOT verified/);
+  assert.equal(new URL(page.url()).hostname, 'localhost', 'a changed address cannot navigate on a previously confirmed target');
   const url = await page.evaluate(()=>window.vishnuRuntimeAssistant.validateAddress('https://runtime.example.test/'));
   assert.equal(url,'https://runtime.example.test/iphone/');
   await page.locator('#rtaAddress').fill('https://other-runtime.example.test/');

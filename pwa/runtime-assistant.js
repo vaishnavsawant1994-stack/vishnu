@@ -47,7 +47,7 @@
     return url.origin + '/iphone/';
   };
   let activePanel = null, destroySphere = null, busy = false, origin = 'welcome';
-  let selected = 'existing', awaitingConfirmation = false, address = '', reachable = false;
+  let selected = 'existing', awaitingConfirmation = false, confirmedAddress = '', address = '', reachable = false;
   let backCallback = null, resumeCallback = null;
 
   async function probe() {
@@ -88,7 +88,7 @@
   }
   function selection(key) {
     if (busy || !choices.some(item => item[0] === key)) return;
-    selected = key; awaitingConfirmation = false;
+    selected = key; awaitingConfirmation = false; confirmedAddress = '';
     const host = activePanel;
     if (!host) return;
     for (const button of host.querySelectorAll('[data-runtime-choice]')) {
@@ -127,7 +127,7 @@
     field.id = 'rtaAddress'; field.type = 'url'; field.autocomplete = 'url';
     field.placeholder = 'https://your-vishnu.example'; field.value = address;
     field.addEventListener('input', () => {
-      address = field.value; awaitingConfirmation = false;
+      address = field.value; awaitingConfirmation = false; confirmedAddress = '';
       const action = activePanel.querySelector('[data-runtime-open]');
       if (action) action.textContent = 'Validate address and review navigation';
       setStatus('');
@@ -142,8 +142,8 @@
     button.onclick = () => {
       try {
         const target = inputAddress(field.value);
-        if (!awaitingConfirmation) {
-          awaitingConfirmation = true;
+        if (!awaitingConfirmation || confirmedAddress !== target) {
+          awaitingConfirmation = true; confirmedAddress = target;
           setStatus('Address accepted: ' + target + ' — This has NOT verified the runtime or device. Select the button again to open the address and authenticate on that runtime.', 'info');
           button.textContent = 'Open runtime securely →';
           return;
@@ -154,7 +154,7 @@
         // server identity via HTTPS and re-authenticate its own owner.
         location.assign(target);
       } catch (e) {
-        awaitingConfirmation = false;
+        awaitingConfirmation = false; confirmedAddress = '';
         button.textContent = 'Validate address and review navigation';
         setBusy(false); setStatus(e.message, 'error');
       }
@@ -224,6 +224,7 @@
     backCallback = config.onBack || null;
     resumeCallback = config.onReady || null;
     reachable = false; selected = config.selected || selected;
+    awaitingConfirmation = false; confirmedAddress = ''; address = '';
     panel.setAttribute('aria-label', 'P1-10 Runtime Connection Assistant');
     panel.className = 'genesis runtime-host';
     panel.innerHTML = '<main class="runtime-assistant" aria-labelledby="rtaTitle">' +
@@ -272,7 +273,7 @@
       if (busy) return;
       if (panel.querySelector('#rtaFlow')?.children.length) {
         panel.querySelector('#rtaFlow').replaceChildren();
-        awaitingConfirmation = false; setStatus('');
+        awaitingConfirmation = false; confirmedAddress = ''; setStatus('');
         return;
       }
       stop();

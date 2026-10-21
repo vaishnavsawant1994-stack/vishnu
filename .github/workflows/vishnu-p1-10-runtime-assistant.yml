@@ -5,6 +5,7 @@ on:
       - 'pwa/runtime-assistant.js'
       - 'pwa/runtime-assistant.css'
       - 'pwa/neural-sphere.js'
+      - 'pwa/genesis-neural-sphere.js'
       - 'pwa/first-run.js'
       - 'server/iphone_pwa.py'
       - 'tests/runtime_assistant_browser.mjs'
@@ -28,6 +29,7 @@ jobs:
         run: |
           node --check pwa/runtime-assistant.js
           node --check pwa/neural-sphere.js
+          node --check pwa/genesis-neural-sphere.js
           node --check tests/runtime_assistant_browser.mjs
           node tests/runtime_assistant_browser.mjs
       - name: Upload P1-10 browser screenshot evidence

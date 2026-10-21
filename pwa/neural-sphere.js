@@ -1,10 +1,11 @@
-/* Shared Phase 1 Vishnu 3D-coordinate neural sphere.
- * Perspective, depth, node networks, pointer drag, reduced motion and disposal
- * are reused by P1-09 and P1-10. No decorative PNG masquerades as live 3D.
+/* Shared Phase 1 neural-core adapter.
+ * P1-09/P1-10 now use the SAME canonical WebGL geometry/shaders as P1-01–P1-08.
+ * A deterministic 2D renderer remains only for devices without WebGL or when
+ * the canonical module cannot load; a failed import never grants any authority.
  */
 (() => {
   'use strict';
-  function attach(canvas) {
+  function attachFallback(canvas) {
     const context = canvas.getContext('2d');
     if (!context) return () => {};
     let seed = 271828;
@@ -151,6 +152,40 @@
     };
   }
 
+
+  let canonicalImport = null;
+  function attach(canvas) {
+    if (!canvas) return () => {};
+    let disposed = false;
+    let cleanup = () => {};
+    canvas.dataset.neuralRenderer = 'loading';
+    canonicalImport ||= import('/iphone/genesis-neural-sphere.js');
+    canonicalImport.then(({ mountNeuralSphere }) => {
+      if (disposed || !canvas.isConnected) return;
+      cleanup = mountNeuralSphere(canvas);
+      if (!canvas.parentElement?.classList.contains('vw-static-fallback') && canvas.getContext('webgl')) {
+        canvas.dataset.neuralRenderer = 'webgl';
+      } else {
+        cleanup();
+        cleanup = attachFallback(canvas);
+        if (canvas.getContext('2d')) {
+          canvas.dataset.neuralRenderer = 'canvas-fallback';
+        } else {
+          canvas.parentElement?.classList.add('vw-static-fallback');
+          canvas.dataset.neuralRenderer = 'static-fallback';
+        }
+      }
+    }).catch(() => {
+      if (disposed || !canvas.isConnected) return;
+      cleanup = attachFallback(canvas);
+      canvas.dataset.neuralRenderer = 'canvas-fallback';
+    });
+    return () => {
+      disposed = true;
+      cleanup();
+      delete canvas.dataset.neuralRenderer;
+    };
+  }
 
   window.vishnuNeuralSphere = { attach };
 })();

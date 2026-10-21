@@ -4,14 +4,20 @@ import { chromium } from 'playwright';
 
 const script = await readFile(new URL('../pwa/recovery-complete.js', import.meta.url), 'utf8');
 const sphere = await readFile(new URL('../pwa/neural-sphere.js', import.meta.url), 'utf8');
+const canonical = await readFile(new URL('../pwa/genesis-neural-sphere.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../pwa/recovery-complete.css', import.meta.url), 'utf8');
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, args:['--enable-webgl','--use-gl=angle','--use-angle=swiftshader'] });
 try {
   const page = await browser.newPage({ viewport: { width: 1536, height: 864 }, reducedMotion: 'reduce' });
-  await page.route('http://localhost/**', route => route.fulfill({
-    contentType: 'text/html',
-    body: '<!doctype html><html lang="en"><body style="margin:0;background:#02060d"><div id="enrollPanel" class="genesis"></div></body></html>',
-  }));
+  await page.route('http://localhost/**', route => {
+    if (new URL(route.request().url()).pathname === '/iphone/genesis-neural-sphere.js') {
+      return route.fulfill({status:200,contentType:'text/javascript',body:canonical});
+    }
+    return route.fulfill({
+      contentType: 'text/html',
+      body: '<!doctype html><html lang="en"><body style="margin:0;background:#02060d"><div id="enrollPanel" class="genesis"></div></body></html>',
+    });
+  });
   await page.goto('http://localhost/');
   await page.addStyleTag({ content: style });
   await page.addScriptTag({ content: sphere });
@@ -32,6 +38,8 @@ try {
   assert.match(await page.locator('#rcTitle').innerText(), /Your Vishnu Has Been Recovered/);
   assert.equal(await page.locator('.rc-status-card[data-status="completed"]').count(), 3);
   assert.equal(await page.locator('#rcCore').count(), 1, 'the sphere uses live canvas geometry');
+  await page.waitForFunction(() => document.querySelector('#rcCore')?.dataset.neuralRenderer === 'webgl');
+  assert.equal(await page.locator('#rcCore').getAttribute('data-neural-renderer'), 'webgl', 'P1-09 must use the canonical WebGL neural geometry');
   assert.equal(await page.locator('img').count(), 0, 'static image cannot replace rotating geometry');
   assert.match(await page.locator('[data-recovery-card="data"]').innerText(), /27 backed-up items/);
   assert.equal(await page.locator('.rc-continue').isEnabled(), true);
