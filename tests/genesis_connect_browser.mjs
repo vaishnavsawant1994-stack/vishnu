@@ -124,6 +124,17 @@ try{
  assert.equal(await cancel.evaluate(()=>window.__session),false);
  assert.equal(await cancel.evaluate(()=>window.__calls.filter(x=>x.path==='/access/join/cancel').length),1);
  await cancel.close();
+ const {page:expired}=await make({width:1536,height:1024});
+ await expired.evaluate(()=>{
+   window.vishnuFirstRun.showConnect({...window.__testJoin,expires_at:Date.now()/1000-30});
+ });
+ await expired.locator('.vc-request').waitFor({state:'visible'});
+ assert.match(await expired.locator('#vcExpiry').innerText(),/Join request expired/);
+ assert.equal(await expired.locator('[data-vc-continue]').isDisabled(),true,
+   'An expired request must not offer a misleading approval retry');
+ assert.equal(await expired.evaluate(()=>window.__calls.filter(c=>c.path==='/access/join/status').length),0,
+   'Expiry must stop background and manual approval checks');
+ await expired.close();
  const {page:approved}=await make({width:1536,height:1024});
  await approved.evaluate(()=>{window.__approved=true;window.vishnuFirstRun.showConnect(window.__testJoin);});
  await approved.locator('.vc-request').waitFor({state:'visible'});
