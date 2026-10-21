@@ -70,6 +70,12 @@
 }
 @media(max-width:900px){
  .genesis-recovery-screen .vs-body{display:flex;flex-direction:column;}
+ /* Override the desktop sphere-specific selector, otherwise the 360px globe
+    is clipped to the 150px mobile visual region. */
+ .genesis-recovery-screen .vs-sphere{
+   width:clamp(125px,18vh,195px);height:clamp(125px,18vh,195px);
+   max-width:none;max-height:none;transform:none;
+ }
  .genesis-recovery-screen .vs-main.vr-main{max-width:none;padding:8px 14px max(22px,env(safe-area-inset-bottom));}
  .genesis-recovery-screen .vr-main h1{font-size:clamp(25px,6.9vw,34px);white-space:normal;}
  .genesis-recovery-screen .vr-main .vs-description{font-size:13px;line-height:1.5;margin:9px 0 15px;}
