@@ -151,3 +151,15 @@ button.vi-continue:disabled{opacity:.5;cursor:wait;}
   height:42px;min-height:42px;font-size:13px;
  }
 }
+
+.genesis-identity [hidden]{display:none!important;}
+.vi-selected-avatar{width:36px;height:36px;border:1px solid #52c6ff;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 0 12px rgba(27,174,245,.35);}
+@media(max-width:900px){
+  .vi-hero{padding-top:2px;padding-bottom:0;}
+  .vi-form{padding-top:9px;padding-bottom:12px;}
+  .vi-subtitle{margin-bottom:11px;}
+  .vi-form-fields{gap:10px;}
+  .vi-preview{margin-top:10px;}
+  .vi-actions{margin-top:12px;}
+  .vi-avatar-row{margin-bottom:0;}
+}
