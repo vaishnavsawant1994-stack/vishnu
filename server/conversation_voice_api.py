@@ -316,14 +316,30 @@ def conversation_voice_router(runtime, executor):
         return {'ok': True, 'stale': False}
 
     @router.get('/conversations')
-    def conversation_list(q: str = '', limit: int = 50):
+    def conversation_list(
+        q: str = '', limit: int = 50, include_closed: bool = False,
+        kind: Literal['personal', 'work'] | None = None,
+    ):
         context = require_owner()
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
         active = continuity.active_for_device(context.device_id)
+        bounded_limit = max(1, min(limit, 100))
+        # Stage-3 is the production GET authority. Keep it aligned with the
+        # legacy compatibility route so Work cannot silently list Personal chats.
+        # Work vs Personal is a saved owner-domain organization, not ACL isolation.
+        rows = continuity.list_threads(
+            q, limit=200 if kind else bounded_limit, include_closed=include_closed,
+        )
+        if kind:
+            rows = [
+                row for row in rows
+                if ('work' if row.get('context', {}).get('conversation_kind') == 'work'
+                    else 'personal') == kind
+            ][:bounded_limit]
         return {
             'active_conversation_id': active['id'] if active else None,
-            'conversations': continuity.list_threads(q, limit=max(1, min(limit, 100))),
+            'conversations': rows,
         }
 
     @router.get('/conversations/{conversation_id}')
