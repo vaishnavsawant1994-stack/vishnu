@@ -128,7 +128,7 @@
         ['Create', 'Generate with AI', 'create', navigate.create]
       ].forEach(([title, sub, glyph, onClick], i) => {
         const button = actionButton('', 'v-card p2-tile p2-tile-' + glyph, onClick);
-        if (glyph === 'today') button.id = 'vToday';
+        // Do not reuse legacy tile IDs; older Home adapters bind onclick to them.
         const symbol = make('span', 'v-icon', icon(glyph));
         symbol.setAttribute('aria-hidden', 'true');
         const copy = make('span', 'p2-tile-copy');
