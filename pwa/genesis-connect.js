@@ -77,7 +77,7 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
  if(!root)return()=>{};
  root.innerHTML=shell(join);
  const $=selector=>root.querySelector(selector);
- let selected='qr',disposed=false,checking=false,terminated=false,timer=0,clock=0;
+ let selected='qr',disposed=false,checking=false,terminated=false,sessionRetry=false,sessionChecking=false,timer=0,clock=0;
  const status=$('#vcStatus');const pending=Boolean(join?.request_id);
  const say=(message,error=false)=>{if(disposed)return;status.textContent=message;status.dataset.error=String(error);};
  function choose(id){
@@ -116,6 +116,22 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
   $('#vcExpiry').textContent='Expires in '+Math.floor(remaining/60)+':'+String(remaining%60).padStart(2,'0');
  }
  if(pending){expiry();clock=setInterval(expiry,1000);}
+ async function verifyTrustedSession(){
+  if(disposed||sessionChecking)return;
+  sessionChecking=true;sessionRetry=false;
+  const action=$('[data-vc-continue]');
+  action.disabled=true;
+  try{
+   await onComplete();
+  }catch(error){
+   if(!disposed){
+    sessionRetry=true;
+    action.disabled=false;
+    action.textContent='Verify Session';
+    say((error?.message||'Trusted browser session could not be verified.')+' Retry session verification; the device approval will not be repeated.',true);
+   }
+  }finally{sessionChecking=false;}
+ }
  async function poll(){
   if(disposed||!pending||checking||terminated)return;
   if(Number(join.expires_at)<=Date.now()/1000){expiry();return;}
@@ -128,7 +144,7 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
     $('[data-vc-continue]').disabled=true;
     clearTimeout(timer);clearInterval(clock);
     say('Vishnu confirmed the approval. Verifying this device session…');
-    await onComplete();
+    await verifyTrustedSession();
     return;
    }
    if(result?.status==='denied'||result?.status==='expired'||result?.status==='completed'){
@@ -153,7 +169,7 @@ export function mountConnectScreen(root,join,{onBack,onAuthenticate,onCheck,onCo
  }
  if(pending)timer=setTimeout(checkAndSchedule,1200);
  $('[data-vc-continue]').addEventListener('click',()=>{
-  if(pending){if(!terminated)void poll();return;}
+  if(pending){if(sessionRetry){void verifyTrustedSession();return;}if(!terminated)void poll();return;}
   if(notReady[selected]){say(notReady[selected]+' Select Request Approval or Sign in with Your Account to continue.',true);return;}
   onAuthenticate();
  });
