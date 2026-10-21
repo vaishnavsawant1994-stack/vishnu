@@ -6,7 +6,11 @@
   if (window.__vishnuP202A) return;
   const $ = id => document.getElementById(id);
   const bridge = () => window.vishnuChatBridge;
-  const active = () => document.body.classList.contains('chat-experience') && !$('voicePanel')?.classList.contains('hidden');
+  // The canonical context projection, never a client-side guess, identifies a Project chat.
+  // A Project conversation keeps its existing Project UI rather than acquiring Personal controls.
+  const projectContext = () => /^\\s*Project\\s*[·:]/i.test($('vContextChip')?.querySelector('span')?.textContent||'');
+  const active = () => document.body.classList.contains('chat-experience') &&
+    !$('voicePanel')?.classList.contains('hidden') && !projectContext();
   const qs = (sel,root=document) => root.querySelector(sel);
   const create = (tag,cls,txt) => {
     const e=document.createElement(tag); if(cls)e.className=cls;
@@ -171,6 +175,16 @@
     bodyWatch.observe(document.body,{attributes:true,attributeFilter:['class']});
     const stream=$('messageStream');
     if(stream)new MutationObserver(()=>queueSync()).observe(stream,{childList:true,subtree:true});
+    const contextChip=$('vContextChip');
+    if(contextChip)new MutationObserver(queueSync).observe(contextChip,{childList:true,subtree:true});
+    const canonicalComposer=$('composer');
+    if(canonicalComposer)new MutationObserver(()=>{
+      // When the canonical transport accepted a send, it clears the input
+      // before setting sending. Never restore already-submitted text as a draft.
+      if(canonicalComposer.classList.contains('sending')&&!$('message')?.value.trim()){
+        drafts.delete(key(bridge()?.current?.id));drafts.delete('personal:new');
+      }
+    }).observe(canonicalComposer,{attributes:true,attributeFilter:['class']});
     window.addEventListener('focus',queueSync);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)queueSync()});
     queueSync();
@@ -323,9 +337,10 @@
       }
     }
     document.body.classList.toggle('p202-personal-chat',enabled);
-    for(const id of ['p202Header','p202Welcome','p202NewChat','p202MobileNav','p202MobileActions','p202ModelPlacement']){
+    for(const id of ['p202Header','p202NewChat','p202MobileNav','p202MobileActions','p202ModelPlacement']){
       const el=$(id);if(el)el.hidden=!enabled;
     }
+    const welcome=$('p202Welcome');if(welcome)welcome.hidden=!enabled || !document.body.classList.contains('chat-new-empty');
     const brand=qs('.p202-mobile-brand');if(brand)brand.hidden=!enabled;
     if(!enabled)return;
     updateHeader();
