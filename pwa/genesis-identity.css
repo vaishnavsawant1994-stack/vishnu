@@ -133,3 +133,21 @@ button.vi-continue:disabled{opacity:.5;cursor:wait;}
  .vi-greeting span{font-size:11px;}
 }
 @media(prefers-reduced-motion:reduce){.genesis-identity *{scroll-behavior:auto!important;transition:none!important;}}
+
+/* Override older generic .genesis input rules without modifying P1-03 onward. */
+.genesis-identity #viRoot{display:flex;flex:1;flex-direction:column;min-height:0;width:100%;}
+.genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]){
+  min-height:45px;height:45px;padding:0 14px 0 48px;
+  background:rgba(9,28,46,.85);border-color:rgba(60,145,210,.40);
+  border-radius:12px;font:400 14px/1.4 Inter,Geist,"Segoe UI",sans-serif;
+}
+.genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]):focus{
+ border-color:#3fd9ff;box-shadow:0 0 0 3px rgba(36,205,249,.15);
+}
+.genesis-identity input.vi-avatar-file{display:none!important;}
+.genesis-identity .vi-avatar-choice[hidden]{display:none;}
+@media(max-width:900px){
+ .genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]){
+  height:42px;min-height:42px;font-size:13px;
+ }
+}
