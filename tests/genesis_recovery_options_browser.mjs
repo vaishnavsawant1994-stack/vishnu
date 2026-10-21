@@ -117,7 +117,7 @@ try{
  await replacement.locator('[data-vo-mode=replacement_device]').click();
  await replacement.locator('[data-vo-continue]').click();
  await replacement.getByRole('heading',{name:'Recovery Verification'}).waitFor();
- assert.match(await replacement.locator('.vo-description').innerText(),/real recovery code/i);
+ assert.equal(await replacement.locator('[data-v8-method=code]').count(),1,'New-device recovery still requires a verified owner code');
  await replacement.screenshot({path:resolve(directory,'p1-08-replacement-390x844.png'),fullPage:true,animations:'disabled'});
  await replacement.locator('[data-v8-group="0"]').fill('ABCD-EFGH-JKLM');
  await replacement.locator('[data-v8-submit]').click();
@@ -127,10 +127,9 @@ try{
  const {page:backup}=await fixture({width:1536,height:1024});
  await backup.evaluate(()=>{window.vishnuFirstRun.state.options.restore_available=true;window.vishnuFirstRun.showRecoveryVerification('restore_data');});
  await backup.getByRole('heading',{name:'Recovery Verification'}).waitFor();
- await backup.locator('[data-v8-select=backup]').click();
- await backup.locator('#restoreArchive').waitFor({state:'visible'});
- assert.equal(await backup.locator('#restoreKeyFile').count(),1);
- assert.equal(await backup.locator('#restorePassphrase').count(),1);
+ await backup.locator('#v8Archive').waitFor({state:'attached'});
+ assert.equal(await backup.locator('#v8KeyFile').count(),1);
+ assert.equal(await backup.locator('#v8Passphrase').count(),1);
  assert.equal(await backup.evaluate(()=>window.__calls.some(x=>x.path==='/access/recovery/login')),false);
  await backup.close();
  console.log('P1-07/P1-08 visual desktop/mobile, recovery routing, real code consumption, encrypted-backup gating: PASS');
