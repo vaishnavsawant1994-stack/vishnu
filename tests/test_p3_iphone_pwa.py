@@ -191,6 +191,18 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
     assert '/iphone/first-run-actions.js' in page.text
+    assert '/iphone/neural-sphere.js' in page.text
+    assert '/iphone/runtime-assistant.js' in page.text
+    assert '/iphone/runtime-assistant.css' in page.text
+    for asset, expected in (
+        ('neural-sphere.js', 'vishnuNeuralSphere'),
+        ('runtime-assistant.js', 'vishnuRuntimeAssistant'),
+        ('runtime-assistant.css', 'runtime-host'),
+    ):
+        response = client.get('/iphone/' + asset)
+        assert response.status_code == 200
+        assert expected in response.text
+
     adapter = client.get('/iphone/first-run.js')
     actions = client.get('/iphone/first-run-actions.js')
     assert adapter.status_code == 200 and 'Create my Vishnu' in adapter.text
