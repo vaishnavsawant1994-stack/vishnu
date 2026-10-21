@@ -30,18 +30,18 @@
       const current = bridge()?.current?.id;
       if (current) return bridge().openConversation(current);
       const data = await bridge().api('/conversations?limit=1');
-      const last = Array.isArray(data?.conversations) ? data.conversations[0] : null;
+      const last = Array.isArray(data?.conversations) ? data.conversations.slice().sort((a,b) => Date.parse(b.updated_at || b.created_at || 0)-Date.parse(a.updated_at || a.created_at || 0))[0] : null;
       if (last?.id) return bridge().openConversation(last.id);
       return bridge().createConversation();
     }),
     today: () => bridge()?.openTodayScreen?.('all'),
-    work: () => module('workflows'),
+    work: () => module('projects'),
     spaces: () => module('labs'),
     files: () => module('knowledge'),
     create: () => { bridge()?.setDraft?.('Create '); },
     home: () => module('home'),
-    search: () => module('search'),
-    notification: () => window.__vishnuWorkAttentionCenter?.open?.('all') || module('activities'),
+    search: () => typeof window.openModule === 'function' ? window.openModule('search') : module('search'),
+    notification: () => window.__vishnuWorkAttentionCenter?.open?.('all') || bridge()?.showToast?.('Owner notifications and attention are not available on this runtime.'),
     settings: () => module('settings'),
     more: () => $('historyButton')?.click()
   };
@@ -234,6 +234,12 @@
     }
     const owner = document.querySelector('[data-reference-owner]');
     if (owner) owner.textContent = 'Owner';
+    const header = document.querySelector('.topbar-actions');
+    if (header) {
+      const bell = actionButton('♧', 'p2-header-notifications', navigate.notification);
+      bell.setAttribute('aria-label', 'Open owner attention');
+      header.append(bell);
+    }
   }
   function paintClock() {
     if (!elements.time) return;
@@ -273,17 +279,23 @@
       const match = String(item.context||'').match(/^personal-ai:today:(meeting|task|work|reminder)$/);
       return match ? match[1] : String(item.kind||'').toLowerCase();
     };
-    const meetings = items.filter(item => kind(item) === 'meeting');
+    const meetings = items.filter(item => {
+      if (kind(item) !== 'meeting') return false;
+      const raw = item.due_at || item.start_at || item.scheduled_at;
+      if (!raw) return true; // Undated Vishnu commitments are still in the plan.
+      const due = new Date(raw);
+      return Number.isNaN(due.getTime()) || due.getTime() >= Date.now();
+    });
     const tasks = items.filter(item => kind(item) === 'task');
     setRow('meetings','Upcoming meetings', meetings.length ? meetings.length + ' meeting(s) in your Vishnu plan' : 'No meetings in your Vishnu plan');
-    setRow('tasks','Important tasks', tasks.length ? tasks.length + ' pending task(s)' : 'No pending tasks');
+    setRow('tasks','Pending tasks', tasks.length ? tasks.length + ' pending task(s) across priorities' : 'No pending tasks');
   }
   function paintAttention(result) {
     if (result.status !== 'fulfilled' || result.value?.authority !== 'read_only_projection') {
       setRow('approvals','Approval requests','Approval data temporarily unavailable');
       return;
     }
-    const count = Number(result.value?.counts?.approval);
+    const count = result.value?.counts?.approval == null ? NaN : Number(result.value.counts.approval);
     const approvals = Number.isFinite(count) && count >= 0 ? count :
       (result.value.items || []).filter(item => ['approval_required','owner_decision_required'].includes(item.kind)).length;
     setRow('approvals','Approval requests', approvals ? approvals + ' need your decision' : 'No pending Work approvals');
@@ -297,7 +309,7 @@
     }
     const data = result.value, orders = (Array.isArray(data.work_orders) ? data.work_orders : []);
     const active = orders.filter(item => activeStates.has(String(item.status||'').toUpperCase()));
-    const reported = Number(data?.counts?.active);
+    const reported = data?.counts?.active == null ? NaN : Number(data.counts.active);
     const count = Number.isFinite(reported) && reported >= 0 ? reported : active.length;
     setRow('work','Active work', count ? count + ' running or verifying' : 'No active WorkOrders');
     if (!panel) return;
@@ -324,11 +336,12 @@
     if (result.status !== 'fulfilled') {
       elements.ai.textContent = 'AI status unavailable';
       elements.ai.dataset.ready = 'false';
+      elements.systems.textContent = 'System status unavailable ›';
       return;
     }
     const data = result.value || {};
     const state = String(data.model?.state || '').toLowerCase();
-    const ready = state === 'available';
+    const ready = state === 'available' || state === 'ready';
     elements.ai.textContent = ready ? '● AI Ready' :
       state === 'configured' ? 'AI configured' : 'AI setup or connection required';
     elements.ai.dataset.ready = String(ready);
