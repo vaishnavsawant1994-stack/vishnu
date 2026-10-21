@@ -15,7 +15,7 @@ for(const name of assetNames)files.set('/iphone/'+name,await readFile(new URL('.
 const output=process.env.VISHNU_IDENTITY_SCREENSHOTS || 'artifacts/genesis-identity';
 await mkdir(output,{recursive:true});
 const browser=await chromium.launch({headless:true,args:['--enable-webgl','--use-gl=angle','--use-angle=swiftshader']});
-const viewports=[{width:1536,height:864},{width:1920,height:1080},{width:1440,height:900},
+const viewports=[{width:1536,height:864},{width:1136,height:810},{width:1920,height:1080},{width:1440,height:900},
  {width:1366,height:768},{width:768,height:1024},{width:390,height:844},{width:360,height:740},{width:428,height:926}];
 try{
  for(const vp of viewports){
@@ -63,6 +63,7 @@ try{
   if(vp.width>900)assert(layout.sphere.x+layout.sphere.w<layout.form.x,'Desktop sphere must stay left of form: '+JSON.stringify(layout));
   else assert(layout.sphere.bottom<=layout.form.y+1,'Mobile sphere must stack above form: '+JSON.stringify(layout));
   if(vp.width===1536)assert(layout.height<=vp.height+1,'Reference desktop should fit without scroll: '+JSON.stringify(layout));
+  if(vp.width===390 || vp.width===428)assert(layout.buttons.bottom<=vp.height,'Phone actions must fit above the safe area: '+JSON.stringify(layout));
   await page.screenshot({path:resolve(output,`p1-02-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
   const field=page.locator('#firstRunFirstName');
   await page.locator('[data-genesis-next]').click();
@@ -75,6 +76,7 @@ try{
   assert.match(await page.locator('#viGreetingDetail').innerText(),/call you Alex/i);
   await page.locator('[data-vi-avatar="mountain"]').click();
   assert.equal(await page.locator('[data-vi-avatar="mountain"]').getAttribute('aria-pressed'),'true');
+  assert.equal(await page.locator('#viSelectedAvatarPreview').isVisible(),true,'Selected avatar must appear immediately in owner preview');
   await page.locator('[data-vi-remove]').click();
   assert.equal(await page.locator('[data-vi-avatar="mountain"]').getAttribute('aria-pressed'),'false');
   await page.locator('#viAvatarFile').setInputFiles({name:'not-image.txt',mimeType:'text/plain',buffer:Buffer.from('not an image')});
