@@ -144,6 +144,10 @@
     }
   }
 
+  // Return a real Promise to P1-03 so Submit remains locked until the
+  // canonical first-device creation API finishes or fails.
+  flow.continueSecurity = () => configureSecurity();
+
   const decodeBase64Url = text => {
     const padded = String(text).replace(/-/g, '+').replace(/_/g, '/');
     const raw = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
