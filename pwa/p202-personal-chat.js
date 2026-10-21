@@ -283,11 +283,12 @@
       $('chatDetailDesktop')?.setAttribute('aria-hidden','true');
       // Conversations remain owned by the canonical store; only unsent local drafts are restored.
       const before=key(lastId),after=key(id);
-      if(lastId!==null||drafts.has(after)){
+      if(lastId!==null){
         const editor=$('message'),unsent=editor?.value||'';
-        if(lastId!==null&&!drafts.has(before))drafts.set(before,unsent);
-        if(editor&&drafts.has(after)&&!bridge()?.turnInFlight){
-          const restored=drafts.get(after);
+        if(!drafts.has(before))drafts.set(before,unsent);
+        // Never carry a personal draft into another conversation implicitly.
+        if(editor&&!bridge()?.turnInFlight){
+          const restored=drafts.get(after)||'';
           if(restored!==unsent)bridge()?.setDraft?.(restored);
         }
       }
@@ -342,6 +343,9 @@
     const currentId=bridge()?.current?.id;
     if(chatVisible && currentId && !contextById.has(currentId))verifyConversationContext(currentId);
     const enabled=active();
+    if($('voicePanel')?.classList.contains('hidden') && $('enrollPanel') && !$('enrollPanel').classList.contains('hidden')){
+      drafts.clear();profile=null;modelState=null;lastId=null;contextById.clear();
+    }
     if(enabled!==lastActive){
       lastActive=enabled;
       if(enabled){
