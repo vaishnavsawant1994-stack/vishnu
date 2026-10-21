@@ -44,7 +44,7 @@ try{
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
  // Vishnu intentionally starts on Home; open the saved Personal conversation
  // using the canonical transport before testing the dedicated Chat screen.
  await page.waitForFunction(()=>window.vishnuChatBridge&&document.body.classList.contains('home-landing'));
