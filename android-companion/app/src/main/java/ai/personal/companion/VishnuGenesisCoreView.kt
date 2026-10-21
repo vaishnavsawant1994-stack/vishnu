@@ -8,108 +8,120 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.SystemClock
+import android.provider.Settings
+import android.view.MotionEvent
 import android.view.View
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.min
 import kotlin.math.sin
-import kotlin.math.sqrt
 
 /**
- * True 3D-coordinate neural network projected onto Android Canvas.
- * The same canonical artwork is retained as a subdued visual reference,
- * while depth-sorted nodes and links actually rotate through perspective.
+ * Canonical Vishnu core, with a deterministic 3D-rotating cyan network overlay.
+ * The shared transparent image keeps the owner's approved visual identity,
+ * while the perspective-projected links and nodes rotate in 3D.
+ * Motion stops while detached or when system animation is disabled.
  */
 internal class VishnuGenesisCoreView(context: Context) : View(context) {
-    private data class Node(val x: Float, val y: Float, val z: Float, val radius: Float)
-    private data class Projected(val x: Float, val y: Float, val z: Float, val r: Float)
+    private data class Point3(val x: Float, val y: Float, val z: Float)
+    private data class Projected(val x: Float, val y: Float, val z: Float)
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-    private val artwork = BitmapFactory.decodeResource(resources, R.drawable.vishnu_genesis_core)
-    private val nodes: List<Node>
-    private val edges: List<Pair<Int, Int>>
-    private val density = resources.displayMetrics.density
+    private val core = BitmapFactory.decodeResource(resources, R.drawable.vishnu_genesis_core)
+    private val nodes = List(62) { index ->
+        val y = 1f - 2f * (index + 0.5f) / 62f
+        val ring = kotlin.math.sqrt((1f - y * y).coerceAtLeast(0f))
+        val phi = index * 2.39996323f
+        Point3((cos(phi) * ring).toFloat(), y, (sin(phi) * ring).toFloat())
+    }
+    private var originMillis = 0L
+    private var offsetRadians = 0f
+    private var animator: ValueAnimator? = null
+    private var lastTouchX = 0f
 
     init {
-        contentDescription = "Animated Vishnu 3D intelligence core"
+        contentDescription = "Vishnu intelligence core, slowly rotating three-dimensional cyan network"
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_YES
-        minimumHeight = (190 * density).toInt()
+        minimumHeight = (190 * resources.displayMetrics.density).toInt()
         setLayerType(LAYER_TYPE_SOFTWARE, null)
-        val golden = PI * (3 - sqrt(5.0))
-        nodes = (0 until 165).map { i ->
-            val y = 1.0 - 2.0 * i / 164.0
-            val circle = sqrt((1.0 - y * y).coerceAtLeast(0.0))
-            val inner = if (i % 5 == 0) 0.55 else 1.0
-            val theta = golden * i
-            Node(
-                (cos(theta) * circle * inner).toFloat(),
-                (y * inner).toFloat(),
-                (sin(theta) * circle * inner).toFloat(),
-                if (i % 13 == 0) 2.5f else 1.15f
-            )
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        val scale = runCatching {
+            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+        }.getOrDefault(1f)
+        if (scale <= 0f || !ValueAnimator.areAnimatorsEnabled()) return
+        originMillis = SystemClock.uptimeMillis()
+        animator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 32000L
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { invalidate() }
+            start()
         }
-        val links = mutableListOf<Pair<Int, Int>>()
-        nodes.forEachIndexed { i, a ->
-            val closest = nodes.indices.asSequence().filter { it != i }
-                .map { j ->
-                    val n = nodes[j]
-                    val dx = a.x - n.x; val dy = a.y - n.y; val dz = a.z - n.z
-                    j to dx * dx + dy * dy + dz * dz
-                }
-                .filter { it.second < .23f }
-                .sortedBy { it.second }
-                .take(3)
-            for ((j, _) in closest) if (j > i) links.add(i to j)
+    }
+
+    override fun onDetachedFromWindow() {
+        animator?.cancel()
+        animator = null
+        super.onDetachedFromWindow()
+    }
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> { lastTouchX = event.x; return true }
+            MotionEvent.ACTION_MOVE -> {
+                offsetRadians += (event.x - lastTouchX) / width.coerceAtLeast(1) * 2.2f
+                lastTouchX = event.x
+                invalidate()
+                return true
+            }
+            MotionEvent.ACTION_UP -> { performClick(); return true }
         }
-        edges = links
+        return super.onTouchEvent(event)
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        return true
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val side = min(width, height).toFloat()
+        val side = minOf(width, height).toFloat()
         if (side <= 0f) return
         val left = (width - side) / 2f
         val top = (height - side) / 2f
-        val paused = !ValueAnimator.areAnimatorsEnabled()
-        val angle = if (paused) 0f else (SystemClock.uptimeMillis() % 48000L) / 48000f * (2 * PI).toFloat()
-        val ca = cos(angle); val sa = sin(angle)
-        val centerX = left + side / 2f; val centerY = top + side / 2f
-        val radius = side * .40f
-
-        // The approved reference provides a gentle halo, never a fake moving mesh.
-        paint.style = Paint.Style.FILL
-        paint.alpha = 52
+        paint.setShadowLayer(19f * resources.displayMetrics.density, 0f, 0f, 0x4020B8FF)
+        canvas.drawBitmap(core, null, RectF(left, top, left + side, top + side), paint)
         paint.clearShadowLayer()
-        canvas.drawBitmap(artwork, null, RectF(left, top, left + side, top + side), paint)
-        val projected = nodes.map { n ->
-            val x = n.x * ca - n.z * sa
-            val z = n.x * sa + n.z * ca
-            val depth = 2.65f / (2.65f - z * .38f)
-            Projected(centerX + x * radius * depth,
-                centerY + n.y * radius * depth, z, n.radius * density * depth)
+
+        val radius = side * 0.40f
+        val midX = width * 0.5f
+        val midY = height * 0.5f
+        val phase = offsetRadians + (animator?.animatedFraction ?: 0f) * (2f * PI.toFloat())
+        val projected = nodes.map { p ->
+            val x = p.x * cos(phase) + p.z * sin(phase)
+            val z = p.z * cos(phase) - p.x * sin(phase)
+            val perspective = 2.6f / (2.6f - z * .55f)
+            Projected(midX + x * radius * perspective, midY + p.y * radius * perspective, z)
         }
-
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = (.85f * density).coerceAtMost(side / 300f)
-        for ((i, j) in edges) {
-            val a = projected[i]; val b = projected[j]
-            val opacity = ((a.z + b.z + 2f) * 23 + 25).toInt().coerceIn(18, 115)
-            paint.color = Color.argb(opacity, 57, 190, 255)
-            canvas.drawLine(a.x, a.y, b.x, b.y, paint)
+        paint.strokeWidth = (side / 650f).coerceAtLeast(0.6f)
+        for (i in projected.indices) {
+            val from = projected[i]
+            val start = (i + 1) % projected.size
+            for (target in listOf(start, (i + 9) % projected.size)) {
+                val to = projected[target]
+                val alpha = if (from.z + to.z > 0f) 74 else 20
+                paint.color = Color.argb(alpha, 70, 210, 255)
+                canvas.drawLine(from.x, from.y, to.x, to.y, paint)
+            }
         }
-
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.1f * density
-        paint.color = Color.argb(110, 47, 207, 255)
-        canvas.drawCircle(centerX, centerY, radius, paint)
-
         paint.style = Paint.Style.FILL
-        projected.forEachIndexed { i, n ->
-            val opacity = ((n.z + 1f) * 66 + 75).toInt().coerceIn(55, 210)
-            paint.color = Color.argb(opacity, if (i % 13 == 0) 178 else 60, 221, 255)
-            if (i % 13 == 0) paint.setShadowLayer(8f * density, 0f, 0f, Color.argb(150, 0, 194, 255))
-            canvas.drawCircle(n.x, n.y, n.r, paint)
-            paint.clearShadowLayer()
+        for (point in projected) {
+            val front = (point.z + 1f) / 2f
+            paint.color = Color.argb((62 + front * 160).toInt().coerceIn(0,255), 60, 221, 255)
+            canvas.drawCircle(point.x, point.y, side * (0.002f + front * 0.004f), paint)
         }
-        if (isAttachedToWindow && !paused && visibility == VISIBLE) postInvalidateDelayed(33L)
     }
 }
