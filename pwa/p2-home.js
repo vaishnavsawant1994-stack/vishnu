@@ -285,12 +285,6 @@
     }
     const owner = document.querySelector('[data-reference-owner]');
     if (owner) owner.textContent = 'Owner';
-    const header = document.querySelector('.topbar-actions');
-    if (header) {
-      const bell = actionButton('♧', 'p2-header-notifications', navigate.notification);
-      bell.setAttribute('aria-label', 'Open owner attention');
-      header.append(bell);
-    }
   }
   function paintClock() {
     if (!elements.time) return;
