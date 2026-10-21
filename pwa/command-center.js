@@ -1,5 +1,8 @@
 /* Safe command/navigation palette. It only dispatches existing canonical UI actions. */
 (() => {
+  // Both the OS shell and lazy UI loader may request this module.
+  // Never bind a second global hotkey listener or open two modal palettes.
+  if (typeof window.vishnuOpenCommandCenter === 'function') return;
   const entries = [
     { label: 'Home', detail: 'Return to your Vishnu home', category: 'Navigation', module: 'home', keywords: 'start overview' },
     { label: 'Workspaces', detail: 'Open the current workspace directory', category: 'Navigation', module: 'labs', keywords: 'spaces workspace library' },
