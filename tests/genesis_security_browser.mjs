@@ -62,7 +62,7 @@ try{
   await page.locator('.vs-continue').click();
   await page.waitForFunction(()=>document.querySelector('#vsPasswordError')?.textContent.length>0);
   assert.equal((await page.locator('.genesis-security').count()),1,'Must not advance without a password');
-  await password.fill('StrongPassword!23456789');
+  await password.fill('R4ndom$Ocean!9457236');
   assert.match(await page.locator('#vsStrength').innerText(),/Strong|Good/);
   await confirm.fill('wrong password');
   await page.locator('.vs-continue').click();
@@ -72,7 +72,7 @@ try{
   const t2=await password.getAttribute('type');
   assert(t1==='password'&&t2==='text','visibility toggles must update associated input');
   await page.locator('[data-visibility="firstRunPassword"]').click();
-  await confirm.fill('StrongPassword!23456789');
+  await confirm.fill('R4ndom$Ocean!9457236');
   await page.locator('#vsDeviceName').fill('Personal Linux Desktop');
   await page.locator('.vs-continue').click();
   await page.locator('#firstRunRecoverySaved').waitFor();
