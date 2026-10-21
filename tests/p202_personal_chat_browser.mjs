@@ -101,6 +101,7 @@ try{
  await page.locator('#p202NewChat').click();
  await page.waitForFunction(()=>window.vishnuChatBridge.current.id==='personal-2');
  assert.equal(creates,1,'New Chat uses canonical conversation API');
+ await page.locator('#p202Welcome').waitFor({state:'visible',timeout:10000});
  assert.equal(await page.locator('#p202Welcome').isVisible(),true,'new personal chat welcome visible');
  assert.equal(await page.locator('.p202-prompt').count(),4,'four approved editable starters');
  await page.locator('.p202-prompt').first().click();
