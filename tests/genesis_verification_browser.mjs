@@ -70,7 +70,7 @@ try{
   const {page,errors}=await fixture(size);
   assert.equal(await page.locator('.v8-method').count(),2,'Both reference methods always appear');
   assert.equal(await page.locator('[data-v8-group]').count(),6,'Six visual groups, two real code characters each');
-  assert.equal(await page.locator('[data-v8-method=code]').getAttribute('class')?.includes('selected'),true);
+  assert.equal(await page.locator('[data-v8-method=code]').evaluate(e=>e.classList.contains('selected')),true);
   assert.equal(await page.locator('input[type=password]').count()>=1,true);
   assert(await page.locator('[data-v8-sphere]').evaluate(c=>Boolean(c.getContext('webgl'))),'Shared genuine WebGL neural sphere');
   const actual=await page.evaluate(()=>document.documentElement.scrollWidth);
@@ -101,7 +101,7 @@ try{
   assert.deepEqual(await page.locator('[data-v8-group]').evaluateAll(nodes=>nodes.map(n=>n.value)),['','','','','',''],
     'Submitted code is wiped even if verification fails');
   await page.locator('[data-v8-select=backup]').click();
-  assert.equal(await page.locator('[data-v8-method=backup]').getAttribute('class')?.includes('selected'),true);
+  assert.equal(await page.locator('[data-v8-method=backup]').evaluate(e=>e.classList.contains('selected')),true);
   await page.locator('[data-v8-submit]').click();
   assert.match(await page.locator('#v8Status').innerText(),/eligible Vishnu runtime/i);
   assert.equal(await page.evaluate(()=>window.__calls.length),1,'Unavailable restore must not call backend');
@@ -118,7 +118,7 @@ try{
  assert.equal(await login.evaluate(()=>window.__session),true);
  await login.close();
  const {page:backup}=await fixture({width:1536,height:1024},{restore:true});
- assert.equal(await backup.locator('[data-v8-method=backup]').getAttribute('class')?.includes('selected'),true);
+ assert.equal(await backup.locator('[data-v8-method=backup]').evaluate(e=>e.classList.contains('selected')),true);
  await backup.locator('#v8Archive').setInputFiles({name:'verified-backup.vdr',mimeType:'application/octet-stream',buffer:Buffer.from('VISHNUDR1\nfixture')});
  await backup.locator('#v8KeyFile').setInputFiles({name:'separate-key.vrk',mimeType:'application/octet-stream',buffer:Buffer.from('VISHNU-RECOVERY-KEY-1\nfixture')});
  await backup.locator('#v8Passphrase').fill('this-is-a-test-passphrase');
