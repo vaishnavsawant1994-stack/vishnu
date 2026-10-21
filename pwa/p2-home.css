@@ -417,3 +417,19 @@ body.v-ref.p2-home-ready .p2-work-order:hover {
   body.v-ref.p2-home-ready .p2-core-avatar {filter:none}
   body.v-ref.p2-home-ready .p2-tile,body.v-ref.p2-home-ready .p2-tool {animation:none!important;transition:none!important}
 }
+
+/* The mobile Home header uses the approved notifications control, not the
+   legacy clock/account button. Non-Home views keep their original owner UI. */
+body.v-ref.p2-home-ready .p2-mobile-notifications {display:none}
+@media(max-width:900px){
+  html body.v-ref.p2-home-ready.home-landing .topbar .owner-status {display:none!important}
+  html body.v-ref.p2-home-ready.home-landing .p2-mobile-notifications {
+    display:grid!important;place-items:center;
+    width:42px;height:42px;min-width:42px;min-height:42px;
+    border:0;border-radius:12px;background:transparent;
+    color:#dcf2ff;font-size:27px;cursor:pointer
+  }
+  html body.v-ref.p2-home-ready.home-landing .p2-mobile-notifications:focus-visible {
+    outline:2px solid #74e2ff;outline-offset:2px
+  }
+}
