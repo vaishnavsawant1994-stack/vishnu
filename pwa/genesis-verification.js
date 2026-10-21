@@ -35,7 +35,7 @@ function markup(mode,options){
   <div class="vw-sphere vs-sphere vo-sphere"><canvas data-v8-sphere data-neural-emphasis="login"></canvas></div>
   <div class="vs-ground vo-ground"><span></span></div></div>
  <div class="vo-right"><section class="vo-panel v8-panel" aria-label="Recovery verification">
-   <p class="vs-eyebrow vo-eyebrow">RECOVERY VERIFICATION · P1-08</p>
+   <p class="vs-eyebrow vo-eyebrow" aria-label="Recovery verification, screen P1-08">STEP 8 OF 9</p>
    <h1>Recovery <span>Verification</span></h1>
    <p class="vo-description">Verify your recovery information to regain access to your Vishnu. Choose a method below.</p>
    <div class="v8-methods" aria-label="Recovery verification methods">
