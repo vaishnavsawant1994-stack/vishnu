@@ -311,6 +311,52 @@ def test_owner_password_unlocks_a_new_browser_after_trusted_setup(tmp_path):
     assert len(runtime['device_registry'].active) == 2
 
 
+
+def test_join_request_cancel_requires_original_join_cookie_and_invalidates_request(tmp_path):
+    client, runtime = make_client(tmp_path)
+    client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
+    assert client.post('/iphone/api/access/password/setup', json={
+        'password': 'correct horse battery staple',
+    }).status_code == 200
+    # A second, untrusted browser authenticates only the owner identity.
+    requester = TestClient(client.app, base_url='https://testserver')
+    pending = requester.post('/iphone/api/access/password/login', json={
+        'password': 'correct horse battery staple', 'name': 'Untrusted browser',
+    }).json()
+    assert pending['status'] == 'approval_required'
+    request_id = pending['request_id']
+    assert len(runtime['device_registry'].active) == 1
+
+    # Without the HttpOnly pa_join cookie, even knowing the public request ID
+    # does not allow an attacker to cancel someone else's join.
+    unauthenticated = TestClient(client.app, base_url='https://testserver')
+    denied = unauthenticated.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    })
+    assert denied.status_code == 401
+    attacker = TestClient(client.app, base_url='https://testserver')
+    attacker.cookies.set('pa_join', 'wrong-random-credential')
+    assert attacker.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    }).status_code == 404
+
+    cancelled = requester.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    })
+    assert cancelled.status_code == 200
+    assert cancelled.json() == {'status': 'cancelled'}
+    assert len(runtime['device_registry'].active) == 1
+    assert requester.post('/iphone/api/access/join/status', json={
+        'request_id': request_id,
+    }).status_code == 404
+    assert requester.post('/iphone/api/access/join/cancel', json={
+        'request_id': request_id,
+    }).status_code in {401, 404, 409}
+    assert not runtime['device_registry'].decide_join(
+        request_id, approve=True, decided_by='iphone-1',
+    )
+
+
 def test_recovery_code_unlocks_once_and_cannot_be_replayed(tmp_path):
     client, _ = make_client(tmp_path)
     client.post('/iphone/api/enroll', json={'code': 'this-is-a-long-owner-code'})
