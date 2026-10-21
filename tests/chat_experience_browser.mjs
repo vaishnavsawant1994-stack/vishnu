@@ -210,8 +210,10 @@ try{
   await desktop.locator('[data-reference-search]').evaluate(node=>node.click());
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
   await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
-  await desktop.locator('#globalSearchQuery').fill('Test Project');
+  // Select scope before typing: the asynchronous search response replaces
+  // the results DOM, which can detach/hide a scope button mid-click.
   await desktop.locator('[data-gs-scope="projects"]').click();
+  await desktop.locator('#globalSearchQuery').fill('Test Project');
   await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').waitFor({state:'visible'});
   await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').click();
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
