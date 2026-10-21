@@ -77,7 +77,7 @@ function markup(mode,options){
     </section>
    </div>
    <div class="v8-safety">${shield}<span><strong>Your recovery information is secure</strong>
-    <small>Vishnu verifies credentials using your configured runtime and does not send them to third-party AI providers or analytics.</small></span></div>
+    <small>Recovery materials are verified by your Vishnu runtime and are not shared with third-party AI providers.</small></span></div>
    <p id="v8Status" role="status" aria-live="polite" class="v8-status"></p>
   </section></div></div>
  <footer class="vo-footer v8-footer"><button type="button" class="vo-back" data-v8-back>← <span>Back</span></button>
@@ -107,7 +107,14 @@ export function mountRecoveryVerificationScreen(root,mode,options,{onBack,onVeri
  };
  const select=method=>{
   if(busy||method===selected)return;
-  clearSecrets();selected=method;update();say('');
+  clearSecrets();
+  if(method==='code'){
+   // Release browser-held File references when switching away from backup.
+   $('#v8Archive').value='';$('#v8KeyFile').value='';
+   $('[data-v8-archive-name]').textContent='Select Backup File (.vdr)';
+   $('[data-v8-key-name]').textContent='Select Separate Recovery Key (.vrk)';
+  }
+  selected=method;update();say('');
   if(method==='code')groups[0].focus();else $('#v8Archive').focus();
  };
  const pasteValue=(value)=>{
