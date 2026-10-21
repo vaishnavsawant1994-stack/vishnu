@@ -99,6 +99,13 @@ try{
    if([390,768,1440].includes(width))await page.screenshot({path:'artifacts/p202b/work-'+width+'.png',fullPage:true});
  }
  await page.setViewportSize({width:390,height:844});
+ await page.locator('.p202b-more').click();
+ await page.getByText('Work conversation sections').waitFor();
+ await page.getByRole('button',{name:'Search messages'}).click();
+ await page.locator('.p202b-search-modal input').fill('quarterly plan');
+ assert.ok(await page.locator('.p202b-search-modal .p202b-search-hit').count()>0,
+   'mobile Work search uses canonical loaded messages');
+ await page.locator('.p202b-search-modal').getByRole('button',{name:'Close'}).click();
  await page.locator('#message').fill('Follow-up in Work conversation');
  await page.locator('#message').press('Enter');
  await page.getByText('Real transport fixture response 1').waitFor({timeout:10000});
