@@ -67,7 +67,6 @@ jobs:
         with:
           name: personal-ai-design-system-web-companion
           path: artifacts/web-companion-*.png
-            
           if-no-files-found: warn
           retention-days: 7
 
