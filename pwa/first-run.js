@@ -308,12 +308,70 @@
   }
   function renderReturning(view = 'welcome') {
     disposeWelcome();
-    ++welcomeMountId;
+    const mountId = ++welcomeMountId;
     s.authView = view;
     panel.setAttribute('aria-label', view === 'restore' ? 'Recover owner access' : 'Vishnu owner authentication');
     const configured = Boolean(s.options.passkey_available || s.options.password_available || s.options.recovery_available || s.options.google_available);
     const freshRuntime = Boolean((s.options.creation_available || s.options.restore_available) && !s.options.setup_in_progress);
     const supportedPasskey = Boolean(s.options.passkey_available && window.PublicKeyCredential && navigator.credentials);
+    // P1-05 is a separate returning-owner entry, not a fifth mandatory
+    // first-run step. Reuse canonical password / WebAuthn / DeviceRegistry.
+    if ((view === 'welcome' || view === 'login') && configured && !freshRuntime) {
+      panel.className = 'genesis';
+      panel.setAttribute('aria-label','Unlock Vishnu — returning owner');
+      panel.innerHTML='<main class="genesis-shell genesis-screen genesis-security genesis-login" data-step="P1-05"><div id="vlRoot" role="status" aria-live="polite">Loading secure login…</div></main>';
+      import('/iphone/genesis-login.js').then(({mountLoginScreen,publicKeyRequestOptions,serializeAuthentication})=>{
+        const root=document.getElementById('vlRoot');
+        if(mountId!==welcomeMountId || !root || !root.isConnected)return;
+        const completeLogin=async result=>{
+          if(result?.status==='approval_required'){
+            renderJoinPending(result);
+            return;
+          }
+          if(!result?.ok)throw new Error('Vishnu did not confirm authentication.');
+          const session=await window.check();
+          if(!session)throw new Error('Your session was not confirmed. Retry sign-in.');
+        };
+        disposeWelcome=mountLoginScreen(root,s.options,{
+          onPassword:async password=>{
+            if(!s.options.password_available)throw new Error('Password sign-in is not configured for this Vishnu.');
+            s.accessIntent='';
+            const result=await api('/access/password/login',{method:'POST',body:JSON.stringify({
+              password,name:`${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`
+            })});
+            return completeLogin(result);
+          },
+          onPasskey:async()=>{
+            if(!supportedPasskey)throw new Error('No supported, configured passkey is available.');
+            s.accessIntent='';
+            const start=await api('/access/passkey/login/options',{method:'POST',body:'{}'});
+            const credential=await navigator.credentials.get({publicKey:publicKeyRequestOptions(start.public_key)});
+            if(!credential)throw new Error('The authenticator was cancelled.');
+            const result=await api('/access/passkey/login/complete',{method:'POST',body:JSON.stringify({
+              challenge_id:start.challenge_id,credential:serializeAuthentication(credential),
+              name:`${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`
+            })});
+            return completeLogin(result);
+          },
+          onRecover:()=>renderReturning('restore'),
+          onManage:()=>{
+            s.pendingPostAuthAction='devices';
+            return 'Sign in first. Vishnu will open your trusted devices after verification.';
+          },
+          onBack:()=>{s.pendingPostAuthAction='';s.accessIntent='';show();render(1);},
+        });
+      }).catch(()=>{
+        const root=document.getElementById('vlRoot');
+        if(mountId!==welcomeMountId||!root)return;
+        root.textContent='Could not load secure sign-in. No authentication state was changed. ';
+        const retry=document.createElement('button');
+        retry.textContent='Retry';retry.type='button';
+        retry.addEventListener('click',()=>renderReturning('login'));
+        root.append(retry);
+      });
+      return;
+    }
+
     const body = view === 'restore' && freshRuntime
       ? `<div class="returning-notice" role="note"><strong>Restore your existing Vishnu</strong><span>Choose the encrypted recovery package and its separate recovery key. Vishnu authenticates both before scheduling any data changes.</span></div><div class="returning-actions returning-form"><label class="returning-password-label" for="restoreArchive">Encrypted recovery package (.vdr)</label><input id="restoreArchive" type="file" accept=".vdr,application/octet-stream"><label class="returning-password-label" for="restoreKeyFile">Encrypted recovery key (.vrk)</label><input id="restoreKeyFile" type="file" accept=".vrk,application/octet-stream"><label class="returning-password-label" for="restorePassphrase">Recovery key passphrase</label><input id="restorePassphrase" type="password" autocomplete="current-password" placeholder="Enter the passphrase used to protect the recovery key">${s.options.local_setup_available ? '' : '<label class="returning-password-label" for="restoreBootstrap">Local runtime setup code</label><input id="restoreBootstrap" type="password" autocomplete="one-time-code" placeholder="Enter the secure setup code">'}<button id="portableRestoreStart" class="genesis-primary" type="button">Verify recovery and continue →</button></div>`
       : view === 'restore'
@@ -501,8 +559,10 @@
         if (!window.PublicKeyCredential || !navigator.credentials || !s.options.passkey_available) throw new Error('A passkey is not available for this Vishnu on this device. Choose another configured sign-in method.');
         s.accessIntent = '';
         const start = await api('/access/passkey/login/options', { method: 'POST', body: '{}' });
-        const credential = await navigator.credentials.get({ publicKey: requestOptions(start.public_key) });
-        const result = await api('/access/passkey/login/complete', { method: 'POST', body: JSON.stringify({ challenge_id: start.challenge_id, credential: credentialJson(credential), name: `${navigator.userAgentData?.platform || 'Web'} browser` }) });
+        const {publicKeyRequestOptions,serializeAuthentication}=await import('/iphone/genesis-login.js');
+        const credential = await navigator.credentials.get({ publicKey: publicKeyRequestOptions(start.public_key) });
+        if(!credential)throw new Error('Authentication was cancelled.');
+        const result = await api('/access/passkey/login/complete', { method: 'POST', body: JSON.stringify({ challenge_id: start.challenge_id, credential: serializeAuthentication(credential), name: `${navigator.userAgentData?.platform || 'Web'} browser` }) });
         if (result.status === 'approval_required') { renderJoinPending(result); return; }
         await check();
       }
@@ -547,7 +607,7 @@
     priorNavigationState = [];
   }
 
-  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $ };
+  window.vishnuFirstRun = { state: s, render, setError, showLegacy, $, showLogin:()=>{show();renderReturning('login');} };
   window.loadAccessOptions = async (...args) => { s.options = await originalLoad(...args) || {}; return s.options; };
   window.check = async (...args) => {
     const result = await originalCheck(...args);
