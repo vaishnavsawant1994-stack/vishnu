@@ -3,6 +3,7 @@ import { readFile, mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const script = await readFile(new URL('../pwa/recovery-complete.js', import.meta.url), 'utf8');
+const sphere = await readFile(new URL('../pwa/neural-sphere.js', import.meta.url), 'utf8');
 const style = await readFile(new URL('../pwa/recovery-complete.css', import.meta.url), 'utf8');
 const browser = await chromium.launch({ headless: true });
 try {
@@ -13,6 +14,7 @@ try {
   }));
   await page.goto('http://localhost/');
   await page.addStyleTag({ content: style });
+  await page.addScriptTag({ content: sphere });
   await page.addScriptTag({ content: script });
   const mount = async result => page.evaluate(value => {
     window.calls = 0;
