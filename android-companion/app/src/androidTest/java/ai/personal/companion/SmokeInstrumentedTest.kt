@@ -24,8 +24,21 @@ class SmokeInstrumentedTest {
                 assertTrue(hasText(activity.window.decorView, "Create my Vishnu"))
                 assertTrue(hasText(activity.window.decorView, "I already have Vishnu · Scan QR"))
                 assertTrue(hasText(activity.window.decorView, "Restore Vishnu"))
-                findButton(activity.window.decorView, "Create my Vishnu")?.performClick()
-                assertTrue(hasText(activity.window.decorView, "One-time runtime setup code"))
+                val create = findButton(activity.window.decorView, "Create my Vishnu")
+                assertNotNull("Create must have a real click action", create)
+                create!!.performClick()
+                assertTrue("The new creation route starts at owner identity",
+                    hasText(activity.window.decorView, "What should Vishnu call you?"))
+                val firstName = findField(activity.window.decorView, "First name")
+                assertNotNull("First-name input is required", firstName)
+                firstName!!.setText("Test Owner")
+                val continueButton = findButton(activity.window.decorView, "Continue →")
+                assertNotNull("Identity must lead to security", continueButton)
+                continueButton!!.performClick()
+                assertTrue("Security appears after completing identity",
+                    hasText(activity.window.decorView, "Secure Your Vishnu"))
+                assertTrue("The runtime setup code is on the security page",
+                    hasText(activity.window.decorView, "One-time runtime setup code"))
             }
         }
     }
@@ -34,6 +47,16 @@ class SmokeInstrumentedTest {
         view is TextView && view.text.toString() == expected ||
             view is EditText && view.hint.toString() == expected ||
             view is ViewGroup && (0 until view.childCount).any { hasText(view.getChildAt(it), expected) }
+
+    private fun findField(view: View, expectedHint: String): EditText? {
+        if (view is EditText && view.hint?.toString() == expectedHint) return view
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                findField(view.getChildAt(index), expectedHint)?.let { return it }
+            }
+        }
+        return null
+    }
 
     private fun findButton(view: View, expected: String): Button? {
         if (view is Button && view.text.toString() == expected) return view
