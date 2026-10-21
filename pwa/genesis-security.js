@@ -132,7 +132,15 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
    const passkeyButton=$('[data-vs-passkey]');
    passkeyButton.disabled=true;
    try{await fn();}
-   finally{pending=false;if(button.isConnected)button.disabled=false;if(passkeyButton.isConnected)passkeyButton.disabled=false;}
+   catch(error){
+     const message=$('#genesisStatus');
+     if(message)message.textContent=error?.message||'Vishnu security setup could not continue. Try again.';
+   }
+   finally{
+     pending=false;
+     if(button.isConnected)button.disabled=false;
+     if(passkeyButton.isConnected)passkeyButton.disabled=!hasWebAuthn && !state.passkeyCreated;
+   }
  };
  button.addEventListener('click',()=>{void progress(onContinue,'Continue');});
  const status=$('#vsPasskeyStatus');
