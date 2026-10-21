@@ -19,6 +19,7 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.ArrayAdapter
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.journeyapps.barcodescanner.ScanContract
@@ -86,6 +87,32 @@ class ConnectActivity : AppCompatActivity() {
     private lateinit var genesisProgress: TextView
     private lateinit var genesisHeading: TextView
     private lateinit var genesisSubtitle: TextView
+
+    private fun ownerRecoveryCodesText(): String? {
+        val saved = prefs.getString("pending_recovery_codes", null) ?: return null
+        val codes = runCatching { org.json.JSONArray(saved) }.getOrNull() ?: return null
+        if (codes.length() < 4) return null
+        return (0 until codes.length()).joinToString("\n") { codes.optString(it) }
+    }
+
+    private val recoveryCodeExport = registerForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain")
+    ) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val codes = ownerRecoveryCodesText()
+        if (codes.isNullOrBlank()) {
+            createStatus.text = "No authorized recovery codes are available to export."
+            return@registerForActivityResult
+        }
+        try {
+            val output = contentResolver.openOutputStream(uri)
+                ?: throw IOException("The selected document location is not writable.")
+            output.use { it.write(codes.toByteArray(Charsets.UTF_8)) }
+            createStatus.text = "Codes saved. Keep the file private and store it away from this phone."
+        } catch (_: Exception) {
+            createStatus.text = "Could not save codes. Choose another private location."
+        }
+    }
 
     private val scanner = registerForActivityResult(ScanContract()) { result ->
         val contents = result.contents
@@ -413,6 +440,32 @@ class ConnectActivity : AppCompatActivity() {
             setTextColor(PersonalAITheme.ColorToken.text)
             tag = "genesis-4"
         }
+        val copyCodes = Button(this).apply {
+            text = "Copy All Codes"; tag = "genesis-4"
+            styleButton(this, false)
+            setOnClickListener {
+                val codes = ownerRecoveryCodesText()
+                if (codes.isNullOrBlank()) {
+                    createStatus.text = "Authorized recovery codes are not available."
+                } else {
+                    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(android.content.ClipData.newPlainText("Vishnu recovery codes", codes))
+                    createStatus.text = "Codes copied. Keep your clipboard private; store them away from this phone."
+                }
+            }
+        }
+        val downloadCodes = Button(this).apply {
+            text = "Save Recovery Codes as a File"; tag = "genesis-4"
+            styleButton(this, false)
+            setOnClickListener {
+                if (ownerRecoveryCodesText() == null) {
+                    createStatus.text = "Authorized recovery codes are not available."
+                } else {
+                    createStatus.text = "Choose a private file location. Your file provider may synchronize it."
+                    recoveryCodeExport.launch("Vishnu-Recovery-Codes.txt")
+                }
+            }
+        }
         val privacyLabel = TextView(this).apply {
             text = "Where may Vishnu use your data?"
             textSize = 13f
@@ -508,6 +561,8 @@ class ConnectActivity : AppCompatActivity() {
         form.addView(createButton)
         form.addView(createStatus)
         form.addView(recoveryCodes)
+        form.addView(downloadCodes)
+        form.addView(copyCodes)
         form.addView(recoverySaved)
         form.addView(reviewSummary)
         form.addView(finishButton)
