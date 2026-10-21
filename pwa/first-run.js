@@ -733,7 +733,14 @@
           throw new Error('Vishnu could not verify this trusted browser or runtime. Reconnect and retry.');
         }
         s.recoveryResult = null;
+        const destination = s.pendingPostAuthAction;
+        s.pendingPostAuthAction = '';
         hide();
+        if (destination) {
+          // Replacement-device recovery must bring the verified owner directly
+          // to trusted-device management, where a lost device can be revoked.
+          setTimeout(() => window.vishnuChatBridge?.openModule(destination), 0);
+        }
       },
     });
     return true;
