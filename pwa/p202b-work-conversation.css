@@ -214,7 +214,14 @@ body.p202-work-chat #composer{
 body.p202-work-chat #composer #micButton{display:grid!important;visibility:visible!important}
 body.p202-work-chat #composer #sendButton{display:grid!important;visibility:visible!important}
 body.p202-work-chat .chat-detail-desktop{display:none!important}
-body.p202-work-chat #conversationDrawer{display:none!important}
+@media(min-width:901px) {
+ body.p202-work-chat #conversationDrawer.hidden{display:none!important}
+ body.p202-work-chat #conversationDrawer:not(.hidden){
+   display:flex!important;position:fixed!important;z-index:80!important;
+   left:max(210px,calc(50vw - 225px))!important;right:auto!important;
+   width:min(450px,calc(100vw - 230px))!important;max-width:450px!important
+ }
+}
 body.p202-work-chat .reference-desktop-sidebar,body.p202-work-chat #appDrawer{
  background:#030d1d!important;border-right:1px solid rgba(30,94,182,.24)!important
 }
@@ -323,4 +330,14 @@ body.p202-work-chat .p202b-entry{font-size:13px}
 }
 @media(prefers-reduced-motion:reduce){
  body.p202-work-chat *{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+
+/* A canonical history drawer temporarily overlays the Work presentation.
+   On narrow screens it must remain reachable above the bottom nav. */
+@media(max-width:900px){
+ body.p202-work-chat #conversationDrawer.hidden{display:none!important}
+ body.p202-work-chat #conversationDrawer:not(.hidden){display:flex!important;z-index:90!important}
+ body.p202-work-chat #appDrawer:not(.hidden){z-index:90!important}
+ body.p202-work-chat:has(#conversationDrawer:not(.hidden)) .p202b-tabs,
+ body.p202-work-chat:has(#appDrawer:not(.hidden)) .p202b-tabs{pointer-events:none!important}
 }
