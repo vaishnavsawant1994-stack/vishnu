@@ -490,3 +490,155 @@ body.p202-personal-chat .p202-mobile-brand{display:none}
    color:#53caff;background:linear-gradient(150deg,#0756ae,#04285b)
  }
 }
+
+
+/* P2-01 Home and P2-02A Chat share an OS shell, but never render both surfaces
+   together. These specificity rules prevent Home's desktop/mobile CSS overrides
+   from showing Home's cards, clock or quick tools inside a new Personal Chat. */
+html body.v-ref.p2-home-ready.p202-personal-chat {
+  padding-left:0!important;
+  overflow:hidden!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat .reference-desktop-sidebar {
+  display:none!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat .reference-mobile-nav {
+  display:none!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat .reference-desktop-tools {
+  display:flex!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .p2-hero,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .p2-lower,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .v-shortcuts,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeProjectsSection,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeRecentSection,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #globalWorkPulse,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .home-sphere-stage {
+  display:none!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .app-shell {
+  background:#020b1d!important;
+  overflow:hidden!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #voicePanel.home:not(.hidden) {
+  display:flex!important;
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #voicePanel .presence {
+  display:flex!important;
+  flex-direction:column!important;
+  height:100%!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeIntro {
+  display:flex!important;
+  flex-direction:column!important;
+  align-items:center!important;
+  justify-content:center!important;
+  gap:0!important;
+  width:100%!important;
+  min-height:0!important;
+  height:auto!important;
+  flex:1 1 auto!important;
+  max-width:100%!important;
+  overflow-y:auto!important;
+  margin:0 auto!important;
+  padding:14px!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeIntro .home-greeting,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeIntro .chat-prompt-grid,
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeIntro .chat-prompt-intro {
+  display:none!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #p202Welcome:not([hidden]){
+  display:flex!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #referenceComposerSlot {
+  width:100%;flex:0 0 auto;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer {
+  display:grid!important;
+  background:linear-gradient(145deg,#061d40,#030f28)!important;
+  border:1px solid rgba(0,159,255,.58)!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer #micButton {
+  display:grid!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat #composer #sendButton {
+  display:grid!important;
+  opacity:1!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat #composer #sendButton[disabled] {
+  pointer-events:none!important;opacity:.5!important;
+}
+html body.v-ref.p2-home-ready.p202-personal-chat #composer:not(.has-text) #sendButton {
+  pointer-events:none!important;opacity:.5!important;
+}
+@media(min-width:1280px){
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .app-shell {
+    padding:76px 0 12px!important;
+    width:calc(100% - 476px)!important;
+    margin:0 0 0 476px!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat:not(.home-landing) .app-shell {
+    width:calc(100% - 476px)!important;margin-left:476px!important;
+  }
+}
+@media(min-width:901px) and (max-width:1279px){
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .app-shell {
+    padding:78px 12px 18px!important;width:100%!important;margin:0!important;
+  }
+}
+@media(max-width:900px){
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .app-shell {
+    padding:0 12px!important;height:100dvh!important;
+    min-height:100dvh!important;width:100%!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .topbar {
+    position:relative!important;left:auto!important;right:auto!important;
+    top:auto!important;background:#03142e!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .topbar .p202-mobile-brand {
+    display:block!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeIntro {
+    padding:15px 12px 145px!important;
+    max-height:none!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer{
+    position:fixed!important;inset:auto max(12px,env(safe-area-inset-right)) calc(73px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left))!important;
+    width:auto!important;margin:0!important;
+    grid-template-columns:36px minmax(0,1fr) 35px 40px!important;
+    padding:6px 7px!important;min-height:55px!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer #attachmentButton {
+    grid-row:1!important;grid-column:1!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer #message {
+    grid-row:1!important;grid-column:2!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer #micButton {
+    grid-row:1!important;grid-column:3!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #composer #sendButton {
+    grid-row:1!important;grid-column:4!important;
+  }
+}
+@media(max-width:760px){
+  html body.v-ref.p2-home-ready.p202-personal-chat .reference-desktop-tools {
+    display:none!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat #p202MobileActions {
+    display:flex!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat .p202-mobile-nav:not([hidden]){
+    display:grid!important;
+  }
+  html body.v-ref.p2-home-ready.p202-personal-chat:not(.home-landing) #composer {
+    bottom:calc(73px + env(safe-area-inset-bottom))!important;
+  }
+}
