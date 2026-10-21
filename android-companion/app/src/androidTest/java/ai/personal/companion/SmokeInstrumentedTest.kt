@@ -22,7 +22,7 @@ class SmokeInstrumentedTest {
             scenario.onActivity { activity ->
                 assertTrue(hasText(activity.window.decorView, "Welcome to Vishnu"))
                 assertTrue(hasText(activity.window.decorView, "Create my Vishnu"))
-                assertTrue(hasText(activity.window.decorView, "I already have Vishnu · Scan QR"))
+                assertTrue(hasText(activity.window.decorView, "I already have Vishnu"))
                 assertTrue(hasText(activity.window.decorView, "Restore Vishnu"))
                 val create = findButton(activity.window.decorView, "Create my Vishnu")
                 assertNotNull("Create must have a real click action", create)
