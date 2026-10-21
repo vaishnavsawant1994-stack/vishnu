@@ -214,7 +214,7 @@
         if (mountId !== welcomeMountId || !root || !root.isConnected) return;
         disposeWelcome = mountSecurityScreen(root, s, {
           onBack: () => render(2),
-          onContinue: () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', {detail:{step:3}})),
+          onContinue: () => window.vishnuFirstRun.continueSecurity(),
           onPasskey: options => window.vishnuFirstRun.startPasskeySetup(options),
         });
       }).catch(() => {
