@@ -169,7 +169,13 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
  $('[data-vs-language]').addEventListener('click',()=>$('#vsLanguageDialog').showModal());
  $('[data-vs-close]').addEventListener('click',()=>$('#vsLanguageDialog').close());
  const sphere=$('[data-vs-sphere]');
- const dispose=mountNeuralSphere(sphere);
+ let dispose=()=>{};
+ try{
+   dispose=mountNeuralSphere(sphere);
+ }catch{
+   // GPU/WebGL shader failure must not block owner setup or account recovery.
+   sphere.parentElement?.classList.add('vw-static-fallback');
+ }
  // A security draft must not retain the actual plaintext password in state.
  return()=>{pw.value='';confirmation.value='';dispose?.();};
 }
