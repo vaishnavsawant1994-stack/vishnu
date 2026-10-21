@@ -550,3 +550,42 @@ body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar .p2-sidebar-sea
 body.v-ref.p2-home-ready.home-landing .reference-desktop-sidebar .p2-sidebar-more {
   border-bottom:1px solid rgba(57,115,193,.16)!important
 }
+
+
+/* Approved composer layout keeps both microphone and send affordances visible.
+ * Empty drafts cannot be submitted; the canonical conversation handler owns sends. */
+html body.v-ref.p2-home-ready.home-landing #composer #micButton {
+  display:grid!important;grid-column:3!important;grid-row:1!important;
+  color:#bcdfff!important
+}
+html body.v-ref.p2-home-ready.home-landing #composer #sendButton {
+  display:grid!important;grid-column:4!important;grid-row:1!important;
+  background:linear-gradient(145deg,#08a9ff,#0056d5)!important;
+  border:1px solid rgba(52,195,255,.8)!important;
+  box-shadow:0 0 15px rgba(0,125,255,.45)!important;
+  color:#fff!important
+}
+html body.v-ref.p2-home-ready.home-landing #composer:not(.has-text) #sendButton {
+  opacity:.5;pointer-events:none;cursor:not-allowed
+}
+html body.v-ref.p2-home-ready.home-landing #composer.has-text #sendButton {
+  opacity:1;pointer-events:auto;cursor:pointer
+}
+html body.v-ref.p2-home-ready.home-landing #composer #sendButton::before {
+  display:none!important;content:none!important
+}
+html body.v-ref.p2-home-ready.home-landing #composer #sendButton svg {
+  stroke:#fff!important
+}
+@media(max-width:900px) {
+  html body.v-ref.p2-home-ready.home-landing #composer {
+    grid-template-columns:35px minmax(0,1fr) 37px 39px!important;
+    gap:3px!important
+  }
+  html body.v-ref.p2-home-ready.home-landing #composer #micButton {
+    grid-column:3!important;grid-row:1!important
+  }
+  html body.v-ref.p2-home-ready.home-landing #composer #sendButton {
+    grid-column:4!important;grid-row:1!important
+  }
+}
