@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFile, mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { chromium } from 'playwright';
-const assetNames=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js','genesis-recovery.css','genesis-recovery.js','genesis-login.js','genesis-login.css',
+const assetNames=['first-run.js','first-run-actions.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js','genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js','genesis-recovery.css','genesis-recovery.js','genesis-login.js','genesis-login.css','genesis-connect.css','genesis-connect.js',
  'assets/genesis/avatar-blue.svg','assets/genesis/avatar-mountain.svg','assets/genesis/avatar-forest.svg','assets/genesis/avatar-horizon.svg'];
 const files=new Map();
 for(const name of assetNames)files.set('/iphone/'+name,await readFile(new URL('../pwa/'+name,import.meta.url)));
