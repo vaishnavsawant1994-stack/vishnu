@@ -34,7 +34,7 @@ function markup() {
     '<p class="vi-field-error" id="viAvatarError" aria-live="polite"></p><button type="button" class="vi-avatar-choice" data-vi-remove hidden>Remove selected photo</button></div></div>'+
     '<div class="vi-preview"><div class="vw-sphere vi-mini-sphere" aria-hidden="true"><canvas data-vi-mini-sphere></canvas></div>'+
     '<div class="vi-greeting" aria-live="polite" aria-atomic="true"><strong id="viGreetingTitle">Hello there!</strong><span id="viGreetingDetail">I’m Vishnu. What should I call you?</span><small>I’ll be with you on your journey.</small></div><img id="viSelectedAvatarPreview" class="vi-selected-avatar" alt="Selected profile photo preview" hidden></div>'+ 
-    '<p class="vi-draft-note" id="viAvatarNote" hidden>Profile photo preview only — avatar storage will be available after setup.</p>'+ 
+    '<p class="vi-draft-note" id="viAvatarNote" hidden>Photo preview only — profile-photo saving is not yet available.</p>'+ 
     '<div class="vi-actions"><button class="vi-back" data-vi-back type="button">← &nbsp; Back</button><button class="vi-continue" data-genesis-next type="button">Continue &nbsp; →</button></div>'+
     '<p id="genesisStatus" class="vi-field-error" role="status" aria-live="polite"></p></section></div>'+
     '<dialog class="vi-dialog" id="viLanguageDialog" aria-labelledby="viLangHeading"><h2 id="viLangHeading">Language</h2>'+
