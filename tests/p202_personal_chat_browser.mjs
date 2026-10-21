@@ -97,6 +97,15 @@ try{
  await page.locator('#p202Header .p202-context').click();
  await page.getByText(/No active projects are available|Create a project first/).first().waitFor({timeout:10000});
  assert.equal(active.conversation.id,'personal-1','context picker does not silently move personal chat');
+ await page.setViewportSize({width:1440,height:900});
+ await page.locator('#p202NewChat').click();
+ await page.waitForFunction(()=>window.vishnuChatBridge.current.id==='personal-2');
+ assert.equal(creates,1,'New Chat uses canonical conversation API');
+ assert.equal(await page.locator('#p202Welcome').isVisible(),true,'new personal chat welcome visible');
+ assert.equal(await page.locator('.p202-prompt').count(),4,'four approved editable starters');
+ await page.locator('.p202-prompt').first().click();
+ assert.match(await page.locator('#message').inputValue(),/organize my day/i);
+ await page.locator('#message').fill('');
  await page.evaluate(()=>window.vishnuChatBridge.openModule('home'));
  await page.waitForFunction(()=>!document.body.classList.contains('p202-personal-chat'));
  assert.equal(await page.locator('#p202Header').isVisible(),false,'Chat header fully hidden on Home');
