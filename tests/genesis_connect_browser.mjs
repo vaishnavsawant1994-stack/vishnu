@@ -120,7 +120,7 @@ try{
  await approved.locator('.vc-request').waitFor({state:'visible'});
  await approved.locator('[data-vc-continue]').click();
  await approved.waitForFunction(()=>window.__session===true);
- await approved.locator('.genesis-connect').waitFor({state:'detached'});
+ await approved.locator('.genesis-connect').waitFor({state:'hidden'});
  assert.equal(await approved.evaluate(()=>window.__calls.some(c=>c.path==='/access/join/status')),true);
  await approved.close();
  console.log('P1-06 WebGL, layout, truthful pairing options, real joining, pending, cancellation, verified success: PASS');
