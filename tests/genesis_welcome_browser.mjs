@@ -6,7 +6,7 @@ import { chromium } from 'playwright';
 
 const root = new URL('../pwa/', import.meta.url);
 const assets = new Map();
-for (const name of ['first-run.js', 'genesis.css', 'genesis-welcome.css', 'genesis-neural-sphere.js']) {
+for (const name of ['first-run.js', 'genesis.css', 'genesis-welcome.css', 'genesis-neural-sphere.js', 'genesis-identity.css', 'genesis-identity.js', 'assets/genesis/avatar-blue.svg', 'assets/genesis/avatar-mountain.svg', 'assets/genesis/avatar-forest.svg', 'assets/genesis/avatar-horizon.svg']) {
   assets.set('/iphone/' + name, await readFile(new URL(name, root), 'utf8'));
 }
 const dir = process.env.VISHNU_WELCOME_SCREENSHOTS || 'artifacts/genesis-welcome';
@@ -20,7 +20,7 @@ try {
     await page.route('http://127.0.0.1:4173/**', route => {
       const path = new URL(route.request().url()).pathname;
       if (assets.has(path)) {
-        const type = path.endsWith('.css') ? 'text/css' : 'text/javascript';
+        const type = path.endsWith('.css') ? 'text/css' : path.endsWith('.svg') ? 'image/svg+xml' : 'text/javascript';
         return route.fulfill({ status: 200, contentType: type, body: assets.get(path) });
       }
       if (path === '/iphone/' || path === '/') {
@@ -119,7 +119,7 @@ try {
   await page.route('http://127.0.0.1:4173/**', route => {
     const path = new URL(route.request().url()).pathname;
     if (assets.has(path)) return route.fulfill({ status:200,
-      contentType: path.endsWith('.css')?'text/css':'text/javascript', body:assets.get(path) });
+      contentType: path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript', body:assets.get(path) });
     return route.fulfill({ status:200, contentType:'text/html', body:`<!doctype html>
       <html><head><style>body{margin:0}.hidden{display:none!important}</style><link rel="stylesheet" href="/iphone/genesis.css"></head>
       <body><div id="enrollPanel"></div><script>
