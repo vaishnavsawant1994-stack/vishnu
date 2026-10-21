@@ -38,7 +38,11 @@ try{
       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
       window.check=async()=>null;
       window.__apiCalls=[];
-      window.api=async(path,opts)=>{window.__apiCalls.push({path,method:opts?.method,body:opts?.body});return {ok:true};};
+      window.api=async(path,opts)=>{
+        window.__apiCalls.push({path,method:opts?.method,body:opts?.body});
+        if(path==='/first-run/create')return {ok:true,recovery_codes:['A2BC-D3EF-G4HJ','B3CD-E4FG-H5JK','C4DE-F5GH-J6KL','D5EF-G6HJ-K7LM']};
+        return {ok:true};
+      };
      </script>
      <script src="/iphone/first-run.js"></script>
      <script src="/iphone/first-run-actions.js"></script>
