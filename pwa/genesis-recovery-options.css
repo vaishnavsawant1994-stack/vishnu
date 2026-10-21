@@ -1,0 +1,127 @@
+/* P1-07 / P1-08 screenshot-locked recovery branch; P1-04 has its own styling. */
+.genesis-shell.genesis-recovery-options{background:#020508;min-height:100dvh;height:100dvh;overflow:auto;position:relative;border:0;}
+.genesis-recovery-options::after{content:none!important;}
+.genesis-recovery-options #voRoot{display:flex;flex-direction:column;flex:1;width:100%;min-height:100dvh;box-sizing:border-box;position:relative;}
+.genesis-recovery-options #voRoot::before{content:"";pointer-events:none;position:absolute;inset:12px;z-index:0;border:1px solid rgba(48,134,192,.42);border-radius:19px;}
+.vo-window-dots{position:absolute;top:16px;left:27px;display:flex;gap:9px;z-index:2;}
+.vo-window-dots i{height:14px;width:14px;display:block;border-radius:50%;background:#f25152;}
+.vo-window-dots i:nth-child(2){background:#ffbf46;}
+.vo-window-dots i:nth-child(3){background:#27d654;}
+.genesis-recovery-options .vo-header{position:relative;z-index:2;min-height:123px;padding:53px 52px 11px;display:flex;align-items:flex-start;justify-content:space-between;gap:20px;}
+.vo-header-actions{display:flex;align-items:center;gap:32px;}
+.genesis-recovery-options .vs-brand strong{font-size:23px;}
+.genesis-recovery-options .vs-brand small{font-size:13px;}
+.vo-badge{border:1px solid #22527b;color:#83dfff;padding:10px 26px;border-radius:999px;background:rgba(8,27,48,.8);font-size:14px;}
+.genesis-recovery-options .vo-body{position:relative;z-index:1;display:grid;grid-template-columns:minmax(0,49.5%) minmax(0,50.5%);flex:1;min-height:0;}
+.genesis-recovery-options .vo-hero{position:relative;align-self:stretch;min-height:0;overflow:hidden;}
+.genesis-recovery-options .vo-sphere{height:clamp(360px,40vw,604px);width:clamp(360px,40vw,604px);transform:translateY(-17px);}
+.genesis-recovery-options .vo-ground{bottom:4%;left:5%;width:90%;height:76px;filter:blur(.7px);background:radial-gradient(ellipse at 50% 49%,rgba(0,211,255,.8),rgba(0,91,201,.28) 31%,transparent 73%);}
+.genesis-recovery-options .vo-ground::before{border-color:rgba(59,213,255,.79);box-shadow:0 0 20px rgba(6,183,255,.72),inset 0 0 13px rgba(7,156,255,.49);}
+.genesis-recovery-options .vo-ground::after{border-color:rgba(69,192,255,.67);box-shadow:0 0 14px rgba(15,177,255,.76);}
+.vo-right{display:flex;align-items:flex-start;justify-content:center;min-width:0;}
+.vo-panel{width:calc(100% - 55px);max-width:745px;box-sizing:border-box;margin:7px 32px 20px 0;padding:26px 35px 27px;border:1px solid rgba(46,102,149,.32);border-radius:20px;min-height:718px;background:linear-gradient(133deg,rgba(2,11,22,.95),rgba(3,13,27,.91));box-shadow:inset 0 0 24px rgba(1,32,80,.08);}
+.vo-eyebrow{letter-spacing:.36em!important;margin:0 0 16px;font-size:12px;color:#c3dcf4;}
+.vo-panel h1{font-size:clamp(34px,3vw,46px);line-height:1.1;letter-spacing:-.045em;margin:0;color:#f4f8ff;}
+.vo-panel h1 span{color:#087fff;}
+.vo-description{font-size:clamp(16px,1.39vw,21px);line-height:1.5;color:#bcd4e6;margin:15px 0 20px;}
+.vo-choices{display:flex;flex-direction:column;gap:13px;}
+.vo-choice{display:flex;align-items:center;text-align:left;width:100%;padding:15px 24px;gap:33px;min-height:115px;border-radius:16px;border:1px solid rgba(40,104,157,.37);background:linear-gradient(100deg,rgba(5,17,34,.96),rgba(3,13,27,.94));color:#f5fbff;cursor:pointer;transition:border-color .16s,box-shadow .16s,background .16s;}
+.vo-choice.selected{border-color:#0dbdff;box-shadow:0 0 13px rgba(0,123,255,.52),inset 0 0 15px rgba(5,114,250,.23);background:linear-gradient(100deg,rgba(6,30,57,.95),rgba(3,15,34,.96));}
+.vo-choice:hover{border-color:#2a9ee8;}
+.vo-icon{height:86px;width:89px;flex:none;display:grid;place-items:center;border-radius:14px;background:#071c35;border:1px solid #1c4671;box-shadow:inset 0 0 18px rgba(4,89,183,.17);}
+.vo-icon svg{width:49px;height:49px;color:#0d83ff;filter:drop-shadow(0 0 8px rgba(2,125,255,.49));}
+.vo-choice-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px;}
+.vo-choice-text strong{font-size:20px;font-weight:620;line-height:1.25;color:#f5fbff;}
+.vo-choice-text small{font-size:16px;font-weight:400;color:#b7c8dd;line-height:1.35;}
+.vo-chevron svg{height:29px;width:29px;color:#08baff;}
+.vo-info{display:flex;align-items:center;gap:23px;padding:19px 24px;min-height:110px;border:1px solid rgba(37,92,142,.40);background:linear-gradient(105deg,rgba(5,27,48,.96),rgba(5,18,34,.94));border-radius:14px;margin-top:24px;box-sizing:border-box;}
+.vo-info>svg{width:54px;height:54px;flex:none;color:#05abff;filter:drop-shadow(0 0 8px rgba(0,153,255,.47));}
+.vo-info strong{display:block;font-size:18px;line-height:1.25;}
+.vo-info small{display:block;font-size:15px;line-height:1.4;color:#acc6da;margin-top:5px;}
+.vo-status{margin:12px 0 0;min-height:0;font-size:13px;color:#85dcff;line-height:1.3;}
+.vo-status:empty{display:none;}
+.vo-status[data-error=true]{color:#ffb4c3;}
+.vo-footer{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:18px;padding:14px 37px 35px 52px;margin-top:auto;}
+.vo-back,.vo-continue{display:flex;align-items:center;justify-content:center;gap:18px;border-radius:999px;min-height:65px;cursor:pointer;font-size:20px;}
+.vo-back{width:190px;background:#030b16;border:1px solid #18466d;color:#f5faff;}
+.vo-continue{width:300px;border:1px solid #087dfb;background:linear-gradient(100deg,#096afa,#076bfb);box-shadow:0 0 19px rgba(0,111,253,.33);color:#fff;}
+.vo-continue svg{width:23px;height:23px;}
+.genesis-recovery-options button:focus-visible,.genesis-recovery-options input:focus-visible{outline:2px solid #8deaff;outline-offset:3px;}
+.genesis-recovery-options button:disabled{opacity:.6;cursor:progress;}
+.vo-verify-card{display:flex;align-items:center;gap:15px;padding:14px 17px;border:1px solid #19669b;border-radius:13px;background:#071c30;}
+.vo-verify-card .vo-icon{width:60px;height:60px;}
+.vo-verify-card .vo-icon svg{width:37px;height:37px;}
+.vo-verify-card span:last-child{display:flex;flex-direction:column;gap:7px;}
+.vo-verify-card strong{font-size:19px;}
+.vo-verify-card small{font-size:14px;color:#a9c8df;}
+#voVerifyForm{margin-top:27px;display:flex;flex-direction:column;gap:12px;}
+#voVerifyForm label{font-size:15px;font-weight:600;}
+.vo-input-line{height:57px;border:1px solid #26527c;border-radius:11px;background:#0a1b2e;display:flex;align-items:center;gap:14px;padding:0 14px;}
+.vo-input-line>svg{height:28px;width:28px;flex:none;color:#16b9ff;}
+.vo-input-line input{border:0;outline:0;box-shadow:none;background:transparent;color:#f4faff;width:100%;font-size:16px;height:52px;min-width:0;}
+.vo-form-help{font-size:13px;line-height:1.45;color:#b3cee1;margin:0;}
+.vo-backup-action{width:100%;min-height:61px;border:1px solid #087dfe;border-radius:999px;display:flex;align-items:center;justify-content:center;gap:16px;font-size:16px;color:white;background:#096eff;box-shadow:0 0 13px rgba(0,114,255,.28);margin-top:10px;cursor:pointer;}
+.vo-backup-action svg{width:20px;height:20px;}
+.vo-verify-info{padding:16px;border:1px solid #21496a;border-radius:13px;margin-top:20px;color:#ddedfa;background:#08182a;}
+.vo-verify-info p{color:#acc7d9;font-size:14px;line-height:1.5;}
+@media(min-width:901px) and (max-height:900px){
+ .genesis-recovery-options .vo-header{min-height:100px;padding-top:32px;}
+ .vo-panel{margin-top:8px;min-height:0;padding:18px 23px;}
+ .vo-description{font-size:16px;margin:9px 0 13px;}
+ .vo-eyebrow{margin-bottom:10px;}
+ .vo-choice{min-height:88px;padding:8px 15px;gap:19px;}
+ .vo-icon{height:62px;width:65px;}
+ .vo-icon svg{height:39px;width:39px;}
+ .vo-choice-text strong{font-size:17px;}
+ .vo-choice-text small{font-size:13px;}
+ .vo-choices{gap:9px;}
+ .vo-info{min-height:86px;margin-top:13px;padding:11px;}
+ .vo-info strong{font-size:15px;}
+ .vo-info small{font-size:12px;}
+ .vo-info>svg{width:36px;height:36px;}
+ .vo-footer{padding-top:7px;padding-bottom:18px;}
+ .vo-back,.vo-continue{min-height:52px;font-size:16px;}
+}
+@media(max-width:900px){
+ .genesis-shell.genesis-recovery-options{height:auto;min-height:100dvh;}
+ .genesis-recovery-options #voRoot{min-height:100dvh;}
+ .genesis-recovery-options #voRoot::before{display:none;}
+ .vo-window-dots{display:none;}
+ .genesis-recovery-options .vo-header{padding:calc(19px + env(safe-area-inset-top,0px)) 16px 12px;min-height:0;align-items:center;}
+ .genesis-recovery-options .vs-logo{width:39px;height:39px;}
+ .genesis-recovery-options .vs-logo span{width:20px;height:27px;}
+ .genesis-recovery-options .vs-brand strong{font-size:15px;}
+ .genesis-recovery-options .vs-brand small{font-size:9px;}
+ .vo-header-actions{gap:9px;}
+ .genesis-recovery-options .vo-header .vs-language{font-size:11px;padding:5px;}
+ .genesis-recovery-options .vo-header .vs-language svg{width:16px;height:16px;}
+ .vo-badge{font-size:10px;padding:7px 9px;}
+ .genesis-recovery-options .vo-body{display:flex;flex-direction:column;min-height:0;}
+ .genesis-recovery-options .vo-hero{min-height:0;height:clamp(155px,23vh,220px);flex:none;overflow:visible;}
+ .genesis-recovery-options .vo-sphere{width:clamp(132px,19vh,187px);height:clamp(132px,19vh,187px);transform:none;}
+ .genesis-recovery-options .vo-ground{bottom:-5px;left:calc(50% - 92px);width:184px;height:23px;}
+ .vo-right{width:100%;padding:0 13px;box-sizing:border-box;}
+ .vo-panel{width:100%;max-width:none;min-height:0;margin:7px 0 0;padding:21px 15px 16px;border-radius:15px;}
+ .vo-eyebrow{font-size:10px;letter-spacing:.19em!important;margin-bottom:8px;}
+ .vo-panel h1{font-size:30px;}
+ .vo-description{font-size:13px;line-height:1.45;margin:10px 0 14px;}
+ .vo-choices{gap:9px;}
+ .vo-choice{min-height:84px;padding:10px;gap:12px;border-radius:11px;}
+ .vo-icon{width:49px;height:52px;border-radius:10px;}
+ .vo-icon svg{height:31px;width:31px;}
+ .vo-choice-text strong{font-size:14px;}
+ .vo-choice-text small{font-size:11px;}
+ .vo-chevron svg{width:18px;height:18px;}
+ .vo-info{min-height:80px;padding:12px;gap:11px;margin-top:11px;}
+ .vo-info>svg{width:32px;height:32px;}
+ .vo-info strong{font-size:13px;}
+ .vo-info small{font-size:11px;}
+ .vo-footer{padding:17px 14px calc(24px + env(safe-area-inset-bottom,0px));gap:12px;}
+ .vo-back,.vo-continue{min-height:48px;font-size:14px;}
+ .vo-back{width:35%;max-width:165px;}
+ .vo-continue{width:55%;max-width:240px;}
+ .vo-verify-card .vo-icon{height:51px;width:51px;}
+ .vo-verify-card strong{font-size:15px;}
+ .vo-verify-card small{font-size:12px;}
+}
+@media(prefers-reduced-motion:reduce){.genesis-recovery-options *{transition:none!important;animation:none!important;}}
