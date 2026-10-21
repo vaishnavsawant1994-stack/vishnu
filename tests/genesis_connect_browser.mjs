@@ -32,7 +32,7 @@ const make=async viewport=>{
        expires_at:Date.now()/1000+300,name:'New web browser',status:'approval_required'};
    window.loadAccessOptions=async()=>({creation_available:false,restore_available:false,
      password_available:true,passkey_available:true,recovery_available:true});
-   window.check=async()=>window.__session?{ok:true,device_id:'verified-new-device'}:null;
+   window.check=async()=>window.__session&&!window.__blockVerification?{ok:true,device_id:'verified-new-device'}:null;
    window.api=async(path,opts={})=>{
      window.__calls.push({path,body:opts.body});
      if(path==='/access/password/login')return window.__testJoin;
@@ -143,5 +143,25 @@ try{
  await approved.locator('.genesis-connect').waitFor({state:'hidden'});
  assert.equal(await approved.evaluate(()=>window.__calls.some(c=>c.path==='/access/join/status')),true);
  await approved.close();
+ const {page:retry}=await make({width:1536,height:1024});
+ await retry.evaluate(()=>{
+   window.__approved=true;window.__blockVerification=true;
+   window.vishnuFirstRun.showConnect(window.__testJoin);
+ });
+ await retry.locator('.vc-request').waitFor({state:'visible'});
+ await retry.locator('[data-vc-continue]').click();
+ await retry.locator('#vcStatus').getByText(/Retry session verification/i).waitFor();
+ assert.equal(await retry.locator('[data-vc-continue]').isEnabled(),true,
+   'An approved request must allow retrying session verification');
+ assert.equal(await retry.locator('.vc-request').isVisible(),true,
+   'A failed cookie check must not erase the approved join view');
+ const pollsBefore=await retry.evaluate(()=>window.__calls.filter(c=>c.path==='/access/join/status').length);
+ assert.equal(pollsBefore,1,'Approval is consumed once');
+ await retry.evaluate(()=>{window.__blockVerification=false;});
+ await retry.locator('[data-vc-continue]').click();
+ await retry.locator('.genesis-connect').waitFor({state:'hidden'});
+ assert.equal(await retry.evaluate(()=>window.__calls.filter(c=>c.path==='/access/join/status').length),pollsBefore,
+   'Session retry must not re-consume the one-use approval');
+ await retry.close();
  console.log('P1-06 WebGL, layout, truthful pairing options, real joining, pending, cancellation, verified success: PASS');
 }finally{await browser.close();}
