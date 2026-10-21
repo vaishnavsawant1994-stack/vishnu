@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from math import cos, pi, sin, sqrt
+import platform
 import os
 
 from PyQt6.QtCore import Qt, QUrl, QRectF, QPointF, QElapsedTimer, QTimer
@@ -242,12 +243,13 @@ class FirstRunWizard(QDialog):
         return button
 
     def _update_progress(self, index: int):
-        steps = {1: 1, 2: 2, 4: 3}
+        # Welcome is step 1; login, join and recovery are distinct journeys.
+        steps = {1: 2, 2: 3, 4: 4}
         step = steps.get(index)
         self.genesis_progress.setVisible(step is not None)
         if step is not None:
-            dots = ' '.join('●' if item <= step else '○' for item in range(1, 4))
-            self.genesis_progress.setText(f'Step {step} of 3   {dots}')
+            dots = ' '.join('●' if item <= step else '○' for item in range(1, 5))
+            self.genesis_progress.setText(f'Step {step} of 4   {dots}')
 
     def _welcome_page(self):
         page, layout = self._page('Welcome to Vishnu', 'Your personal intelligence. Your data. Your world.')
@@ -297,6 +299,13 @@ class FirstRunWizard(QDialog):
         self.password_confirm.setPlaceholderText('Enter the same password again')
         form.addRow('Owner password', self.password)
         form.addRow('Confirm password', self.password_confirm)
+        self.device_name = QLineEdit()
+        family = platform.system().lower()
+        default_device_name = 'My Mac' if family == 'darwin' else ('My Windows PC' if family == 'windows' else 'My Linux Computer')
+        self.device_name.setText(default_device_name)
+        self.device_name.setMaxLength(120)
+        self.device_name.setPlaceholderText('Name this device')
+        form.addRow('First trusted device', self.device_name)
         layout.addLayout(form)
         hint = QLabel('A passkey can be added later from Security settings when supported. Vishnu stores a password hash, never this plaintext password.')
         hint.setObjectName('hint')
@@ -632,6 +641,10 @@ class FirstRunWizard(QDialog):
         try:
             # Keep Create to three user-facing stages while applying the
             # existing secure defaults through the canonical authorities.
+            device_name = self.device_name.text().strip()
+            if not device_name:
+                raise ValueError('Name your first trusted computer before continuing')
+            self.coordinator.ensure_first_device(device_name)
             self.coordinator.configure_preferences(
                 privacy_mode='local_only', autonomy_mode='ask', memory_enabled=True,
             )
