@@ -573,7 +573,12 @@
           // The wrapped window.check() may replace the pending join screen on
           // failure, which otherwise strands an approved user without a retry.
           const result=await originalCheck();
-          if(!result)throw new Error('Approval completed but session was not confirmed. Retry verification.');
+          if(!result){
+            // The legacy session probe hides #enrollPanel on a connection
+            // failure. Restore P1-06 so the owner can retry verification.
+            panel.classList.remove('hidden');
+            throw new Error('Approval completed but session was not confirmed. Retry verification.');
+          }
           sessionStorage.removeItem('vishnuPendingJoin');
           s.accessIntent='';s.returnToConnect=false;
           hide();
