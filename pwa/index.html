@@ -3024,6 +3024,10 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
   body.today-command-mode #todayScreen .today-shell{width:100%!important;max-width:none!important;height:100dvh;min-height:0!important;align-self:stretch;border:0!important;border-radius:0!important;padding:0!important;display:flex;flex-direction:column;overflow:hidden;background:radial-gradient(ellipse at 60% 18%,rgba(9,69,125,.2),transparent 42%),#020812}
   body.today-command-mode #todayScreen .today-screen-head,body.today-command-mode #todayScreen .today-screen-footer,body.today-command-mode #todayScreen .today-tabs,body.today-command-mode #todayDemoNotice,body.today-command-mode #todayScreen .today-summary,body.today-command-mode #todayScreen .today-section{display:none!important}
   body.today-command-mode #todayScreen .today-screen-content{padding:0!important;overflow:auto;flex:1;min-height:0}
+  /* Preview-only sample records must never be displayed without their notice. The
+     Command Center presentation hides legacy Today chrome, but not safety copy. */
+  body.today-command-mode #todayDemoNotice:not(.hidden){display:flex!important;position:relative;z-index:5;margin:8px 20px 0;max-width:calc(100% - 40px);flex:none}
+
   .today-command-dashboard{min-height:100%;color:#eaf4ff;font-family:inherit;background-image:radial-gradient(1px 1px at 12% 20%,rgba(57,163,255,.45) 50%,transparent 100%),radial-gradient(1px 1px at 82% 9%,rgba(57,163,255,.3) 50%,transparent 100%);background-size:170px 150px,230px 190px}
   .today-board{min-height:100dvh;display:grid;grid-template-columns:210px minmax(0,1fr);grid-template-rows:56px minmax(0,1fr);max-width:1800px;margin:auto;border-inline:1px solid rgba(63,121,173,.23)}
   .today-board-nav{grid-row:1/3;border-right:1px solid rgba(72,122,169,.25);padding:25px 12px 18px;background:rgba(2,10,19,.8);display:flex;flex-direction:column;gap:8px}
