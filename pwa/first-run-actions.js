@@ -130,7 +130,7 @@
         last_name: state.lastName,
         display_name: state.displayName,
         password,
-        device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+        device_name: state.deviceName,
       }),
     });
     state.identityCreated = true;
@@ -142,6 +142,38 @@
       if (state.options.setup_recovery_saved) $('firstRunRecoverySaved').checked = true;
     }
   }
+
+  const decodeBase64Url = text => {
+    const padded = String(text).replace(/-/g, '+').replace(/_/g, '/');
+    const raw = atob(padded + '='.repeat((4 - padded.length % 4) % 4));
+    return Uint8Array.from(raw, c => c.charCodeAt(0));
+  };
+  const encodeBase64Url = buffer => {
+    const data = new Uint8Array(buffer);
+    let raw = '';
+    for (const byte of data) raw += String.fromCharCode(byte);
+    return btoa(raw).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+  };
+  const creationOptions = options => ({
+    ...options,
+    challenge: decodeBase64Url(options.challenge),
+    user: { ...options.user, id: decodeBase64Url(options.user.id) },
+    excludeCredentials: (options.excludeCredentials || []).map(item => ({
+      ...item, id: decodeBase64Url(item.id),
+    })),
+  });
+  const credentialJson = credential => ({
+    id: credential.id,
+    rawId: encodeBase64Url(credential.rawId),
+    type: credential.type,
+    response: {
+      clientDataJSON: encodeBase64Url(credential.response.clientDataJSON),
+      attestationObject: encodeBase64Url(credential.response.attestationObject),
+      transports: credential.response.getTransports?.() || [],
+    },
+    clientExtensionResults: credential.getClientExtensionResults?.() || {},
+    authenticatorAttachment: credential.authenticatorAttachment || null,
+  });
 
   async function createPasskey() {
     if (state.passkeyCreated) return true;
