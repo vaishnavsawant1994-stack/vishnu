@@ -1148,7 +1148,7 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     stranger = TestClient(app, base_url='https://testserver')
     assert stranger.put('/iphone/api/first-run/avatar', json={
         'source': 'preset', 'preset_id': 'blue',
-    }).status_code == 409
+    }).status_code == 401
     assert stranger.get('/iphone/api/access/profile/avatar').status_code == 401
     saved_avatar = client.put('/iphone/api/first-run/avatar', json={
         'source': 'preset', 'preset_id': 'forest',
