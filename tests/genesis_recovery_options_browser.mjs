@@ -8,7 +8,7 @@ import {chromium} from 'playwright';
 const files=['first-run.js','genesis.css','genesis-welcome.css','genesis-neural-sphere.js',
  'genesis-identity.css','genesis-identity.js','genesis-security.css','genesis-security.js',
  'genesis-recovery.css','genesis-recovery.js','genesis-login.css','genesis-login.js',
- 'genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js'];
+ 'genesis-connect.css','genesis-connect.js','genesis-recovery-options.css','genesis-recovery-options.js','genesis-verification.css','genesis-verification.js'];
 const assets=new Map();
 for(const file of files)assets.set('/iphone/'+file,await readFile(new URL('../pwa/'+file,import.meta.url)));
 const directory=process.env.VISHNU_RECOVERY_OPTIONS_SCREENSHOTS||'artifacts/genesis-recovery-options';
@@ -80,25 +80,25 @@ try{
   assert.equal(await page.locator('[data-vo-mode=restore_data]').getAttribute('aria-checked'),'true');
   assert.equal(await page.locator('[data-vo-mode=recover_login]').getAttribute('aria-checked'),'false');
   await page.locator('[data-vo-continue]').click();
-  await page.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
-  assert.match(await page.locator('.vo-verify-info').innerText(),/eligible new runtime/i);
-  assert.equal(await page.locator('[data-vo-backup]').count(),0,'Do not expose unavailable restore action');
+  await page.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+  assert.match(await page.locator('[data-v8-backup-limit]').innerText(),/eligible uninitialized Vishnu runtime/i);
+  assert.equal(await page.locator('#v8Archive').count(),1,'Encrypted backup card remains visible but unavailable');
   await page.screenshot({path:resolve(directory,`p1-08-restore-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
-  await page.locator('[data-vo-back]').click();
+  await page.locator('[data-v8-back]').click();
   await page.getByRole('heading',{name:'Recovery Options'}).waitFor();
   assert.equal(await page.locator('[data-vo-mode=restore_data]').getAttribute('aria-checked'),'true');
   await page.locator('[data-vo-mode=recover_login]').click();
   await page.locator('[data-vo-continue]').click();
-  await page.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
-  await page.locator('[data-vo-submit]').click();
-  assert.match(await page.locator('#voStatus').innerText(),/Enter one unused recovery code/i);
+  await page.getByRole('heading',{name:'Recovery Verification'}).waitFor();
+  await page.locator('[data-v8-submit]').click();
+  assert.match(await page.locator('#v8Status').innerText(),/Enter one complete 12-character recovery code/i);
   assert.equal(await page.evaluate(()=>window.__calls.length),0,'Empty code not sent');
-  await page.locator('#voRecoveryCode').fill('ABCD-1234-ZYXW');
+  await page.locator('[data-v8-group="0"]').fill('ABCD-EFGH-JKLM');
   await page.evaluate(()=>window.__fail=true);
   await page.locator('[data-vo-submit]').click();
-  assert.match(await page.locator('#voStatus').innerText(),/Invalid or already used recovery code/i);
+  assert.match(await page.locator('#v8Status').innerText(),/Invalid or already used recovery code/i);
   assert.equal(await page.evaluate(()=>window.__session),false);
-  assert.equal(await page.locator('#voRecoveryCode').inputValue(),'','Never retain failed code in text input');
+  assert.equal(await page.locator('[data-v8-group="0"]').inputValue(),'','Never retain failed code in text input');
   assert.equal(await page.evaluate(()=>location.search.includes('code')),false);
   assert.deepEqual(errors,[],errors.join('; '));
   await page.close();
@@ -116,7 +116,7 @@ try{
  const {page:replacement}=await fixture({width:390,height:844});
  await replacement.locator('[data-vo-mode=replacement_device]').click();
  await replacement.locator('[data-vo-continue]').click();
- await replacement.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
+ await replacement.getByRole('heading',{name:'Recovery Verification'}).waitFor();
  assert.match(await replacement.locator('.vo-description').innerText(),/replacement browser/i);
  await replacement.screenshot({path:resolve(directory,'p1-08-replacement-390x844.png'),fullPage:true,animations:'disabled'});
  await replacement.locator('#voRecoveryCode').fill('XXXX-9876-ZZZZ');
@@ -126,7 +126,7 @@ try{
  await replacement.close();
  const {page:backup}=await fixture({width:1536,height:1024});
  await backup.evaluate(()=>{window.vishnuFirstRun.state.options.restore_available=true;window.vishnuFirstRun.showRecoveryVerification('restore_data');});
- await backup.getByRole('heading',{name:'Verify Your Recovery'}).waitFor();
+ await backup.getByRole('heading',{name:'Recovery Verification'}).waitFor();
  await backup.locator('[data-vo-backup]').click();
  await backup.locator('#restoreArchive').waitFor({state:'visible'});
  assert.equal(await backup.locator('#restoreKeyFile').count(),1);
