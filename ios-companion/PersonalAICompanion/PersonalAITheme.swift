@@ -127,7 +127,7 @@ struct VishnuGenesisCore: View {
                         let rect = CGRect(x: point.x - dot, y: point.y - dot, width: dot * 2, height: dot * 2)
                         context.fill(Path(ellipseIn: rect),
                             with: .color(Color(red: 60 / 255, green: 221 / 255, blue: 1)
-                                .opacity(0.25 + depth * 0.62)))
+                                .opacity(0.25 + Double(depth) * 0.62)))
                     }
                 }
             }
