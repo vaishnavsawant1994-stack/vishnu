@@ -97,6 +97,24 @@ try{
  await page.locator('#p202Header .p202-context').click();
  await page.getByText(/No active projects are available|Create a project first/).first().waitFor({timeout:10000});
  assert.equal(active.conversation.id,'personal-1','context picker does not silently move personal chat');
+ // The Personal UI is only a presentation surface: a canonical Project
+ // context must not be relabeled as a Personal Conversation.
+ await page.evaluate(()=>document.querySelector('#vContextChip span').textContent='Project · Private Workspace');
+ await page.waitForFunction(()=>!document.body.classList.contains('p202-personal-chat'));
+ assert.equal(await page.locator('#p202Header').isVisible(),false,'Project context hides Personal-only controls');
+ await page.evaluate(()=>document.querySelector('#vContextChip span').textContent='General chat · No project context');
+ await page.waitForFunction(()=>document.body.classList.contains('p202-personal-chat'));
+ // Canonical New Chat leaves the previous conversation and its messages intact.
+ await page.evaluate(()=>window.vishnuChatBridge.createConversation());
+ await page.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
+ await page.locator('#p202Welcome').waitFor({state:'visible'});
+ assert.equal(await page.locator('#p202Welcome .p202-prompt').count(),4,'new chat offers four personal prompts');
+ assert.equal(active.conversation.id,'personal-2','new Personal conversation was persisted');
+ await page.locator('#p202Welcome .p202-prompt').first().click();
+ assert.match(await page.locator('#message').inputValue(),/organize my day/i,'starter prepares an editable draft, not a tool action');
+ assert.equal(turns,1,'choosing a suggestion never triggers an AI turn');
+ await page.locator('#message').fill('');
+ await page.screenshot({path:'artifacts/p202/personal-empty-mobile.png',fullPage:true});
  await page.evaluate(()=>window.vishnuChatBridge.openModule('home'));
  await page.waitForFunction(()=>!document.body.classList.contains('p202-personal-chat'));
  assert.equal(await page.locator('#p202Header').isVisible(),false,'Chat header fully hidden on Home');
