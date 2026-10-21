@@ -57,6 +57,19 @@ try{
   else assert(layout.sphere.bottom<=layout.main.y+1,'Phone sphere should stack above security: '+JSON.stringify(layout));
   assert(await page.locator('.vs-sphere canvas').evaluate(node=>Boolean(node.getContext('webgl'))),'Sphere is real WebGL');
   await page.screenshot({path:resolve(output,`p1-03-${vp.width}x${vp.height}.png`),fullPage:true,animations:'disabled'});
+  if(vp.width<=900){
+    const scroller=await page.locator('#enrollPanel').evaluate(el=>({
+      clientHeight:el.clientHeight,scrollHeight:el.scrollHeight,
+      overflow:getComputedStyle(el).overflowY,
+    }));
+    assert(scroller.scrollHeight>=scroller.clientHeight,'Mobile scrolling measurements must be valid');
+    await page.locator('.vs-navigation').scrollIntoViewIfNeeded();
+    const bottom=await page.locator('.vs-navigation').boundingBox();
+    assert(bottom && bottom.y>=0 && bottom.y+bottom.height<=vp.height+1,
+      'Mobile Back and Continue must be reachable by scrolling: '+JSON.stringify({scroller,bottom}));
+    await page.screenshot({path:resolve(output,`p1-03-mobile-bottom-${vp.width}x${vp.height}.png`),animations:'disabled'});
+    await page.locator('.vs-main h1').scrollIntoViewIfNeeded();
+  }
   // Password policy, visibility controls, matching confirmation.
   const password=page.locator('#firstRunPassword'), confirm=page.locator('#firstRunPasswordAgain');
   await page.locator('.vs-continue').click();
