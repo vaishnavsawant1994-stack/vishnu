@@ -83,9 +83,9 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
     assert "loadGlobalAwareness" in loader
     assert "visual.onload=loadGlobalAwareness" in loader
 
-    # v50 refreshes the current shell with P1-09 while existing global
+    # v51 refreshes the current shell with P1-09 while existing global
     # work awareness remains precached and read-only.
-    assert "personal-ai-iphone-v50" in sw
+    assert "personal-ai-iphone-v51" in sw
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "'/iphone/adaptive-composer.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw
