@@ -341,3 +341,34 @@ body.p202-work-chat .p202b-entry{font-size:13px}
  body.p202-work-chat:has(#conversationDrawer:not(.hidden)) .p202b-tabs,
  body.p202-work-chat:has(#appDrawer:not(.hidden)) .p202b-tabs{pointer-events:none!important}
 }
+
+
+/* Explicitly linked canonical Project resources (no separate Work datastore). */
+body.p202-work-chat .p202b-resources-modal{
+ width:min(560px,calc(100vw - 24px));max-height:min(82dvh,850px);
+ overflow-y:auto;overscroll-behavior:contain;
+}
+body.p202-work-chat .p202b-resources-modal input[type=search]{
+ width:100%;min-height:44px;border:1px solid rgba(85,155,235,.44);
+ border-radius:10px;color:#eef8ff;background:#03132b;padding:9px 13px;
+}
+body.p202-work-chat .p202b-project-choices{
+ display:grid;gap:7px;max-height:min(45dvh,450px);
+ overflow-y:auto;overscroll-behavior:contain;
+ padding:8px 0;
+}
+body.p202-work-chat .p202b-project-choice{
+ display:block;width:100%;min-height:44px;text-align:left;
+ overflow-wrap:anywhere;border-radius:10px;padding:10px 13px;
+ color:#d8edff;background:#062048;border:1px solid rgba(61,137,229,.25);
+}
+body.p202-work-chat .p202b-project-choice:hover{
+ background:#0b3468;border-color:#3da9ec;
+}
+body.p202-work-chat .p202b-project-choice:focus-visible{
+ outline:2px solid #6cd5ff;outline-offset:2px;
+}
+@media(max-width:900px){
+ body.p202-work-chat .p202b-resources-modal{max-height:calc(100dvh - 24px)}
+ body.p202-work-chat .p202b-project-choices{max-height:44dvh}
+}
