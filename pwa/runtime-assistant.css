@@ -57,18 +57,18 @@
 .runtime-host .rta-platform {
   width: min(100%, 700px); height: 168px; left: 50%; top: min(62vh,615px);
   position: absolute; z-index: 0; transform: translateX(-50%); pointer-events: none;
-  background: radial-gradient(ellipse at 50% 50%,rgba(0,209,255,.46),rgba(0,93,224,.13) 39%,transparent 70%);
+  background: radial-gradient(ellipse at 50% 50%,rgba(0,209,255,.59),rgba(0,93,224,.24) 42%,transparent 77%);
   animation: rta-light 5.5s ease-in-out infinite alternate;
 }
 .runtime-host .rta-platform::after {
   content: ""; position: absolute; inset: 38% -4% -40%;
-  background: linear-gradient(180deg,rgba(0,148,242,.22),transparent);
-  filter: blur(14px);
+  background: radial-gradient(ellipse at 50% 5%,rgba(0,180,255,.48),rgba(0,92,242,.25) 35%,transparent 74%);
+  filter: blur(23px);
 }
 .runtime-host .rta-platform i {
   position: absolute; left: 50%; top: 48%; border-radius: 50%;
   transform: translate(-50%,-50%) rotateX(66deg);
-  border: 1px solid rgba(0,197,255,.68); box-shadow: 0 0 13px rgba(0,150,255,.45);
+  border: 1px solid rgba(0,197,255,.68); box-shadow: 0 0 19px rgba(0,182,255,.72);
 }
 .runtime-host .rta-platform i:nth-child(1) { width: 94%; height: 94%; }
 .runtime-host .rta-platform i:nth-child(2) { width: 76%; height: 79%; border-width: 2px; border-color: #00cfff; }
