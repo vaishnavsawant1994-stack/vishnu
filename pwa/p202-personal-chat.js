@@ -185,9 +185,22 @@
         drafts.delete(key(bridge()?.current?.id));drafts.delete('personal:new');
       }
     }).observe(canonicalComposer,{attributes:true,attributeFilter:['class']});
+    window.visualViewport?.addEventListener('resize',syncKeyboard);
+    window.visualViewport?.addEventListener('scroll',syncKeyboard);
+    $('message')?.addEventListener('focus',syncKeyboard);
+    $('message')?.addEventListener('blur',()=>requestAnimationFrame(syncKeyboard));
     window.addEventListener('focus',queueSync);
     document.addEventListener('visibilitychange',()=>{if(!document.hidden)queueSync()});
     queueSync();
+  }
+  function syncKeyboard() {
+    const viewport=window.visualViewport;
+    const occluded=viewport?Math.max(0,window.innerHeight-viewport.height-viewport.offsetTop):0;
+    const shown=active() && matchMedia('(max-width:760px)').matches &&
+      occluded>135 && $('message')===document.activeElement;
+    document.body.classList.toggle('p202-keyboard-visible',shown);
+    if(shown)document.documentElement.style.setProperty('--p202-keyboard-inset',Math.round(occluded)+'px');
+    else document.documentElement.style.removeProperty('--p202-keyboard-inset');
   }
   function openNotifications(){
     if(window.__vishnuWorkAttentionCenter?.open)return window.__vishnuWorkAttentionCenter.open('all');
@@ -342,7 +355,15 @@
     }
     const welcome=$('p202Welcome');if(welcome)welcome.hidden=!enabled || !document.body.classList.contains('chat-new-empty');
     const brand=qs('.p202-mobile-brand');if(brand)brand.hidden=!enabled;
-    if(!enabled)return;
+    if(!enabled){
+      for(const id of ['p202AttachmentDialog','p202ModelDialog']){
+        const dialog=$(id);if(dialog?.open)dialog.close();
+      }
+      document.body.classList.remove('p202-keyboard-visible');
+      document.documentElement.style.removeProperty('--p202-keyboard-inset');
+      return;
+    }
+    syncKeyboard();
     updateHeader();
     if(document.body.classList.contains('chat-details-open')&&!document.body.dataset.p202DetailsExplicit){
       document.body.classList.remove('chat-details-open');
