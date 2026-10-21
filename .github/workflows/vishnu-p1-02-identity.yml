@@ -1,0 +1,41 @@
+name: Vishnu P1-02 Identity Visual Qualification
+on:
+  pull_request:
+    paths:
+      - 'pwa/first-run.js'
+      - 'pwa/first-run-actions.js'
+      - 'pwa/genesis.css'
+      - 'pwa/genesis-identity.css'
+      - 'pwa/genesis-identity.js'
+      - 'pwa/assets/genesis/avatar-*.svg'
+      - 'tests/genesis_identity_browser.mjs'
+      - '.github/workflows/vishnu-p1-02-identity.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  identity-visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx playwright install --with-deps chromium
+      - name: Verify reusable WebGL, owner identity, avatars and responsive images
+        run: |
+          node --check pwa/first-run.js
+          node --check pwa/genesis-identity.js
+          node --check tests/genesis_identity_browser.mjs
+          VISHNU_IDENTITY_SCREENSHOTS=artifacts/genesis-identity node tests/genesis_identity_browser.mjs
+      - name: Upload desktop and mobile screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vishnu-p1-02-desktop-mobile
+          path: artifacts/genesis-identity/*.png
+          if-no-files-found: warn
+          retention-days: 14

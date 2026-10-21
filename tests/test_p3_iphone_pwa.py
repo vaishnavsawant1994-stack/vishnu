@@ -204,6 +204,14 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     # FastAPI runtime itself (the existing browser test server can otherwise
     # hide missing production routes by injecting those files).
     for path, marker in (
+        ('/iphone/genesis-welcome.css', 'vw-sphere'),
+        ('/iphone/genesis-neural-sphere.js', 'mountNeuralSphere'),
+        ('/iphone/genesis-identity.css', 'genesis-identity'),
+        ('/iphone/genesis-identity.js', 'mountIdentityScreen'),
+        ('/iphone/assets/genesis/avatar-blue.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-mountain.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-forest.svg', '<svg'),
+        ('/iphone/assets/genesis/avatar-horizon.svg', '<svg'),
         ('/iphone/campaign-demo.js', 'campaignDemo'),
         ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
         ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
@@ -1143,6 +1151,39 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     assert client.cookies.get('pa_session')
     assert runtime['owner_access'].recovery_codes_remaining() == len(result['recovery_codes'])
     assert client.get('/iphone/api/status').status_code == 423
+    # Profile pictures must be authorized by the SAME first-device setup
+    # ceremony, bound to the canonical owner and private to trusted devices.
+    stranger = TestClient(app, base_url='https://testserver')
+    assert stranger.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'blue',
+    }).status_code == 401
+    assert stranger.get('/iphone/api/access/profile/avatar').status_code == 401
+    saved_avatar = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'forest',
+    })
+    assert saved_avatar.status_code == 200, saved_avatar.text
+    assert saved_avatar.json()['saved'] is True
+    assert client.get('/iphone/api/access/profile/avatar').json() == {
+        'source': 'preset', 'preset_id': 'forest',
+    }
+    assert client.get('/iphone/api/access/profile/avatar/image').status_code == 404
+    import io
+    from PIL import Image
+    content = io.BytesIO()
+    Image.new('RGB', (8, 8), (40, 200, 255)).save(content, format='JPEG')
+    uploaded = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'upload', 'image_b64': base64.b64encode(content.getvalue()).decode(),
+    })
+    assert uploaded.status_code == 200, uploaded.text
+    image = client.get('/iphone/api/access/profile/avatar/image')
+    assert image.status_code == 200 and image.content.startswith(b'\x89PNG')
+    assert image.headers['cache-control'] == 'private, no-store'
+    assert stranger.get('/iphone/api/access/profile/avatar/image').status_code == 401
+    invalid = client.put('/iphone/api/first-run/avatar', json={
+        'source': 'upload', 'image_b64': base64.b64encode(b'<svg/>').decode(),
+    })
+    assert invalid.status_code == 422
+    assert client.get('/iphone/api/access/profile/avatar/image').content == image.content
     model_choice = client.post('/iphone/api/first-run/model', json={
         'provider_id': 'deepseek', 'model': 'deepseek-chat',
         'api_key': 'secret-test-provider-key-1234567890',
@@ -1155,6 +1196,10 @@ def test_web_first_run_creates_canonical_owner_and_first_browser_device(tmp_path
     })
     assert completed.status_code == 200, completed.text
     assert setup.ready is True
+    assert client.put('/iphone/api/first-run/avatar', json={
+        'source': 'preset', 'preset_id': 'horizon',
+    }).status_code == 409
+    assert client.get('/iphone/api/access/profile/avatar').json()['source'] == 'upload'
     assert client.get('/iphone/api/status').status_code == 200
     duplicate = client.post('/iphone/api/first-run/create', json={
         'bootstrap_secret': bootstrap, 'first_name': 'Different',

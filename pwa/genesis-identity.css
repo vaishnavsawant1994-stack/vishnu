@@ -1,0 +1,215 @@
+/* P1-02 owner identity. Scope everything so P1-01 and established auth screens remain unchanged. */
+.genesis-shell.genesis-identity {
+  --vi-cyan:#25d4fc;--vi-border:rgba(57,151,208,.34);--vi-muted:#9db1c9;
+  position:relative; isolation:isolate; box-sizing:border-box;
+  margin:clamp(12px,2.3vw,30px); width:calc(100% - clamp(24px,4.6vw,60px));
+  min-height:calc(100dvh - clamp(24px,4.6vw,60px)); height:auto;
+  border:1px solid rgba(83,161,219,.62);border-radius:20px;
+  padding:26px clamp(20px,2.4vw,38px) 32px;
+  display:flex;flex-direction:column;gap:14px;align-items:stretch;
+  overflow:visible;
+  background:radial-gradient(ellipse 40% 30% at 23% 72%,rgba(0,97,184,.19),transparent 82%),
+  radial-gradient(ellipse 55% 32% at 72% 45%,rgba(0,54,106,.08),transparent 90%),
+  linear-gradient(145deg,#02070d,#030b16 55%,#01050a);
+  box-shadow:0 0 24px rgba(4,72,130,.17),inset 0 0 0 1px rgba(12,66,111,.18);
+}
+.genesis-identity::after{background:none;}
+.vi-header{display:grid;grid-template-columns:minmax(190px,1fr) auto minmax(180px,1fr);gap:16px;align-items:center;min-height:62px;z-index:1;}
+.vi-brand{display:flex;align-items:center;gap:12px;color:#f4f8ff;font-weight:620;font-size:15px;letter-spacing:.13em;white-space:nowrap;}
+.vi-brand-icon{width:27px;height:30px;display:block;filter:drop-shadow(0 0 7px #00d8ff9c);}
+.vi-progress{display:flex;align-items:start;justify-content:center;gap:0;margin:0;list-style:none;padding:0;color:#788ca8;min-width:352px;}
+.vi-progress li{width:104px;text-align:center;font-size:11px;position:relative;line-height:1.25;}
+.vi-progress li:not(:last-child)::after{content:"";position:absolute;top:13px;left:65%;width:70%;height:1px;background:linear-gradient(90deg,rgba(81,140,194,.56),rgba(48,112,165,.2));}
+.vi-step-number{display:grid;place-items:center;margin:0 auto 6px;width:26px;height:26px;border:1px solid #173954;border-radius:50%;background:#07111f;color:#a5b6d1;font-size:12px;box-shadow:inset 0 0 10px #091c2e;}
+.vi-progress li[aria-current="step"]{color:#ecfaff;font-weight:650;}
+.vi-progress li[aria-current="step"] .vi-step-number{border-color:#62e4ff;color:#c2fbff;background:#075078;box-shadow:0 0 15px #04bfe99c;}
+.vi-header-tools{display:flex;align-items:center;justify-content:flex-end;gap:22px;}
+.vi-language{background:none;border:0;color:#d2e0f2;font-size:13px;display:flex;align-items:center;gap:7px;cursor:pointer;white-space:nowrap;padding:8px;}
+.vi-language svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;}
+.vi-screen-id{border:1px solid #1e4968;background:#06121e;padding:7px 14px;border-radius:999px;color:#95aecd;font-size:12px;}
+.vi-body{width:min(100%,1360px);margin:auto;flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) minmax(440px,512px);align-items:center;gap:clamp(32px,5vw,80px);padding:20px clamp(6px,1.25vw,20px) 8px;}
+.vi-hero{height:100%;min-height:510px;display:grid;place-items:center;position:relative;}
+.vi-hero::after{content:"";position:absolute;bottom:10%;height:30px;width:75%;max-width:540px;z-index:-1;border-radius:50%;background:radial-gradient(ellipse,rgba(0,180,253,.54) 0,rgba(0,97,198,.18) 36%,transparent 80%);filter:blur(15px);}
+.vi-sphere{width:clamp(295px,34vw,455px);height:clamp(295px,34vw,455px);flex:none;margin:0 auto;}
+.vi-sphere::before{filter:blur(23px);background:radial-gradient(circle,rgba(0,207,255,.32),rgba(0,85,185,.10) 42%,transparent 70%);}
+.vi-sphere::after{inset:0;border-color:rgba(41,187,255,.44);}
+.vi-form{max-width:512px;width:100%;box-sizing:border-box;background:linear-gradient(150deg,rgba(5,17,31,.94),rgba(2,11,21,.90));border:1px solid rgba(42,125,175,.40);border-radius:18px;padding:27px 32px 25px;box-shadow:inset 0 0 22px rgba(6,51,96,.10);}
+.vi-form h1{margin:0;color:#f4f8ff;font-size:clamp(25px,2.05vw,32px);letter-spacing:-.035em;line-height:1.18;font-weight:710;}
+.vi-form h1 span{color:#52ddff;}
+.vi-subtitle{margin:9px 0 26px;color:#a4b8cc;font-size:14px;line-height:1.5;}
+.vi-form-fields{display:grid;gap:19px;}
+.vi-label{font-size:14px;font-weight:540;color:#e5effa;display:block;margin-bottom:7px;}
+.vi-label small{color:#a5b9ce;font-weight:450;font-size:12px;}
+.vi-field{position:relative;display:flex;align-items:center;}
+.vi-field svg{position:absolute;left:16px;width:20px;height:20px;stroke:#adc6e5;fill:none;stroke-width:1.6;pointer-events:none;}
+.genesis-identity input.vi-input{display:block;width:100%;height:45px;min-height:45px;padding:0 14px 0 48px;border:1px solid rgba(60,145,210,.40);background:rgba(9,28,46,.85);color:#effaff;border-radius:12px;box-sizing:border-box;font:400 14px/1.4 Inter,Geist,"Segoe UI",sans-serif;outline:0;}
+.genesis-identity input.vi-input::placeholder{color:#849bb9;}
+.genesis-identity input.vi-input:focus{border-color:#3fd9ff;box-shadow:0 0 0 3px rgba(36,205,249,.15);}
+.vi-field-error{color:#ffc6c9;font-size:12px;margin:5px 0 0;}
+.vi-avatars-heading{margin:1px 0 9px;}
+.vi-avatar-row{display:flex;align-items:flex-start;justify-content:space-between;gap:11px;}
+.vi-avatar-choice{display:grid;justify-items:center;gap:6px;flex:0 0 auto;border:0;background:transparent;color:#aabbd0;cursor:pointer;padding:2px;font:400 11px/1.2 Inter,Geist,"Segoe UI",sans-serif;}
+.vi-avatar-ring{height:64px;width:64px;border-radius:50%;border:1.5px solid rgba(131,179,218,.52);display:grid;place-items:center;overflow:hidden;box-shadow:0 0 0 2px #04111e;position:relative;background:#03152b;}
+.vi-avatar-ring img{width:100%;height:100%;object-fit:cover;display:block;}
+.vi-avatar-choice[data-selected="true"] .vi-avatar-ring{outline:2px solid #53e4ff;outline-offset:2px;box-shadow:0 0 14px rgba(48,200,255,.45);}
+.vi-avatar-choice.vi-avatar-add .vi-avatar-ring{border-style:dashed;background:transparent;font-size:28px;color:#e5f6ff;box-shadow:none;}
+.vi-avatar-add span:last-child{font-size:11px;}
+.vi-avatar-file{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+.vi-preview{margin-top:20px;border:1px solid rgba(41,167,234,.55);background:linear-gradient(115deg,rgba(7,37,63,.91),rgba(5,20,36,.94));border-radius:14px;padding:14px 17px;display:flex;align-items:center;gap:20px;min-height:112px;box-sizing:border-box;box-shadow:inset 0 0 21px rgba(0,120,204,.08);}
+.vi-mini-sphere{width:89px;height:89px;flex:none;}
+.vi-mini-sphere canvas{pointer-events:none;cursor:default;}
+.vi-greeting{display:grid;gap:4px;min-width:0;text-align:left;}
+.vi-greeting strong{font-size:19px;color:#f5fbff;font-weight:720;}
+.vi-greeting span{font-size:14px;color:#eff8ff;}
+.vi-greeting small{font-size:13px;color:#9fb7d2;}
+.vi-draft-note{color:#90a9c4;font-size:11px;margin:10px 0 0;line-height:1.35;}
+.vi-actions{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:17px;}
+button.vi-back,button.vi-continue{min-height:45px;border-radius:11px;font-size:14px;font-weight:620;cursor:pointer;}
+button.vi-back{border:1px solid #4786ba;color:#e1efff;background:#030d1b;}
+button.vi-back:hover{border-color:#58c8f2;background:#0c1d30;}
+button.vi-continue{border:1px solid #4cf0ff;color:#00152d;background:linear-gradient(180deg,#47e9fa,#05aeec);box-shadow:0 0 20px rgba(0,176,247,.20);}
+button.vi-continue:hover{filter:brightness(1.09);}
+button.vi-continue:disabled{opacity:.5;cursor:wait;}
+.genesis-identity :is(button,input,select):focus-visible{outline:2px solid #c1faff;outline-offset:3px;}
+.vi-dialog{background:#071725;color:#e4f7ff;border:1px solid #2c7eab;border-radius:14px;padding:23px;max-width:min(90vw,440px);}
+.vi-dialog::backdrop{background:rgba(0,6,14,.75);}
+.vi-dialog button{background:#0a65a4;color:white;border:1px solid #29bfe6;border-radius:10px;padding:9px 17px;cursor:pointer;}
+.vi-dialog p{line-height:1.5;color:#a6bad0;}
+@media(max-height:790px) and (min-width:901px){
+ .genesis-shell.genesis-identity{padding-top:12px;padding-bottom:12px;gap:3px;}
+ .vi-header{min-height:49px;}
+ .vi-body{padding-top:4px;}
+ .vi-hero{min-height:450px;}
+ .vi-sphere{width:clamp(280px,31vw,390px);height:clamp(280px,31vw,390px);}
+ .vi-form{padding:17px 23px 16px;}
+ .vi-subtitle{margin-bottom:15px;}
+ .vi-form-fields{gap:10px;}
+ .vi-avatar-ring{width:55px;height:55px;}
+ .vi-preview{margin-top:10px;min-height:87px;padding:7px 12px;}
+ .vi-mini-sphere{width:67px;height:67px;}
+ .vi-actions{margin-top:12px;}
+}
+@media(max-width:900px){
+ .genesis-shell.genesis-identity{margin:0;width:100%;min-height:100dvh;border:none;border-radius:0;padding:max(16px,env(safe-area-inset-top)) 17px max(22px,env(safe-area-inset-bottom));overflow:visible;}
+ .vi-header{grid-template-columns:1fr auto;gap:10px;min-height:83px;}
+ .vi-brand{font-size:12px;gap:8px;}
+ .vi-brand-icon{width:21px;height:23px;}
+ .vi-header-tools{gap:7px;}
+ .vi-language{font-size:11px;}
+ .vi-language svg{width:16px;}
+ .vi-screen-id{padding:5px 9px;font-size:10px;}
+ .vi-progress{grid-column:1/-1;grid-row:2;min-width:0;width:100%;justify-self:center;}
+ .vi-progress li{width:25%;font-size:10px;}
+ .vi-progress li:not(:last-child)::after{width:73%;}
+ .vi-step-number{width:22px;height:22px;}
+ .vi-body{grid-template-columns:1fr;gap:2px;padding:0;margin:0;width:100%;align-content:start;}
+ .vi-hero{height:auto;min-height:0;padding:8px 0 2px;}
+ .vi-sphere{width:clamp(145px,22vh,185px);height:clamp(145px,22vh,185px);}
+ .vi-hero::after{bottom:0;max-width:280px;}
+ .vi-form{max-width:none;padding:14px 10px 15px;border:none;background:transparent;box-shadow:none;}
+ .vi-form h1{text-align:center;font-size:clamp(22px,5.5vw,28px);}
+ .vi-subtitle{text-align:center;font-size:13px;max-width:420px;margin:8px auto 16px;}
+ .vi-form-fields{gap:13px;}
+ .vi-label{font-size:12px;}
+ .genesis-identity input.vi-input{min-height:42px;height:42px;font-size:13px;}
+ .vi-avatars-heading{margin-top:0;}
+ .vi-avatar-ring{width:clamp(44px,13vw,58px);height:clamp(44px,13vw,58px);}
+ .vi-avatar-row{gap:6px;}
+ .vi-preview{min-height:84px;margin-top:13px;padding:9px 10px;gap:12px;}
+ .vi-mini-sphere{width:66px;height:66px;}
+ .vi-greeting{gap:3px;}
+ .vi-greeting strong{font-size:15px;}
+ .vi-greeting span{font-size:12px;}
+ .vi-greeting small{font-size:11px;}
+ .vi-actions{margin-top:14px;gap:10px;}
+ button.vi-back,button.vi-continue{min-height:44px;}
+}
+@media(max-width:370px){
+ .genesis-shell.genesis-identity{padding-inline:12px;}
+ .vi-form{padding-inline:3px;}
+ .vi-avatar-ring{width:42px;height:42px;}
+ .vi-avatar-row{gap:3px;}
+ .vi-progress li{font-size:9px;}
+ .vi-greeting span{font-size:11px;}
+}
+@media(prefers-reduced-motion:reduce){.genesis-identity *{scroll-behavior:auto!important;transition:none!important;}}
+
+/* Override older generic .genesis input rules without modifying P1-03 onward. */
+.genesis-identity #viRoot{display:flex;flex:1;flex-direction:column;min-height:0;width:100%;}
+.genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]){
+  min-height:45px;height:45px;padding:0 14px 0 48px;
+  background:rgba(9,28,46,.85);border-color:rgba(60,145,210,.40);
+  border-radius:12px;font:400 14px/1.4 Inter,Geist,"Segoe UI",sans-serif;
+}
+.genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]):focus{
+ border-color:#3fd9ff;box-shadow:0 0 0 3px rgba(36,205,249,.15);
+}
+.genesis-identity input.vi-avatar-file{display:none!important;}
+.genesis-identity .vi-avatar-choice[hidden]{display:none;}
+@media(max-width:900px){
+ .genesis .genesis-identity input.vi-input:not([type=checkbox]):not([type=radio]){
+  height:42px;min-height:42px;font-size:13px;
+ }
+}
+
+.genesis-identity [hidden]{display:none!important;}
+.vi-selected-avatar{width:36px;height:36px;border:1px solid #52c6ff;border-radius:50%;object-fit:cover;flex:none;box-shadow:0 0 12px rgba(27,174,245,.35);}
+@media(max-width:900px){
+  .vi-hero{padding-top:2px;padding-bottom:0;}
+  .vi-form{padding-top:9px;padding-bottom:12px;}
+  .vi-subtitle{margin-bottom:11px;}
+  .vi-form-fields{gap:10px;}
+  .vi-preview{margin-top:10px;}
+  .vi-actions{margin-top:12px;}
+  .vi-avatar-row{margin-bottom:0;}
+}
+
+/* The supplied composite reference displays the desktop app at roughly
+   1136 x 810 beside an illustrative phone; calibrate the app, not the phone bezel. */
+@media (min-width:901px) and (max-width:1200px) and (min-height:790px) {
+ .vi-sphere{width:440px;height:440px;transform:translateY(-25px);}
+ .vi-form{padding:22px 32px 18px;transform:translateY(12px);}
+ .vi-subtitle{margin-bottom:20px;}
+ .vi-form-fields{gap:16px;}
+}
+
+/* Reference atmosphere: sparse low-intensity particles and contained reflected
+   cyan light. These are decorative, noninteractive, and not a galaxy background. */
+.vi-hero{isolation:isolate;}
+.vi-hero::before{
+  content:"";pointer-events:none;position:absolute;z-index:-1;
+  left:20%;top:12%;width:3px;height:3px;border-radius:50%;
+  background:rgba(31,179,246,.45);filter:blur(.8px);
+  box-shadow:
+   82px -25px 9px 1px rgba(0,137,246,.25),161px 12px 7px rgba(43,202,255,.34),
+   -54px 70px 7px rgba(37,196,255,.39),255px 101px 5px rgba(11,159,245,.24),
+   42px 144px 11px rgba(24,194,248,.19),310px 177px 7px rgba(48,192,251,.35),
+   -33px 220px 5px rgba(38,155,218,.28),197px 278px 8px rgba(22,178,254,.24),
+   337px 323px 9px rgba(29,132,215,.18),-63px 351px 5px rgba(27,181,241,.27),
+   101px 418px 8px rgba(31,206,252,.23),269px 438px 6px rgba(26,152,238,.22);
+}
+.vi-hero::after{
+  bottom:9%;height:36px;width:81%;
+  background:
+    linear-gradient(180deg,transparent 43%,rgba(10,142,247,.19) 49%,transparent 58%),
+    radial-gradient(ellipse,rgba(10,218,255,.56),rgba(0,126,217,.24) 31%,transparent 78%);
+  filter:blur(17px);
+}
+@media(max-width:900px){
+ .vi-hero::before{opacity:.28;transform:scale(.53);}
+ .vi-hero::after{width:60%;height:15px;bottom:0;filter:blur(12px);}
+}
+
+.vi-load-error{margin:auto;max-width:520px;padding:24px;border:1px solid #326c94;border-radius:14px;background:#061726;color:#e5f9ff;text-align:center;}
+.vi-load-error button{margin-top:12px;padding:9px 22px;border:1px solid #31bfe9;border-radius:11px;background:#086fa4;color:white;cursor:pointer;}
+
+/* Volumetric cyan interior: original reference has a lit neural center, not an
+   empty dark wireframe. Confine the haze to the sphere; no new illustration. */
+.vi-sphere{
+ background:
+   radial-gradient(circle at 52% 46%,rgba(0,194,255,.30) 0%,rgba(0,114,224,.14) 15%,rgba(0,74,163,.06) 38%,transparent 74%);
+ box-shadow:0 0 68px -18px rgba(0,121,221,.25);
+}
+@media(max-width:900px){
+ .vi-sphere{background:radial-gradient(circle at 52% 46%,rgba(0,179,255,.20),rgba(0,95,193,.08) 21%,transparent 73%);box-shadow:0 0 40px -15px rgba(0,130,213,.22);}
+}

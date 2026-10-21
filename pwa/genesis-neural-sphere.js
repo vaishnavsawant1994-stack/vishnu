@@ -39,13 +39,13 @@ export function mountNeuralSphere(canvas) {
     void main() {
       float front = clamp((v_depth + 1.0) * 0.5, 0.0, 1.0);
       if (u_mode < 0.5) {
-        gl_FragColor = vec4(0.07, 0.66 + 0.20 * front, 1.0, 0.37 + front * 0.37);
+        gl_FragColor = vec4(0.07, 0.66 + 0.20 * front, 1.0, 0.19 + front * 0.26);
       } else {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
         if (radius > 0.5) discard;
         if (u_mode > 1.5) {
-          float halo = exp(-17.0 * radius * radius) * (0.30 + 0.23 * front);
+          float halo = exp(-14.0 * radius * radius) * (0.31 + 0.23 * front);
           gl_FragColor = vec4(0.12, 0.74, 1.0, halo);
           return;
         }
@@ -88,15 +88,15 @@ export function mountNeuralSphere(canvas) {
   const random = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const nodes = [];
   const golden = Math.PI * (3 - Math.sqrt(5));
-  const shellCount = 162;
+  const shellCount = 170;
   for (let i = 0; i < shellCount; i++) {
     const y = 1 - 2 * (i + 0.5) / shellCount;
     const radius = Math.sqrt(1 - y * y);
     const angle = i * golden + (random() - 0.5) * 0.14;
-    nodes.push([Math.cos(angle) * radius, y, Math.sin(angle) * radius, i % 11 === 0 ? 14 : 6.5 + random() * 5]);
+    nodes.push([Math.cos(angle) * radius, y, Math.sin(angle) * radius, i % 11 === 0 ? 16 : 6.5 + random() * 5]);
   }
   // Populate the sphere's *volume*, not just its outer silhouette.
-  for (let i = 0; i < 78; i++) {
+  for (let i = 0; i < 50; i++) {
     const y = random() * 2 - 1;
     const angle = random() * Math.PI * 2;
     const radius = 0.12 + 0.78 * random();
@@ -116,7 +116,7 @@ export function mountNeuralSphere(canvas) {
       neighbors.push([distance,j]);
     }
     neighbors.sort((a,b) => a[0]-b[0]);
-    for (const [,j] of neighbors.slice(0,i < shellCount ? 5 : 6)) {
+    for (const [,j] of neighbors.slice(0,i < shellCount ? 3 : 3)) {
       const key = i < j ? i + ':' + j : j + ':' + i;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -176,7 +176,7 @@ export function mountNeuralSphere(canvas) {
       gl.bindBuffer(gl.ARRAY_BUFFER, item);
       gl.vertexAttribPointer(attribute, 4, gl.FLOAT, false, 16, 0);
       gl.uniform1f(mode, kind);
-      gl.uniform1f(pointScale, kind > 1.5 ? 3.10 : 1.0);
+      gl.uniform1f(pointScale, (kind > 1.5 ? 3.10 : 1.0) * (width < 130 ? Math.max(.22, width / 310) : 1.0));
       gl.drawArrays(drawMode, 0, count);
     };
     renderBuffer(lineBuffer, edges.length / 4, 0, gl.LINES);
