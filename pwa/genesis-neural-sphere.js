@@ -16,6 +16,7 @@ export function mountNeuralSphere(canvas) {
     uniform float u_ratio;
     uniform float u_scale;
     uniform float u_time;
+    uniform float u_emphasis;
     varying float v_depth;
     varying float v_phase;
     void main() {
@@ -39,7 +40,7 @@ export function mountNeuralSphere(canvas) {
     void main() {
       float front = clamp((v_depth + 1.0) * 0.5, 0.0, 1.0);
       if (u_mode < 0.5) {
-        gl_FragColor = vec4(0.07, 0.66 + 0.20 * front, 1.0, 0.19 + front * 0.26);
+        gl_FragColor = vec4(0.07, 0.66 + 0.20 * front, 1.0, (0.19 + front * 0.26) * (u_emphasis > 0.5 ? 1.75 : 1.0));
       } else {
         vec2 uv = gl_PointCoord - vec2(0.5);
         float radius = length(uv);
@@ -145,6 +146,7 @@ export function mountNeuralSphere(canvas) {
   const pointScale = gl.getUniformLocation(program, 'u_scale');
   const mode = gl.getUniformLocation(program, 'u_mode');
   const time = gl.getUniformLocation(program, 'u_time');
+  const emphasis = gl.getUniformLocation(program, 'u_emphasis');
   gl.useProgram(program);
   gl.enableVertexAttribArray(attribute);
   gl.enable(gl.BLEND);
@@ -172,13 +174,14 @@ export function mountNeuralSphere(canvas) {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.uniform2f(rotation, yaw, pitch);
     gl.uniform1f(time, now);
+    gl.uniform1f(emphasis, canvas.dataset.neuralEmphasis === 'security' && width >= 300 ? 1 : 0);
     const renderBuffer = (item, count, kind, drawMode) => {
       gl.bindBuffer(gl.ARRAY_BUFFER, item);
       gl.vertexAttribPointer(attribute, 4, gl.FLOAT, false, 16, 0);
       gl.uniform1f(mode, kind);
       gl.uniform1f(pointScale, (kind > 1.5 ? 3.10 : 1.0) *
         (width < 130 ? Math.max(.22, width / 310) : 1.0) *
-        (canvas.dataset.neuralEmphasis === 'security' && width >= 300 ? 1.75 : 1));
+        (canvas.dataset.neuralEmphasis === 'security' && width >= 300 ? 2.55 : 1));
       gl.drawArrays(drawMode, 0, count);
     };
     renderBuffer(lineBuffer, edges.length / 4, 0, gl.LINES);
