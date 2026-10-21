@@ -968,7 +968,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         pa_token: str | None = Cookie(default=None)):
         auth_device(pa_device, pa_token)
         identity = owner_access.identity()
-        if identity is None:
+        if identity is None or first_run_setup is None:
             raise HTTPException(404, 'No owner profile exists')
         try:
             meta, _ = read_owner_avatar(first_run_setup.data_dir, identity['owner_id'])
