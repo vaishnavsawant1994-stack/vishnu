@@ -74,7 +74,7 @@
         await api('/first-run/resume', { method: 'POST', body: JSON.stringify({
           password: password.value,
           bootstrap_secret: bootstrap,
-          device_name: `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
+          device_name: state.deviceName || `${navigator.userAgentData?.platform || navigator.platform || 'Web'} browser`,
         }) });
         password.value = '';
         panel.remove();
@@ -97,11 +97,12 @@
     state.owner = state.displayName || [state.firstName, state.lastName].filter(Boolean).join(' ');
   }
 
-  async function configureSecurity() {
+  async function configureSecurity({ stayOnSecurity = false } = {}) {
     // An interrupted setup can resume after owner security already exists.
     // Do not post /first-run/create again; that would be a duplicate-owner
     // attempt. The user may still change the passkey choice before finishing.
     if (state.identityCreated) {
+      if (stayOnSecurity) return;
       render(4);
       const recoveryCodes = Array.isArray(state.recoveryCodes) ? state.recoveryCodes : [];
       $('firstRunCodes').textContent = recoveryCodes.join('\n') ||
@@ -117,6 +118,10 @@
     if (password !== confirmation) throw new Error('The passwords do not match.');
 
     busy(true, 'Securing Vishnu…');
+    // Never submit an empty or invalid friendly device name; the backend
+    // binds the label to the new DeviceRegistry record without changing trust.
+    if (!state.deviceName || !state.deviceName.trim() || state.deviceName.length > 120)
+      throw new Error('Enter a device name with no more than 120 characters.');
     const result = await api('/first-run/create', {
       method: 'POST',
       body: JSON.stringify({
@@ -129,19 +134,22 @@
       }),
     });
     state.identityCreated = true;
+    state.auth = state.passkeyCreated ? 'passkey' : 'password';
     state.recoveryCodes = result.recovery_codes || [];
-    render(4);
-    $('firstRunCodes').textContent = state.recoveryCodes.join('\n');
-    if (state.options.setup_recovery_saved) $('firstRunRecoverySaved').checked = true;
+    if (!stayOnSecurity) {
+      render(4);
+      $('firstRunCodes').textContent = state.recoveryCodes.join('\n');
+      if (state.options.setup_recovery_saved) $('firstRunRecoverySaved').checked = true;
+    }
   }
 
   async function createPasskey() {
-    if (state.passkeyCreated || state.options.passkey_available) return true;
+    if (state.passkeyCreated) return true;
     if (!window.PublicKeyCredential || !navigator.credentials) return false;
     try {
       const start = await api('/access/passkey/register/options', { method: 'POST', body: '{}' });
       const credential = await navigator.credentials.create({ publicKey: creationOptions(start.public_key) });
-      await api('/access/passkey/register/complete', {
+      const savedCredential = await api('/access/passkey/register/complete', {
         method: 'POST',
         body: JSON.stringify({
           challenge_id: start.challenge_id,
@@ -149,6 +157,7 @@
           name: 'Vishnu web passkey',
         }),
       });
+      if (!savedCredential || !savedCredential.ok) throw new Error('Passkey registration was not confirmed by Vishnu.');
       state.passkeyCreated = true;
       return true;
     } catch (error) {
@@ -156,6 +165,31 @@
       throw error;
     }
   }
+
+  async function startPasskeySetup({ password, confirmation, bootstrap, deviceName } = {}) {
+    if (state.passkeyCreated) return true;
+    if (!window.PublicKeyCredential || !navigator.credentials?.create) return false;
+    if (!state.identityCreated) {
+      // WebAuthn registration is bound to the real owner/device. Create the
+      // canonical owner first, but do not navigate away from P1-03 until
+      // the user finishes or cancels the platform authenticator ceremony.
+      if ((password || '').length < 12 || password !== confirmation)
+        throw new Error('Enter a matching owner password of at least 12 characters first.');
+      if (!state.options.local_setup_available && (bootstrap || '').length < 32)
+        throw new Error('Enter the secure setup code before enrolling a passkey.');
+      const passwordField = $('firstRunPassword');
+      const confirmField = $('firstRunPasswordAgain');
+      if (!passwordField || !confirmField) throw new Error('The security form is unavailable.');
+      state.deviceName = deviceName || state.deviceName;
+      await configureSecurity({stayOnSecurity:true});
+      passwordField.value = '';
+      confirmField.value = '';
+    }
+    const result = await createPasskey();
+    if (result) state.auth = 'passkey';
+    return result;
+  }
+  flow.startPasskeySetup = startPasskeySetup;
 
   async function persistOwnerAvatar() {
     const source = state.avatarSource || 'none';
