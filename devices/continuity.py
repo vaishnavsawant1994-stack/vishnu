@@ -71,7 +71,7 @@ class ContinuityService:
         self._emit('continuity.thread.created', thread_id=thread_id, device_id=device_id, title=title)
         return thread_id
 
-    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False, kind: str | None = None, project_id: str | None = None):
+    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False, kind: str | None = None, project_id: str | None = None, workspace_id: str | None = None):
         clauses = []
         params = []
         if kind not in (None, 'personal', 'work'):
@@ -81,6 +81,12 @@ class ContinuityService:
                 raise ValueError('Invalid project identifier')
             clauses.append("json_extract(t.context_json, '$.project_id') = ?")
             params.append(project_id)
+        if workspace_id is not None:
+            if not isinstance(workspace_id, str) or not workspace_id.strip() or len(workspace_id) > 80:
+                raise ValueError('Invalid workspace identifier')
+            clauses.append("json_extract(t.context_json, '$.workspace_id') = ?")
+            clauses.append("json_extract(t.context_json, '$.conversation_kind') = 'workspace'")
+            params.append(workspace_id)
         if not include_closed:
             clauses.append('t.closed_at IS NULL')
         # Scope in SQL *before* applying LIMIT: older Work threads must not
@@ -89,7 +95,7 @@ class ContinuityService:
         if kind == 'work':
             clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') = 'work'")
         elif kind == 'personal':
-            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') NOT IN ('work', 'project')")
+            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') NOT IN ('work', 'project', 'workspace')")
         if query.strip():
             term = f'%{query.strip()}%'
             clauses.append('''(t.title LIKE ? OR EXISTS(
