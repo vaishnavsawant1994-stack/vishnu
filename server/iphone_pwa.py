@@ -789,6 +789,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def projects_workspace_styles():
         return Response((web_dir / 'projects-workspace.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/p202c-project-conversation.js', include_in_schema=False)
+    def p202c_project_script():
+        return Response((web_dir / 'p202c-project-conversation.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p202c-project-conversation.css', include_in_schema=False)
+    def p202c_project_style():
+        return Response((web_dir / 'p202c-project-conversation.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
+
     @router.get('/api/status')
     def status(
         response: Response,
