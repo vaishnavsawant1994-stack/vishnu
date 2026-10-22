@@ -48,6 +48,7 @@ let root=null,prior=null,ready=false;
 const api=(path,opts)=>{const f=window.vishnuChatBridge?.api;if(typeof f!=='function')throw Error('Authenticated Vishnu session unavailable');return f('/command-center'+path,opts)};
 const commandAPI=(path,opts)=>{const f=window.vishnuChatBridge?.api;if(typeof f!=='function')throw Error('Authenticated Vishnu session unavailable');return f(path,opts)};
 function status(message,type='info'){state.status=message;const el=$('ccStatus');if(el){el.textContent=message;el.dataset.type=type}}
+function reportCommandFailure(error){const message=error?.message||'The command could not be completed.';status(message,'error');if(!state.active||!root?.isConnected)window.vishnuChatBridge?.showToast?.(message)}
 function context(){const bridge=window.vishnuChatBridge;const project=window.projectCurrent||null;const ws=window.vishnuWorkspaces?.current||null;const projectId=project?.id||new URLSearchParams(location.search).get('project')||null;return {page:'Command Center',project:project?.name||null,projectId,workspace:ws?.name||null,workspaceId:ws?.id||null,conversation:bridge?.currentConversationId||null};}
 function selectMatches(){const q=state.q.trim().toLowerCase(),filtered=registry.filter(x=>(state.category==='All'||x.category===state.category)&&(!q||[x.title,x.description,x.keywords,x.id].join(' ').toLowerCase().includes(q)));
 return filtered.sort((a,b)=>q?((a.title.toLowerCase()===q?-10:0)-(b.title.toLowerCase()===q?-10:0)):0)}
@@ -68,15 +69,15 @@ root=h.querySelector('.cc-page');root.dataset.state=state.core;
 root.addEventListener('click',event=>{
 const b=event.target.closest('button');if(!b)return;
 if(b.dataset.ccFilter){state.category=b.dataset.ccFilter;drawLists();return}
-if(b.dataset.ccId){executeId(b.dataset.ccId).catch(error=>status(error.message,'error'));return}
-if(b.dataset.ccExample){executeId(b.dataset.ccExample).catch(error=>status(error.message,'error'));return}
+if(b.dataset.ccId){executeId(b.dataset.ccId).catch(reportCommandFailure);return}
+if(b.dataset.ccExample){executeId(b.dataset.ccExample).catch(reportCommandFailure);return}
 if(b.dataset.ccView){state.category=b.dataset.ccView==='Navigate'?'Navigate':b.dataset.ccView==='Create'?'Create':'Work';drawLists();$('ccCommandInput')?.focus();return}
 if(b.dataset.ccAction==='menu'){showOptions();return}
 if(b.dataset.ccAction==='help'){showHelp();return}
 if(b.dataset.ccAction==='history'){showHistory();return}
 if(b.dataset.ccAction==='clear'){clearHistory().catch(e=>status(e.message,'error'))}
 });
-$('ccCommandForm').addEventListener('submit',event=>{event.preventDefault();if(event.isComposing)return;submit().catch(error=>status(error.message,'error'))});
+$('ccCommandForm').addEventListener('submit',event=>{event.preventDefault();if(event.isComposing)return;submit().catch(reportCommandFailure)});
 $('ccCommandInput').addEventListener('input',event=>{state.q=event.target.value;state.core=state.q?'typing':'idle';root.dataset.state=state.core;drawLists()});
 $('ccCommandInput').addEventListener('keydown',event=>{
 if(event.isComposing)return;
