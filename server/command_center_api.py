@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Cookie, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
+from security.request_context import current_trusted_request
 
 # Stable identifiers for owner navigation/creation entries. This is an
 # allow-list for history metadata, NOT an executable tool registry.
@@ -34,6 +35,11 @@ def command_center_router(runtime: dict) -> APIRouter:
         if hasattr(registry, "authorize") and not registry.authorize(device, "ai:chat"):
             raise HTTPException(403, "Device is not permitted to inspect commands")
         return device
+
+    def authorize_write(device):
+        context = current_trusted_request()
+        if context is None or context.device_id != device or not registry.is_active(device):
+            raise HTTPException(401, 'Current matching trusted owner session required')
 
     def load(device):
         try:
@@ -65,6 +71,7 @@ def command_center_router(runtime: dict) -> APIRouter:
     def record(body: RecentEntry, pa_device: str | None = Cookie(default=None),
                pa_token: str | None = Cookie(default=None)):
         device = owner(pa_device, pa_token)
+        authorize_write(device)
         if body.command_id not in KNOWN:
             raise HTTPException(422, "Unknown command identifier")
         # History has no execution power and cannot affirm an action outcome.
@@ -78,6 +85,7 @@ def command_center_router(runtime: dict) -> APIRouter:
     def clear(pa_device: str | None = Cookie(default=None),
               pa_token: str | None = Cookie(default=None)):
         device = owner(pa_device, pa_token)
+        authorize_write(device)
         save(device, [])
         return {"cleared": True}
 

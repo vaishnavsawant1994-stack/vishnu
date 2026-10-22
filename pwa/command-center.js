@@ -94,12 +94,12 @@ function showHistory(){state.category='All';state.q='';$('ccCommandInput').value
 async function loadHistory(){try{const v=await api('/recent');if(!state.active)return;state.recent=Array.isArray(v.recent)?v.recent.filter(x=>byId.has(x.id)):[];paintRecent()}catch(e){status('Recent history unavailable: '+e.message)}}
 async function remember(id){if(!byId.has(id))return;try{const d=await api('/recent',{method:'POST',body:JSON.stringify({command_id:id})});state.recent=d.recent||[];paintRecent()}catch(e){status('Command opened, but history could not be saved: '+e.message)}}
 async function clearHistory(){await api('/recent',{method:'DELETE'});state.recent=[];paintRecent();status('Recent command history cleared on this trusted device.')}
-async function go(mod){if(mod==='agents'){location.assign('/iphone/agents.html');return}if(mod==='chat'){await window.openModule('home');return}await window.openModule(mod)}
+async function go(mod){if(mod==='agents'){location.assign('/iphone/agents.html');return}if(mod==='chat'){await window.openModule('home');document.querySelector('#message')?.focus();return}if(mod==='today'){if(typeof window.vishnuChatBridge?.openTodayScreen!=='function')throw Error('Today assistant unavailable');await window.openModule('home');window.vishnuChatBridge.openTodayScreen();return}await window.openModule(mod)}
 async function runPrompt(text){const bridge=window.vishnuTodayP203Bridge;if(typeof bridge?.runPrompt!=='function')throw Error('The canonical conversation executor is unavailable');await go('home');await bridge.runPrompt(text)}
 async function toWizard(kind,name){
 if(kind==='project'){await go('projects');const button=document.querySelector('[data-project-action="new-project"]');if(!button)throw Error('Canonical Project creation is not available in this workspace');button.click();if(name){const field=document.querySelector('input[name="name"]');if(field){field.value=name;field.dispatchEvent(new Event('input',{bubbles:true}))}}return}
 if(kind==='workspace'){await go('labs');const button=document.querySelector('[data-workspace-new]');if(!button)throw Error('Canonical Workspace creation is not available');button.click();if(name){const field=document.querySelector('[data-workspace-form] [name="name"]');if(field){field.value=name;field.dispatchEvent(new Event('input',{bubbles:true}))}}return}
-if(kind==='task'){const bridge=window.vishnuTodayP203Bridge;if(typeof bridge?.create!=='function')throw Error('Canonical task creation is unavailable');bridge.create('task');return}
+if(kind==='task'){const bridge=window.vishnuTodayP203Bridge;if(typeof bridge?.create!=='function')throw Error('Canonical task creation is unavailable');await window.openModule('home');bridge.create('task');return}
 }
 async function openNamedWorkspace(name){const d=await commandAPI('/workspaces?q='+encodeURIComponent(name)+'&status=active');const rows=d.workspaces||[];const exact=rows.filter(x=>x.name.toLowerCase()===name.toLowerCase());if(exact.length===1){await go('labs');document.querySelector('[data-workspace-open="'+CSS.escape(exact[0].id)+'"]')?.click();return}await go('labs');window.vishnuChatBridge?.showToast?.(rows.length?'Multiple Workspaces matched. Choose one in the Workspace library.':'No authorized Workspace matches that name.');}
 async function executeId(id,options={}){const c=byId.get(id);if(!c||state.busy)return;state.busy=true;state.core='processing';if(root)root.dataset.state='processing';status('Opening '+c.title+'…');
@@ -111,8 +111,8 @@ case 'conversation':if(window.personalAiDemoMode)throw Error('Preview mode canno
 case 'create-project':await toWizard('project',options.name);break;
 case 'create-workspace':await toWizard('workspace',options.name);break;
 case 'create-task':await toWizard('task');break;
-case 'note':await go('knowledge');window.vishnuChatBridge?.showToast?.('Use the existing Knowledge / Notes editor. No note was created yet.');break;
-case 'upload':{await go('knowledge');const picker=document.querySelector('#knowledgeFileInput,[data-knowledge-upload],#attachmentButton');if(picker&&picker.type==='file')picker.click();else if(picker)picker.click();else window.vishnuChatBridge?.showToast?.('Open the existing Knowledge upload picker. No file has been uploaded.');break}
+case 'note':await go('memory');if(!document.querySelector('#memoryAdd'))throw Error('Canonical note editor unavailable');document.querySelector('#memoryAdd').click();break;
+case 'upload':{await go('knowledge');const picker=document.querySelector('#knowledgeFile,#knowledgeFileInput,[data-knowledge-upload],#attachmentButton');if(picker&&picker.type==='file')picker.click();else if(picker)picker.click();else window.vishnuChatBridge?.showToast?.('Open the existing Knowledge upload picker. No file has been uploaded.');break}
 case 'file':await go('knowledge');window.vishnuChatBridge?.showToast?.('Select an authorized file before requesting analysis.');break;
 case 'prompt':{
 const prompts={
@@ -158,7 +158,8 @@ async function open(){if(state.active){$('ccCommandInput')?.focus();return}state
 const original=window.openModule;if(typeof original!=='function')return;let navSeq=0;
 window.openModule=async function(name,...args){const seq=++navSeq;if(name!=='command'){state.active=false;document.body.classList.remove('cc-page-mode');root=null;return original.call(this,name,...args)}await original.call(this,'command',...args);if(seq!==navSeq)return;state.active=true;document.body.classList.add('cc-page-mode');mount()};
 window.vishnuOpenCommandCenter=open;
-window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key.toLowerCase()==='p'){if(e.target.closest?.('[contenteditable="true"]'))return;e.preventDefault();open().catch(error=>status(error.message,'error'));return}if(!state.active)return;if(e.key==='Escape'&&e.target!==$('ccCommandInput')){e.preventDefault();go('home').catch(()=>{})}});
+window.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.shiftKey&&e.key.toLowerCase()==='p'){if(e.target.closest?.('[contenteditable="true"]'))return;e.preventDefault();open().catch(error=>status(error.message,'error'));return}if(!state.active)return;if((e.ctrlKey||e.metaKey)&&e.key==='/'){if(e.target.closest?.('input,textarea,[contenteditable]'))return;e.preventDefault();$('ccCommandInput')?.focus();return}if(e.key==='Escape'&&e.target!==$('ccCommandInput')){e.preventDefault();go('home').catch(()=>{})}});
 document.addEventListener('click',e=>{if(e.target.closest?.('[data-command-center-entry]')){e.preventDefault();e.stopImmediatePropagation();open().catch(err=>status(err.message,'error'))}},true);
+window.addEventListener('vishnu:new-chat',()=>{state.active=false;document.body.classList.remove('cc-page-mode')});
 window.vishnuCommandCenter={open,executeId,registry:registry.map(({id,title,category})=>({id,title,category})),get state(){return state}};
 })();

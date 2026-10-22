@@ -44,3 +44,8 @@ Reference: Owner-supplied 1536×1024 Command Center desktop/mobile design. This 
 Exact-head CI green; inspect actual P2-08 screenshot artifacts; native flow/dependency checks; back-navigation, 200% scaling, accessibility focus/VoiceOver/TalkBack; ensure P2-05/06/07 stacked PRs are reconciled before integration. No merge/deploy without explicit authorization.
 
 ## Compatibility contract fix\n- The legacy P3 PWA asset smoke test previously required `cc-dialog` in the Command Center stylesheet; P2-08 is now a full-page `cc-page-mode` implementation, so its assertion checks that real supported layout contract instead. All other asset probes remain unchanged.\n
+## Trusted-session and canonical routing follow-up
+- Command history POST/DELETE now require a matching active TrustedRequestContext, not just a bearer cookie. Tests cover absent session context, mismatched device context, revoked devices and permission-denied reads.
+- Today navigation opens the existing Today surface, task creation leaves Command Center before opening the canonical Today composer, New Note enters the existing Memory note editor, and Upload File targets the existing Knowledge file input.
+- Ctrl/Cmd+/ focuses the command input when the page is active and no other editor owns focus. Creation through New Chat clears obsolete Command Center styling.
+- This change is not evidence that reminder scheduling, Work execution, native launchers or calendar writes are independently complete.

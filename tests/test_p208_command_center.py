@@ -1,6 +1,8 @@
 """P2-08 device-bound command history never grants execution authority."""
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from starlette.middleware.base import BaseHTTPMiddleware
+from security.request_context import TrustedRequestContext, set_trusted_request, reset_trusted_request
 
 from server.command_center_api import command_center_router
 
@@ -17,6 +19,9 @@ class Devices:
     def authorize(self, device, scope):
         return self.allowed and scope == "ai:chat"
 
+    def is_active(self, device):
+        return not self.revoked and device in self.metadata_by_device
+
     def metadata(self, device):
         return self.metadata_by_device[device]
 
@@ -27,9 +32,26 @@ class Devices:
         return True
 
 
-def client():
+class ContextMiddleware(BaseHTTPMiddleware):
+    def __init__(self, app, *, enabled=True, bound_device='d1'):
+        super().__init__(app)
+        self.enabled=enabled
+        self.bound_device=bound_device
+
+    async def dispatch(self, request, call_next):
+        if not self.enabled:
+            return await call_next(request)
+        token=set_trusted_request(TrustedRequestContext(self.bound_device, 'session1'))
+        try:
+            return await call_next(request)
+        finally:
+            reset_trusted_request(token)
+
+
+def client(*, context=True, bound_device='d1'):
     registry = Devices()
     app = FastAPI()
+    app.add_middleware(ContextMiddleware, enabled=context, bound_device=bound_device)
     app.include_router(command_center_router({"device_registry": registry}))
     return TestClient(app), registry
 
@@ -65,6 +87,7 @@ def test_history_stable_ids_dedupe_persistence_and_device_separation():
     c.cookies.set("pa_device", "d2")
     c.cookies.set("pa_token", "second")
     assert c.get(api).json()["recent"] == []
+    assert c.post(api,json={"command_id":"home"}).status_code == 401
     c.cookies.set("pa_device", "d1")
     c.cookies.set("pa_token", "first")
     assert c.delete(api).json() == {"cleared": True}
@@ -80,3 +103,15 @@ def test_history_does_not_expose_execution_mutations():
         ("/iphone/api/command-center/recent", frozenset({"POST"})),
         ("/iphone/api/command-center/recent", frozenset({"DELETE"})),
     }
+
+
+def test_mutations_require_active_bound_context_even_when_cookies_are_valid():
+    c,_=client(context=False)
+    c.cookies.set('pa_device','d1'); c.cookies.set('pa_token','first')
+    path='/iphone/api/command-center/recent'
+    assert c.get(path).status_code == 200
+    assert c.post(path,json={'command_id':'home'}).status_code == 401
+    assert c.delete(path).status_code == 401
+    mismatch,_=client(bound_device='d2')
+    mismatch.cookies.set('pa_device','d1');mismatch.cookies.set('pa_token','first')
+    assert mismatch.post(path,json={'command_id':'home'}).status_code == 401
