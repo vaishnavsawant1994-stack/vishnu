@@ -11,6 +11,7 @@
 Today presentation only. No Today data store, conversation engine, task authority, Project authority, Agent runner or approval authority added.
 
 - Timeline: `GET /iphone/api/everyday/timeline?day=YYYY-MM-DD&timezone=IANA&limit=500` (existing).
+- Dated Project tasks: `GET /iphone/api/projects/timeline?day=YYYY-MM-DD&limit=500`. Each retains its Project ID and opens the canonical Project; no Everyday mutation is applied to Project tasks.
 - Detail / lifecycle: `GET /iphone/api/everyday/items/{id}`, `POST /iphone/api/everyday/{id}/complete|snooze|reschedule|cancel` (existing).
 - Native item creation: `openTodayExistingCreate()` → existing `POST /iphone/api/everyday/items` (existing).
 - Approval list/detail: `GET /iphone/api/approvals-center` and `/{id}`. An explicit review + confirmation precedes authority `POST /iphone/api/approval/{id}/approve|reject`.
@@ -58,7 +59,7 @@ The Today layout now includes desktop navigation, top search/owner actions, reus
 4. No calendar month/week page was added. View Calendar scrolls to the canonical day timeline, not an external calendar provider.
 5. Approval decisions use existing confirmation and auth rules; fresh verification is decided by the server. Do not claim automatic approval for review-only attention records.
 6. Global Activity and Agent definitions remain observable through existing owner modules. Detailed active Agent-instance rows require a qualified workforce projection.
-7. Date-specific task count covers Everyday timeline records only; Project tasks are a separate authority until a source-aware normalized cross-system task count is qualified.
+7. Date-specific task counts combine canonical Everyday and canonical Project-dated tasks, retaining each source's authority. When either task source is unavailable, the combined count is unavailable. Cross-system record deduplication is not established.
 8. Text-first Today prompts use the existing canonical conversation context; strict AI retrieval source isolation is outside this screen's authority (P2-02D dependency).
 9. For safety, Today does not autonomously create/commit Work Plans or send external messages on a quick-action click.
 

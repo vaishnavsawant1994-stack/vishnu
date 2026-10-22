@@ -25,6 +25,7 @@ const server=createServer(async(req,res)=>{
    const day=url.searchParams.get('day');
    return out({items:day===today?[{id:'task-a',title:'Real scheduled task',kind:'task',due_at:day,status:'scheduled'},{id:'meeting-a',title:'Real meeting',kind:'commitment',due_at:day+'T09:00:00Z',status:'scheduled'}]:[]});
  }
+ if(path==='/iphone/api/projects/timeline')return out({items:url.searchParams.get('day')===today?[{id:'project-task-one',project_id:'project-one',project_name:'Verified Project',title:'Project task scheduled',status:'planned',due_date:today}]:[]});
  if(path==='/iphone/api/approvals-center')return out({approvals});
  if(path==='/iphone/api/approvals-center/approval-one')return out({approval_id:'approval-one',title:'Approve test change',tool:'governed_tool',description:'Exact test action',status:'pending'});
  if(path==='/iphone/api/approval/approval-one/approve'){approvals=[];return out({status:'approved',reply:'Approved through canonical authority.'})}
@@ -71,6 +72,9 @@ try{
   assert.ok(!await page.getByText('Real scheduled task').count(),'date-dependent source switched');
   await page.locator('[data-p203="goToday"]').click();
   await page.getByText('Real scheduled task').first().waitFor();
+  await page.getByText('Project task scheduled').first().waitFor();
+  await page.locator('[data-p203="projectTask"]').first().click();
+  assert.deepEqual(await page.evaluate(()=>window.calls.filter(x=>x[0]==='project').at(-1)),['project','project-one']);
   await page.locator('[data-p203="addEvent"]').click();
   assert.deepEqual(await page.evaluate(()=>window.calls.filter(x=>x[0]==='create').at(-1)),['create','meeting',today]);
   if(mobile){

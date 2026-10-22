@@ -31,7 +31,7 @@ const error=k=>s.sources[k]?.error||null;
 const rows=(k,name)=>{const v=data(k)?.[name];return Array.isArray(v)?v:[]};
 const alertText=(key,label)=>error(key)?'<p class="p203-error" role="status">'+esc(label)+' unavailable: '+esc(error(key))+'</p>':'';
 const pending=()=>rows('approvals','approvals').filter(x=>!x.status||['pending','waiting','requested'].includes(status(x.status)));
-const tasks=()=>rows('everyday','items').filter(x=>!['commitment','meeting'].includes(status(x.kind))&&!/today:meeting/.test(x.context||''));
+const tasks=()=>[...rows('everyday','items').filter(x=>!['commitment','meeting'].includes(status(x.kind))&&!/today:meeting/.test(x.context||'')),...rows('projectTasks','items')];
 const meetings=()=>rows('everyday','items').filter(x=>['commitment','meeting'].includes(status(x.kind))||/today:meeting/.test(x.context||''));
 const projects=()=>rows('projects','projects').filter(activeProject);
 const activity=()=>rows('activity','activities');
@@ -49,16 +49,17 @@ function navigation(){return '<aside class="p203-nav" aria-label="Vishnu navigat
 function timeBadge(item){return localTime(item.snoozed_until&&item.status==='snoozed'?item.snoozed_until:item.due_at||item.scheduled_at||item.start_at,s.zone)}
 function itemKind(item){return meetings().includes(item)?'meeting':'task'}
 function timeline(){
- const ordered=rows('everyday','items').slice().sort((a,b)=>{
+ const ordered=[...rows('everyday','items'),...rows('projectTasks','items').map(item=>({...item,source_type:'project_task',due_at:item.due_date}))].sort((a,b)=>{
    const x=a.due_at||a.start_at||a.scheduled_at||'',y=b.due_at||b.start_at||b.scheduled_at||'';
    return (x.length===10?'~'+x:x).localeCompare(y.length===10?'~'+y:y);
  });
  const html=ordered.slice(0,12).map(item=>{
-  const kind=itemKind(item),id=item.id||item.item_id;
-  return '<article class="p203-timeline-row"><time>'+esc(timeBadge(item))+'</time><span class="p203-timeline-track"></span><span class="p203-tile-icon '+kind+'">'+(kind==='meeting'?'▣':'✓')+'</span><button class="p203-row-description" type="button" data-p203="item" data-id="'+esc(id)+'"><strong>'+esc(item.title||'Untitled')+'</strong><small>'+esc(item.description||item.context||kind)+'</small></button><button class="p203-ellipsis" type="button" aria-label="Actions for '+esc(item.title||'item')+'" data-p203="item" data-id="'+esc(id)+'">⋯</button></article>'
+  const kind=itemKind(item),id=item.source_type==='project_task'?item.project_id:item.id||item.item_id;
+  const action=item.source_type==='project_task'?'projectTask':'item';
+  return '<article class="p203-timeline-row"><time>'+esc(timeBadge(item))+'</time><span class="p203-timeline-track"></span><span class="p203-tile-icon '+kind+'">'+(kind==='meeting'?'▣':'✓')+'</span><button class="p203-row-description" type="button" data-p203="'+action+'" data-id="'+esc(id)+'"><strong>'+esc(item.title||'Untitled')+'</strong><small>'+esc(item.project_name?'Project: '+item.project_name:(item.description||item.context||kind))+'</small></button><button class="p203-ellipsis" type="button" aria-label="Actions for '+esc(item.title||'item')+'" data-p203="'+action+'" data-id="'+esc(id)+'">⋯</button></article>'
  }).join('');
  return '<section class="p203-card p203-agenda"><div class="p203-card-heading"><h2>Today</h2>'+btn('View Calendar','calendar','class="p203-link"')+'</div>'+alertText('everyday','Schedule')+
- (html||'<p class="p203-empty">Nothing scheduled for '+esc(dateLabel())+'.</p>')+
+ alertText('projectTasks','Project tasks')+(html||'<p class="p203-empty">Nothing scheduled for '+esc(dateLabel())+'.</p>')+
  '<div class="p203-add">'+btn('＋ Add Event','addEvent')+'</div></section>';
 }
 function needsYou(){
@@ -84,7 +85,7 @@ function summary(){
  const appr=data('approvals')?pending().length:null;
  const agent=agentsWorking();
  return '<section class="p203-card p203-summary"><div class="p203-card-heading"><h2>'+ (selectedIsToday()?"Today's":"Day")+' Summary</h2>'+btn('⋯','refresh','class="p203-link"')+'</div>'+
- [['▣',data('everyday')?m.length:null,'Meetings scheduled'],['✓',data('everyday')?t.length:null,'Tasks scheduled'],['!',appr,'Pending approvals'],['⬡',data('projects')?p.length:null,'Active Projects'],['♧',data('agents')?agent:null,'Agents working'],['⌁',data('activity')?activity().length:null,'Recent audited events']]
+ [['▣',data('everyday')?m.length:null,'Meetings scheduled'],['✓',data('everyday')&&data('projectTasks')?t.length:null,'Tasks scheduled'],['!',appr,'Pending approvals'],['⬡',data('projects')?p.length:null,'Active Projects'],['♧',data('agents')?agent:null,'Agents working'],['⌁',data('activity')?activity().length:null,'Recent audited events']]
  .map(([sym,count,label])=>'<div class="p203-summary-row"><span class="p203-summary-icon">'+sym+'</span><strong>'+text(count)+'</strong><small>'+label+'</small></div>').join('')+'</section>';
 }
 function projectList(){
@@ -114,7 +115,7 @@ function activityList(){
 function render(){
  const root=document.getElementById('todayCommandDashboard');if(!root)return;
  const g=greeting()+', '+(get()?.name?.()||'Owner'),ap=data('approvals')?pending().length:null,
- t=data('everyday')?tasks().length:null,p=data('projects')?projects().length:null,a=data('agents')?agentsWorking():null;
+ t=data('everyday')&&data('projectTasks')?tasks().length:null,p=data('projects')?projects().length:null,a=data('agents')?agentsWorking():null;
  const preview=s.demo?'<p class="p203-preview">REFERENCE PREVIEW — sample records are not saved and actions are disabled.</p>':'';
  get()?.restoreCore?.();
  root.innerHTML='<div class="p203-shell">'+navigation()+'<div class="p203-workspace"><header class="p203-top"><button type="button" data-p203="menu" class="p203-menu" aria-label="Open navigation">☰</button><span class="p203-mobile-brand">V I S H N U</span>'+btn('⌕  Search anything… (tasks, files, projects, conversations…)','search','class="p203-global-search"')+btn('♧','notifications','class="p203-top-icon" aria-label="Notifications and alerts"')+btn('◉','settings','class="p203-top-icon" aria-label="Owner account settings"')+'</header><main class="p203-content">'+preview+
@@ -160,7 +161,7 @@ async function load(){
  const api=get()?.api;
  if(typeof api!=='function'){s.busy=false;render();return}
  const day='/everyday/timeline?day='+enc(s.day)+'&timezone='+enc(s.zone)+'&limit=500';
- const requests={everyday:day,approvals:'/approvals-center?limit=100',
+ const requests={everyday:day,projectTasks:'/projects/timeline?day='+enc(s.day)+'&limit=500',approvals:'/approvals-center?limit=100',
   attention:'/work/attention?limit=100',work:'/work/summary',projects:'/projects?status=all&sort=recent',
   agents:'/agents/summary',catalog:'/agents',activity:'/activities?limit=40'};
  const output=await Promise.all(Object.entries(requests).map(async([name,url])=>{
@@ -245,6 +246,7 @@ async function execute(action,id){
  if(action==='menu'){document.querySelector('.p203-shell')?.classList.toggle('nav-open');return}
  if(action==='send')return send();
  if(action==='item')return itemDetails(id);
+ if(action==='projectTask')return get()?.openProject?.(id);
  if(action==='approvalDetail')return approvalDetails(id);
  if(action==='attentionDetail')return attentionDetails(id);
  if(action==='activityDetail')return activityDetails(id);
