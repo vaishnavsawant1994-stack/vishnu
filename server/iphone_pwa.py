@@ -2182,13 +2182,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         # Filtering is display-only; it does not grant new permissions.
         # Keep the legacy response unchanged when no kind is requested.
         rows = continuity.list_threads(
-            q, limit=200 if kind else bounded_limit, include_closed=include_closed,
+            q, limit=bounded_limit, include_closed=include_closed, kind=kind,
         )
-        if kind:
-            rows = [
-                row for row in rows
-                if ('work' if row.get('context', {}).get('conversation_kind') == 'work' else 'personal') == kind
-            ][:bounded_limit]
         return {
             'active_conversation_id': active['id'] if active else None,
             'conversations': rows,

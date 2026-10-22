@@ -66,3 +66,22 @@ def test_project_link_request_requires_confirmation_and_bounded_id():
         ConversationWorkProjectBody(project_id="a" * 81, confirm=True)
     with pytest.raises(ValidationError):
         ConversationWorkProjectBody(project_id="project-1")
+
+
+def test_kind_filter_applies_before_history_limit(tmp_path):
+    ledger = ContinuityService(tmp_path / 'many-conversations.sqlite3')
+    old_work_id = ledger.create_thread('Old Work', context={'conversation_kind': 'work'})
+    # Previously the newest 200 mixed threads were selected before the Work filter.
+    for number in range(205):
+        ledger.create_thread(f'Personal {number}')
+    ledger.create_thread('Recent Work', context={'conversation_kind': 'work'})
+    work = ledger.list_threads(limit=2, kind='work')
+    assert len(work) == 2
+    assert {row['id'] for row in work} >= {old_work_id}
+    assert {row['context'].get('conversation_kind') for row in work} == {'work'}
+    personal = ledger.list_threads(limit=3, kind='personal')
+    assert len(personal) == 3
+    assert all(row['context'].get('conversation_kind') != 'work' for row in personal)
+    assert len(ledger.list_threads(limit=3)) == 3  # Original unfiltered API unchanged.
+    with pytest.raises(ValueError, match='Unsupported conversation kind'):
+        ledger.list_threads(kind='project')

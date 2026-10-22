@@ -71,11 +71,20 @@ class ContinuityService:
         self._emit('continuity.thread.created', thread_id=thread_id, device_id=device_id, title=title)
         return thread_id
 
-    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False):
+    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False, kind: str | None = None):
         clauses = []
         params = []
+        if kind not in (None, 'personal', 'work'):
+            raise ValueError('Unsupported conversation kind')
         if not include_closed:
             clauses.append('t.closed_at IS NULL')
+        # Scope in SQL *before* applying LIMIT: older Work threads must not
+        # disappear when many newer Personal threads occupy the default window.
+        # Untagged legacy (or other non-Work) contexts remain Personal.
+        if kind == 'work':
+            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') = 'work'")
+        elif kind == 'personal':
+            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') != 'work'")
         if query.strip():
             term = f'%{query.strip()}%'
             clauses.append('''(t.title LIKE ? OR EXISTS(

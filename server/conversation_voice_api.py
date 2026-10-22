@@ -329,14 +329,8 @@ def conversation_voice_router(runtime, executor):
         # legacy compatibility route so Work cannot silently list Personal chats.
         # Work vs Personal is a saved owner-domain organization, not ACL isolation.
         rows = continuity.list_threads(
-            q, limit=200 if kind else bounded_limit, include_closed=include_closed,
+            q, limit=bounded_limit, include_closed=include_closed, kind=kind,
         )
-        if kind:
-            rows = [
-                row for row in rows
-                if ('work' if row.get('context', {}).get('conversation_kind') == 'work'
-                    else 'personal') == kind
-            ][:bounded_limit]
         return {
             'active_conversation_id': active['id'] if active else None,
             'conversations': rows,
