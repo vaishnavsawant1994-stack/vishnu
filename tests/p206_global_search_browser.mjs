@@ -82,6 +82,19 @@ try{
   await page.locator('[data-gs-category="all"]').click();
   await page.locator('[data-gs-select="conversations"]').click();
   await page.getByText('Verified canonical reply').waitFor();
+  if(width===1536){
+   await page.locator('#gsWorkspace').selectOption('workspace-1');
+   await page.locator('[data-gs-select="files"]').waitFor();
+   await page.locator('[data-gs-select="files"]').click();
+   await page.waitForFunction(()=>document.querySelector('#gsDetail .gs-detail-head'));
+   assert.ok(calls.some(x=>x.startsWith('/iphone/api/search/result/files/file-1?')&&
+     x.includes('project_id=proj-1')&&x.includes('workspace_id=workspace-1')),
+     'Search preview must preserve verified Workspace and Project filters');
+   await page.locator('#gsWorkspace').selectOption('');
+   await page.locator('[data-gs-select="conversations"]').waitFor();
+   await page.locator('[data-gs-select="conversations"]').click();
+   await page.getByText('Verified canonical reply').waitFor();
+  }
   if(width===1536&&screenshot)await page.screenshot({path:screenshot+'/search-'+width+'.png',fullPage:false});
   await page.locator('[data-gs-action="summarize"]').click();
   await page.getByText('Verified AI summary').waitFor();
