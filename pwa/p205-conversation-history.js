@@ -78,7 +78,17 @@ async function loadSources(){
  select('p205Project',S.projects,'Project');select('p205Workspace',S.workspaces,'Workspace');
 }
 async function select(id){
- const row=S.rows.find(r=>r.id===id);if(!row)return;
+ let row=S.rows.find(r=>r.id===id);
+ if(!row){
+   // Global Search may open a thread older than the first History page.
+   // Revalidate the canonical ID before adding it to this transient list.
+   try{
+     const result=await b().api('/conversations/'+sid(id)+'/history-detail?limit=200');
+     row=result.conversation;
+     if(!row||row.closed_at)throw Error('Conversation is archived or unavailable');
+     S.rows=[row,...S.rows.filter(item=>item.id!==id)];
+   }catch(e){alert('Unable to open this conversation: '+e.message);return}
+ }
  S.selected=id;S.mobileDetail=true;S.tab='chat';S.thread=row;S.related=null;S.events=[];S.summary=String(row.context?.history_summary||'');
  const token=++S.detailEpoch;drawList();renderDetail();
  try{const result=await b().api('/conversations/'+sid(id)+'/history-detail?limit=200');

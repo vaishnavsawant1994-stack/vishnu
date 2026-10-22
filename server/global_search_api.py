@@ -117,7 +117,8 @@ def global_search_router(runtime: dict) -> APIRouter:
                                   updated=it.get("updated_at", ""),
                                   project_id=ctx.get("project_id") or ctx.get("work_project_id"),
                                   workspace_id=ctx.get("workspace_id"),
-                                  tags=ctx.get("history_tags") or [], source="continuity"))
+                                  tags=ctx.get("history_tags") or [], source="continuity",
+                                  context_kind=ctx.get("conversation_kind") or "personal"))
             return result, "partial" if page.get("has_more") else "available"
 
         if kind == "workspaces":
@@ -314,7 +315,8 @@ def global_search_router(runtime: dict) -> APIRouter:
             if thread and not thread.get("closed_at"):
                 ctx = thread.get("context") or {}
                 resource = row(kind, result_id, thread.get("title"), updated=thread.get("updated_at"),
-                               project_id=ctx.get("project_id"), workspace_id=ctx.get("workspace_id"))
+                               project_id=ctx.get("project_id"), workspace_id=ctx.get("workspace_id"),
+                               context_kind=ctx.get("conversation_kind") or "personal")
                 evs = s["conversations"].events_for_thread(result_id, limit=30)
                 preview = [{"role": e["kind"], "text": str((e.get("payload") or {}).get("text") or "")[:800]}
                            for e in evs if e.get("kind") in {"user_message", "assistant_message"}][-12:]

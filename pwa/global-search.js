@@ -117,8 +117,14 @@ async function select(item){
 async function navigate(item){
  if(!item)return;
  const type=item.type,id=item.id,mod=type==='conversations'?'chat':type==='projects'||type==='work'||type==='files'&&item.project_id?'projects':type==='workspaces'?'labs':type==='agents'?'agents':type==='memory'?'memory':'knowledge';
+ if(type==='conversations'&&['work','project','workspace'].includes(item.context_kind||'')&&window.vishnuP205){
+   // Open the original scoped thread in History; never demote it to Personal Chat.
+   await window.vishnuP205.open();
+   await window.vishnuP205.select(id);
+   return;
+ }
  if(type==='conversations'&&typeof window.openConversation==='function'){
-   window.openConversation(id).catch(e=>window.showToast?.(e.message));document.body.classList.remove('global-search-mode');return
+   await window.openConversation(id);document.body.classList.remove('global-search-mode');return
  }
  await window.openModule(mod);
  if((type==='projects'||item.project_id)&&typeof window.openProject==='function'){
