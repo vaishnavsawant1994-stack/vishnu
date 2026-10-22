@@ -160,11 +160,11 @@ def conversation_voice_router(runtime, executor):
                         project_names.append(str(project.get('name') or '')[:100] + ' [' +
                                              str(project.get('status') or 'unknown') + ']')
             context_text = (
-                'WORKSPACE REFERENCE FROM TRUSTED SERVER (not tool permission):\\n'
-                'Workspace name: ' + str(workspace['name'])[:120] + '\\n'
-                'Description: ' + str(workspace.get('description') or '')[:950] + '\\n'
-                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None') + '\\n'
-                'Do not claim external actions completed without verified tool evidence.\\n\\n'
+                'WORKSPACE REFERENCE FROM TRUSTED SERVER (not tool permission):\n'
+                'Workspace name: ' + str(workspace['name'])[:120] + '\n'
+                'Description: ' + str(workspace.get('description') or '')[:950] + '\n'
+                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None') + '\n'
+                'Do not claim external actions completed without verified tool evidence.\n\n'
                 'Owner request: ' + transcript
             )
             transcript = context_text[:8000]
