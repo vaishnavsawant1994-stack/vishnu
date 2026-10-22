@@ -116,6 +116,7 @@ function render(){
  const g=greeting()+', '+(get()?.name?.()||'Owner'),ap=data('approvals')?pending().length:null,
  t=data('everyday')?tasks().length:null,p=data('projects')?projects().length:null,a=data('agents')?agentsWorking():null;
  const preview=s.demo?'<p class="p203-preview">REFERENCE PREVIEW — sample records are not saved and actions are disabled.</p>':'';
+ get()?.restoreCore?.();
  root.innerHTML='<div class="p203-shell">'+navigation()+'<div class="p203-workspace"><header class="p203-top"><button type="button" data-p203="menu" class="p203-menu" aria-label="Open navigation">☰</button><span class="p203-mobile-brand">V I S H N U</span>'+btn('⌕  Search anything… (tasks, files, projects, conversations…)','search','class="p203-global-search"')+btn('♧'+(ap===null?'':' '+ap),'notifications','class="p203-top-icon" aria-label="Notifications and approvals"')+btn('◉','settings','class="p203-top-icon" aria-label="Owner account settings"')+'</header><main class="p203-content">'+preview+
  '<div class="p203-intro"><div class="p203-core"><div id="p203NeuralStage" class="p203-core-stage"><span class="p203-fallback-core" aria-hidden="true"></span></div><strong>Vishnu</strong><small>Your Personal AI Assistant</small></div><div class="p203-intro-main"><div class="p203-greeting"><div><h1><span aria-hidden="true">☀</span> '+esc(g)+'</h1><p>Here’s your day at a glance. Let’s make it productive!</p></div><div class="p203-date-controls">'+btn('‹','prevDay','aria-label="Previous day"')+'<button type="button" data-p203="pickDate" class="p203-date-label">'+esc(dateLabel())+'</button>'+btn('›','nextDay','aria-label="Next day"')+btn('Today','goToday','class="p203-today-button"')+'<input type="date" id="p203DateInput" aria-label="Select calendar date" value="'+s.day+'" /></div></div>'+
  '<form class="p203-hero-composer" id="p203HeroForm"><span aria-hidden="true">⌕</span><input id="p203TopDraft" maxlength="4000" aria-label="Ask Vishnu anything" placeholder="Ask Vishnu anything…" value="'+esc(s.draft)+'" />'+btn('♧','attach','aria-label="Attach file"')+btn('♩','voice','aria-label="Voice input"')+'<button type="submit" aria-label="Send to Vishnu" class="p203-send">➤</button></form>'+
@@ -155,7 +156,6 @@ function setDay(day){
 }
 async function load(){
  if(!document.getElementById('todayCommandDashboard'))return;
- if(s.busy)return;
  s.busy=true;const epoch=++s.epoch;
  const api=get()?.api;
  if(typeof api!=='function'){s.busy=false;render();return}
