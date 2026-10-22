@@ -311,3 +311,34 @@ def test_workspace_voice_turn_checks_saved_association_and_uses_server_context(t
     assert 'Saved Linked Project' in received
     assert 'What is the current status?' in received
     assert 'Other Studio' not in received
+
+
+def test_project_live_voice_uses_verified_project_metadata_and_rejects_archived(tmp_path):
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    projects = ProjectStore(tmp_path / 'projects.sqlite3')
+    project = projects.create(name='Verified Project for Voice', goal='Only saved project context')
+    thread_id = continuity.create_thread('Project Voice', context={
+        'conversation_kind': 'project', 'project_id': project['id']
+    })
+    runtime = {
+        'device_registry': _Registry(), 'continuity': continuity,
+        'base_project_store': projects,
+    }
+    endpoint = _endpoint(conversation_voice_router(runtime, executor),
+                         '/iphone/api/voice/turn', 'POST')
+    result = _call_voice(endpoint, CanonicalVoiceTurnBody(
+        request_id=R1, transcript='Please review status',
+        conversation_id=thread_id), request_id=R1)
+    assert result['status'] == 'completed'
+    assert 'Verified Project for Voice' in inner.calls[0][0]
+    assert 'Only saved project context' in inner.calls[0][0]
+    assert 'Please review status' in inner.calls[0][0]
+
+    projects.archive(project['id'])
+    with pytest.raises(HTTPException) as blocked:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id='22222222-2222-4222-8222-222222222222',
+            transcript='Continue archived Project', conversation_id=thread_id),
+            request_id='22222222-2222-4222-8222-222222222222')
+    assert blocked.value.status_code == 404
+    assert len(inner.calls) == 1
