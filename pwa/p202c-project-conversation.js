@@ -110,7 +110,7 @@ async function send(s){
 }
 function fileActions(s,f){
  const options=[['View Files',()=>show('Files')]];
- if(f.kind==='upload'||f.kind==='deliverable')options.push(['Download',()=>{location.href=path(s,'/files/'+encodeURIComponent(f.id)+'/download')}]);
+ if(f.kind==='upload'||f.kind==='deliverable')options.push(['Download',()=>{location.href='/iphone/api'+path(s,'/files/'+encodeURIComponent(f.id)+'/download')}]);
  if(f.indexing_state==='indexed')options.push(['Text preview',async()=>{
    const data=await api(path(s,'/files/'+encodeURIComponent(f.id)+'/index'));
    sheet(f.title,String(data.extracted_text||'No text preview').slice(0,3500));
@@ -159,6 +159,12 @@ function menu(s){
    await api('/conversations/'+encodeURIComponent(s.id),{method:'PATCH',body:JSON.stringify({title:title.trim().slice(0,120)})});await reloadChats(s,s.id)}],
  ['Archive current chat',async()=>{if(!s.id||!confirm('Archive this conversation only?'))return;
    await api('/conversations/'+encodeURIComponent(s.id)+'/archive',{method:'POST',body:'{}'});
+   sessionStorage.removeItem('vishnu.project.active.'+s.project.id);await reloadChats(s)}],
+ ['Export current chat',async()=>{if(!s.id)return;const data=await api('/conversations/'+encodeURIComponent(s.id)+'/export');
+   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+   const ref=URL.createObjectURL(blob),link=document.createElement('a');link.href=ref;link.download='vishnu-project-conversation.json';link.click();setTimeout(()=>URL.revokeObjectURL(ref),1000)}],
+ ['Delete current chat',async()=>{if(!s.id||!confirm('Permanently delete this conversation and its messages? This cannot be undone.'))return;
+   await api('/conversations/'+encodeURIComponent(s.id)+'?confirm=true',{method:'DELETE'});
    sessionStorage.removeItem('vishnu.project.active.'+s.project.id);await reloadChats(s)}]
  ]);
 }

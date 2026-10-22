@@ -735,7 +735,7 @@ def projects_router(runtime, store: ProjectStore):
         project_id: str, conversation_id: str,
         pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
     ):
-        device_id = authenticate(pa_device, pa_token)
+        authenticate(pa_device, pa_token)
         thread = project_thread(project_id, conversation_id)
         return {'conversation': thread, 'events': continuity.events_for_thread(thread['id'], limit=200)}
 

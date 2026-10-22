@@ -75,3 +75,5 @@
 .p202c-quick{max-width:100%}}
 @media(max-width:380px){.p202c-root{padding-left:5px;padding-right:5px}.p202c-log .p202c-message{max-width:98%}.p202c-compose{margin:0 5px}.p202c-tabs button{padding:8px 7px}}
 @media(prefers-reduced-motion:reduce){.p202c-root *{transition:none!important;scroll-behavior:auto!important}}
+
+@media(max-width:850px){body:has(#p202cRoot) .reference-mobile-nav,body:has(#p202cRoot) #p202MobileNav,body:has(#p202cRoot) #p202bMobileNav{display:none!important}}
