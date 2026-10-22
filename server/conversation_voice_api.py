@@ -22,6 +22,7 @@ class CanonicalVoiceTurnBody(BaseModel):
     request_id: str = Field(min_length=36, max_length=64)
     transcript: str = Field(min_length=1, max_length=8000)
     conversation_id: str | None = Field(default=None, max_length=80)
+    workspace_id: str | None = Field(default=None, max_length=80)
 
     @field_validator('request_id')
     @classmethod
@@ -136,6 +137,39 @@ def conversation_voice_router(runtime, executor):
                 'message': 'Voice transport request identity does not match the canonical logical request.',
             })
         transcript = body.transcript.strip()
+        # Server-side verified association. Workspace IDs and Project names
+        # supplied in arbitrary user prompts are never an authority boundary.
+        related_thread = continuity.thread(body.conversation_id) if (continuity and body.conversation_id) else None
+        related_meta = (related_thread or {}).get('context') or {}
+        if body.workspace_id is not None:
+            if (not related_thread or related_thread.get('closed_at')
+                or related_meta.get('conversation_kind') != 'workspace'
+                or related_meta.get('workspace_id') != body.workspace_id
+                or related_meta.get('owner_id') != 'owner'):
+                raise HTTPException(404, 'Workspace conversation not found')
+            workspace_store = runtime.get('workspace_store')
+            workspace = workspace_store.get('owner', body.workspace_id) if workspace_store else None
+            if not workspace or workspace.get('status') != 'active':
+                raise HTTPException(404, 'Workspace not found or archived')
+            project_store = runtime.get('base_project_store')
+            project_names = []
+            if project_store:
+                for link in workspace_store.linked_projects('owner', body.workspace_id)[:30]:
+                    project = project_store.get(link['resource_id'])
+                    if project and project.get('status') != 'archived':
+                        project_names.append(str(project.get('name') or '')[:100] + ' [' +
+                                             str(project.get('status') or 'unknown') + ']')
+            context_text = (
+                'WORKSPACE REFERENCE FROM TRUSTED SERVER (not tool permission):\\n'
+                'Workspace name: ' + str(workspace['name'])[:120] + '\\n'
+                'Description: ' + str(workspace.get('description') or '')[:950] + '\\n'
+                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None') + '\\n'
+                'Do not claim external actions completed without verified tool evidence.\\n\\n'
+                'Owner request: ' + transcript
+            )
+            transcript = context_text[:8000]
+        elif related_meta.get('conversation_kind') == 'workspace':
+            raise HTTPException(409, 'Workspace conversation requires verified Workspace ID')
         modality = input_modality(request)
         try:
             metadata_reader = getattr(registry, 'metadata', None)
