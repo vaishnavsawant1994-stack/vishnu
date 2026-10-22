@@ -141,6 +141,7 @@ def conversation_voice_router(runtime, executor):
         # supplied in arbitrary user prompts are never an authority boundary.
         related_thread = continuity.thread(body.conversation_id) if (continuity and body.conversation_id) else None
         related_meta = (related_thread or {}).get('context') or {}
+        verified_context = ''
         if body.workspace_id is not None:
             if (not related_thread or related_thread.get('closed_at')
                 or related_meta.get('conversation_kind') != 'workspace'
@@ -159,15 +160,11 @@ def conversation_voice_router(runtime, executor):
                     if project and project.get('status') != 'archived':
                         project_names.append(str(project.get('name') or '')[:100] + ' [' +
                                              str(project.get('status') or 'unknown') + ']')
-            context_text = (
-                'WORKSPACE REFERENCE FROM TRUSTED SERVER (not tool permission):\n'
+            verified_context = (
                 'Workspace name: ' + str(workspace['name'])[:120] + '\n'
                 'Description: ' + str(workspace.get('description') or '')[:950] + '\n'
-                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None') + '\n'
-                'Do not claim external actions completed without verified tool evidence.\n\n'
-                'Owner request: ' + transcript
-            )
-            transcript = context_text[:8000]
+                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None')
+            )[:4000]
         elif related_meta.get('conversation_kind') == 'workspace':
             raise HTTPException(409, 'Workspace conversation requires verified Workspace ID')
         elif related_meta.get('conversation_kind') == 'project':
@@ -176,13 +173,10 @@ def conversation_voice_router(runtime, executor):
             project = project_store.get(project_id) if project_store and isinstance(project_id, str) else None
             if not project or project.get('status') == 'archived' or related_thread.get('closed_at'):
                 raise HTTPException(404, 'Project voice context is unavailable')
-            original_request = transcript
-            transcript = (
-                'PROJECT REFERENCE FROM TRUSTED SERVER (not execution authority):\n'
+            verified_context = (
                 'Project: ' + str(project.get('name') or '')[:120] + '\n'
-                'Goal: ' + str(project.get('goal') or '')[:500] + '\n'
-                'Owner request: ' + original_request
-            )[:8000]
+                'Goal: ' + str(project.get('goal') or '')[:500]
+            )[:4000]
         modality = input_modality(request)
         try:
             metadata_reader = getattr(registry, 'metadata', None)
@@ -215,6 +209,8 @@ def conversation_voice_router(runtime, executor):
                 input_modality=modality,
                 response_detail=response_detail,
                 response_style=response_style,
+                scoped_context_only=bool(verified_context),
+                verified_context=verified_context,
             )
         except ExecutionCancelled:
             emit('voice.turn.cancelled', request_id=body.request_id, device_id=context.device_id, source='iphone-pwa')
