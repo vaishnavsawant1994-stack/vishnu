@@ -241,6 +241,14 @@ try {
     const before=serverState.conversations.length;
     if(viewport.width>900){await page.locator('.p202c-primary').first().click();}
     assert.ok(serverState.conversations.length>=before,'Existing Project conversations remain retained');
+    if(viewport.width<=900){
+      const projectTabs=page.locator('.p202c-tabs button:visible');
+      assert.equal(await projectTabs.count(),5,'Mobile Project tabs expose Chat, Tasks, Files, Agents and More');
+      await page.getByRole('button',{name:'Chats ▾'}).click();
+      await page.locator('dialog.p202c-chat-sheet').getByRole('button',{name:'＋ New Project Chat'}).click();
+      await page.waitForFunction(()=>document.querySelector('#p202cChats')===null || document.querySelector('#p202cRoot'));
+      assert.ok(serverState.conversations.some(item=>item.conversation.context?.project_id===serverState.projects[0].id));
+    }
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/project-chat-${viewport.width}.png`, fullPage: false });
     await openProjectTab('files');
     await page.locator('[data-project-action="add-files"]:visible').first().click();
