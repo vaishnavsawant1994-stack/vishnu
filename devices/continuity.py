@@ -167,11 +167,11 @@ class ContinuityService:
             clauses.append('substr(t.updated_at,1,10) <= ?')
             args.append(until)
         if query.strip():
-            term = '%' + query.strip().replace('%', r'\%').replace('_', r'\_') + '%'
-            clauses.append("""(t.title LIKE ? ESCAPE '\' OR
-                t.context_json LIKE ? ESCAPE '\' OR EXISTS (
+            term = '%' + query.strip().replace('!', '!!').replace('%', '!%').replace('_', '!_') + '%'
+            clauses.append("""(t.title LIKE ? ESCAPE '!' OR
+                t.context_json LIKE ? ESCAPE '!' OR EXISTS (
                   SELECT 1 FROM continuity_events e
-                  WHERE e.thread_id=t.id AND e.payload_json LIKE ? ESCAPE '\'
+                  WHERE e.thread_id=t.id AND e.payload_json LIKE ? ESCAPE '!'
                 ))""")
             args.extend((term, term, term))
         if cursor_time and cursor_id:
@@ -201,7 +201,7 @@ class ContinuityService:
         cursor = {'updated_at': items[-1]['updated_at'], 'id': items[-1]['id']} if has_more and items else None
         return {'conversations': items, 'next_cursor': cursor, 'has_more': has_more}
 
-    def update_history_metadata(self, thread_id: str, *, title=None, pinned=None, tags=None):
+    def update_history_metadata(self, thread_id: str, *, title=None, pinned=None, tags=None, summary=None):
         """Update owner-organizational metadata atomically without touching resource ACLs."""
         with self.lock, self._con() as con:
             row = con.execute(
@@ -232,6 +232,10 @@ class ContinuityService:
                     if tag.casefold() not in {x.casefold() for x in clean}:
                         clean.append(tag)
                 context['history_tags'] = clean
+            if summary is not None:
+                if not isinstance(summary, str) or len(summary) > 6000:
+                    raise ValueError('invalid summary')
+                context['history_summary'] = summary.strip()
             con.execute('UPDATE continuity_threads SET title=?,context_json=?,updated_at=? WHERE id=?',
                         (name, json.dumps(context), now(), thread_id))
         self._emit('continuity.history.metadata.updated', thread_id=thread_id)
@@ -253,7 +257,7 @@ class ContinuityService:
             existing = json.loads(row['context_json'] or '{}')
             # Retain owner-chosen organizational tags only; no stale cross-context grants.
             new_context = {
-                key: existing[key] for key in ('history_pinned','history_tags')
+                key: existing[key] for key in ('history_pinned','history_tags','history_summary')
                 if key in existing
             }
             if kind == 'work':

@@ -3059,6 +3059,7 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
 <link rel="stylesheet" href="/iphone/workspaces-ui.css">
 <link rel="stylesheet" href="/iphone/p203-today.css">
 <link rel="stylesheet" href="/iphone/p204-live-voice.css">
+<link rel="stylesheet" href="/iphone/p205-conversation-history.css">
 <link rel="stylesheet" href="/iphone/p202d-workspace-conversation.css">
 <link rel="stylesheet" href="/iphone/memory-experiences.css">
 <link rel="stylesheet" href="/iphone/knowledge-notes.css">
@@ -5176,6 +5177,32 @@ window.vishnuTodayP203Bridge={
  }
 };
 
+
+window.vishnuHistoryBridge={
+ api,owner:()=>ownerDisplayName()||'Owner',
+ confirm:message=>requestConfirmation(message,{title:'Confirm Conversation Action'}),
+ onClose:()=>document.body.classList.remove('p205-history-open'),
+ navigate:mod=>{
+  if(mod==='attention'){openTimelineAttention();return}
+  if(mod==='chat'){enterConversationView();return}
+  if(mod==='voice'){window.vishnuP204?.open();return}
+  if(mod==='history'){window.vishnuP205?.open();return}
+  if(mod==='agents'){location.assign('/iphone/agents.html');return}
+  openModule(mod);
+ },
+ openConversation:id=>openConversation(id),
+ continueVoice:async id=>{await openConversation(id);$('micButton')?.click()},
+ createTask:()=>openTodayExistingCreate('task')
+};
+document.addEventListener('click',event=>{
+ const match=event.target.closest('[data-p205-entry],#appConversations,#homeRecentSeeAll,#sidebarSeeAll');
+ if(!match)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(turnInFlight){showToast('Finish the active AI turn before opening History.');return}
+ closeAllDrawers();
+ document.body.classList.add('p205-history-open');
+ window.vishnuP205?.open().catch(err=>{document.body.classList.remove('p205-history-open');showToast(err.message)});
+},true);
 window.vishnuVoiceBridge={
  api,name:()=>ownerDisplayName()||'Owner',
  onClose:()=>{document.body.classList.remove('live-voice-mode')},
@@ -5216,9 +5243,16 @@ document.addEventListener('click',event=>{
 <script src="/iphone/workspaces-ui.js"></script>
 <script src="/iphone/p203-today.js"></script>
 <script src="/iphone/p204-live-voice.js"></script>
+<script src="/iphone/p205-conversation-history.js"></script>
 <script src="/iphone/p202d-workspace-conversation.js"></script>
 <script src="/iphone/campaign-demo-data.js"></script>
 <script src="/iphone/campaign-demo.js"></script>
+<aside id="p205Root" class="hidden" role="dialog" aria-modal="true" aria-label="Conversation History" aria-hidden="true"></aside>
+<dialog id="p205Dialog" class="p205-dialog" aria-labelledby="p205ModalTitle">
+  <h2 id="p205ModalTitle">Conversation History</h2>
+  <p id="p205ModalText"></p>
+  <div id="p205Choices" class="p205-dialog-options"></div>
+</dialog>
 <aside id="p204Root" class="hidden" role="dialog" aria-modal="true" aria-label="Vishnu Live Voice" aria-hidden="true"></aside>
 <dialog id="p204Dialog" class="p204-dialog" aria-labelledby="p204DialogTitle">
   <h2 id="p204DialogTitle">Live Voice</h2>

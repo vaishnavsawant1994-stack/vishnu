@@ -14,6 +14,7 @@ class HistoryMetadataUpdate(BaseModel):
     title: str | None = Field(default=None, max_length=120)
     pinned: bool | None = None
     tags: list[str] | None = Field(default=None, max_length=12)
+    summary: str | None = Field(default=None, max_length=6000)
 
 
 class HistoryOrganizeBody(BaseModel):
@@ -137,6 +138,18 @@ def pwa_conversation_router(runtime):
         emit('conversation.context.changed', conversation_id=conversation_id,
              context_type=kind, device_id=owner.device_id)
         return {'conversation': thread}
+
+    @router.get('/{conversation_id}/history-detail')
+    def history_detail(
+        conversation_id: str,
+        after_sequence: int = Query(default=0, ge=0),
+        limit: int = Query(default=200, ge=1, le=500),
+    ):
+        require_session()
+        thread = existing(conversation_id)
+        events = continuity.events_for_thread(conversation_id, after_sequence=after_sequence, limit=limit)
+        return {'conversation': thread, 'events': events,
+                'next_after_sequence': events[-1]['sequence'] if events else after_sequence}
 
     @router.get('/{conversation_id}/related')
     def history_related(conversation_id: str):

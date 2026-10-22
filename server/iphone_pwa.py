@@ -783,6 +783,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def p203_today_styles():
         return Response((web_dir / 'p203-today.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
 
+    @router.get('/p205-conversation-history.js', include_in_schema=False)
+    def p205_history_js():
+        return Response((web_dir / 'p205-conversation-history.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p205-conversation-history.css', include_in_schema=False)
+    def p205_history_css():
+        return Response((web_dir / 'p205-conversation-history.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
     @router.get('/p204-live-voice.js', include_in_schema=False)
     def p204_live_voice_js():
         return Response((web_dir / 'p204-live-voice.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
