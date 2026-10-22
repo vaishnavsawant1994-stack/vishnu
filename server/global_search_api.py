@@ -182,8 +182,11 @@ def global_search_router(runtime: dict) -> APIRouter:
                                           status=f.get("indexing_state"), source="project_file"))
                         if len(result) >= SOURCE_LIMIT:
                             return result, "partial"
-            # Only properly authorized Knowledge documents; no raw blob retrieval.
-            documents = store.list(q, limit=SOURCE_LIMIT + 1, access_classes=knowledge_classes(device))
+            # Scoped search must not fall through to the owner's unrelated Knowledge library.
+            # Only explicitly indexed, linked Project files may appear for a Project or Workspace.
+            # Global search still includes owner-authorized Knowledge documents as before.
+            documents = [] if (project_id or workspace_id) else store.list(
+                q, limit=SOURCE_LIMIT + 1, access_classes=knowledge_classes(device))
             for doc in documents[:SOURCE_LIMIT]:
                 if doc.get("source") == "owner-note":
                     continue
@@ -359,16 +362,23 @@ def global_search_router(runtime: dict) -> APIRouter:
         elif kind in {"files", "knowledge"}:
             if not permitted(device, "knowledge:read"):
                 raise HTTPException(403, "Knowledge access not authorized")
-            doc = s["knowledge"].detail(result_id) if s["knowledge"] else None
-            if doc and doc.get("access_class") in knowledge_classes(device) and doc.get("current", True):
-                resource = row(kind, doc["id"], doc.get("title"),
-                               doc.get("filename") or doc.get("source"), updated=doc.get("updated_at"))
-            elif kind == "files" and project_id and s["projects"]:
-                p = s["projects"].get(project_id)
-                file = next((f for f in (p or {}).get("files", []) if f["id"] == result_id), None)
+            if project_id:
+                # A Project-scoped Files preview must never resolve to an unrelated
+                # global Knowledge document with a matching or forged resource ID.
+                if kind != "files":
+                    raise HTTPException(404, "Knowledge is not scoped to this Project")
+                project, _ = authorise_target(project_id, "")
+                file = next((f for f in project.get("files", []) if f["id"] == result_id), None)
                 if file:
-                    resource = row(kind, file["id"], file["title"], project_id=p["id"],
-                                   updated=file.get("created_at"), status=file.get("indexing_state"))
+                    resource = row(kind, file["id"], file["title"], project_id=project["id"],
+                                   updated=file.get("created_at"), status=file.get("indexing_state"),
+                                   source="project_file")
+            else:
+                doc = s["knowledge"].detail(result_id) if s["knowledge"] else None
+                if doc and doc.get("access_class") in knowledge_classes(device) and doc.get("current", True):
+                    resource = row(kind, doc["id"], doc.get("title"),
+                                   doc.get("filename") or doc.get("source"),
+                                   updated=doc.get("updated_at"), source="knowledge_document")
         elif kind == "memory":
             if not permitted(device, "memory:read"):
                 raise HTTPException(403, "Memory access not authorized")
