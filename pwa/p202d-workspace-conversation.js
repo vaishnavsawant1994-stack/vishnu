@@ -23,8 +23,8 @@ function confirmSheet(s,title,description,entries=[]){
 }
 function status(s,msg){const t=s.host.querySelector('[data-p202d-status]');if(t)t.textContent=msg||''}
 function projectProgress(p){if(!Number.isFinite(p.task_count)||!p.task_count)return null;return Math.round(100*(p.done_count||0)/p.task_count)}
-function openProject(id){
- if(typeof window.openProject==='function')return window.openProject(id,'overview');
+function openProject(id,section='overview'){
+ if(typeof window.openProject==='function')return window.openProject(id,section);
  return window.vishnuChatBridge?.openModule?.('projects');
 }
 function showConversationPicker(s){
@@ -74,7 +74,7 @@ function tasksSheet(s){
 function planSheet(s){
  const rows=projectRows(s);
  confirmSheet(s,'Plans and Work','Planning and execution are governed in the existing Project Work runtime. No Work is started by opening this menu.',[
-   ...rows.slice(0,15).map(p=>['Open '+p.name+' Work',()=>openProject(p.id)]),
+   ...rows.slice(0,15).map(p=>['Open '+p.name+' Work',()=>openProject(p.id,'live')]),
  ]);
 }
 function contextSheet(s){
