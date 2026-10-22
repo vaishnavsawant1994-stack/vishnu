@@ -11,6 +11,8 @@ from core.events import EventBus
 from core.personal_ai_runtime import CanonicalTurnRuntime
 from core.runtime_state import RuntimeState
 from devices.continuity import ContinuityService
+from workspaces.store import WorkspaceStore
+from projects.store import ProjectStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from server.approval_api import approval_router
 from server.conversation_voice_api import (
@@ -262,3 +264,50 @@ def test_voice_approval_resumes_and_completes_the_original_canonical_request(tmp
     assert inner.approve_calls == 1
     thread_events = continuity.events_for_thread(canonical.turn(R1)['conversation_id'])
     assert [event['event_id'] for event in thread_events] == [f'{R1}:user', f'{R1}:assistant']
+
+
+def test_workspace_voice_turn_checks_saved_association_and_uses_server_context(tmp_path):
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    workspaces = WorkspaceStore(tmp_path / 'workspaces.sqlite3')
+    projects = ProjectStore(tmp_path / 'projects.sqlite3')
+    space = workspaces.create('owner', name='Authenticated Studio', description='Private Workspace goal')
+    second = workspaces.create('owner', name='Other Studio')
+    project = projects.create(name='Saved Linked Project')
+    workspaces.link_project('owner', space['id'], project['id'])
+    thread_id = continuity.create_thread('Workspace planning', context={
+        'conversation_kind': 'workspace', 'workspace_id': space['id'], 'owner_id': 'owner'
+    })
+    runtime = {
+        'device_registry': _Registry(), 'continuity': continuity,
+        'workspace_store': workspaces, 'base_project_store': projects,
+    }
+    endpoint = _endpoint(conversation_voice_router(runtime, executor),
+                         '/iphone/api/voice/turn', 'POST')
+
+    with pytest.raises(HTTPException) as invalid:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=thread_id,
+            workspace_id=second['id']), request_id=R1)
+    assert invalid.value.status_code == 404
+    with pytest.raises(HTTPException) as absent:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=thread_id),
+            request_id=R1)
+    assert absent.value.status_code == 409
+    personal_id = continuity.create_thread('Personal history')
+    with pytest.raises(HTTPException) as confused:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=personal_id,
+            workspace_id=space['id']), request_id=R1)
+    assert confused.value.status_code == 404
+    assert inner.calls == []
+
+    result = _call_voice(endpoint, CanonicalVoiceTurnBody(
+        request_id=R1, transcript='What is the current status?',
+        conversation_id=thread_id, workspace_id=space['id']), request_id=R1)
+    assert result['status'] == 'completed'
+    received = inner.calls[0][0]
+    assert 'Authenticated Studio' in received
+    assert 'Saved Linked Project' in received
+    assert 'What is the current status?' in received
+    assert 'Other Studio' not in received
