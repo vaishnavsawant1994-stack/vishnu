@@ -78,6 +78,7 @@ try{
   assert.ok(rows.find(x=>x.id==='n1').read_at);
   await page.locator('[data-p207-action="pin"]:visible').click();
   assert.ok(rows.find(x=>x.id==='n1').pinned_at);
+  assert.equal(await page.locator('[data-p207-action="pin"]:visible').count(),1,'Selected notification actions must remain available after pinning');
   if(width===1536){
     await page.locator('#p207ReadAll').click();
     assert.equal(rows.filter(x=>!x.read_at).length,0);

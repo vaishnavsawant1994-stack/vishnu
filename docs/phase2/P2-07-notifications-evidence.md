@@ -45,3 +45,7 @@ Source implementation is not equivalent to reference pixel parity. Mandatory fol
 - Expose the real notification search field on desktop as well as mobile, with the same authenticated query handler.
 - Keep all seven category cards reachable on phone sizes, including System. Automated Chromium fixture checks typed search for both 1536px and 390px viewports.
 - Exact pixel matching and real native-device parity remain unverified.
+
+## Selection continuity after read and pin
+- The confirmed read and pin actions retain the currently selected notification and revalidate its detail, instead of dropping the mobile detail sheet or desktop action context. Dismissal and completed approval still remove the now-inapplicable selection.
+- Browser test checks continued action availability following successive read/pin actions at both reference breakpoints.
