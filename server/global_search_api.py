@@ -231,6 +231,8 @@ def global_search_router(runtime: dict) -> APIRouter:
         pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
     ):
         device = session(pa_device, pa_token)
+        if not q.strip():
+            raise HTTPException(422, "Search query cannot be blank")
         if date_from and date_to and date_from > date_to:
             raise HTTPException(422, "Invalid date range")
         authorise_target(project_id, workspace_id)

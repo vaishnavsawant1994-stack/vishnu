@@ -117,6 +117,7 @@ def test_filters_ranking_pagination_and_detail(tmp_path):
         "q": "API", "date_from": "2026-10-30", "date_to": "2026-10-01",
     }).status_code == 422
     assert client.get("/iphone/api/search", params={"q": ""}).status_code == 422
+    assert client.get("/iphone/api/search", params={"q": "   "}).status_code == 422
 
 
 def test_auth_scope_denial_and_source_status(tmp_path):
