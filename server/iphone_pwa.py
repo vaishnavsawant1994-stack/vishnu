@@ -741,6 +741,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def reference_pages_styles():
         return Response((web_dir / 'reference-pages.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/p207-notifications.js', include_in_schema=False)
+    def p207_notifications_js():
+        return Response((web_dir / 'p207-notifications.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p207-notifications.css', include_in_schema=False)
+    def p207_notifications_css():
+        return Response((web_dir / 'p207-notifications.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
+
     @router.get('/global-search.js', include_in_schema=False)
     def global_search_script():
         return Response((web_dir / 'global-search.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
