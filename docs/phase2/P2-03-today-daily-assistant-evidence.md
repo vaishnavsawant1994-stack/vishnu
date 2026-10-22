@@ -20,7 +20,7 @@ Today presentation only. No Today data store, conversation engine, task authorit
 - Agents: `GET /iphone/api/agents/summary`; `GET /iphone/api/agents` is definitions-only, **not** evidence of active execution.
 - Work: `GET /iphone/api/work/summary`; not a second work executor.
 - Recent Activity: `GET /iphone/api/activities`, `/{id}`.
-- AI input: both Today composers share one draft and hand off to existing `sendTurn` and canonical `/voice/turn`. Today does not construct a new conversation ledger.
+- AI input: both Today composers share one draft and hand off to existing `sendTurn` and canonical `/voice/turn`. Today does not construct a new conversation ledger. The summarize/plan/updates/analyze quick actions prepare a bounded, owner-reviewable snapshot of currently visible and authorized source metadata, identifying missing sources; no quick action sends this data until the owner selects Send.
 - Voice / attachments: existing `micButton` and `attachmentButton` only after leaving the Today overlay. File picker explicitly discloses that the existing upload path stores data in Knowledge.
 
 The upper and bottom composers share a single draft in P2-03; no hidden second unsent draft is stored.

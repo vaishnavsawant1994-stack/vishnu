@@ -56,6 +56,10 @@ try{
   assert.equal(await page.getByText('Definition not running').count(),0,'catalog agents must not pretend to be running');
   assert.ok((await page.locator('.p203-metric strong').allTextContents()).includes('1'),'real approval count');
   assert.ok(! (await page.locator('#todayCommandDashboard').innerText()).includes('Archived Project'),'archived Project hidden');
+  await page.locator('[data-p203="summarize"]').click();
+  const groundedDraft=await page.locator('#p203TopDraft').inputValue();
+  assert.ok(groundedDraft.includes('Real scheduled task')&&groundedDraft.includes('Project task scheduled')&&groundedDraft.includes('Verified Project'),'Quick AI action must preview verified source data');
+  assert.equal(await page.evaluate(()=>window.calls.filter(x=>x[0]==='prompt').length),0,'Quick actions may not send data without review');
   await page.locator('[data-p203="approvalDetail"]').first().click();
   await page.getByText('Exact test action').waitFor();
   await page.getByRole('button',{name:'Approve after review'}).click();
