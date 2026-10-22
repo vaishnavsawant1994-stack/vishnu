@@ -231,7 +231,7 @@ function tool(name){
  if(name==='analyze'){S.draft='Analyze the verified information in this conversation: ';$('p204Text').value=S.draft;$('p204Text').focus();return}
  if(name==='create')return navigate('products');
  if(name==='apps')return navigate('tools');
- return modal('Voice tools','Open an available, governed destination.',[['Today',()=>navigate('today')],['Work',()=>navigate('workflows')],['Voice Settings',settings]]);
+ return modal('Voice tools','Open an available, governed destination.',[['Take Notes',()=>tool('notes')],['Search',()=>tool('search')],['Analyze',()=>tool('analyze')],['Create',()=>tool('create')],['Open Apps',()=>tool('apps')],['Today',()=>navigate('today')],['Work',()=>navigate('workflows')],['Voice Settings',settings]]);
 }
 function paint(){
  if(!active())return;
@@ -246,7 +246,7 @@ async function handle(name){
  if(name==='start')return S.playing?interrupt():listen();
  if(name==='mute')return S.muted?unmute():mute();
  if(name==='end')return end(true);
- if(name==='text'){$('p204Text').focus();return}
+ if(name==='text'){if(S.mode==='focus'){S.mode='expanded';paint()}$('p204Text').focus();return}
  if(name==='mode'){S.mode=S.mode==='expanded'?'focus':'expanded';paint();return}
  if(name==='share')return share();
  if(name==='settings')return settings();
@@ -270,6 +270,7 @@ function build(){
 }
 async function open(){
  if(S.open)return;
+ S.seconds=0;S.started=0;S.status='idle';
  S.open=true;const root=$('p204Root');if(!root){S.open=false;throw Error('Voice screen is not installed.')}
  root.classList.remove('hidden');root.setAttribute('aria-hidden','false');build();
  await refreshItems().catch(x=>info('Key items unavailable: '+x.message));

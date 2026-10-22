@@ -5181,7 +5181,7 @@ window.vishnuVoiceBridge={
  onClose:()=>{document.body.classList.remove('live-voice-mode')},
  navigate:destination=>{
   if(destination==='attention'){openTimelineAttention();return}
-  if(destination==='search'){document.querySelector('[data-global-search-open]')?.click();return}
+  if(destination==='search'){window.openModule('search');return}
   if(destination==='today'){openTodayScreen('all');return}
   if(destination==='chat'){enterConversationView();return}
   if(destination==='voice'){window.vishnuP204?.open();return}
