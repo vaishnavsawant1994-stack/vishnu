@@ -26,6 +26,7 @@ on:
       - 'tests/p205_history_browser.mjs'
       - 'tests/p206_global_search_browser.mjs'
       - 'tests/p207_notifications_browser.mjs'
+      - 'tests/p208_command_center_browser.mjs'
       - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -121,6 +122,8 @@ jobs:
           P206_SCREENSHOT_DIR=artifacts/global-search-p206 node tests/p206_global_search_browser.mjs
           node --check pwa/p207-notifications.js
           P207_SCREENSHOT_DIR=artifacts/notifications-p207 node tests/p207_notifications_browser.mjs
+          node --check pwa/command-center.js
+          P208_SCREENSHOT_DIR=artifacts/command-center-p208 node tests/p208_command_center_browser.mjs
           node tests/chat_experience_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
