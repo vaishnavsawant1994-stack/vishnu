@@ -69,9 +69,9 @@ try{
   assert.equal(approvalStatus,'completed');
   await page.locator('[data-p207-cat="all"]').click();
   await page.locator('[data-p207-id="n1"]').click();
-  await page.locator('[data-p207-action="read"]').click();
+  await page.locator('[data-p207-action="read"]:visible').click();
   assert.ok(rows.find(x=>x.id==='n1').read_at);
-  await page.locator('[data-p207-action="pin"]').click();
+  await page.locator('[data-p207-action="pin"]:visible').click();
   assert.ok(rows.find(x=>x.id==='n1').pinned_at);
   if(width===1536){
     await page.locator('#p207ReadAll').click();

@@ -32,3 +32,7 @@ Reference: owner-supplied desktop/mobile Notifications & Alerts composition, 153
 
 ## Acceptance status
 Source implementation is not equivalent to reference pixel parity. Mandatory follow-up includes full-resolution screenshot comparison, accessible focus/keyboard and dynamic-text review, 320–1920 px viewport coverage, large dataset/query performance, real provider/authenticated runtime integration, and user acceptance. No merge or production deployment authorized.
+
+## Mobile action follow-up
+- Mobile details include touch-accessible Read, Pin/Unpin, Dismiss and private Copy Link controls; desktop retains its right-side actions. Shared handlers use the canonical device-scoped service.
+- Browser fixture uses visible-action targeting on 1536 px desktop and 390 px phone; visual and native acceptance remain unverified.
