@@ -205,10 +205,21 @@ if __name__ == '__main__':
     unittest.main()
 
 
-class ProjectConversationQualificationTests(ProjectApiTests):
+class ProjectConversationQualificationTests(unittest.TestCase):
     def setUp(self):
-        super().setUp()
-        self.runtime['continuity'] = ContinuityService(Path(self.temp.name) / 'continuity.sqlite3')
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = ProjectStore(Path(self.temp.name) / 'projects.sqlite3')
+        self.runtime = {
+            'device_registry': FakeRegistry(),
+            'continuity': ContinuityService(Path(self.temp.name) / 'continuity.sqlite3'),
+        }
+        app = FastAPI()
+        app.add_middleware(OwnerContextMiddleware)
+        app.include_router(projects_router(self.runtime, self.store))
+        self.client = TestClient(app)
+        self.client.cookies.set('pa_device', 'device-1')
+        self.client.cookies.set('pa_token', 'test-token')
 
     def test_multi_chat_is_scoped_and_legacy_primary_preserved(self):
         first = self.store.create(name='Project Alpha')
