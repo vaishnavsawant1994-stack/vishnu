@@ -3057,6 +3057,7 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
   <link rel="stylesheet" href="/iphone/projects-workspace-views.css" />
 <link rel="stylesheet" href="/iphone/reference-pages.css">
 <link rel="stylesheet" href="/iphone/workspaces-ui.css">
+<link rel="stylesheet" href="/iphone/p203-today.css">
 <link rel="stylesheet" href="/iphone/p202d-workspace-conversation.css">
 <link rel="stylesheet" href="/iphone/memory-experiences.css">
 <link rel="stylesheet" href="/iphone/knowledge-notes.css">
@@ -3859,6 +3860,7 @@ function renderTodayCommandDashboard(){
  mobileNav.querySelectorAll('[data-today-nav]').forEach(button=>button.addEventListener('click',()=>{const target=button.dataset.todayNav;if(target==='Create'){openTodayExistingCreate('task');return}closeTodayScreen();const routes={Home:'home',Workspaces:'labs',Work:'workflows',Activities:'activities'};openModule(routes[target]).catch(error=>showToast(error.message))}));root.querySelector('.today-board')?.append(mobileNav);
 }
 async function refreshTodayScreen(){
+ if(window.vishnuP203&&!todayScreenDemo)return window.vishnuP203.load();
  if(todayScreenDemo){const sample=todayDemoData();todayScreenItems=sample.items;todayScreenPlans=sample.plans;$('todayDemoNotice').classList.remove('hidden');todayCommandSources={everyday:{data:{items:sample.items}},operations:{data:{operations:sample.plans}},work:{data:{counts:{active:2,waiting_approval:1,completed:3},work_orders:[{title:'Patient CRM implementation',objective:'Example record shown only in Preview mode',project_name:'Rudra Health Care',status:'RUNNING'},{title:'Vishnu UI Convergence',objective:'Example record shown only in Preview mode',project_name:'Vishnu Development',status:'VERIFYING'},{title:'QA validation completed',project_name:'Vishnu Development',status:'COMPLETED'}]}},attention:{data:{counts:{total:2},items:[{title:'Review Face Model v8',summary:'Preview example only',severity:'approval required'},{title:'Patient CRM data source',summary:'Preview example only',severity:'blocked'}]}},projects:{data:{projects:[]}},activity:{data:{activities:[]}},workspaces:{data:{workspaces:[]}}};renderTodayScreen();renderTodayCommandDashboard();return}
  $('todayDemoNotice').classList.add('hidden');
  const endpoints={everyday:'/everyday/timeline?limit=500',operations:'/operations?status=all&limit=100',work:'/work/summary',attention:'/work/attention?limit=100',projects:'/projects?status=all&sort=recent',activity:'/activities?limit=30',workspaces:'/workspaces?sort=recent&limit=50'};
@@ -3868,7 +3870,7 @@ async function refreshTodayScreen(){
 }
 async function openTodayScreen(filter='all'){
  closeAllDrawers();todayScreenFilter=filter;document.body.classList.add('today-command-mode');document.querySelectorAll('.today-tab').forEach(b=>{const active=b.dataset.todayFilter===filter;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});$('todayScreen').classList.remove('hidden');$('todayScreen').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';try{await refreshTodayScreen()}catch(error){todayEmpty($('todayTasksList'),'Unable to load your day.');todayEmpty($('todayMeetingsList'),'Retry by reopening Today.');todayEmpty($('todayPlansList'),'Your plans could not be loaded.');showToast(error.message)}}
-function closeTodayScreen(){if($('todayScreen').classList.contains('hidden'))return;$('todayScreen').classList.add('hidden');$('todayScreen').setAttribute('aria-hidden','true');document.body.classList.remove('today-command-mode');document.body.style.overflow=''}
+function closeTodayScreen(){if($('todayScreen').classList.contains('hidden'))return;window.vishnuP203?.onClose?.();$('todayScreen').classList.add('hidden');$('todayScreen').setAttribute('aria-hidden','true');document.body.classList.remove('today-command-mode');document.body.style.overflow=''}
 function openTodayExistingCreate(kind){closeTodayScreen();openCreationDialog(kind==='meeting'?'meeting':kind==='plan'?'work':'task')}
 
 let sidebarSearchResults=null,sidebarSearchEpoch=0,sidebarSearchTimer=null;
@@ -5146,6 +5148,32 @@ window.vishnuChatBridge={
  setDraft(value){$('message').value=String(value||'');resizeComposerEditor();$('message').focus()},
  getDraft(){return $('message').value}
 };
+window.vishnuTodayP203Bridge={
+ api, name:()=>window.ownerDisplayName?.()||'Owner',
+ toast:message=>showToast(message),navigate:module=>openModule(module),
+ close:()=>closeTodayScreen(),
+ goChat:()=>{enterConversationView();$('message')?.focus()},
+ runPrompt:async prompt=>{closeTodayScreen();await sendTurn(prompt)},
+ create:(kind,day)=>{openTodayExistingCreate(kind);if(day&&$('todayScheduledDate'))$('todayScheduledDate').value=day},
+ attention:()=>{closeTodayScreen();openTimelineAttention()},
+ search:()=>{closeTodayScreen();$('globalSearch')?.focus();},
+ attach:()=>{if(!confirm('The existing file picker adds the selected document to Vishnu Knowledge. Continue?'))return;closeTodayScreen();$('attachmentButton')?.click()},
+ voice:()=>{closeTodayScreen();$('micButton')?.click()},
+ openProject:id=>{closeTodayScreen();if(typeof window.openProject==='function')return window.openProject(id);return openModule('projects')},
+ attachCore:target=>{
+   const old=document.querySelector('.core-stage');
+   if(!target||!old)return;
+   if(!window.__vishnuP203CoreReturn)window.__vishnuP203CoreReturn={node:old,parent:old.parentElement,next:old.nextSibling};
+   if(old.parentElement!==target){target.prepend(old);requestAnimationFrame(resizeCanvas)}
+ },
+ restoreCore:()=>{
+   const old=window.__vishnuP203CoreReturn;
+   if(!old)return;
+   if(old.parent?.isConnected){old.parent.insertBefore(old.node,old.next?.parentNode===old.parent?old.next:null);requestAnimationFrame(resizeCanvas)}
+   window.__vishnuP203CoreReturn=null;
+ }
+};
+
 </script>
 <script src="/iphone/projects-workspace.js"></script>
 <script src="/iphone/projects-workspace-views.js"></script>
@@ -5162,6 +5190,7 @@ window.vishnuChatBridge={
 <script src="/iphone/global-search.js"></script>
 <script src="/iphone/command-center.js"></script>
 <script src="/iphone/workspaces-ui.js"></script>
+<script src="/iphone/p203-today.js"></script>
 <script src="/iphone/p202d-workspace-conversation.js"></script>
 <script src="/iphone/campaign-demo-data.js"></script>
 <script src="/iphone/campaign-demo.js"></script>
