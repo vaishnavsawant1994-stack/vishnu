@@ -765,6 +765,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def workspaces_ui_styles():
         return Response((web_dir / 'workspaces-ui.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/p202d-workspace-conversation.js', include_in_schema=False)
+    def p202d_workspace_script():
+        return Response((web_dir / 'p202d-workspace-conversation.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202d-workspace-conversation.css', include_in_schema=False)
+    def p202d_workspace_styles():
+        return Response((web_dir / 'p202d-workspace-conversation.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
     @router.get('/campaign-demo.js', include_in_schema=False)
     def campaign_demo_script():
         return Response((web_dir / 'campaign-demo.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})

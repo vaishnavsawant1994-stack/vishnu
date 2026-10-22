@@ -85,7 +85,7 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
 
     # v65 adds P2-02C Project Conversation while retaining canonical Work,
     # global awareness and data-plane assets in the same offline shell.
-    assert "personal-ai-iphone-v65" in sw
+    assert "personal-ai-iphone-v66" in sw
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "'/iphone/adaptive-composer.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw
