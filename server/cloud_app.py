@@ -78,6 +78,7 @@ from products.store import ProductStore
 from products.license_store import ProductLicenseStore
 from server.projects_api import projects_router
 from server.workspaces_api import workspaces_router
+from server.workspace_conversation_api import workspace_conversation_router
 from server.workspaces_os_api import WorkspaceStore as OSWorkspaceStore, workspaces_os_router
 from server.products_api import products_router
 from server.product_distribution_api import product_distribution_router
@@ -240,6 +241,7 @@ app.add_middleware(WorkflowBudgetUiMiddleware);app.add_middleware(ConnectorUiMid
 pwa_runtime=dict(runtime);pwa_runtime['executor']=SessionBoundExecutor(runtime['executor'],continuity=runtime['continuity'],surface='iphone-pwa');pwa_runtime['continuity']=CanonicalConversationProjection(runtime['continuity'])
 app.include_router(approval_router(runtime,pwa_runtime['executor']))
 app.include_router(workspaces_router(runtime,workspace_store))
+app.include_router(workspace_conversation_router(runtime,workspace_store))
 app.include_router(approvals_center_router(runtime))
 app.include_router(conversation_voice_router(runtime,pwa_runtime['executor']))
 # The workforce shell router is intentionally mounted before iphone_pwa_router
