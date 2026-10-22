@@ -19,7 +19,7 @@ function phase(value,description){
  $('p204Mute').disabled=!S.mic||S.sending;
  $('p204Mute').textContent=S.muted?'♩':'♩̸';
  $('p204MuteLabel').textContent=S.muted?'Unmute':'Mute';
- $('p204End').disabled=value==='idle'||value==='ended';
+ $('p204End').disabled=value==='ended'||(value==='idle'&&!S.started&&!S.thread);
 }
 function modal(title,description,options=[]){
  const d=$('p204Dialog');$('p204DialogTitle').textContent=title;$('p204DialogInfo').textContent=description;
@@ -120,6 +120,7 @@ async function listen(){
  const Recognition=window.SpeechRecognition||window.webkitSpeechRecognition;
  if(!window.isSecureContext||!navigator.mediaDevices?.getUserMedia||!Recognition){phase('error','Speech recognition requires a compatible browser, HTTPS, and microphone permission. Use Text if unavailable.');return}
  if((S.context==='project'||S.context==='workspace')&&!S.scope){info('Select an authorized scope before starting.');return}
+ if(!confirm('Start microphone capture? Your browser speech-recognition service may process audio externally. Speech is sent as text to Vishnu when finalized.'))return;
  phase('connecting');
  try{
   const stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true},video:false});
