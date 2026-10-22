@@ -259,7 +259,13 @@ async function execute(action,id){
  if(action==='prevDay')return setDay(addDay(s.day,-1));
  if(action==='nextDay')return setDay(addDay(s.day,1));
  if(action==='goToday')return setDay(localKey(now(),s.zone));
- if(action==='pickDate'){document.getElementById('p203DateInput')?.showPicker?.();return}
+ if(action==='pickDate'){
+  const input=document.getElementById('p203DateInput');
+  if(typeof input?.showPicker==='function'){try{input.showPicker();return}catch{}}
+  const chosen=prompt('Select date (YYYY-MM-DD)',s.day);
+  if(chosen)return setDay(chosen);
+  return;
+ }
  if(action==='refresh')return load();
  if(action==='menu'){document.querySelector('.p203-shell')?.classList.toggle('nav-open');return}
  if(action==='send')return send();
