@@ -139,6 +139,16 @@ def test_project_and_workspace_file_search_is_scoped_to_linked_project_files(tmp
     )
     assert project_preview.status_code == 200
     assert project_preview.json()["result"]["source"] == "project_file"
+    linked = client.get(
+        f"/iphone/api/search/result/files/{scoped_file['id']}",
+        params={"project_id": project["id"], "workspace_id": workspace["id"]},
+    )
+    assert linked.status_code == 200
+    forbidden = client.get(
+        "/iphone/api/search/result/memory/normal",
+        params={"workspace_id": workspace["id"]},
+    )
+    assert forbidden.status_code == 404
 
 
 def test_filters_ranking_pagination_and_detail(tmp_path):
