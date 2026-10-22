@@ -287,7 +287,7 @@ function build(s){
  const stats=e('div','p202d-badges');[
  ['Projects','p202d-project-count'],['Active tasks','p202d-task-count']]
  .forEach(([label,attr])=>{const chip=b('',()=>label==='Projects'?projectsSheet(s):tasksSheet(s));
-   const value=e('strong','');value.dataset[attr]='';chip.append(value,e('span','',label));stats.append(chip)});
+   const value=e('strong','');value.setAttribute('data-'+attr,'');chip.append(value,e('span','',label));stats.append(chip)});
  const absent=e('span','p202d-notice','Members and agents: not linked');stats.append(absent);
  names.append(stats);identity.append(names);
  const actions=e('div','p202d-hero-actions');actions.append(b('＋ New Chat',()=>create(s),'p202d-primary'),b('⋯',()=>menu(s)));
@@ -298,6 +298,7 @@ function build(s){
  const chatBox=e('section','p202d-panel p202d-chat-panel'),chatHead=e('div','p202d-panel-head');
  chatHead.append(e('h2','','Workspace Chats'),b('＋',()=>create(s),'p202d-primary'));
  const pick=b('Chats ▾',()=>showConversationPicker(s),'p202d-mobile-picker');
+ names.append(pick);
  const chatList=e('div','p202d-chat-list');chatList.dataset.p202dChats='';
  chatBox.append(chatHead,pick,chatList);
  const projectsBox=e('section','p202d-panel'),projectsHead=e('div','p202d-panel-head');projectsHead.append(e('h2','','Projects in this Workspace'),b('＋',()=>s.actions.linkProject()));
@@ -323,7 +324,7 @@ function build(s){
  const ctxItems=e('div','p202d-context-items');
  [['Projects','p202d-project-count'],['Active tasks','p202d-task-count'],['Files','p202d-file-count'],
   ['Members','p202d-member-count'],['AI agents','p202d-agent-count']].forEach(([label,key])=>{
-   const row=e('div');row.append(e('span','',label));const value=e('strong');value.dataset[key]='';row.append(value);ctxItems.append(row)
+   const row=e('div');row.append(e('span','',label));const value=e('strong');value.setAttribute('data-'+key,'');row.append(value);ctxItems.append(row)
  });
  context.append(contextHead,ctx,ctxDesc,ctxItems);
  const active=e('section','p202d-panel'),activeHead=e('div','p202d-panel-head');activeHead.append(e('h2','','Active Projects'),b('View all',()=>projectsSheet(s),'p202d-link'));
@@ -335,7 +336,7 @@ function build(s){
  const tools=e('div','p202d-tool-grid');['Research','Code','Create','Analyze','Plan','Summarize','Automate','Search'].forEach(name=>tools.append(b(name,()=>quick(s,name))));
  toolPanel.append(toolsHead,tools);right.append(context,active,agents,toolPanel);
  const mobile=e('nav','p202d-mobile-nav');mobile.setAttribute('aria-label','Workspace mobile navigation');
- [['Home',()=>s.bridge.openModule('home')],['Chat',()=>$('p202dInput')?.focus()],['Today',()=>s.bridge.openTodayScreen('all')],
+ [['Home',()=>s.bridge.openModule('home')],['Chat',()=>s.host.querySelector('[data-p202d-input]')?.focus()],['Today',()=>s.bridge.openTodayScreen('all')],
  ['Workspaces',()=>s.actions.library()],['More',()=>navigate(s,'More')]].forEach(([name,fn])=>mobile.append(b(name,fn,name==='Workspaces'?'active':'')));
  layout.append(left,main,right);root.append(hero,topNav,layout,mobile);host.append(root);
  // one shared selector is enough; duplicate stats data attributes are all updated below.
