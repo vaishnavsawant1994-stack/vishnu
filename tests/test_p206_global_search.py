@@ -22,8 +22,11 @@ class Registry:
 
 
 class Memory:
+    def __init__(self):
+        self.enabled = True
+
     def preferences(self):
-        return {"memory_enabled": True}
+        return {"memory_enabled": self.enabled}
 
     def search(self, q, limit=20, active_only=True):
         return [
@@ -175,3 +178,16 @@ def test_scan_cap_reports_lower_bound_and_explicit_project_filter_bypasses_cap(t
     assert scoped.status_code == 200, scoped.text
     assert [r["id"] for r in scoped.json()["results"]] == [initial_project["id"]]
     assert scoped.json()["coverage"]["projects"] == "available"
+
+
+def test_disabled_memory_cannot_be_recovered_through_preview_or_status(tmp_path):
+    client, _, _, _, runtime = setup(tmp_path)
+    memory = runtime["memory"]
+    assert client.get("/iphone/api/search/result/memory/normal").status_code == 200
+    memory.enabled = False
+    response = client.get("/iphone/api/search?q=API")
+    assert response.status_code == 200
+    assert response.json()["coverage"]["memory"] == "disabled"
+    assert response.json()["counts"]["memory"] == 0
+    assert client.get("/iphone/api/search/result/memory/normal").status_code == 404
+    assert client.get("/iphone/api/search/status").json()["source_availability"]["memory"] is False

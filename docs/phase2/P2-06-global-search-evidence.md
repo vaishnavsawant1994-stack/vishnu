@@ -55,3 +55,8 @@ No production deployment. Proprietary repository license unchanged.
 - Fresh queries and facet/filter changes invalidate outstanding source-detail requests before rendering a new result set. An earlier delayed, authorized preview cannot reactivate an obsolete selection.
 - The P2-06 browser fixture now holds a Conversation detail response while switching to the Projects facet and verifies that the stale preview remains absent at desktop and mobile viewport sizes.
 - This commit requires fresh exact-head CI qualification; no native-device or exact pixel-match claim is made.
+
+## Memory opt-out enforced on every search route
+- Memory-disabled state now blocks direct Search result previews as well as list queries; source availability accurately reports Memory as unavailable when disabled.
+- A canonical-memory fixture verifies that an accessible result becomes unpreviewable after the owner disables Memory. Errors reading the toggle fail closed.
+- This is Search-route enforcement only, not a claim that all other Memory UI/features are disabled. Requires new exact-head tests.

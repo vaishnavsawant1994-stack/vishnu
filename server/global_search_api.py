@@ -30,6 +30,15 @@ def global_search_router(runtime: dict) -> APIRouter:
     def permitted(device: str, scope: str):
         return not hasattr(registry, "authorize") or registry.authorize(device, scope)
 
+    def memory_enabled(store):
+        """Respect the owner toggle on both listing and direct previews; fail closed."""
+        if store is None:
+            return False
+        try:
+            return bool(store.preferences().get("memory_enabled", True))
+        except (OSError, RuntimeError, ValueError, AttributeError, TypeError):
+            return False
+
     def stores():
         return {
             "conversations": runtime.get("continuity"),
@@ -193,7 +202,7 @@ def global_search_router(runtime: dict) -> APIRouter:
             return result, "partial" if len(documents) > SOURCE_LIMIT else "available"
 
         if kind == "memory":
-            if not store.preferences().get("memory_enabled", True):
+            if not memory_enabled(store):
                 return [], "disabled"
             # Normal-sensitivity owner memories only. No sensitive/secret contents
             # or extracted plaintext stored in this read projection.
@@ -363,6 +372,8 @@ def global_search_router(runtime: dict) -> APIRouter:
         elif kind == "memory":
             if not permitted(device, "memory:read"):
                 raise HTTPException(403, "Memory access not authorized")
+            if not memory_enabled(s["memory"]):
+                raise HTTPException(404, "Memory search is disabled or unavailable")
             mem = s["memory"].get(result_id) if s["memory"] else None
             if mem and mem.get("sensitivity", "normal") == "normal" and not mem.get("removed_at"):
                 resource = row(kind, mem["id"], mem.get("subject"), "Owner memory · preview withheld",
@@ -387,7 +398,8 @@ def global_search_router(runtime: dict) -> APIRouter:
         device = session(pa_device, pa_token)
         return {"source_availability": {name: bool(value) and (
             name not in ("knowledge", "files", "memory") or
-            permitted(device, "memory:read" if name == "memory" else "knowledge:read"))
+            permitted(device, "memory:read" if name == "memory" else "knowledge:read")) and (
+            name != "memory" or memory_enabled(value))
             for name, value in stores().items()}, "indexing": "canonical live reads; no copied search index"}
 
     return router
