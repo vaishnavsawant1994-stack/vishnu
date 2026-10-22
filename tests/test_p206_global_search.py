@@ -149,3 +149,29 @@ def test_failures_do_not_fabricate_zero_for_unavailable_sources(tmp_path):
     assert data["coverage"]["agents"] == "unavailable"
     assert data["counts"]["projects"] >= 1
     assert client.get("/iphone/api/search/result/agents/missing").status_code == 503
+
+
+
+def test_scan_cap_reports_lower_bound_and_explicit_project_filter_bypasses_cap(tmp_path):
+    client, _, initial_project, _, runtime = setup(tmp_path)
+    projects = runtime["base_project_store"]
+    # The first (oldest) Project falls outside the last 100, but the explicit
+    # resource filter must still find it rather than misreporting a real zero.
+    projects.update(initial_project["id"], {"name": "Overflow original"})
+    for i in range(105):
+        projects.create(name=f"Overflow newer {i:03d}")
+    response = client.get("/iphone/api/search", params={
+        "q": "Overflow", "category": "projects"
+    })
+    assert response.status_code == 200, response.text
+    data = response.json()
+    assert data["coverage"]["projects"] == "partial"
+    assert data["count_is_lower_bound"] is True
+    assert data["counts"]["projects"] <= 100
+    scoped = client.get("/iphone/api/search", params={
+        "q": "Overflow", "category": "projects",
+        "project_id": initial_project["id"]
+    })
+    assert scoped.status_code == 200, scoped.text
+    assert [r["id"] for r in scoped.json()["results"]] == [initial_project["id"]]
+    assert scoped.json()["coverage"]["projects"] == "available"

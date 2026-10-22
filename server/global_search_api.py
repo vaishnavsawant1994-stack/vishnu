@@ -60,15 +60,24 @@ def global_search_router(runtime: dict) -> APIRouter:
                     raise HTTPException(404, "Project is not linked to this Workspace")
         return project, workspace
 
-    def allowed_projects(workspace_id: str):
+    def allowed_projects(workspace_id: str, project_id: str = ""):
         s = stores()
         if not s["projects"]:
-            return []
+            return [], False
+        if project_id:
+            project = s["projects"].get(project_id)
+            if not project:
+                return [], False
+            if workspace_id:
+                linked = {x["resource_id"] for x in s["workspaces"].linked_projects("owner", workspace_id)}
+                if project_id not in linked:
+                    return [], False
+            return [project], False
         rows = list(s["projects"].list(query="", status="all", sort="recent"))
         if workspace_id:
             links = {x["resource_id"] for x in s["workspaces"].linked_projects("owner", workspace_id)}
             rows = [x for x in rows if x["id"] in links]
-        return rows[:SOURCE_LIMIT]
+        return rows[:SOURCE_LIMIT], len(rows) > SOURCE_LIMIT
 
     def knowledge_classes(device: str) -> set[str]:
         classes = {"owner", "trusted-devices"}
@@ -112,14 +121,16 @@ def global_search_router(runtime: dict) -> APIRouter:
             return result, "partial" if page.get("has_more") else "available"
 
         if kind == "workspaces":
-            for it in store.list("owner", query=q, status="active", sort="recent")[:SOURCE_LIMIT]:
+            source_rows = store.list("owner", query=q, status="active", sort="recent")
+            for it in source_rows[:SOURCE_LIMIT]:
                 result.append(row(kind, it["id"], it["name"], it.get("description"),
                                   updated=it.get("updated_at"), status=it.get("status"),
                                   workspace_id=it["id"], source="canonical_workspace"))
-            return result, "available"
+            return result, "partial" if len(source_rows) > SOURCE_LIMIT else "available"
 
         if kind == "projects":
-            for it in allowed_projects(workspace_id):
+            projects, project_truncated = allowed_projects(workspace_id, project_id)
+            for it in projects:
                 if project_id and it["id"] != project_id:
                     continue
                 if needle not in " ".join(str(it.get(k) or "") for k in ("name", "goal", "description")).casefold():
@@ -127,10 +138,11 @@ def global_search_router(runtime: dict) -> APIRouter:
                 result.append(row(kind, it["id"], it["name"], it.get("goal") or it.get("description"),
                                   updated=it.get("updated_at"), status=it.get("status"),
                                   project_id=it["id"], source="canonical_project"))
-            return result, "available"
+            return result, "partial" if project_truncated else "available"
 
         if kind == "work":
-            for project in allowed_projects(workspace_id):
+            projects, project_truncated = allowed_projects(workspace_id, project_id)
+            for project in projects:
                 if project_id and project["id"] != project_id:
                     continue
                 detail = store.get(project["id"])
@@ -144,11 +156,13 @@ def global_search_router(runtime: dict) -> APIRouter:
                                       project_id=project["id"], source="canonical_project_task"))
                     if len(result) >= SOURCE_LIMIT:
                         return result, "partial"
-            return result, "available"
+            return result, "partial" if project_truncated else "available"
 
         if kind == "files":
+            project_truncated = False
             if s["projects"] is not None:
-                for project in allowed_projects(workspace_id):
+                projects, project_truncated = allowed_projects(workspace_id, project_id)
+                for project in projects:
                     if project_id and project["id"] != project_id:
                         continue
                     for f in s["projects"].search_files(project["id"], q, limit=25):
@@ -159,7 +173,8 @@ def global_search_router(runtime: dict) -> APIRouter:
                         if len(result) >= SOURCE_LIMIT:
                             return result, "partial"
             # Only properly authorized Knowledge documents; no raw blob retrieval.
-            for doc in store.list(q, limit=SOURCE_LIMIT, access_classes=knowledge_classes(device)):
+            documents = store.list(q, limit=SOURCE_LIMIT + 1, access_classes=knowledge_classes(device))
+            for doc in documents[:SOURCE_LIMIT]:
                 if doc.get("source") == "owner-note":
                     continue
                 result.append(row(kind, doc["id"], doc["title"], doc.get("filename") or doc.get("source"),
@@ -167,26 +182,28 @@ def global_search_router(runtime: dict) -> APIRouter:
                                   source="knowledge_document"))
                 if len(result) >= SOURCE_LIMIT:
                     return result, "partial"
-            return result, "available"
+            return result, "partial" if project_truncated or len(documents) > SOURCE_LIMIT else "available"
 
         if kind == "knowledge":
-            for doc in store.list(q, limit=SOURCE_LIMIT, access_classes=knowledge_classes(device)):
+            documents = store.list(q, limit=SOURCE_LIMIT + 1, access_classes=knowledge_classes(device))
+            for doc in documents[:SOURCE_LIMIT]:
                 result.append(row(kind, doc["id"], doc.get("title"), doc.get("filename") or doc.get("source"),
                                   updated=doc.get("updated_at"), source="knowledge_document"))
-            return result, "available"
+            return result, "partial" if len(documents) > SOURCE_LIMIT else "available"
 
         if kind == "memory":
             if not store.preferences().get("memory_enabled", True):
                 return [], "disabled"
             # Normal-sensitivity owner memories only. No sensitive/secret contents
             # or extracted plaintext stored in this read projection.
-            for mem in store.search(q, limit=SOURCE_LIMIT, active_only=True):
+            memories = store.search(q, limit=SOURCE_LIMIT + 1, active_only=True)
+            for mem in memories[:SOURCE_LIMIT]:
                 if str(mem.get("sensitivity") or "normal").lower() != "normal":
                     continue
                 result.append(row(kind, mem["id"], mem.get("subject") or "Saved memory",
                                   "Owner memory · content hidden in search results",
                                   updated=mem.get("updated_at"), source="normal_owner_memory"))
-            return result, "available"
+            return result, "partial" if len(memories) > SOURCE_LIMIT else "available"
 
         if kind == "agents":
             catalog = store.catalog()
@@ -198,7 +215,7 @@ def global_search_router(runtime: dict) -> APIRouter:
                 result.append(row(kind, agent.get("id") or agent.get("template_id"),
                                   title, desc, updated=agent.get("updated_at"),
                                   status=agent.get("state") or "", source="agent_workforce"))
-            return result, "available"
+            return result, "partial" if len(catalog) > SOURCE_LIMIT else "available"
 
         return [], "unavailable"
 

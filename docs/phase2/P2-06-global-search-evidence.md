@@ -40,3 +40,8 @@ No production deployment. Proprietary repository license unchanged.
 ## Follow-up hardening, October 22
 - Reject whitespace-only API search queries rather than running a broad query on all canonical sources.
 - Desktop/mobile advanced filters include an explicit custom UTC date interval using the existing validated API date range. Calendar days are UTC in the backend, not owner-timezone-aware civil dates.
+
+## Source completeness hardening
+- Bounded Project, Workspace, Agent, Memory and Knowledge scans now disclose `partial` coverage instead of claiming complete facet counts after the scan cap.
+- Explicit Project filters resolve the canonical Project directly, even when that Project is older than the first 100 listed Projects.
+- Added an isolated 105-Project regression verifying lower-bound facets and authorized filtered recall. Full exact-head qualification must be rerun after this change.
