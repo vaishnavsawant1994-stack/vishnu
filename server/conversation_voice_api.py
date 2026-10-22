@@ -170,6 +170,19 @@ def conversation_voice_router(runtime, executor):
             transcript = context_text[:8000]
         elif related_meta.get('conversation_kind') == 'workspace':
             raise HTTPException(409, 'Workspace conversation requires verified Workspace ID')
+        elif related_meta.get('conversation_kind') == 'project':
+            project_id = related_meta.get('project_id')
+            project_store = runtime.get('base_project_store')
+            project = project_store.get(project_id) if project_store and isinstance(project_id, str) else None
+            if not project or project.get('status') == 'archived' or related_thread.get('closed_at'):
+                raise HTTPException(404, 'Project voice context is unavailable')
+            original_request = transcript
+            transcript = (
+                'PROJECT REFERENCE FROM TRUSTED SERVER (not execution authority):\n'
+                'Project: ' + str(project.get('name') or '')[:120] + '\n'
+                'Goal: ' + str(project.get('goal') or '')[:500] + '\n'
+                'Owner request: ' + original_request
+            )[:8000]
         modality = input_modality(request)
         try:
             metadata_reader = getattr(registry, 'metadata', None)

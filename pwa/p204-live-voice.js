@@ -158,24 +158,26 @@ function speak(text){
 async function send(raw,modality='text'){
  const text=String(raw||'').trim();if(!text||S.sending)return;
  if((S.context==='project'||S.context==='workspace')&&!S.scope){info('Select a Project or Workspace before sending.');return}
- S.sending=true;S.request=crypto.randomUUID();S.draft=text;pauseRecognition();phase('thinking');
+ S.sending=true;S.request=crypto.randomUUID();const nonce=S.token;S.draft=text;releaseAudio();phase('thinking');
  try{
   await ensureConversation();
   const payload={request_id:S.request,conversation_id:S.thread,transcript:text};
   if(S.context==='workspace')payload.workspace_id=S.scope;
   const reply=await api('/voice/turn',{method:'POST',headers:{'X-Personal-AI-Input-Modality':modality},body:JSON.stringify(payload)});
+  if(nonce!==S.token||!active())return;
   S.request=null;S.draft='';$('p204Text').value='';
   await refreshThread();
   if(reply.status==='approval_required'){phase('approval');info('A governed action requires your explicit approval; no automatic approval is performed.')}
   else if(modality==='voice'&&reply.reply)speak(reply.reply);
   else phase('idle','Canonical response received. Choose Start Voice to resume speaking.');
- }catch(error){phase('error',error.message);info('No confirmed success. Unsent text remains in the composer.')}
+ }catch(error){if(nonce===S.token&&active()){phase('error',error.message);info('No confirmed success. Unsent text remains in the composer.')}}
  finally{S.sending=false;S.request=null}
 }
 async function interrupt(){
  stopSpeech();try{await api('/voice/barge',{method:'POST',body:JSON.stringify({speaking:true})})}catch(e){info('Playback interrupted locally; server response unavailable: '+e.message)}phase('idle');
 }
 async function end(hide=false){
+ S.token++;
  if(S.request){try{await api('/voice/operation/cancel',{method:'POST',body:JSON.stringify({request_id:S.request})})}catch(e){info('Canonical cancellation unconfirmed; check Work before retry.')}S.request=null}
  stopSpeech();releaseAudio();await releaseScreen();haltClock();S.partial='';phase('ended');renderEvents();
  if(hide){S.open=false;$('p204Root').classList.add('hidden');$('p204Root').setAttribute('aria-hidden','true');window.vishnuVoiceBridge.onClose?.()}
@@ -241,14 +243,14 @@ async function handle(name){
  if(name.startsWith('tool:'))return tool(name.slice(5));
  if(name==='start')return S.playing?interrupt():listen();
  if(name==='mute')return S.muted?unmute():mute();
- if(name==='end')return end();
+ if(name==='end')return end(true);
  if(name==='text'){$('p204Text').focus();return}
  if(name==='mode'){S.mode=S.mode==='expanded'?'focus':'expanded';paint();return}
  if(name==='share')return share();
  if(name==='settings')return settings();
  if(name==='attach')return modal('Attach sources','Use the existing authorized Knowledge/Project file workflows. No file is silently uploaded.',[['Open Library',()=>navigate('knowledge')]]);
  if(name==='menu'){$('p204Root').classList.toggle('menu-open');return}
- if(name==='more')return modal('Voice options','Select an available action.',[['Change voice mode',()=>handle('mode')],['Settings',settings],['End',()=>end()]]);
+ if(name==='more')return modal('Voice options','Select an available action.',[['Change voice mode',()=>handle('mode')],['Settings',settings],['End',()=>end(true)]]);
 }
 const wave='<div class="p204-wave" aria-hidden="true">'+Array.from({length:19},()=>'<i></i>').join('')+'</div>';
 function build(){
@@ -270,5 +272,7 @@ async function open(){
  root.classList.remove('hidden');root.setAttribute('aria-hidden','false');build();
  await refreshItems().catch(x=>info('Key items unavailable: '+x.message));
 }
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&S.mic){releaseAudio();phase('idle','Microphone released while app is inactive. Restart explicitly to listen again.')}});
+window.addEventListener('pagehide',()=>{if(S.open){stopSpeech();releaseAudio();releaseScreen();haltClock();S.token++;S.open=false}});
 window.vishnuP204={open,close:()=>end(true),get state(){return {phase:S.status,scope:S.context,thread:S.thread,mode:S.mode,recording:S.mic}}};
 })();
