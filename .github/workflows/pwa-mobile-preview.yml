@@ -21,6 +21,7 @@ on:
       - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
       - 'tests/p202d_workspace_conversation_browser.mjs'
+      - 'tests/p203_today_browser.mjs'
       - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -106,6 +107,8 @@ jobs:
           node tests/p202b_work_conversation_browser.mjs
           node --check pwa/p202d-workspace-conversation.js
           P202D_SCREENSHOT_DIR=artifacts/workspace-conversation node tests/p202d_workspace_conversation_browser.mjs
+          node --check pwa/p203-today.js
+          P203_SCREENSHOT_DIR=artifacts/today-p203 node tests/p203_today_browser.mjs
           node tests/chat_experience_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
