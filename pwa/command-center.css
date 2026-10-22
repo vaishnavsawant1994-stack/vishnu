@@ -82,3 +82,7 @@ body.cc-page-mode .home,body.cc-page-mode #voicePanel,body.cc-page-mode #feature
 @media(prefers-reduced-motion:reduce){.cc-page *{transition:none!important;animation:none!important}.cc-neural{filter:none}}
 
 body.cc-page-mode [data-command-center-entry]{border-color:#0b97ff!important;background:linear-gradient(125deg,#095cc2,#061f47)!important;color:#f3faff!important;box-shadow:0 0 16px #058aff8c!important}
+
+/* Shared desktop sidebar stays canonical; Command Center adds only its destination. */
+body.cc-page-mode .reference-desktop-sidebar [data-command-center-entry]{background:linear-gradient(100deg,#066bdf,#092d64)!important;border:1px solid #1fa9ff!important;box-shadow:0 0 14px #008dffa8!important;color:#eaf8ff!important}
+body.cc-page-mode .reference-desktop-sidebar [data-command-center-entry] span{color:#a7ecff}

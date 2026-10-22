@@ -18,7 +18,7 @@ body{margin:0;background:#020b1c;color:white;font:14px system-ui}#modulePanel{po
 window.routeCalls=[];window.historySaved=[];window.promptCalls=[];
 window.openModule=async(name)=>{routeCalls.push(name);document.getElementById('moduleBody').innerHTML=name==='projects'?'<button data-project-action="new-project">New Project</button>':name==='labs'?'<button data-workspace-new>New Workspace</button>':name==='workflows'?'<button id="workflowAdd">New Workflow</button>':'<main>'+name+'</main>'; if(name==='projects')document.querySelector('[data-project-action]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<input name="name" />';window.projectWizardOpened=true};if(name==='labs')document.querySelector('[data-workspace-new]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<form data-workspace-form><input name="name"></form>';window.workspaceWizardOpened=true};if(name==='workflows')document.getElementById('workflowAdd').onclick=()=>{window.workflowComposerOpened=true}};
 window.vishnuChatBridge={api:async(path,opt={})=>{if(path==='/command-center/recent'&&(!opt.method||opt.method==='GET'))return {recent:window.historySaved};if(path==='/command-center/recent'&&opt.method==='POST'){const id=JSON.parse(opt.body).command_id;window.historySaved=[{id,at:new Date().toISOString()},...window.historySaved.filter(x=>x.id!==id)].slice(0,12);return {recent:window.historySaved}}if(path==='/command-center/recent'&&opt.method==='DELETE'){window.historySaved=[];return {cleared:true}}if(path.startsWith('/workspaces?'))return {workspaces:[]};throw Error('Unexpected route '+path)},createConversation:async()=>{window.newChats=(window.newChats||0)+1},requestConfirmation:async()=>true,showToast:(m)=>{window.lastToast=m}};
-window.vishnuTodayP203Bridge={create:kind=>window.createdKind=kind,runPrompt:async text=>{window.promptCalls.push(text)}};window.openKnowledgeNoteEditor=async()=>{window.noteEditorOpened=true};
+window.vishnuTodayP203Bridge={create:kind=>window.createdKind=kind,goChat:()=>{window.chatViewOpened=(window.chatViewOpened||0)+1},runPrompt:async text=>{window.promptCalls.push(text)}};window.openKnowledgeNoteEditor=async()=>{window.noteEditorOpened=true};
 </script><script src="/p208"></script></body></html>`;
 const server=createServer((req,res)=>{if(req.url==='/iphone/assets/genesis/vishnu-core.png'){res.writeHead(200,{'Content-Type':'image/png'});res.end(neuralCore)}else if(req.url==='/p208'){res.writeHead(200,{'Content-Type':'text/javascript'});res.end(js)}else{res.writeHead(200,{'Content-Type':'text/html'});res.end(html)}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -56,6 +56,7 @@ try{
   await page.locator('#ccCommandInput').press('Enter');
   await page.waitForFunction(()=>window.promptCalls.length===1);
   assert.match((await page.evaluate(()=>window.promptCalls[0])),/Summarize my day/i);
+  assert.equal(await page.evaluate(()=>window.chatViewOpened),1,'Uses the canonical conversation bridge without resetting context');
   await page.evaluate(()=>window.vishnuOpenCommandCenter());
   assert.equal(await page.locator('.cc-panel-list').last().innerText().then(x=>x.includes('Summarize my day')),true,'recent history real result');
   await page.locator('#ccCommandInput').fill('create a project called Patient CRM');

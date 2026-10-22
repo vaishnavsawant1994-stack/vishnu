@@ -57,3 +57,7 @@ Exact-head CI green; inspect actual P2-08 screenshot artifacts; native flow/depe
 
 ## Verified Core asset in browser fixture
 - Browser fixture serves and decodes the real `pwa/assets/genesis/vishnu-core.png` at the PWA URL. Screenshot capture no longer silently omits the neural Core image. Reference-level pixel approval remains pending.
+
+## Conversation preservation and shared shell follow-up
+- Conversational commands open the existing canonical conversation view directly rather than navigating to fresh Home and potentially discarding the selected conversation context. The unit browser fixture asserts the goChat bridge is used before the summarized turn.
+- The existing desktop navigation sidebar includes a Command Center destination and styles its active state only while P2-08 is open; no second global sidebar implementation is introduced.
