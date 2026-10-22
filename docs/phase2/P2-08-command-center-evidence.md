@@ -49,3 +49,8 @@ Exact-head CI green; inspect actual P2-08 screenshot artifacts; native flow/depe
 - Today navigation opens the existing Today surface, task creation leaves Command Center before opening the canonical Today composer, New Note enters the existing Memory note editor, and Upload File targets the existing Knowledge file input.
 - Ctrl/Cmd+/ focuses the command input when the page is active and no other editor owns focus. Creation through New Chat clears obsolete Command Center styling.
 - This change is not evidence that reminder scheduling, Work execution, native launchers or calendar writes are independently complete.
+
+## Canonical creation deep links
+- New Automation invokes the actual existing `workflowAdd` workflow composer (no automated execution); New Note opens `openKnowledgeNoteEditor` from Knowledge Notes instead of a generic note fallback.
+- Upload File targets the existing `knowledgeFile` picker without uploading automatically. The global Command Center launcher receives an active blue selected treatment while the page is open.
+- Browser fixture exercises both creator entry points; exact-head CI and screenshot qualification are required.

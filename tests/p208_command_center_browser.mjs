@@ -15,9 +15,9 @@ body{margin:0;background:#020b1c;color:white;font:14px system-ui}#modulePanel{po
 <div id="modulePanel" class="open"><header class="module-head">Current Module</header><div class="module-body" id="moduleBody"></div></div>
 <script>
 window.routeCalls=[];window.historySaved=[];window.promptCalls=[];
-window.openModule=async(name)=>{routeCalls.push(name);document.getElementById('moduleBody').innerHTML=name==='projects'?'<button data-project-action="new-project">New Project</button>':name==='labs'?'<button data-workspace-new>New Workspace</button>':'<main>'+name+'</main>'; if(name==='projects')document.querySelector('[data-project-action]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<input name="name" />';window.projectWizardOpened=true};if(name==='labs')document.querySelector('[data-workspace-new]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<form data-workspace-form><input name="name"></form>';window.workspaceWizardOpened=true}};
+window.openModule=async(name)=>{routeCalls.push(name);document.getElementById('moduleBody').innerHTML=name==='projects'?'<button data-project-action="new-project">New Project</button>':name==='labs'?'<button data-workspace-new>New Workspace</button>':name==='workflows'?'<button id="workflowAdd">New Workflow</button>':'<main>'+name+'</main>'; if(name==='projects')document.querySelector('[data-project-action]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<input name="name" />';window.projectWizardOpened=true};if(name==='labs')document.querySelector('[data-workspace-new]').onclick=()=>{document.getElementById('moduleBody').innerHTML='<form data-workspace-form><input name="name"></form>';window.workspaceWizardOpened=true};if(name==='workflows')document.getElementById('workflowAdd').onclick=()=>{window.workflowComposerOpened=true}};
 window.vishnuChatBridge={api:async(path,opt={})=>{if(path==='/command-center/recent'&&(!opt.method||opt.method==='GET'))return {recent:window.historySaved};if(path==='/command-center/recent'&&opt.method==='POST'){const id=JSON.parse(opt.body).command_id;window.historySaved=[{id,at:new Date().toISOString()},...window.historySaved.filter(x=>x.id!==id)].slice(0,12);return {recent:window.historySaved}}if(path==='/command-center/recent'&&opt.method==='DELETE'){window.historySaved=[];return {cleared:true}}if(path.startsWith('/workspaces?'))return {workspaces:[]};throw Error('Unexpected route '+path)},createConversation:async()=>{window.newChats=(window.newChats||0)+1},requestConfirmation:async()=>true,showToast:(m)=>{window.lastToast=m}};
-window.vishnuTodayP203Bridge={create:kind=>window.createdKind=kind,runPrompt:async text=>{window.promptCalls.push(text)}};
+window.vishnuTodayP203Bridge={create:kind=>window.createdKind=kind,runPrompt:async text=>{window.promptCalls.push(text)}};window.openKnowledgeNoteEditor=async()=>{window.noteEditorOpened=true};
 </script><script src="/p208"></script></body></html>`;
 const server=createServer((req,res)=>{if(req.url==='/p208'){res.writeHead(200,{'Content-Type':'text/javascript'});res.end(js)}else{res.writeHead(200,{'Content-Type':'text/html'});res.end(html)}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
@@ -42,6 +42,12 @@ try{
   await page.evaluate(()=>window.vishnuOpenCommandCenter());
   await page.locator('[data-cc-id="new-workspace"]').first().click();
   assert.equal(await page.evaluate(()=>window.workspaceWizardOpened),true,'opened canonical workspace wizard');
+  await page.evaluate(()=>window.vishnuOpenCommandCenter());
+  await page.locator('[data-cc-id="new-automation"]').first().click();
+  assert.equal(await page.evaluate(()=>window.workflowComposerOpened),true,'canonical workflow composer');
+  await page.evaluate(()=>window.vishnuOpenCommandCenter());
+  await page.locator('[data-cc-id="new-note"]').first().click();
+  assert.equal(await page.evaluate(()=>window.noteEditorOpened),true,'canonical Knowledge Note editor');
   await page.evaluate(()=>window.vishnuOpenCommandCenter());
   await page.locator('#ccCommandInput').fill('Summarize my day');
   await page.locator('#ccCommandInput').press('Enter');

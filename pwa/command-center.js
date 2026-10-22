@@ -22,7 +22,7 @@ const registry=[
 ['new-project','New Project','Create a canonical Project','Create','⬡','create-project','create make start project'],
 ['new-workspace','New Workspace','Create a canonical Workspace','Create','✿','create-workspace','create space research workspace'],
 ['new-task','New Task','Add to your tasks','Create','☑','create-task','todo create task'],
-['new-automation','New Automation','Open workflow creation','Create','⚙','workflows','automate workflow schedule automation'],
+['new-automation','New Automation','Open workflow creation','Create','⚙','create-workflow','automate workflow schedule automation'],
 ['new-note','New Note','Create in Knowledge / Notes','Create','▤','note','knowledge write note'],
 ['upload-file','Upload File','Use the secure Knowledge uploader','Files','▢','upload','attach file upload'],
 ['summarize-day','Summarize my day','Use permitted schedule and task context','Work','▣','prompt','daily summary what happened today'],
@@ -107,11 +107,12 @@ try{
 switch(c.route){
 case 'home':case 'chat':case 'today':case 'labs':case 'projects':case 'knowledge':case 'tools':case 'devices':case 'settings':case 'search':case 'notifications':case 'workflows':await go(c.route);break;
 case 'agents':await go('agents');break;
+case 'create-workflow':{await go('workflows');const entry=$('workflowAdd');if(!entry)throw Error('Canonical workflow creator is not available');entry.click();break;}
 case 'conversation':if(window.personalAiDemoMode)throw Error('Preview mode cannot create conversations');await go('home');await window.vishnuChatBridge.createConversation();break;
 case 'create-project':await toWizard('project',options.name);break;
 case 'create-workspace':await toWizard('workspace',options.name);break;
 case 'create-task':await toWizard('task');break;
-case 'note':await go('memory');if(!document.querySelector('#memoryAdd'))throw Error('Canonical note editor unavailable');document.querySelector('#memoryAdd').click();break;
+case 'note':await go('knowledge');if(typeof window.openKnowledgeNoteEditor!=='function')throw Error('Canonical Knowledge Note editor unavailable');await window.openKnowledgeNoteEditor();break;
 case 'upload':{await go('knowledge');const picker=document.querySelector('#knowledgeFile,#knowledgeFileInput,[data-knowledge-upload],#attachmentButton');if(picker&&picker.type==='file')picker.click();else if(picker)picker.click();else window.vishnuChatBridge?.showToast?.('Open the existing Knowledge upload picker. No file has been uploaded.');break}
 case 'file':await go('knowledge');window.vishnuChatBridge?.showToast?.('Select an authorized file before requesting analysis.');break;
 case 'prompt':{
