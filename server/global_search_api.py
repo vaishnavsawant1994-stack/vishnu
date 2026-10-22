@@ -315,9 +315,18 @@ def global_search_router(runtime: dict) -> APIRouter:
         kind: Literal["conversations", "workspaces", "projects", "files", "work", "agents", "knowledge", "memory"],
         result_id: str,
         project_id: str = "",
+        workspace_id: str = "",
         pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
     ):
         device = session(pa_device, pa_token)
+        if project_id or workspace_id:
+            authorise_target(project_id, workspace_id)
+            if kind in {"memory", "knowledge", "agents"} or (project_id and kind == "workspaces"):
+                raise HTTPException(404, "This source is not linked to the requested context")
+            if workspace_id and kind == "workspaces" and result_id != workspace_id:
+                raise HTTPException(404, "Workspace result is outside the selected context")
+            if workspace_id and kind == "projects":
+                authorise_target(result_id, workspace_id)
         s = stores()
         resource = None
         preview = []
@@ -326,6 +335,10 @@ def global_search_router(runtime: dict) -> APIRouter:
             thread = s["conversations"].thread(result_id) if s["conversations"] else None
             if thread and not thread.get("closed_at"):
                 ctx = thread.get("context") or {}
+                if ((project_id and project_id not in
+                     {ctx.get("project_id"), ctx.get("work_project_id")}) or
+                    (workspace_id and ctx.get("workspace_id") != workspace_id)):
+                    raise HTTPException(404, "Conversation is outside the selected context")
                 resource = row(kind, result_id, thread.get("title"), updated=thread.get("updated_at"),
                                project_id=ctx.get("project_id"), workspace_id=ctx.get("workspace_id"),
                                context_kind=ctx.get("conversation_kind") or "personal")
@@ -362,6 +375,8 @@ def global_search_router(runtime: dict) -> APIRouter:
         elif kind in {"files", "knowledge"}:
             if not permitted(device, "knowledge:read"):
                 raise HTTPException(403, "Knowledge access not authorized")
+            if workspace_id and not project_id:
+                raise HTTPException(404, "A Workspace file preview requires a linked Project ID")
             if project_id:
                 # A Project-scoped Files preview must never resolve to an unrelated
                 # global Knowledge document with a matching or forged resource ID.
