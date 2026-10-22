@@ -133,3 +133,18 @@ def test_search_validates_bad_filters_and_context_authority(tmp_path):
     assert client.get('/iphone/api/conversations/history/search',
                       params={'since': '2026-10-23', 'until': '2026-10-22'}).status_code == 422
     assert client.get(f'/iphone/api/conversations/{ident}/history-detail').status_code == 200
+
+
+def test_cannot_reassign_primary_project_conversation_and_break_project_pointer(tmp_path):
+    client, ledger, projects, _ = stack(tmp_path)
+    client.post('/iphone/api/access/password/login')
+    project = projects.create(name='Primary Project')
+    thread_id = ledger.create_thread('Primary Thread', context={
+        'conversation_kind': 'project', 'project_id': project['id'],
+    })
+    projects.update(project['id'], {'conversation_id': thread_id})
+    response = client.post(f'/iphone/api/conversations/{thread_id}/organize',
+                           json={'kind': 'personal', 'confirm': True})
+    assert response.status_code == 409
+    assert ledger.thread(thread_id)['context']['project_id'] == project['id']
+    assert projects.get(project['id'])['conversation_id'] == thread_id

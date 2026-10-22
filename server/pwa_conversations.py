@@ -118,6 +118,17 @@ def pwa_conversation_router(runtime):
         if old.get('closed_at'):
             raise HTTPException(409, 'Restore conversation first')
         kind, target = body.kind, body.target_id
+        previous = old.get('context') or {}
+        if previous.get('conversation_kind') == 'project':
+            prior_project_id = previous.get('project_id')
+            if prior_project_id and (kind != 'project' or target != prior_project_id):
+                canonical_projects = runtime.get('base_project_store') or runtime.get('project_store')
+                prior_project = canonical_projects.get(prior_project_id) if canonical_projects else None
+                if prior_project and prior_project.get('conversation_id') == conversation_id:
+                    raise HTTPException(
+                        409, 'This is the primary Project conversation. Keep it linked to its Project '
+                             'to avoid breaking the Project history pointer.'
+                    )
         if kind == 'project':
             projects = runtime.get('base_project_store') or runtime.get('project_store')
             project = projects.get(target) if projects and target else None
