@@ -55,7 +55,7 @@ function detailMarkup(){
  '<span class="gs-result-icon gs-icon-'+esc(item.type)+'">'+icon(item.type)+'</span><div><h2>'+esc(item.title)+'</h2><p>'+label(item.type)+' · '+format(item.updated_at)+'</p></div></div>'+
  '<div class="gs-detail-actions"><button data-gs-action="open">Open '+(item.type==='conversations'?'in Chat':'Original')+'</button>'+
  '<button data-gs-action="copy">Copy Link</button>'+
- (item.type==='conversations'?'<button data-gs-action="summarize">Summarize</button><button data-gs-action="organize">Move to Project</button>':'')+
+ (item.type==='conversations'?'<button data-gs-action="summarize">Summarize</button><details class="gs-result-more"><summary>More ···</summary><div><button data-gs-action="organize">Move to Project</button><button data-gs-action="workspace-organize">Move to Workspace</button><button data-gs-action="export">Export JSON</button><button data-gs-action="archive">Archive</button><button data-gs-action="delete" class="gs-danger">Delete</button></div></details>':'')+
  (item.project_id?'<button data-gs-action="task">Create Task</button>':'')+'</div>'+
  '<div class="gs-preview-card"><header>Preview</header>'+
  (state.summary?'<div class="gs-preview-message"><strong>Verified AI Summary</strong><p>'+esc(state.summary)+'</p></div>':'')+
@@ -175,6 +175,61 @@ async function action(kind){
      if(active())await select(item);
      message('The original conversation is now linked to the selected Project.');
    }catch(e){message('Conversation was not moved: '+e.message)}
+   finally{state.actionBusy=false}
+   return;
+ }
+ if(kind==='workspace-organize'){
+   if(item.type!=='conversations'||state.actionBusy)return;
+   try{
+     const list=await window.api('/workspaces?status=active');
+     const spaces=(list.workspaces||[]).slice(0,30);
+     if(!spaces.length){message('No available Workspaces.');return}
+     const choice=window.prompt('Move this original conversation to a Workspace (enter its number):\\n'+spaces.map((s,i)=>i+1+'. '+s.name).join('\\n'));
+     if(choice===null)return;
+     const ws=spaces[Number(choice)-1];
+     if(!ws){message('No Workspace selected.');return}
+     if(!window.confirm('Change this entire conversation to Workspace '+ws.name+'? Its context boundary changes; history is not copied or shared with anyone.'))return;
+     state.actionBusy=true;
+     const out=await window.api('/conversations/'+enc(item.id)+'/organize',{method:'POST',body:JSON.stringify({kind:'workspace',target_id:ws.id,confirm:true})});
+     if(!out.conversation?.id){message('Workspace organization not confirmed.');return}
+     item.workspace_id=ws.id;item.project_id='';state.detail=null;
+     if(active())await select(item);
+     message('Original conversation successfully moved to Workspace '+ws.name+'.');
+   }catch(e){message('Workspace organization failed: '+e.message)}
+   finally{state.actionBusy=false}
+   return;
+ }
+ if(kind==='export'){
+   if(item.type!=='conversations'||state.actionBusy)return;
+   if(!window.confirm('Export a local JSON copy of the complete authorized conversation? Protect this private file after saving.'))return;
+   state.actionBusy=true;
+   try{
+     const payload=await window.api('/conversations/'+enc(item.id)+'/export');
+     if(!payload?.conversation&&!payload?.events){message('No export bundle confirmed.');return}
+     const file=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+     const url=URL.createObjectURL(file);
+     const a=document.createElement('a');a.href=url;a.download='vishnu-conversation-'+item.id.replace(/[^a-zA-Z0-9_-]/g,'')+'.json';
+     document.body.append(a);a.click();a.remove();
+     setTimeout(()=>URL.revokeObjectURL(url),1000);
+     message('Authenticated conversation export received. Download initiated.');
+   }catch(e){message('Export failed: '+e.message)}
+   finally{state.actionBusy=false}
+   return;
+ }
+ if(kind==='archive'||kind==='delete'){
+   if(item.type!=='conversations'||state.actionBusy)return;
+   const irreversible=kind==='delete';
+   if(!window.confirm(irreversible?'Permanently delete this entire conversation? It will no longer appear in History.':'Archive this conversation? It will be retained in Archived History.'))return;
+   if(irreversible&&!window.confirm('Final confirmation: permanently delete this conversation while retaining separately owned Project and Workspace resources?'))return;
+   state.actionBusy=true;
+   try{
+     const path='/conversations/'+enc(item.id)+(irreversible?'':'/archive');
+     const result=await window.api(path,{method:irreversible?'DELETE':'POST'});
+     if(result?.ok!==true){message('No confirmed server mutation.');return}
+     state.selected=null;state.detail=null;state.mobileDetail=false;state.summary='';
+     if(active())await search();
+     message(irreversible?'Conversation deleted by its authoritative service.':'Conversation archived. Open Conversation History to restore it.');
+   }catch(e){message((irreversible?'Delete':'Archive')+' failed: '+e.message)}
    finally{state.actionBusy=false}
    return;
  }

@@ -45,3 +45,8 @@ No production deployment. Proprietary repository license unchanged.
 - Bounded Project, Workspace, Agent, Memory and Knowledge scans now disclose `partial` coverage instead of claiming complete facet counts after the scan cap.
 - Explicit Project filters resolve the canonical Project directly, even when that Project is older than the first 100 listed Projects.
 - Added an isolated 105-Project regression verifying lower-bound facets and authorized filtered recall. Full exact-head qualification must be rerun after this change.
+
+## Canonical Conversation lifecycle from search preview
+- Search offers a More menu for canonical Conversation results only: move existing original thread to a Workspace with explicit confirmation, secure JSON export, archive, or permanent delete with two owner confirmations. Other resource types do not receive these operations.
+- All mutations call the owning Conversation API. Export returns a real authorized bundle, and browser download is initiated only after its receipt. Archive/delete refresh Search only after backend confirmation; no resource-cloning or fake success.
+- Browser qualification adds Workspace move, real export result and archive disappearance. Desktop screenshot capture occurs with populated results and selected preview; mobile screenshot capture occurs with results visible, before destructive action. These are fixtures, not physical native-device or pixel-diff evidence.
