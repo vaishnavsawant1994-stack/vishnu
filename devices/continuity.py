@@ -49,6 +49,7 @@ class ContinuityService:
                     updated_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS idx_continuity_events_thread ON continuity_events(thread_id,id);
+                CREATE INDEX IF NOT EXISTS idx_continuity_history_page ON continuity_threads(updated_at DESC,id DESC);
                 '''
             )
 
@@ -122,6 +123,159 @@ class ContinuityService:
             item['preview'] = str(latest_payload.get('text') or '')[:160]
             output.append(item)
         return output
+
+    def history_page(
+        self, *, query='', kind='all', status='active', pinned=False, tag='',
+        project_id='', workspace_id='', since='', until='', cursor_time='',
+        cursor_id='', limit=40,
+    ):
+        """Bounded, canonical history metadata query. No second history database."""
+        if kind not in {'all', 'personal', 'work', 'project', 'workspace'}:
+            raise ValueError('invalid history type')
+        if status not in {'active', 'archived', 'all'}:
+            raise ValueError('invalid history status')
+        clauses, args = [], []
+        if status == 'active':
+            clauses.append('t.closed_at IS NULL')
+        elif status == 'archived':
+            clauses.append('t.closed_at IS NOT NULL')
+        expression = "COALESCE(json_extract(t.context_json, '$.conversation_kind'),'')"
+        if kind == 'personal':
+            clauses.append(expression + " NOT IN ('work','project','workspace')")
+        elif kind != 'all':
+            clauses.append(expression + ' = ?')
+            args.append(kind)
+        if pinned:
+            clauses.append("json_extract(t.context_json,'$.history_pinned') = 1")
+        if tag:
+            clauses.append("""EXISTS (
+                SELECT 1 FROM json_each(t.context_json,'$.history_tags') AS tag
+                WHERE lower(tag.value) = lower(?)
+            )""")
+            args.append(tag)
+        if project_id:
+            clauses.append("""(json_extract(t.context_json,'$.project_id') = ?
+                OR json_extract(t.context_json,'$.work_project_id') = ?)""")
+            args.extend((project_id, project_id))
+        if workspace_id:
+            clauses.append("json_extract(t.context_json,'$.workspace_id') = ?")
+            args.append(workspace_id)
+        if since:
+            clauses.append('substr(t.updated_at,1,10) >= ?')
+            args.append(since)
+        if until:
+            clauses.append('substr(t.updated_at,1,10) <= ?')
+            args.append(until)
+        if query.strip():
+            term = '%' + query.strip().replace('%', r'\%').replace('_', r'\_') + '%'
+            clauses.append("""(t.title LIKE ? ESCAPE '\' OR
+                t.context_json LIKE ? ESCAPE '\' OR EXISTS (
+                  SELECT 1 FROM continuity_events e
+                  WHERE e.thread_id=t.id AND e.payload_json LIKE ? ESCAPE '\'
+                ))""")
+            args.extend((term, term, term))
+        if cursor_time and cursor_id:
+            clauses.append('(t.updated_at < ? OR (t.updated_at = ? AND t.id < ?))')
+            args.extend((cursor_time, cursor_time, cursor_id))
+        where = ('WHERE ' + ' AND '.join(clauses)) if clauses else ''
+        bounded = max(1, min(int(limit), 100))
+        args.append(bounded + 1)
+        with self.lock, self._con() as con:
+            rows = con.execute(
+                f'''SELECT t.*,
+                    (SELECT COUNT(*) FROM continuity_events e WHERE e.thread_id=t.id) AS event_count,
+                    (SELECT payload_json FROM continuity_events e WHERE e.thread_id=t.id
+                     ORDER BY e.id DESC LIMIT 1) AS latest_payload_json
+                    FROM continuity_threads t {where}
+                    ORDER BY t.updated_at DESC, t.id DESC LIMIT ?''',
+                args,
+            ).fetchall()
+        has_more = len(rows) > bounded
+        items = []
+        for row in rows[:bounded]:
+            item = dict(row)
+            item['context'] = json.loads(item.pop('context_json') or '{}')
+            payload = json.loads(item.pop('latest_payload_json') or '{}')
+            item['preview'] = str(payload.get('text') or '')[:160]
+            items.append(item)
+        cursor = {'updated_at': items[-1]['updated_at'], 'id': items[-1]['id']} if has_more and items else None
+        return {'conversations': items, 'next_cursor': cursor, 'has_more': has_more}
+
+    def update_history_metadata(self, thread_id: str, *, title=None, pinned=None, tags=None):
+        """Update owner-organizational metadata atomically without touching resource ACLs."""
+        with self.lock, self._con() as con:
+            row = con.execute(
+                'SELECT title,context_json,closed_at FROM continuity_threads WHERE id=?', (thread_id,)
+            ).fetchone()
+            if row is None:
+                raise KeyError('conversation not found')
+            if row['closed_at']:
+                raise ValueError('restore this archived conversation before editing')
+            context = json.loads(row['context_json'] or '{}')
+            name = str(row['title'])
+            if title is not None:
+                name = ' '.join(str(title).split())[:120]
+                if not name:
+                    raise ValueError('conversation title required')
+            if pinned is not None:
+                context['history_pinned'] = bool(pinned)
+            if tags is not None:
+                if not isinstance(tags, list) or len(tags) > 12:
+                    raise ValueError('invalid conversation tags')
+                clean = []
+                for value in tags:
+                    if not isinstance(value, str):
+                        raise ValueError('invalid tag')
+                    tag = ' '.join(value.split())
+                    if not 1 <= len(tag) <= 32 or any(ord(ch) < 32 for ch in tag):
+                        raise ValueError('invalid tag')
+                    if tag.casefold() not in {x.casefold() for x in clean}:
+                        clean.append(tag)
+                context['history_tags'] = clean
+            con.execute('UPDATE continuity_threads SET title=?,context_json=?,updated_at=? WHERE id=?',
+                        (name, json.dumps(context), now(), thread_id))
+        self._emit('continuity.history.metadata.updated', thread_id=thread_id)
+        return self.thread(thread_id)
+
+    def organize_thread(self, thread_id: str, *, kind: str, target_id: str | None = None):
+        """Replace only authoritative classification, preserving the original event ledger."""
+        if kind not in {'personal', 'work', 'project', 'workspace'}:
+            raise ValueError('invalid conversation context')
+        if kind in {'project', 'workspace'} and not target_id:
+            raise ValueError('destination required')
+        with self.lock, self._con() as con:
+            row = con.execute('SELECT context_json,closed_at FROM continuity_threads WHERE id=?',
+                              (thread_id,)).fetchone()
+            if row is None:
+                raise KeyError('conversation not found')
+            if row['closed_at']:
+                raise ValueError('restore conversation before organizing')
+            existing = json.loads(row['context_json'] or '{}')
+            # Retain owner-chosen organizational tags only; no stale cross-context grants.
+            new_context = {
+                key: existing[key] for key in ('history_pinned','history_tags')
+                if key in existing
+            }
+            if kind == 'work':
+                new_context['conversation_kind'] = 'work'
+            elif kind == 'project':
+                new_context.update(conversation_kind='project', project_id=target_id)
+            elif kind == 'workspace':
+                new_context.update(conversation_kind='workspace', workspace_id=target_id, owner_id='owner')
+            con.execute('UPDATE continuity_threads SET context_json=?,updated_at=? WHERE id=?',
+                        (json.dumps(new_context), now(), thread_id))
+        self._emit('continuity.thread.organized', thread_id=thread_id, kind=kind)
+        return self.thread(thread_id)
+
+    def restore_thread(self, thread_id: str) -> bool:
+        with self.lock, self._con() as con:
+            row = con.execute(
+                'UPDATE continuity_threads SET closed_at=NULL,updated_at=? WHERE id=? AND closed_at IS NOT NULL',
+                (now(), thread_id),
+            )
+        if row.rowcount:
+            self._emit('continuity.thread.restored', thread_id=thread_id)
+        return row.rowcount == 1
 
     def all_thread_ids(self, *, include_closed: bool = True) -> list[str]:
         where = '' if include_closed else 'WHERE closed_at IS NULL'
