@@ -226,6 +226,8 @@ class ContinuityService:
                 for value in tags:
                     if not isinstance(value, str):
                         raise ValueError('invalid tag')
+                    if any(ord(ch) < 32 or ord(ch) == 127 for ch in value):
+                        raise ValueError('invalid tag')
                     tag = ' '.join(value.split())
                     if not 1 <= len(tag) <= 32 or any(ord(ch) < 32 for ch in tag):
                         raise ValueError('invalid tag')
