@@ -105,7 +105,7 @@ jobs:
           node --check pwa/p202b-work-conversation.js
           node tests/p202b_work_conversation_browser.mjs
           node --check pwa/p202d-workspace-conversation.js
-          node tests/p202d_workspace_conversation_browser.mjs
+          P202D_SCREENSHOT_DIR=artifacts/workspace-conversation node tests/p202d_workspace_conversation_browser.mjs
           node tests/chat_experience_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce

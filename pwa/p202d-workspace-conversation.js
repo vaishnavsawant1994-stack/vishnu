@@ -237,6 +237,9 @@ async function send(s){
  const button=s.host.querySelector('[data-p202d-send]');button.disabled=true;status(s,'Vishnu is responding…');
  try{
   if(!s.id)await create(s);
+  // Creating an initial conversation must not consume its unsent prompt.
+  drafts.set(s.workspace.id+'|'+s.id,text);
+  input.value=text;
   const res=await s.bridge.api('/voice/turn',{method:'POST',headers:{'X-Personal-AI-Input-Modality':'text'},body:JSON.stringify({
    request_id:crypto.randomUUID(),conversation_id:s.id,workspace_id:s.workspace.id,transcript:text})});
   if(res.status!=='completed'&&res.status!=='approval_required')throw Error('AI turn has not completed.');
@@ -244,7 +247,7 @@ async function send(s){
   if(res.status==='approval_required')status(s,'A consequential operation requires owner approval.');else status(s,'');
   await select(s,s.id);
   await summary(s);
- }catch(error){status(s,'Not sent: '+error.message)}
+ }catch(error){if(alive(s)){input.value=text;drafts.set(s.workspace.id+'|'+(s.id||''),text)}status(s,'Not sent: '+error.message)}
  finally{if(alive(s)){s.sending=false;button.disabled=false}}
 }
 function recordVoice(s){

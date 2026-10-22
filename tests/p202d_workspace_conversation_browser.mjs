@@ -1,12 +1,14 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from 'playwright';
 
 const root=new URL('../',import.meta.url);
 const js=await readFile(new URL('pwa/p202d-workspace-conversation.js',root),'utf8');
 const css=await readFile(new URL('pwa/p202d-workspace-conversation.css',root),'utf8');
 const pages=[];
+const screenshotDir=process.env.P202D_SCREENSHOT_DIR;
+if(screenshotDir)await mkdir(screenshotDir,{recursive:true});
 let created=0,chats=[],sent=[];
 const project={id:'project-one',name:'Verified Project',status:'active',task_count:4,done_count:2,file_count:1};
 const workspace={id:'workspace-one',name:'Product Development',description:'Canonical Workspace browser fixture',status:'active'};
@@ -71,6 +73,7 @@ try{
     await page.locator('.p202d-hero-actions button').first().click();
     assert.equal(await page.locator('.p202d-tabs button:visible').count(),10);
   }
+  await page.locator('[data-p202d-input]').focus();
   await page.locator('[data-p202d-input]').fill('Show me authorized Workspace progress');
   await page.locator('[data-p202d-send]').click();
   await page.getByText('Verified Workspace reply').waitFor();
@@ -79,6 +82,7 @@ try{
   assert.equal(sent[0].transcript,'Show me authorized Workspace progress');
   assert.equal(chats.length,1);
   assert.deepEqual(errors,[],'P2-02D must not cause runtime page errors');
+  if(screenshotDir)await page.screenshot({path:screenshotDir+'/workspace-chat-'+width+'.png',fullPage:false});
   await page.close();
  }
 }finally{await browser.close();await new Promise(resolve=>server.close(resolve))}
