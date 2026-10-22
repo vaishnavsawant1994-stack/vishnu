@@ -348,3 +348,61 @@ def test_project_live_voice_uses_verified_project_metadata_and_rejects_archived(
             request_id='22222222-2222-4222-8222-222222222222')
     assert blocked.value.status_code == 404
     assert len(inner.calls) == 1
+
+
+def test_workspace_turn_passes_real_http_middleware_and_persists_original_text(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from server.logical_request_middleware import LogicalRequestMiddleware
+
+    class OwnerSession(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            token = set_trusted_request(TrustedRequestContext('d1', 's1'))
+            try:
+                return await call_next(request)
+            finally:
+                reset_trusted_request(token)
+
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    spaces = WorkspaceStore(tmp_path / 'real_http_workspaces.sqlite3')
+    projects = ProjectStore(tmp_path / 'real_http_projects.sqlite3')
+    space = spaces.create('owner', name='Trusted Workspace', description='Scoped planning')
+    unrelated = spaces.create('owner', name='Unrelated Workspace')
+    project = projects.create(name='Linked Patient CRM')
+    spaces.link_project('owner', space['id'], project['id'])
+    thread_id = continuity.create_thread('Saved Workspace Conversation', context={
+        'conversation_kind': 'workspace', 'workspace_id': space['id'],
+        'owner_id': 'owner',
+    })
+    router = conversation_voice_router({
+        'device_registry': _Registry(), 'continuity': continuity,
+        'workspace_store': spaces, 'base_project_store': projects,
+    }, executor)
+    app = FastAPI()
+    app.include_router(router)
+    app.add_middleware(LogicalRequestMiddleware)
+    app.add_middleware(OwnerSession)
+    client = TestClient(app)
+    original = 'Please summarize the Patient CRM progress'
+    sent = client.post('/iphone/api/voice/turn', json={
+        'request_id': R1, 'transcript': original, 'conversation_id': thread_id,
+        'workspace_id': space['id'],
+    })
+    assert sent.status_code == 200, sent.text
+    assert sent.json()['status'] == 'completed'
+    assert inner.calls[0][0] == original
+    assert inner.calls[0][1]['scoped_context_only'] is True
+    assert 'Linked Patient CRM' in inner.calls[0][1]['verified_context']
+    saved = continuity.events_for_thread(thread_id)
+    assert [e['kind'] for e in saved] == ['user_message', 'assistant_message']
+    assert saved[0]['payload']['text'] == original
+    assert 'Trusted Workspace' not in saved[0]['payload']['text']
+
+    mismatched = client.post('/iphone/api/voice/turn', json={
+        'request_id': R2, 'transcript': 'Wrong scope',
+        'conversation_id': thread_id, 'workspace_id': unrelated['id'],
+    })
+    assert mismatched.status_code == 404
+    assert len(continuity.events_for_thread(thread_id)) == 2
+    assert len(inner.calls) == 1
