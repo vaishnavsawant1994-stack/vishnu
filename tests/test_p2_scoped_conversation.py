@@ -80,6 +80,25 @@ def test_scoped_turn_uses_only_verified_metadata_and_own_history():
     assert any(name == "conversation.assistant" for name, _ in events.rows)
 
 
+
+def test_scoped_turn_preserves_previous_assistant_history_from_canonical_runtime():
+    models = GuardedModels()
+    executor = AgentExecutor(
+        models=models, tools=ForbiddenTools(), memory=StubMemory(),
+        events=Events(), knowledge=ForbiddenSources(), second_brain=ForbiddenSources(),
+    )
+    previous = [
+        {"role": "user", "content": "First question"},
+        {"role": "assistant", "content": "First answer"},
+    ]
+    executor.chat(
+        "Follow-up", conversation_id="workspace-1", conversation_history=previous,
+        scoped_context_only=True, verified_context="Workspace: Verified Studio",
+    )
+    assert models.turns[0][1]["history"] == previous
+
+
+
 def test_scoped_turn_rejects_missing_server_grounding_before_writing():
     memory = StubMemory()
     executor = AgentExecutor(
