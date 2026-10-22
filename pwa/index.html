@@ -3094,7 +3094,7 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
 <div class="reference-desktop-tools">
   <button type="button" data-reference-search aria-label="Search"><span>⌕</span> Search anything… <kbd>⌘ K</kbd></button>
   <button type="button" data-command-center-entry aria-label="Open Command Center" title="Command Center (Ctrl+Shift+P)"><span aria-hidden="true">⌘</span> Command Center</button>
-  <button type="button" data-p207-entry aria-label="Open Notifications and Alerts">♧</button>
+  <button type="button" class="p207-header-bell" data-p207-entry aria-label="Open Notifications and Alerts">♧<span id="p207HeaderUnread" class="p207-head-badge hidden" aria-label="Unread notifications"></span></button>
   <button type="button" data-app-module="settings" class="reference-profile" aria-label="Profile">V</button>
 </div>
 <main class="app-shell">
@@ -3109,6 +3109,7 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
     <div class="brand header-core" role="img" aria-label="Vishnu animated neural sphere"><div class="core-stage" aria-hidden="true"><div class="core-glow"></div><canvas id="neuralCanvas"></canvas></div></div>
     <div class="v-home-title" aria-label="Vishnu">Vishnu</div>
     <div class="topbar-actions">
+      <button type="button" class="p207-mobile-bell" data-p207-entry aria-label="Open Notifications and Alerts">♧<span id="p207MobileUnread" class="p207-head-badge hidden" aria-label="Unread notifications"></span></button>
       <button id="chatMenuButton" class="chat-menu-button hidden" type="button" aria-label="Conversation options" aria-haspopup="menu" aria-expanded="false" aria-controls="chatActionMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
     <button id="ownerButton" class="owner-status" type="button" aria-label="Recent conversations" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5v5.2l3.4 2"/></svg><span class="trust"><span id="greeting">Good day.</span><small id="devicePill">Checking device…</small></span></button>
       <div id="chatActionMenu" class="chat-action-menu hidden" role="menu" aria-label="Current conversation options">

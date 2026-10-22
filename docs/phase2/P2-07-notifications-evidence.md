@@ -49,3 +49,6 @@ Source implementation is not equivalent to reference pixel parity. Mandatory fol
 ## Selection continuity after read and pin
 - The confirmed read and pin actions retain the currently selected notification and revalidate its detail, instead of dropping the mobile detail sheet or desktop action context. Dismissal and completed approval still remove the now-inapplicable selection.
 - Browser test checks continued action availability following successive read/pin actions at both reference breakpoints.
+
+## Shared notification bell counts
+- Desktop and mobile header bells plus the Notifications navigation badge show real device-authorized unread counts from the existing Notifications Center adapter. The header refreshes at a bounded interval while the app is visible. Authorization failures leave counts unasserted and no private notification payload is stored in localStorage.
