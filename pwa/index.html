@@ -5150,7 +5150,7 @@ window.vishnuChatBridge={
 };
 window.vishnuTodayP203Bridge={
  api, name:()=>window.ownerDisplayName?.()||'Owner',
- toast:message=>showToast(message),navigate:module=>openModule(module),
+ toast:message=>showToast(message),navigate:module=>module==='agents'?location.assign('/iphone/agents.html'):openModule(module),
  close:()=>closeTodayScreen(),
  goChat:()=>{enterConversationView();$('message')?.focus()},
  runPrompt:async prompt=>{closeTodayScreen();await sendTurn(prompt)},
