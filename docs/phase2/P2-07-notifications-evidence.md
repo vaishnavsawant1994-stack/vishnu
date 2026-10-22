@@ -40,3 +40,8 @@ Source implementation is not equivalent to reference pixel parity. Mandatory fol
 ## Compatibility hardening
 - Replace the obsolete exact `v70` cache assertion in the older Project Autonomy contract with a numeric minimum-version requirement and P2-07 asset presence checks. Keeps service-worker cache upgrades legal while still rejecting stale bundles.
 - Preserve the historical Timeline attention counter separately from P2-07's unread-notifications counter (`p207UnreadCount`), and make the top Notifications shortcut open the P2-07 module. Neither count is fabricated.
+
+## Desktop search and mobile category follow-up
+- Expose the real notification search field on desktop as well as mobile, with the same authenticated query handler.
+- Keep all seven category cards reachable on phone sizes, including System. Automated Chromium fixture checks typed search for both 1536px and 390px viewports.
+- Exact pixel matching and real native-device parity remain unverified.

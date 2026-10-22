@@ -68,6 +68,11 @@ try{
   assert.ok(requests.includes('POST /iphone/api/approval/a1/approve'));
   assert.equal(approvalStatus,'completed');
   await page.locator('[data-p207-cat="all"]').click();
+  assert.equal(await page.locator('#p207Query').isVisible(),true,'Notification search must be accessible at both breakpoints');
+  await page.locator('#p207Query').fill('Work');
+  await page.waitForFunction(()=>document.querySelectorAll('.p207-item').length===1);
+  await page.locator('#p207Query').fill('');
+  await page.waitForFunction(()=>document.querySelectorAll('.p207-item').length===2);
   await page.locator('[data-p207-id="n1"]').click();
   await page.locator('[data-p207-action="read"]:visible').click();
   assert.ok(rows.find(x=>x.id==='n1').read_at);
