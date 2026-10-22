@@ -11,7 +11,7 @@ let created=0,chats=[],sent=[];
 const project={id:'project-one',name:'Verified Project',status:'active',task_count:4,done_count:2,file_count:1};
 const workspace={id:'workspace-one',name:'Product Development',description:'Canonical Workspace browser fixture',status:'active'};
 const summary={workspace,projects:[project],counts:{projects:1,active_tasks:2,files:1,members:null,agents:null}};
-const html='<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"></head>'+
+const html='<!doctype html><html><head><meta name="viewport" content="width=device-width, initial-scale=1"><link rel="stylesheet" href="/client.css"></head>'+
 '<body><div id="view"></div><div id="error"></div><script src="/client.js"></script><script>'+
 'window.errors=[]; const api=async(path,options={})=>{const res=await fetch("/iphone/api"+path,{method:options.method||"GET",headers:{"Content-Type":"application/json"},body:options.body});const data=await res.json();if(!res.ok)throw Error(data.detail||"Request failed");return data};'+
 'window.vishnuChatBridge={api,showToast:msg=>window.errors.push(msg),openModule:async()=>{},openTodayScreen:async()=>{}};'+
@@ -57,7 +57,8 @@ try{
   await page.goto('http://127.0.0.1:'+port+'/');
   await page.locator('.p202d-root').waitFor();
   await page.getByText('Product Development').first().waitFor();
-  await page.getByText('Verified Project').first().waitFor();
+  if(!mobile)await page.getByText('Verified Project').first().waitFor();
+  await page.waitForFunction(()=>document.querySelector('.p202d-stat strong')?.textContent==='1');
   assert.ok((await page.locator('.p202d-stat strong').allTextContents()).includes('1'),'Project count is based on server data');
   assert.equal(await page.getByText('12 Members').count(),0,'Do not inject fake member counts');
   if(mobile){

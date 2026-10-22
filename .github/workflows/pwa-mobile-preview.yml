@@ -20,6 +20,7 @@ on:
       - 'tests/engineering_ui/**'
       - 'tests/owner_release_ui_browser.mjs'
       - 'tests/projects_workspace_browser.mjs'
+      - 'tests/p202d_workspace_conversation_browser.mjs'
       - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -103,6 +104,8 @@ jobs:
           node tests/p202_personal_chat_browser.mjs
           node --check pwa/p202b-work-conversation.js
           node tests/p202b_work_conversation_browser.mjs
+          node --check pwa/p202d-workspace-conversation.js
+          node tests/p202d_workspace_conversation_browser.mjs
           node tests/chat_experience_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
