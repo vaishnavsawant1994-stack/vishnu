@@ -42,3 +42,5 @@ Reference: Owner-supplied 1536×1024 Command Center desktop/mobile design. This 
 
 ## Review prerequisites
 Exact-head CI green; inspect actual P2-08 screenshot artifacts; native flow/dependency checks; back-navigation, 200% scaling, accessibility focus/VoiceOver/TalkBack; ensure P2-05/06/07 stacked PRs are reconciled before integration. No merge/deploy without explicit authorization.
+
+## Compatibility contract fix\n- The legacy P3 PWA asset smoke test previously required `cc-dialog` in the Command Center stylesheet; P2-08 is now a full-page `cc-page-mode` implementation, so its assertion checks that real supported layout contract instead. All other asset probes remain unchanged.\n
