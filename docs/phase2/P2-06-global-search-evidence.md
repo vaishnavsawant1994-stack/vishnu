@@ -50,3 +50,8 @@ No production deployment. Proprietary repository license unchanged.
 - Search offers a More menu for canonical Conversation results only: move existing original thread to a Workspace with explicit confirmation, secure JSON export, archive, or permanent delete with two owner confirmations. Other resource types do not receive these operations.
 - All mutations call the owning Conversation API. Export returns a real authorized bundle, and browser download is initiated only after its receipt. Archive/delete refresh Search only after backend confirmation; no resource-cloning or fake success.
 - Browser qualification adds Workspace move, real export result and archive disappearance. Desktop screenshot capture occurs with populated results and selected preview; mobile screenshot capture occurs with results visible, before destructive action. These are fixtures, not physical native-device or pixel-diff evidence.
+
+## Stale-result preview protection
+- Fresh queries and facet/filter changes invalidate outstanding source-detail requests before rendering a new result set. An earlier delayed, authorized preview cannot reactivate an obsolete selection.
+- The P2-06 browser fixture now holds a Conversation detail response while switching to the Projects facet and verifies that the stale preview remains absent at desktop and mobile viewport sizes.
+- This commit requires fresh exact-head CI qualification; no native-device or exact pixel-match claim is made.

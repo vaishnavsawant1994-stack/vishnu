@@ -89,6 +89,9 @@ function queryParams(offset=0){
 }
 async function search({append=false,remember=false}={}){
  const seq=++state.pending;
+ // Changing a query or facet invalidates any in-flight result detail request.
+ // A delayed preview cannot revive a result from the previous selection.
+ if(!append){++state.detailPending;state.selected=null;state.detail=null;state.summary='';state.mobileDetail=false;renderDetail();renderMeta()}
  if(!state.query.trim()){state.results=[];state.counts={};state.coverage={};state.next=null;state.selected=null;state.detail=null;renderResults();renderDetail();renderMeta();updateFacets();updateCoverage();return}
  if(remember)setRecent(state.query);
  const offset=append?state.next||0:0;

@@ -20,7 +20,7 @@ const categories=['conversations','workspaces','projects','files','work','agents
 const html='<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>'+style+'</style></head><body><header>VISHNU</header><div id="modulePanel" class="open"><div class="module-head"><span id="moduleTitle"></span><span id="moduleText"></span><span id="moduleMetric"></span></div><div id="moduleBody" class="module-body"></div></div><script>'+
 'window.navs=[];window.openModule=async name=>{window.navs.push(name)};window.openConversation=async id=>window.navs.push("conversation:"+id);window.openProject=async id=>window.navs.push("project:"+id);window.showToast=msg=>window.navs.push("toast:"+msg);window.api=async(path,options={})=>{const reply=await fetch("/iphone/api"+path,{method:options.method||"GET",headers:{"content-type":"application/json"},body:options.body});const payload=await reply.json();if(!reply.ok)throw Error(payload.detail||"Error");return payload};'+
 '</script><script src="/js"></script><script>window.openModule("search")</script></body></html>';
-const calls=[];let archived=false;
+const calls=[];let archived=false,delayPreview=false;
 const server=createServer(async(req,res)=>{
  const path=new URL(req.url,'http://test.local');
  const send=(obj,status=200,type='application/json')=>{res.writeHead(status,{'content-type':type});res.end(type==='application/json'?JSON.stringify(obj):obj)};
@@ -39,6 +39,7 @@ const server=createServer(async(req,res)=>{
  }
  if(path.pathname.startsWith('/iphone/api/search/result/')){
   const id=path.pathname.split('/').at(-1),x=records.find(r=>r.id===id);
+  if(delayPreview&&id==='conv-1')await new Promise(resolve=>setTimeout(resolve,420));
   if(!x)return send({detail:'Not found'},404);
   return send({result:x,preview:x.type==='conversations'?[{role:'user_message',text:'API original user message'},{role:'assistant_message',text:'Verified canonical reply'}]:[],related:x.type==='projects'?[{type:'work',id:'task-1',title:'API checklist',project_id:'proj-1'}]:[]});
  }
@@ -68,6 +69,16 @@ try{
   await page.locator('[data-gs-category="projects"]').click();
   await page.locator('.gs-result-main').first().waitFor();
   assert.equal(await page.locator('.gs-result-main').count(),1);
+  await page.locator('[data-gs-category="all"]').click();
+  // Slow preview + rapid facet switch must not render an obsolete result.
+  delayPreview=true;
+  await page.locator('[data-gs-select="conversations"]').click();
+  await page.locator('[data-gs-category="projects"]').click();
+  await page.locator('[data-gs-select="projects"]').waitFor();
+  await page.waitForTimeout(520);
+  assert.equal(await page.getByText('Verified canonical reply').count(),0,'Stale conversation preview rendered after filtering');
+  assert.equal(await page.locator('#gsDetail .gs-preview-message').count(),0,'Stale preview panel rendered after filtering');
+  delayPreview=false;
   await page.locator('[data-gs-category="all"]').click();
   await page.locator('[data-gs-select="conversations"]').click();
   await page.getByText('Verified canonical reply').waitFor();
