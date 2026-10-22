@@ -5177,7 +5177,7 @@ window.vishnuTodayP203Bridge={
 };
 
 window.vishnuVoiceBridge={
- api,
+ api,name:()=>ownerDisplayName()||'Owner',
  onClose:()=>{document.body.classList.remove('live-voice-mode')},
  navigate:destination=>{
   if(destination==='attention'){openTimelineAttention();return}
