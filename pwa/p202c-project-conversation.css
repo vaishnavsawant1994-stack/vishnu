@@ -77,3 +77,14 @@
 @media(prefers-reduced-motion:reduce){.p202c-root *{transition:none!important;scroll-behavior:auto!important}}
 
 @media(max-width:850px){body:has(#p202cRoot) .reference-mobile-nav,body:has(#p202cRoot) #p202MobileNav,body:has(#p202cRoot) #p202bMobileNav{display:none!important}}
+
+.p202c-mobile-switch{display:none}
+.p202c-sheet-list{display:grid;gap:7px;max-height:52dvh;overflow:auto;margin-top:12px}
+.p202c-sheet-list button{border-radius:10px;background:#082a58;border:1px solid #1d74bd;color:#dff3ff;text-align:left;padding:11px;min-height:42px}
+@media(max-width:850px){
+ .p202c-root .p202c-mobile-switch{display:block!important;flex:none;font-size:11px;padding:8px}
+ .p202c-hero{flex-wrap:wrap;min-width:0}
+ .p202c-hero>div{flex:1 1 170px;min-width:0}
+ .p202c-tabs button{display:none!important}
+ .p202c-tabs button:nth-child(1),.p202c-tabs button:nth-child(3),.p202c-tabs button:nth-child(4),.p202c-tabs button:nth-child(7),.p202c-tabs button:nth-child(10){display:block!important;flex:1;text-align:center;font-size:11px;padding:8px 4px}
+}

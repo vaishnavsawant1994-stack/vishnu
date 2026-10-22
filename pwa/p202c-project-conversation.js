@@ -152,6 +152,24 @@ async function attach(s){
   if(!result.project)throw Error('File upload not confirmed.');s.project=result.project;resources(s);br().showToast('File saved in this Project.');
  }catch(e){br().showToast(e.message)}finally{pick.remove()}},{once:true});pick.click();
 }
+function mobileChats(s){
+ const modal=elt('dialog','p202c-dialog p202c-chat-sheet'),title=elt('h2','','Project Chats');
+ const desc=elt('p','','Select a saved Project conversation or start a new one.');
+ const list=elt('div','p202c-sheet-list');
+ for(const item of s.chats){
+  list.append(btn(item.title||'Project conversation',async()=>{modal.close();await openChat(s,item.id)}));
+ }
+ list.append(btn('＋ New Project Chat',async()=>{modal.close();await newChat(s)},'p202c-primary'));
+ list.append(btn('Close',()=>modal.close()));
+ modal.append(title,desc,list);document.body.append(modal);
+ modal.addEventListener('close',()=>modal.remove(),{once:true});modal.showModal();
+}
+function sections(s){
+ sheet('Project sections','Open a permitted project section or conversation action.',[
+  ...['Overview','Research','Code','Plans','Progress'].map(tab=>[tab,()=>show(tab)]),
+  ['Conversation options',()=>menu(s)]
+ ]);
+}
 function menu(s){
  sheet('Project conversation actions','This owner-only Project link does not grant access to another person.',[
  ['Copy private Project link',async()=>{await navigator.clipboard.writeText(location.origin+location.pathname+'?project='+encodeURIComponent(s.project.id)+'&section=chat');br().showToast('Link copied')}],
@@ -175,12 +193,12 @@ function mount(s){
  const hero=elt('div','p202c-hero'),glyph=elt('span','p202c-project-icon','⬡'),identity=elt('div');
  identity.append(elt('h1','', ''),elt('p',''));identity.querySelector('h1').id='p202cName';identity.querySelector('p').id='p202cDescription';
  const meta=elt('div','p202c-meta');const status=elt('span');status.id='p202cStatus';const target=elt('span');target.id='p202cTarget';meta.append(status,target);identity.append(meta);
- hero.append(glyph,identity);
+ hero.append(glyph,identity,btn('Chats ▾',()=>mobileChats(s),'p202c-mobile-switch'));
  const actions=elt('div','p202c-actions');actions.append(btn('Share',()=>menu(s)),btn('⋯',()=>menu(s)));headerEl.append(crumb,hero,actions);
  const progress=elt('div','p202c-progress'),track=elt('div','p202c-track'),fill=elt('span');fill.id='p202cBar';track.append(fill);
  const percent=elt('span');percent.id='p202cPercent';progress.append(track,percent);
  const tabs=elt('nav','p202c-tabs');tabs.setAttribute('aria-label','Project sections');
- ['Chat','Overview','Tasks','Files','Research','Code','Agents','Plans','Progress','More'].forEach(x=>tabs.append(btn(x,()=>show(x),x==='Chat'?'active':'')));
+ ['Chat','Overview','Tasks','Files','Research','Code','Agents','Plans','Progress','More'].forEach(x=>tabs.append(btn(x,()=>x==='More'?sections(s):show(x),x==='Chat'?'active':'')));
  const layout=elt('div','p202c-layout'),history=elt('aside','p202c-history'),chat=elt('main','p202c-main'),rail=elt('aside','p202c-rail');
  const historyTop=elt('div','p202c-panel-top');historyTop.append(elt('h2','','Project Chats'),btn('＋',()=>newChat(s),'p202c-primary'));
  const search=elt('input');search.type='search';search.id='p202cSearch';search.placeholder='Search Project chats';search.setAttribute('aria-label','Search Project conversations');search.oninput=()=>historyList(s);
@@ -211,7 +229,7 @@ function mount(s){
  toolCard.append(tiles);rail.append(toolCard);layout.append(history,chat,rail);
  const mobile=elt('nav','p202c-mobile');mobile.setAttribute('aria-label','Mobile Project navigation');
  [['Home',()=>br().openModule('home')],['Chat',()=>$('p202cInput').focus()],['Today',()=>br().openTodayScreen('all')],
-  ['Projects',()=>{projectCurrent=null;loadProjectList()}],['More',()=>menu(s)]]
+  ['Projects',()=>{projectCurrent=null;loadProjectList()}],['More',()=>sections(s)]]
   .forEach(([name,fn])=>mobile.append(btn(name,fn,name==='Projects'?'active':'')));
  root.append(headerEl,progress,tabs,layout,mobile);s.host.replaceChildren(root);header(s);resources(s);messages(s);
 }
