@@ -246,8 +246,8 @@ try {
       assert.equal(await projectTabs.count(),5,'Mobile Project tabs expose Chat, Tasks, Files, Agents and More');
       await page.getByRole('button',{name:'Chats ▾'}).click();
       await page.locator('dialog.p202c-chat-sheet').getByRole('button',{name:'＋ New Project Chat'}).click();
-      await page.waitForFunction(()=>document.querySelector('#p202cChats')===null || document.querySelector('#p202cRoot'));
-      assert.ok(serverState.conversations.some(item=>item.conversation.context?.project_id===serverState.projects[0].id));
+      await page.waitForFunction(()=>document.querySelector('.p202c-chat-item.active')?.textContent?.includes('New Project Conversation'));
+      assert.equal(serverState.conversations.length,before+1,'Mobile Project Chat creation persists a second canonical Project conversation');
     }
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/project-chat-${viewport.width}.png`, fullPage: false });
     await openProjectTab('files');
