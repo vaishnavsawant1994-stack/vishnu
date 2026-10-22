@@ -71,11 +71,16 @@ class ContinuityService:
         self._emit('continuity.thread.created', thread_id=thread_id, device_id=device_id, title=title)
         return thread_id
 
-    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False, kind: str | None = None):
+    def list_threads(self, query: str = '', *, limit: int = 50, include_closed: bool = False, kind: str | None = None, project_id: str | None = None):
         clauses = []
         params = []
         if kind not in (None, 'personal', 'work'):
             raise ValueError('Unsupported conversation kind')
+        if project_id is not None:
+            if not isinstance(project_id, str) or not project_id.strip() or len(project_id) > 80:
+                raise ValueError('Invalid project identifier')
+            clauses.append("json_extract(t.context_json, '$.project_id') = ?")
+            params.append(project_id)
         if not include_closed:
             clauses.append('t.closed_at IS NULL')
         # Scope in SQL *before* applying LIMIT: older Work threads must not
@@ -84,7 +89,7 @@ class ContinuityService:
         if kind == 'work':
             clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') = 'work'")
         elif kind == 'personal':
-            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') != 'work'")
+            clauses.append("COALESCE(json_extract(t.context_json, '$.conversation_kind'), '') NOT IN ('work', 'project')")
         if query.strip():
             term = f'%{query.strip()}%'
             clauses.append('''(t.title LIKE ? OR EXISTS(
