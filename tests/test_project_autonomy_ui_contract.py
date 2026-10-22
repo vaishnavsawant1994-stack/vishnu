@@ -25,10 +25,14 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     assert "projects-work-visualization-runtime.js" in loader
     sw = Path("pwa/sw.js").read_text()
     assert "project-autonomy-controls.js" in sw
-    # P2-02C v65 adds Project Conversation assets to the retained, bounded
-    # local-first PWA shell without caching owner-scoped API responses.
-    # The cache version assertion remains strict to catch stale PWA bundles.
-    assert "personal-ai-iphone-v70" in sw
+    # New Phase 2 screens legitimately advance the cache version. Guard against
+    # stale bundles without freezing this older feature at exactly version 70.
+    marker = "const CACHE='personal-ai-iphone-v"
+    assert marker in sw
+    cache_version = sw.split(marker, 1)[1].split("'", 1)[0]
+    assert cache_version.isdecimal() and int(cache_version) >= 70
+    assert "p207-notifications.js" in sw
+    assert "p207-notifications.css" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw

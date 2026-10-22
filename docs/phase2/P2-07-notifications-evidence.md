@@ -36,3 +36,7 @@ Source implementation is not equivalent to reference pixel parity. Mandatory fol
 ## Mobile action follow-up
 - Mobile details include touch-accessible Read, Pin/Unpin, Dismiss and private Copy Link controls; desktop retains its right-side actions. Shared handlers use the canonical device-scoped service.
 - Browser fixture uses visible-action targeting on 1536 px desktop and 390 px phone; visual and native acceptance remain unverified.
+
+## Compatibility hardening
+- Replace the obsolete exact `v70` cache assertion in the older Project Autonomy contract with a numeric minimum-version requirement and P2-07 asset presence checks. Keeps service-worker cache upgrades legal while still rejecting stale bundles.
+- Preserve the historical Timeline attention counter separately from P2-07's unread-notifications counter (`p207UnreadCount`), and make the top Notifications shortcut open the P2-07 module. Neither count is fabricated.
