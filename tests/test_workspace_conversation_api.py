@@ -140,3 +140,14 @@ def test_workspace_security_archival_and_bad_requests(tmp_path):
     store.update('owner', a['id'], {'status': 'archived'})
     assert client.post(endpoint, json={'title': 'Denied'}).status_code == 409
     assert client.get(endpoint).status_code == 200
+
+
+def test_workspace_messages_never_replace_personal_device_resume(tmp_path):
+    _, _, ledger, _ = make_client(tmp_path)
+    personal = ledger.create_thread('Personal topic', device_id='trusted-1')
+    workspace = ledger.create_thread('Workspace only', context={
+        'conversation_kind': 'workspace', 'workspace_id': 'saved-workspace', 'owner_id': 'owner'})
+    ledger.append(workspace, device_id='trusted-1', kind='user_message',
+                  payload={'text':'Workspace-only material'}, event_id='safe-id-1')
+    assert ledger.active_for_device('trusted-1')['id'] == personal
+    assert all(item['id'] != workspace for item in ledger.list_threads(kind='personal'))

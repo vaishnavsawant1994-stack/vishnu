@@ -91,7 +91,8 @@ class CanonicalTurnRuntime:
         if conversation_id:
             thread = self.continuity.thread(str(conversation_id))
             if not thread or thread.get('closed_at'): raise KeyError('active conversation is unavailable')
-            if device_id: self.continuity.set_active(device_id, thread['id'])
+            if device_id and (thread.get('context') or {}).get('conversation_kind') != 'workspace':
+                self.continuity.set_active(device_id, thread['id'])
             return str(thread['id'])
         bundle = self.continuity.resume(str(device_id or f'local:{surface or "runtime"}'), event_limit=self.HISTORY_LIMIT*2)
         resolved = str((bundle.get('thread') or {}).get('id') or '')

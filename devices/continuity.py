@@ -226,7 +226,7 @@ class ContinuityService:
                     raise ValueError('continuity event_id is already bound to different content')
                 sequence = int(existing['id'])
         if inserted:
-            if device_id:
+            if device_id and (thread.get('context') or {}).get('conversation_kind') != 'workspace':
                 self.set_active(device_id, thread_id)
             self._emit('continuity.event', thread_id=thread_id, device_id=device_id, kind=event_kind, sequence=sequence)
         return {

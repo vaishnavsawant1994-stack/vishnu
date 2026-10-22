@@ -110,7 +110,7 @@ def workspace_conversation_router(runtime, store):
                     if (row.get('context') or {}).get('create_request_id') == body.request_id:
                         return {'workspace_id': workspace_id,
                                 'conversation': service.thread(row['id'])}
-            ident = service.create_thread(body.title.strip(), device_id=pa_device,
+            ident = service.create_thread(body.title.strip(), device_id=None,
                                           context={'conversation_kind': 'workspace',
                                                    'workspace_id': workspace_id,
                                                    'owner_id': owner_id,
