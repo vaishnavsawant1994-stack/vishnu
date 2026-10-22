@@ -306,11 +306,16 @@ def test_workspace_voice_turn_checks_saved_association_and_uses_server_context(t
         request_id=R1, transcript='What is the current status?',
         conversation_id=thread_id, workspace_id=space['id']), request_id=R1)
     assert result['status'] == 'completed'
-    received = inner.calls[0][0]
-    assert 'Authenticated Studio' in received
-    assert 'Saved Linked Project' in received
-    assert 'What is the current status?' in received
-    assert 'Other Studio' not in received
+    received, options = inner.calls[0]
+    assert received == 'What is the current status?'
+    assert options['scoped_context_only'] is True
+    assert 'Authenticated Studio' in options['verified_context']
+    assert 'Saved Linked Project' in options['verified_context']
+    assert 'Other Studio' not in options['verified_context']
+    # User text is persisted verbatim; server grounding never enters chat history.
+    events = continuity.events_for_thread(thread_id)
+    messages = [e for e in events if e['kind'] == 'user_message']
+    assert messages and messages[-1]['payload']['text'] == received
 
 
 def test_project_live_voice_uses_verified_project_metadata_and_rejects_archived(tmp_path):
@@ -330,9 +335,10 @@ def test_project_live_voice_uses_verified_project_metadata_and_rejects_archived(
         request_id=R1, transcript='Please review status',
         conversation_id=thread_id), request_id=R1)
     assert result['status'] == 'completed'
-    assert 'Verified Project for Voice' in inner.calls[0][0]
-    assert 'Only saved project context' in inner.calls[0][0]
-    assert 'Please review status' in inner.calls[0][0]
+    assert inner.calls[0][0] == 'Please review status'
+    assert inner.calls[0][1]['scoped_context_only'] is True
+    assert 'Verified Project for Voice' in inner.calls[0][1]['verified_context']
+    assert 'Only saved project context' in inner.calls[0][1]['verified_context']
 
     projects.archive(project['id'])
     with pytest.raises(HTTPException) as blocked:
