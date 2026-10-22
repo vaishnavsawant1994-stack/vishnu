@@ -5,6 +5,7 @@ import {readFile,mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 const js=await readFile(new URL('../pwa/command-center.js',import.meta.url),'utf8');
 const css=await readFile(new URL('../pwa/command-center.css',import.meta.url),'utf8');
+const neuralCore=await readFile(new URL('../pwa/assets/genesis/vishnu-core.png',import.meta.url));
 const screenshots=process.env.P208_SCREENSHOT_DIR;
 if(screenshots)await mkdir(screenshots,{recursive:true});
 const html=`<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
@@ -19,7 +20,7 @@ window.openModule=async(name)=>{routeCalls.push(name);document.getElementById('m
 window.vishnuChatBridge={api:async(path,opt={})=>{if(path==='/command-center/recent'&&(!opt.method||opt.method==='GET'))return {recent:window.historySaved};if(path==='/command-center/recent'&&opt.method==='POST'){const id=JSON.parse(opt.body).command_id;window.historySaved=[{id,at:new Date().toISOString()},...window.historySaved.filter(x=>x.id!==id)].slice(0,12);return {recent:window.historySaved}}if(path==='/command-center/recent'&&opt.method==='DELETE'){window.historySaved=[];return {cleared:true}}if(path.startsWith('/workspaces?'))return {workspaces:[]};throw Error('Unexpected route '+path)},createConversation:async()=>{window.newChats=(window.newChats||0)+1},requestConfirmation:async()=>true,showToast:(m)=>{window.lastToast=m}};
 window.vishnuTodayP203Bridge={create:kind=>window.createdKind=kind,runPrompt:async text=>{window.promptCalls.push(text)}};window.openKnowledgeNoteEditor=async()=>{window.noteEditorOpened=true};
 </script><script src="/p208"></script></body></html>`;
-const server=createServer((req,res)=>{if(req.url==='/p208'){res.writeHead(200,{'Content-Type':'text/javascript'});res.end(js)}else{res.writeHead(200,{'Content-Type':'text/html'});res.end(html)}});
+const server=createServer((req,res)=>{if(req.url==='/iphone/assets/genesis/vishnu-core.png'){res.writeHead(200,{'Content-Type':'image/png'});res.end(neuralCore)}else if(req.url==='/p208'){res.writeHead(200,{'Content-Type':'text/javascript'});res.end(js)}else{res.writeHead(200,{'Content-Type':'text/html'});res.end(html)}});
 await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
 const browser=await chromium.launch({headless:true});
 try{
@@ -28,6 +29,8 @@ try{
   const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('http://127.0.0.1:'+server.address().port+'/');
   await page.evaluate(()=>window.vishnuOpenCommandCenter());
   await page.getByRole('heading',{name:'Command Center'}).waitFor();
+  const coreValid=await page.locator('.cc-neural').evaluate(async el=>{await el.decode();return el.naturalWidth>0});
+  assert.equal(coreValid,true,'approved neural Core asset must render');
   assert.equal(await page.locator('.cc-primary-card').count(),6,'six quick actions');
   assert.equal(await page.locator('#ccFilters button').count(),9,'nine category filters');
   assert.equal(await page.locator('.cc-command').count()>0,true,'canonical command entries');

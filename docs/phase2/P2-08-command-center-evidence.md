@@ -54,3 +54,6 @@ Exact-head CI green; inspect actual P2-08 screenshot artifacts; native flow/depe
 - New Automation invokes the actual existing `workflowAdd` workflow composer (no automated execution); New Note opens `openKnowledgeNoteEditor` from Knowledge Notes instead of a generic note fallback.
 - Upload File targets the existing `knowledgeFile` picker without uploading automatically. The global Command Center launcher receives an active blue selected treatment while the page is open.
 - Browser fixture exercises both creator entry points; exact-head CI and screenshot qualification are required.
+
+## Verified Core asset in browser fixture
+- Browser fixture serves and decodes the real `pwa/assets/genesis/vishnu-core.png` at the PWA URL. Screenshot capture no longer silently omits the neural Core image. Reference-level pixel approval remains pending.
