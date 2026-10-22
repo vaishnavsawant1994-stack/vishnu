@@ -160,3 +160,21 @@
 }
 @media(max-width:380px){.p205-page{padding:10px 7px calc(73px + env(safe-area-inset-bottom))}.p205-mobile-logo{font-size:15px}.p205-heading h1{font-size:17px}.p205-category-tabs button{padding:6px 8px;font-size:10px}.p205-detail-tabs button{padding:6px;font-size:9px}}
 @media(prefers-reduced-motion:reduce){#p205Root *,#p205Root *::before,#p205Root *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* P2-05 accessible phone actions and deliberate advanced-filter disclosure. */
+.p205-mobile-filter-toggle{display:none}
+@media(max-width:900px){
+ .p205-heading-actions{display:flex}
+ .p205-heading-actions button:last-child{display:none}
+ .p205-heading-actions button:first-child{font-size:0!important;min-width:40px;width:40px;padding:0}
+ .p205-heading-actions button:first-child::before{content:"＋";font-size:23px}
+ .p205-heading{order:0}
+ .p205-filters{order:1;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center}
+ .p205-category-tabs{order:2}
+ .p205-body{order:3}
+ .p205-notice{order:4}
+ .p205-filters .p205-search-wrap{grid-column:1}
+ .p205-mobile-filter-toggle{display:block!important;grid-column:2;width:84px!important;padding:8px 7px!important}
+ #p205Root:not(.filter-open) .p205-filters>:not(.p205-search-wrap,.p205-mobile-filter-toggle){display:none!important}
+ #p205Root.filter-open .p205-filters>:not(.p205-search-wrap,.p205-mobile-filter-toggle){display:block!important;grid-column:1/-1}
+}
