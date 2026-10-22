@@ -111,7 +111,10 @@ async function search({append=false,remember=false}={}){
 }
 async function select(item){
  const id=++state.detailPending;state.selected=item;state.detail=null;state.summary='';state.mobileDetail=true;renderDetail();renderMeta();renderResults();
- try{const qp=item.project_id?'?project_id='+enc(item.project_id):'';
+ try{const params=new URLSearchParams();
+  if(item.project_id||state.project)params.set('project_id',item.project_id||state.project);
+  if(state.workspace)params.set('workspace_id',state.workspace);
+  const qp=params.toString()?'?'+params.toString():'';
   const data=await window.api('/search/result/'+enc(item.type)+'/'+enc(item.id)+qp);
   if(id!==state.detailPending||!active())return;
   state.detail=data;renderDetail();renderMeta();
