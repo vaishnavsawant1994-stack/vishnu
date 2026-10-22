@@ -28,7 +28,7 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     # P2-02C v65 adds Project Conversation assets to the retained, bounded
     # local-first PWA shell without caching owner-scoped API responses.
     # The cache version assertion remains strict to catch stale PWA bundles.
-    assert "personal-ai-iphone-v69" in sw
+    assert "personal-ai-iphone-v70" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw

@@ -24,6 +24,7 @@ on:
       - 'tests/p203_today_browser.mjs'
       - 'tests/p204_live_voice_browser.mjs'
       - 'tests/p205_history_browser.mjs'
+      - 'tests/p206_global_search_browser.mjs'
       - 'tests/vishnu_os_workspaces_browser.mjs'
       - 'tests/projects_canonical_work_browser.mjs'
       - 'tests/projects_canonical_visualizations_browser.mjs'
@@ -115,6 +116,8 @@ jobs:
           P204_SCREENSHOT_DIR=artifacts/live-voice-p204 node tests/p204_live_voice_browser.mjs
           node --check pwa/p205-conversation-history.js
           P205_SCREENSHOT_DIR=artifacts/conversation-history-p205 node tests/p205_history_browser.mjs
+          node --check pwa/global-search.js
+          P206_SCREENSHOT_DIR=artifacts/global-search-p206 node tests/p206_global_search_browser.mjs
           node tests/chat_experience_browser.mjs
           mkdir -p artifacts/project-workspace
           mkdir -p artifacts/agent-workforce
