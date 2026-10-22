@@ -98,6 +98,49 @@ def test_real_sources_and_facets(tmp_path):
     }).status_code == 404
 
 
+
+def test_project_and_workspace_file_search_is_scoped_to_linked_project_files(tmp_path):
+    client, _, project, workspace, _ = setup(tmp_path)
+    global_files = client.get("/iphone/api/search", params={
+        "q": "API", "category": "files",
+    })
+    assert global_files.status_code == 200, global_files.text
+    unrelated = next(item for item in global_files.json()["results"]
+                     if item["source"] == "knowledge_document")
+
+    for scope in (
+        {"project_id": project["id"]},
+        {"workspace_id": workspace["id"]},
+        {"project_id": project["id"], "workspace_id": workspace["id"]},
+    ):
+        response = client.get("/iphone/api/search", params={
+            "q": "API", "category": "files", **scope,
+        })
+        assert response.status_code == 200, response.text
+        results = response.json()["results"]
+        assert results, "Linked Project file must remain searchable"
+        assert all(item["source"] == "project_file" and
+                   item["project_id"] == project["id"] for item in results)
+        assert unrelated["id"] not in {item["id"] for item in results}
+
+    # A crafted Project context may not resolve a global Knowledge file
+    # through the Project's Files preview even if the device can read it globally.
+    denied = client.get(
+        f"/iphone/api/search/result/files/{unrelated['id']}",
+        params={"project_id": project["id"]},
+    )
+    assert denied.status_code == 404
+    global_preview = client.get(f"/iphone/api/search/result/files/{unrelated['id']}")
+    assert global_preview.status_code == 200
+    scoped_file = results[0]
+    project_preview = client.get(
+        f"/iphone/api/search/result/files/{scoped_file['id']}",
+        params={"project_id": project["id"]},
+    )
+    assert project_preview.status_code == 200
+    assert project_preview.json()["result"]["source"] == "project_file"
+
+
 def test_filters_ranking_pagination_and_detail(tmp_path):
     client, _, project, _, _ = setup(tmp_path)
     first = client.get("/iphone/api/search", params={
