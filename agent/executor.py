@@ -201,8 +201,11 @@ class AgentExecutor:
                       str(verified_context)[:4000] +
                       '\nNo global memory or knowledge was searched. Do not claim ' +
                       'to have executed tools or changed project/workspace data.')
+            # CanonicalTurnRuntime supplies *prior* history before appending
+            # this turn. The standalone MemoryStore path already includes it.
+            prior_history = history if conversation_history is not None else history[:-1]
             answer = self.models.chat(
-                text, history=history[:-1], system=system,
+                text, history=prior_history, system=system,
                 sensitivity='internal', private_context='',
             )
             self._observe('model.chat_ms', start)
