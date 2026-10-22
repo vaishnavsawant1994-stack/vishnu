@@ -10,7 +10,7 @@ const enc=x=>encodeURIComponent(String(x)),types=[
  ['projects','Projects','⬡'],['files','Files','▤'],['work','Work','▣'],['agents','Agents','♧'],
  ['knowledge','Knowledge','▧'],['memory','Memory','✧']
 ];
-const state={query:'',category:'all',sort:'relevance',time:'all',project:'',workspace:'',tag:'',
+const state={query:'',category:'all',sort:'relevance',time:'all',dateFrom:'',dateTo:'',project:'',workspace:'',tag:'',
  results:[],counts:{},coverage:{},selected:null,detail:null,offset:0,next:null,
  loading:false,error:'',filtersOpen:false,mobileDetail:false,
  pending:0,detailPending:0,navPending:0,timer:0,recent:[],abort:null,initialized:false,live:false,actionBusy:false,summary:''};
@@ -84,6 +84,7 @@ function queryParams(offset=0){
  if(state.time==='today'){p.set('date_from',day(0));p.set('date_to',day(0))}
  if(state.time==='7')p.set('date_from',day(6));
  if(state.time==='30')p.set('date_from',day(29));
+ if(state.time==='custom'){if(state.dateFrom)p.set('date_from',state.dateFrom);if(state.dateTo)p.set('date_to',state.dateTo)}
  return p.toString();
 }
 async function search({append=false,remember=false}={}){
@@ -132,7 +133,7 @@ async function action(kind){
  if(kind==='clear'){state.query='';$('globalSearchQuery').value='';clearTimeout(state.timer);return search()}
  if(kind==='clear-recent'){state.recent=[];renderRecent();return}
  if(kind==='more')return search({append:true});
- if(kind==='reset'){state.category='all';state.sort='relevance';state.time='all';state.project='';state.workspace='';state.tag='';state.filtersOpen=false;renderFilters();return search()}
+ if(kind==='reset'){state.category='all';state.sort='relevance';state.time='all';state.dateFrom='';state.dateTo='';state.project='';state.workspace='';state.tag='';state.filtersOpen=false;renderFilters();return search()}
  if(kind==='back'){state.mobileDetail=false;renderDetail();$('globalSearchQuery').focus();return}
  if(kind==='filters'){state.filtersOpen=!state.filtersOpen;renderFilters();return}
  if(!item)return;
@@ -190,12 +191,14 @@ async function action(kind){
 function renderFilters(){
  const root=$('gsAdvanced');if(!root)return;root.classList.toggle('expanded',state.filtersOpen);
  root.innerHTML='<label>Sort <select data-gs-filter="sort"><option value="relevance">Relevance</option><option value="recent">Most recent</option><option value="oldest">Oldest</option><option value="title">Title</option></select></label>'+
- '<label>Date <select data-gs-filter="time"><option value="all">Any time</option><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></select></label>'+
+ '<label>Date <select data-gs-filter="time"><option value="all">Any time</option><option value="today">Today</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="custom">Custom range (UTC)</option></select></label>'+
+ '<label>From (UTC) <input type="date" data-gs-filter="dateFrom" aria-label="From date UTC"></label>'+
+ '<label>To (UTC) <input type="date" data-gs-filter="dateTo" aria-label="To date UTC"></label>'+
  '<label>Workspace <select data-gs-filter="workspace" id="gsWorkspace"><option value="">All workspaces</option></select></label>'+
  '<label>Project <select data-gs-filter="project" id="gsProject"><option value="">All projects</option></select></label>'+
  '<label>Tag <input data-gs-filter="tag" maxlength="32" placeholder="Tag" aria-label="Search tag"></label>'+
  '<button type="button" data-gs-action="reset">Reset</button>';
- for(const [k,v] of Object.entries({sort:state.sort,time:state.time,workspace:state.workspace,project:state.project,tag:state.tag})){
+ for(const [k,v] of Object.entries({sort:state.sort,time:state.time,dateFrom:state.dateFrom,dateTo:state.dateTo,workspace:state.workspace,project:state.project,tag:state.tag})){
    const el=root.querySelector('[data-gs-filter="'+k+'"]');if(el)el.value=v;
  }
  loadFilters();
@@ -231,7 +234,7 @@ function mount(focus=false){
  });
  root.querySelector('#globalSearchQuery').oninput=e=>{state.query=e.target.value;clearTimeout(state.timer);state.timer=setTimeout(()=>search(),290)};
  root.querySelector('#globalSearchQuery').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();action('clear')}};
- surface.addEventListener('change',e=>{const key=e.target.dataset.gsFilter;if(!key)return;state[key]=e.target.value;search()});
+ surface.addEventListener('change',e=>{const key=e.target.dataset.gsFilter;if(!key)return;state[key]=e.target.value;if(key==='dateFrom'||key==='dateTo'){state.time='custom';const t=surface.querySelector('[data-gs-filter="time"]');if(t)t.value='custom'}search()});
  renderFilters();updateFacets();updateCoverage();renderResults();renderDetail();renderMeta();renderRecent();
  if(focus)root.querySelector('#globalSearchQuery').focus();
 }
