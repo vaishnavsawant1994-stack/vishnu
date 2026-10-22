@@ -214,6 +214,10 @@ class CanonicalTurnRuntime:
 
     def _orchestrate(self, text, *, request_id, owner_id, device_id, session_id, privacy_level, risk_level, kwargs):
         self._check_cooperative_cancel(kwargs)
+        # Project/Workspace chat has read-only, server-verified grounding. Do not
+        # dispatch broad autonomous Work plans outside its authorized context.
+        if kwargs.get('scoped_context_only'):
+            return None
         selection = self.p10_selector.select(text,explicit_background=bool(kwargs.get('background',False)),requested_actions=int(kwargs.pop('requested_actions',0) or 0))
         self._emit('turn.orchestration_selected',request_id=request_id,use_p10=selection.use_p10,reason=selection.reason,signals=list(selection.signals))
         if not selection.use_p10: return None
