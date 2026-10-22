@@ -85,8 +85,9 @@ try{
   if(width===1536){
    await page.locator('#gsWorkspace').selectOption('workspace-1');
    await page.locator('[data-gs-select="files"]').waitFor();
+   const filePreviewResponse=page.waitForResponse(reply=>reply.url().includes('/iphone/api/search/result/files/file-1'));
    await page.locator('[data-gs-select="files"]').click();
-   await page.waitForFunction(()=>document.querySelector('#gsDetail .gs-detail-head'));
+   await filePreviewResponse;
    assert.ok(calls.some(x=>x.startsWith('/iphone/api/search/result/files/file-1?')&&
      x.includes('project_id=proj-1')&&x.includes('workspace_id=workspace-1')),
      'Search preview must preserve verified Workspace and Project filters');
