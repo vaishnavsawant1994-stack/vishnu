@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from projects.store import ProjectStore
+from devices.continuity import ContinuityService
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from server.projects_api import projects_router
 
@@ -202,3 +203,60 @@ class ProjectApiTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ProjectConversationQualificationTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.store = ProjectStore(Path(self.temp.name) / 'projects.sqlite3')
+        self.runtime = {
+            'device_registry': FakeRegistry(),
+            'continuity': ContinuityService(Path(self.temp.name) / 'continuity.sqlite3'),
+        }
+        app = FastAPI()
+        app.add_middleware(OwnerContextMiddleware)
+        app.include_router(projects_router(self.runtime, self.store))
+        self.client = TestClient(app)
+        self.client.cookies.set('pa_device', 'device-1')
+        self.client.cookies.set('pa_token', 'test-token')
+
+    def test_multi_chat_is_scoped_and_legacy_primary_preserved(self):
+        first = self.store.create(name='Project Alpha')
+        second = self.store.create(name='Project Beta')
+        a = first['id']; b = second['id']
+        primary = self.client.post(f'/iphone/api/projects/{a}/conversation', json={})
+        self.assertEqual(primary.status_code, 201, primary.text)
+        primary_id = primary.json()['conversation_id']
+        child = self.client.post(f'/iphone/api/projects/{a}/conversations', json={'title': 'Design review'})
+        self.assertEqual(child.status_code, 201, child.text)
+        child_id = child.json()['conversation']['id']
+        self.assertNotEqual(primary_id, child_id)
+        self.assertEqual(self.store.get(a)['conversation_id'], primary_id)
+        self.assertEqual(self.client.get(f'/iphone/api/projects/{a}/conversations').json()['conversations'][0]['id'], child_id)
+        self.assertEqual(self.client.get(f'/iphone/api/projects/{a}/conversations/{primary_id}').status_code, 200)
+        self.assertEqual(self.client.get(f'/iphone/api/projects/{b}/conversations/{child_id}').status_code, 404)
+        self.assertEqual(self.client.get(f'/iphone/api/projects/{b}/conversations').json()['conversations'], [])
+        self.assertEqual(self.runtime['continuity'].thread(child_id)['context']['project_id'], a)
+        self.assertEqual(self.runtime['continuity'].thread(child_id)['context']['conversation_kind'], 'project')
+        self.assertEqual(self.client.post(f'/iphone/api/projects/{a}/conversation', json={}).json()['conversation_id'], primary_id)
+
+    def test_old_project_threads_survive_many_unrelated_chats(self):
+        project = self.store.create(name='Historic')['id']
+        old_id = self.client.post(f'/iphone/api/projects/{project}/conversations', json={'title': 'Old'}).json()['conversation']['id']
+        other = self.store.create(name='Unrelated')['id']
+        for i in range(205):
+            self.runtime['continuity'].create_thread('Unrelated conversation '+str(i), context={
+                'conversation_kind': 'project', 'project_id': other,
+            })
+        rows = self.client.get(f'/iphone/api/projects/{project}/conversations?limit=5').json()['conversations']
+        self.assertIn(old_id, [row['id'] for row in rows])
+        self.assertEqual(self.client.get(f'/iphone/api/projects/{other}/conversations?limit=5').status_code, 200)
+
+    def test_project_chat_requires_current_owner_session_and_rejects_missing_project(self):
+        project = self.store.create(name='Private')['id']
+        anonymous = TestClient(self.client.app)
+        self.assertEqual(anonymous.get(f'/iphone/api/projects/{project}/conversations').status_code, 401)
+        self.assertEqual(anonymous.post(f'/iphone/api/projects/{project}/conversations', json={'title':'No'}).status_code, 401)
+        self.assertEqual(self.client.post('/iphone/api/projects/not-found/conversations', json={'title':'No'}).status_code, 404)
+        self.assertEqual(self.client.post(f'/iphone/api/projects/{project}/conversations', json={'title':''}).status_code, 422)

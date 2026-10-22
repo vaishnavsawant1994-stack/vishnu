@@ -11,6 +11,8 @@ from core.events import EventBus
 from core.personal_ai_runtime import CanonicalTurnRuntime
 from core.runtime_state import RuntimeState
 from devices.continuity import ContinuityService
+from workspaces.store import WorkspaceStore
+from projects.store import ProjectStore
 from security.request_context import TrustedRequestContext, reset_trusted_request, set_trusted_request
 from server.approval_api import approval_router
 from server.conversation_voice_api import (
@@ -262,3 +264,145 @@ def test_voice_approval_resumes_and_completes_the_original_canonical_request(tmp
     assert inner.approve_calls == 1
     thread_events = continuity.events_for_thread(canonical.turn(R1)['conversation_id'])
     assert [event['event_id'] for event in thread_events] == [f'{R1}:user', f'{R1}:assistant']
+
+
+def test_workspace_voice_turn_checks_saved_association_and_uses_server_context(tmp_path):
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    workspaces = WorkspaceStore(tmp_path / 'workspaces.sqlite3')
+    projects = ProjectStore(tmp_path / 'projects.sqlite3')
+    space = workspaces.create('owner', name='Authenticated Studio', description='Private Workspace goal')
+    second = workspaces.create('owner', name='Other Studio')
+    project = projects.create(name='Saved Linked Project')
+    workspaces.link_project('owner', space['id'], project['id'])
+    thread_id = continuity.create_thread('Workspace planning', context={
+        'conversation_kind': 'workspace', 'workspace_id': space['id'], 'owner_id': 'owner'
+    })
+    runtime = {
+        'device_registry': _Registry(), 'continuity': continuity,
+        'workspace_store': workspaces, 'base_project_store': projects,
+    }
+    endpoint = _endpoint(conversation_voice_router(runtime, executor),
+                         '/iphone/api/voice/turn', 'POST')
+
+    with pytest.raises(HTTPException) as invalid:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=thread_id,
+            workspace_id=second['id']), request_id=R1)
+    assert invalid.value.status_code == 404
+    with pytest.raises(HTTPException) as absent:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=thread_id),
+            request_id=R1)
+    assert absent.value.status_code == 409
+    personal_id = continuity.create_thread('Personal history')
+    with pytest.raises(HTTPException) as confused:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id=R1, transcript='Do work', conversation_id=personal_id,
+            workspace_id=space['id']), request_id=R1)
+    assert confused.value.status_code == 404
+    assert inner.calls == []
+
+    result = _call_voice(endpoint, CanonicalVoiceTurnBody(
+        request_id=R1, transcript='What is the current status?',
+        conversation_id=thread_id, workspace_id=space['id']), request_id=R1)
+    assert result['status'] == 'completed'
+    received, options = inner.calls[0]
+    assert received == 'What is the current status?'
+    assert options['scoped_context_only'] is True
+    assert 'Authenticated Studio' in options['verified_context']
+    assert 'Saved Linked Project' in options['verified_context']
+    assert 'Other Studio' not in options['verified_context']
+    # User text is persisted verbatim; server grounding never enters chat history.
+    events = continuity.events_for_thread(thread_id)
+    messages = [e for e in events if e['kind'] == 'user_message']
+    assert messages and messages[-1]['payload']['text'] == received
+
+
+def test_project_live_voice_uses_verified_project_metadata_and_rejects_archived(tmp_path):
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    projects = ProjectStore(tmp_path / 'projects.sqlite3')
+    project = projects.create(name='Verified Project for Voice', goal='Only saved project context')
+    thread_id = continuity.create_thread('Project Voice', context={
+        'conversation_kind': 'project', 'project_id': project['id']
+    })
+    runtime = {
+        'device_registry': _Registry(), 'continuity': continuity,
+        'base_project_store': projects,
+    }
+    endpoint = _endpoint(conversation_voice_router(runtime, executor),
+                         '/iphone/api/voice/turn', 'POST')
+    result = _call_voice(endpoint, CanonicalVoiceTurnBody(
+        request_id=R1, transcript='Please review status',
+        conversation_id=thread_id), request_id=R1)
+    assert result['status'] == 'completed'
+    assert inner.calls[0][0] == 'Please review status'
+    assert inner.calls[0][1]['scoped_context_only'] is True
+    assert 'Verified Project for Voice' in inner.calls[0][1]['verified_context']
+    assert 'Only saved project context' in inner.calls[0][1]['verified_context']
+
+    projects.archive(project['id'])
+    with pytest.raises(HTTPException) as blocked:
+        _call_voice(endpoint, CanonicalVoiceTurnBody(
+            request_id='22222222-2222-4222-8222-222222222222',
+            transcript='Continue archived Project', conversation_id=thread_id),
+            request_id='22222222-2222-4222-8222-222222222222')
+    assert blocked.value.status_code == 404
+    assert len(inner.calls) == 1
+
+
+def test_workspace_turn_passes_real_http_middleware_and_persists_original_text(tmp_path):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from server.logical_request_middleware import LogicalRequestMiddleware
+
+    class OwnerSession(BaseHTTPMiddleware):
+        async def dispatch(self, request, call_next):
+            token = set_trusted_request(TrustedRequestContext('d1', 's1'))
+            try:
+                return await call_next(request)
+            finally:
+                reset_trusted_request(token)
+
+    _, continuity, inner, _, executor, _ = _stack(tmp_path)
+    spaces = WorkspaceStore(tmp_path / 'real_http_workspaces.sqlite3')
+    projects = ProjectStore(tmp_path / 'real_http_projects.sqlite3')
+    space = spaces.create('owner', name='Trusted Workspace', description='Scoped planning')
+    unrelated = spaces.create('owner', name='Unrelated Workspace')
+    project = projects.create(name='Linked Patient CRM')
+    spaces.link_project('owner', space['id'], project['id'])
+    thread_id = continuity.create_thread('Saved Workspace Conversation', context={
+        'conversation_kind': 'workspace', 'workspace_id': space['id'],
+        'owner_id': 'owner',
+    })
+    router = conversation_voice_router({
+        'device_registry': _Registry(), 'continuity': continuity,
+        'workspace_store': spaces, 'base_project_store': projects,
+    }, executor)
+    app = FastAPI()
+    app.include_router(router)
+    app.add_middleware(LogicalRequestMiddleware)
+    app.add_middleware(OwnerSession)
+    client = TestClient(app)
+    original = 'Please summarize the Patient CRM progress'
+    sent = client.post('/iphone/api/voice/turn', json={
+        'request_id': R1, 'transcript': original, 'conversation_id': thread_id,
+        'workspace_id': space['id'],
+    })
+    assert sent.status_code == 200, sent.text
+    assert sent.json()['status'] == 'completed'
+    assert inner.calls[0][0] == original
+    assert inner.calls[0][1]['scoped_context_only'] is True
+    assert 'Linked Patient CRM' in inner.calls[0][1]['verified_context']
+    saved = continuity.events_for_thread(thread_id)
+    assert [e['kind'] for e in saved] == ['user_message', 'assistant_message']
+    assert saved[0]['payload']['text'] == original
+    assert 'Trusted Workspace' not in saved[0]['payload']['text']
+
+    mismatched = client.post('/iphone/api/voice/turn', json={
+        'request_id': R2, 'transcript': 'Wrong scope',
+        'conversation_id': thread_id, 'workspace_id': unrelated['id'],
+    })
+    assert mismatched.status_code == 404
+    assert len(continuity.events_for_thread(thread_id)) == 2
+    assert len(inner.calls) == 1

@@ -19,6 +19,8 @@ const server = createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/iphone/projects-workspace.css') return send(200, await read('pwa/projects-workspace.css'), 'text/css');
   if (req.method === 'GET' && url.pathname === '/iphone/projects-workspace-views.css') return send(200, await read('pwa/projects-workspace-views.css'), 'text/css');
   if (req.method === 'GET' && url.pathname === '/iphone/projects-workspace-views.js') return send(200, await read('pwa/projects-workspace-views.js'), 'application/javascript');
+  if (req.method === 'GET' && url.pathname === '/iphone/p202c-project-conversation.js') return send(200, await read('pwa/p202c-project-conversation.js'), 'application/javascript');
+  if (req.method === 'GET' && url.pathname === '/iphone/p202c-project-conversation.css') return send(200, await read('pwa/p202c-project-conversation.css'), 'text/css');
   if (req.method === 'GET' && url.pathname === '/iphone/v1-runtime.js') return send(200, await read('pwa/v1-runtime.js'), 'application/javascript');
   if (req.method === 'GET' && url.pathname === '/iphone/manifest.webmanifest') return send(200, '{}', 'application/manifest+json');
   if (req.method === 'GET' && url.pathname === '/iphone/sw.js') return send(200, await read('pwa/sw.js'), 'application/javascript');
@@ -72,7 +74,23 @@ const server = createServer(async (req, res) => {
       if (proposalDecision && req.method === 'POST') { const item = project.approvals.find(row => row.id === decodeURIComponent(proposalDecision[1])); item.status = body.decision; item.decision = body.decision; item.reviewer = 'owner'; item.reviewed_at = new Date().toISOString(); item.reviewer_comments = body.comments; item.history.push({ actor: 'owner', decision: body.decision, comments: body.comments, created_at: item.reviewed_at }); return send(200, { ...result(), execution_started: false }); }
       const proposalResubmit = tail.match(/^\/approvals\/([^/]+)\/resubmit$/);
       if (proposalResubmit && req.method === 'POST') { const item = project.approvals.find(row => row.id === decodeURIComponent(proposalResubmit[1])); Object.assign(item, body, { status: 'pending', reviewer_comments: '', decision: null, reviewed_at: null }); item.history.push({ actor: 'owner', decision: 'resubmitted', comments: '', created_at: new Date().toISOString() }); return send(200, result()); }
-      if (tail === '/conversation' && req.method === 'POST') { project.conversation_id ||= `conversation-${serverState.nextId++}`; return send(201, { conversation_id: project.conversation_id, project }); }
+      if (tail === '/conversations' && req.method === 'GET') {
+        const matches = serverState.conversations.filter(entry => entry.conversation.context?.project_id === project.id);
+        return send(200, { project_id: project.id, primary_conversation_id: project.conversation_id, conversations: matches.map(entry => entry.conversation) });
+      }
+      if (tail === '/conversations' && req.method === 'POST') {
+        const id = 'conversation-' + serverState.nextId++;
+        const entry = { conversation: { id, title: body.title || 'New Project Conversation', context: { conversation_kind: 'project', project_id: project.id } }, events: [] };
+        serverState.conversations.push(entry); project.conversation_id ||= id;
+        return send(201, { conversation: entry.conversation, project_id: project.id, primary_conversation_id: project.conversation_id });
+      }
+      const selectedProjectConversation = tail.match(/^\/conversations\/([^/]+)$/);
+      if (selectedProjectConversation && req.method === 'GET') {
+        const id = decodeURIComponent(selectedProjectConversation[1]);
+        const entry = serverState.conversations.find(item => item.conversation.id === id && item.conversation.context?.project_id === project.id);
+        return entry ? send(200, entry) : send(404, { detail: 'Project conversation not found' });
+      }
+      if (tail === '/conversation' && req.method === 'POST') { project.conversation_id ||= 'conversation-' + serverState.nextId++; return send(201, { conversation_id: project.conversation_id, project }); }
       if (tail === '/activity' && req.method === 'POST') { project.activity.push({ id: `event-${serverState.nextId++}`, actor: 'owner', action: 'asked Vishnu', target_type: 'conversation', detail: body.content, created_at: new Date().toISOString() }); return send(201, result()); }
       if (tail === '/discussions' && req.method === 'POST') { const thread = { id: `thread-${serverState.nextId++}`, title: body.title, status: 'open', linked_item_type: body.linked_item_type || '', linked_item_id: body.linked_item_id || null, linked_item_title: body.linked_item_type === 'task' ? project.tasks.find(item => item.id === body.linked_item_id)?.title : '', followed: false, updated_at: new Date().toISOString(), replies: [{ id: `reply-${serverState.nextId++}`, author: 'owner', content: body.content, created_at: new Date().toISOString() }] }; project.threads.unshift(thread); return send(201, result()); }
       const discussionReply = tail.match(/^\/discussions\/([^/]+)\/replies$/);
@@ -213,10 +231,24 @@ try {
     await page.locator('.project-task-row').first().waitFor();
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/project-plan-${viewport.width}.png`, fullPage: false });
     await page.getByRole('button', { name: 'Ask Vishnu' }).first().click();
+    await page.locator('#p202cRoot').waitFor();
+    assert.equal(await page.locator('.p202c-tabs button').count(),10,'Project navigation has ten genuine destinations');
     await page.locator('#projectChatForm textarea').fill('Please make a safe implementation plan.');
     await page.locator('#projectChatForm button[type="submit"]').click();
     await page.getByText(/Vishnu plan for:/).waitFor();
     assert.equal(serverState.turns.at(-1).conversation_id, serverState.projects[0].conversation_id, 'Project chat must use its linked canonical conversation');
+    assert.equal(serverState.conversations.at(-1).conversation.context.project_id,serverState.projects[0].id,'Project thread uses saved Project ID');
+    const before=serverState.conversations.length;
+    if(viewport.width>900){await page.locator('.p202c-primary').first().click();}
+    assert.ok(serverState.conversations.length>=before,'Existing Project conversations remain retained');
+    if(viewport.width<=900){
+      const projectTabs=page.locator('.p202c-tabs button:visible');
+      assert.equal(await projectTabs.count(),5,'Mobile Project tabs expose Chat, Tasks, Files, Agents and More');
+      await page.getByRole('button',{name:'Chats ▾'}).click();
+      await page.locator('dialog.p202c-chat-sheet').getByRole('button',{name:'＋ New Project Chat'}).click();
+      await page.waitForFunction(()=>document.querySelector('.p202c-chat-item.active')?.textContent?.includes('New Project Conversation'));
+      assert.equal(serverState.conversations.length,before+1,'Mobile Project Chat creation persists a second canonical Project conversation');
+    }
     if (screenshotDir) await page.screenshot({ path: `${screenshotDir}/project-chat-${viewport.width}.png`, fullPage: false });
     await openProjectTab('files');
     await page.locator('[data-project-action="add-files"]:visible').first().click();

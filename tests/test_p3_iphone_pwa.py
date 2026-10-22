@@ -242,7 +242,7 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         ('/iphone/global-search.js', 'globalSearch'),
         ('/iphone/global-search.css', 'global-search'),
         ('/iphone/command-center.js', 'vishnuOpenCommandCenter'),
-        ('/iphone/command-center.css', 'cc-dialog'),
+        ('/iphone/command-center.css', 'cc-page-mode'),
         ('/iphone/workspaces-ui.js', 'vishnuRenderWorkspaces'),
         ('/iphone/workspaces-ui.css', 'ws-page'),
     ):

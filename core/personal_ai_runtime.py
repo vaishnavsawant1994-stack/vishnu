@@ -91,7 +91,8 @@ class CanonicalTurnRuntime:
         if conversation_id:
             thread = self.continuity.thread(str(conversation_id))
             if not thread or thread.get('closed_at'): raise KeyError('active conversation is unavailable')
-            if device_id: self.continuity.set_active(device_id, thread['id'])
+            if device_id and (thread.get('context') or {}).get('conversation_kind') != 'workspace':
+                self.continuity.set_active(device_id, thread['id'])
             return str(thread['id'])
         bundle = self.continuity.resume(str(device_id or f'local:{surface or "runtime"}'), event_limit=self.HISTORY_LIMIT*2)
         resolved = str((bundle.get('thread') or {}).get('id') or '')
@@ -213,6 +214,10 @@ class CanonicalTurnRuntime:
 
     def _orchestrate(self, text, *, request_id, owner_id, device_id, session_id, privacy_level, risk_level, kwargs):
         self._check_cooperative_cancel(kwargs)
+        # Project/Workspace chat has read-only, server-verified grounding. Do not
+        # dispatch broad autonomous Work plans outside its authorized context.
+        if kwargs.get('scoped_context_only'):
+            return None
         selection = self.p10_selector.select(text,explicit_background=bool(kwargs.get('background',False)),requested_actions=int(kwargs.pop('requested_actions',0) or 0))
         self._emit('turn.orchestration_selected',request_id=request_id,use_p10=selection.use_p10,reason=selection.reason,signals=list(selection.signals))
         if not selection.use_p10: return None

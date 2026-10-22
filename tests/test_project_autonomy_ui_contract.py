@@ -25,10 +25,14 @@ def test_project_autonomy_ui_is_loaded_after_canonical_work_and_precached():
     assert "projects-work-visualization-runtime.js" in loader
     sw = Path("pwa/sw.js").read_text()
     assert "project-autonomy-controls.js" in sw
-    # v49 refreshes installed PWAs with the current canonical shell assets
-    # while retaining the bounded local-first data-plane continuation cache.
-    # Keeping v44 would leave installed clients on the earlier onboarding shell.
-    assert "personal-ai-iphone-v60" in sw
+    # New Phase 2 screens legitimately advance the cache version. Guard against
+    # stale bundles without freezing this older feature at exactly version 70.
+    marker = "const CACHE='personal-ai-iphone-v"
+    assert marker in sw
+    cache_version = sw.split(marker, 1)[1].split("'", 1)[0]
+    assert cache_version.isdecimal() and int(cache_version) >= 70
+    assert "p207-notifications.js" in sw
+    assert "p207-notifications.css" in sw
     assert "adaptive-composer.js" in sw
     assert "data-plane-cache.js" in sw
     assert "agents.html" in sw

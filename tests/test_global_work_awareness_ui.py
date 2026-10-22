@@ -83,9 +83,18 @@ def test_global_awareness_loads_after_canonical_project_surfaces_and_is_precache
     assert "loadGlobalAwareness" in loader
     assert "visual.onload=loadGlobalAwareness" in loader
 
-    # v54 refreshes the onboarding shell while retaining the canonical work and
-    # global-awareness assets in the same offline cache.
-    assert "personal-ai-iphone-v60" in sw
+    # Phase 2 presentation assets advance the service-worker cache version.
+    # Check a minimum compatible version, not an obsolete exact-version literal.
+    # Later P2 screens must not break Work Awareness qualification by bumping
+    # their offline shell while preserving the required canonical assets.
+    cache_lines = [
+        line for line in sw.splitlines()
+        if line.startswith("const CACHE='personal-ai-iphone-v")
+    ]
+    assert len(cache_lines) == 1, "Vishnu PWA needs one versioned service-worker cache"
+    version_text = cache_lines[0].removeprefix("const CACHE='personal-ai-iphone-v").split("'")[0]
+    assert version_text.isdigit(), "PWA cache version must be a number"
+    assert int(version_text) >= 70, "Phase 2 PWA cache regressed below its verified baseline"
     assert "'/iphone/global-work-awareness.js'" in sw
     assert "'/iphone/adaptive-composer.js'" in sw
     assert "url.pathname.startsWith('/iphone/api/')" in sw

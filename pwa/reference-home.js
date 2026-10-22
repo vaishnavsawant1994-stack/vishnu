@@ -85,3 +85,21 @@
   });
   if (greeting) observer.observe(greeting, { childList: true, characterData: true, subtree: true });
 })();
+
+// P2-01 extends the existing Home shell. Do not add a second composer/router.
+(() => {
+  if (!document.getElementById('p201Styles')) {
+    const styles = document.createElement('link');
+    styles.id = 'p201Styles';
+    styles.rel = 'stylesheet';
+    styles.href = '/iphone/p2-home.css';
+    document.head.append(styles);
+  }
+  if (!document.querySelector('script[data-p201-home]')) {
+    const script = document.createElement('script');
+    script.src = '/iphone/p2-home.js';
+    script.dataset.p201Home = 'true';
+    script.onerror = () => console.warn('P2-01 Home enhancement unavailable; existing Home remains accessible.');
+    document.body.append(script);
+  }
+})();

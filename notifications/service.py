@@ -68,6 +68,18 @@ class NotificationService:
                 category TEXT NOT NULL, title TEXT NOT NULL, body TEXT NOT NULL,
                 created_at TEXT NOT NULL, read_at TEXT,
                 UNIQUE(device_id, dedupe_key))''')
+        # Own schema only: additive, versioned migration; no second notification store.
+        with self._lock, self._connect() as con:
+            version = con.execute('PRAGMA user_version').fetchone()[0]
+            if version > 2:
+                raise RuntimeError('Unsupported future NotificationService schema')
+            existing = {row[1] for row in con.execute('PRAGMA table_info(notifications)')}
+            for column in ('pinned_at', 'dismissed_at', 'event_type', 'source_type',
+                           'source_id', 'project_id', 'workspace_id', 'priority'):
+                if column not in existing:
+                    con.execute(f'ALTER TABLE notifications ADD COLUMN {column} TEXT')
+            con.execute('CREATE INDEX IF NOT EXISTS idx_notifications_device_recent ON notifications(device_id, created_at DESC, id DESC)')
+            con.execute('PRAGMA user_version=2')
         self._scheduler = threading.Thread(target=self._schedule_loop, name='notification-scheduler', daemon=True)
         if start_scheduler:
             self._scheduler.start()
@@ -121,24 +133,82 @@ class NotificationService:
                 continue
             channels = set(rule.get('channels') or [])
             if 'in_app' in channels:
-                self._insert(device_id, event_key, category, title, body)
+                # Preserve only bounded IDs, not raw event parameters or credentials.
+                source_type = 'work' if event_name.startswith('work.') else 'workflow' if event_name.startswith(('workflow.', 'automation.')) else 'system'
+                self._insert(device_id, event_key, category, title, body,
+                             event_type=event_name, source_type=source_type,
+                             source_id=event.get('work_order_id') or event.get('run_id') or event.get('automation_id'),
+                             project_id=event.get('project_id'), workspace_id=event.get('workspace_id'),
+                             priority='high' if category in ('needs_review','blocked_work') else 'normal')
             if 'push' in channels and self.apns and self.apns.configured and device.get('metadata', {}).get('push.apns.token'):
                 # Keep lock-screen text generic; never include project or conversation content.
                 self.apns.send_device(device_id, title, body, data={'category': category, 'notification_id': event_key})
 
-    def _insert(self, device_id, key, category, title, body):
+    def _insert(self, device_id, key, category, title, body, *, event_type=None,
+                source_type=None, source_id=None, project_id=None, workspace_id=None, priority=None):
+        def bounded(value):
+            return str(value)[:120] if value is not None else None
         with self._lock, self._connect() as con:
-            con.execute('INSERT OR IGNORE INTO notifications VALUES(?,?,?,?,?,?,?,NULL)',
-                        (str(uuid.uuid4()), device_id, key, category, title[:120], body[:500], datetime.now(timezone.utc).isoformat()))
+            con.execute('''INSERT OR IGNORE INTO notifications
+                (id,device_id,dedupe_key,category,title,body,created_at,read_at,
+                event_type,source_type,source_id,project_id,workspace_id,priority)
+                VALUES(?,?,?,?,?,?,?,NULL,?,?,?,?,?,?)''',
+                (str(uuid.uuid4()), device_id, str(key)[:180], category, title[:120], body[:500],
+                 datetime.now(timezone.utc).isoformat(), bounded(event_type), bounded(source_type),
+                 bounded(source_id), bounded(project_id), bounded(workspace_id), bounded(priority)))
 
-    def list(self, device_id: str, limit: int = 100) -> list[dict]:
+    _LIST_FIELDS = ('id,category,title,body,created_at,read_at,pinned_at,dismissed_at,'
+                    'event_type,source_type,source_id,project_id,workspace_id,priority')
+
+    def list(self, device_id: str, limit: int = 100, *, include_dismissed=False) -> list[dict]:
         with self._connect() as con:
-            rows = con.execute('SELECT id,category,title,body,created_at,read_at FROM notifications WHERE device_id=? ORDER BY created_at DESC LIMIT ?', (device_id, max(1, min(limit, 200)))).fetchall()
+            extra = '' if include_dismissed else ' AND dismissed_at IS NULL'
+            rows = con.execute(f'SELECT {self._LIST_FIELDS} FROM notifications WHERE device_id=?'
+                               + extra + ' ORDER BY created_at DESC,id DESC LIMIT ?',
+                               (device_id, max(1, min(limit, 200)))).fetchall()
         return [dict(row) for row in rows]
+
+    def detail(self, device_id: str, notification_id: str) -> dict | None:
+        with self._connect() as con:
+            row = con.execute(f'SELECT {self._LIST_FIELDS} FROM notifications WHERE device_id=?'
+                              ' AND id=? AND dismissed_at IS NULL', (device_id, notification_id)).fetchone()
+        return dict(row) if row else None
+
+    def mark_all_read(self, device_id: str, ids: list[str] | None = None) -> int:
+        # Device scoped, transactional and idempotent. Never operates on approvals.
+        with self._lock, self._connect() as con:
+            if ids is None:
+                cursor = con.execute('UPDATE notifications SET read_at=? WHERE device_id=?'
+                                     ' AND read_at IS NULL AND dismissed_at IS NULL',
+                                     (datetime.now(timezone.utc).isoformat(), device_id))
+            elif not ids:
+                return 0
+            else:
+                safe_ids = [str(item) for item in ids[:200]]
+                slots = ','.join('?' for _ in safe_ids)
+                cursor = con.execute('UPDATE notifications SET read_at=? WHERE device_id=?'
+                                     f' AND id IN ({slots}) AND read_at IS NULL AND dismissed_at IS NULL',
+                                     (datetime.now(timezone.utc).isoformat(), device_id, *safe_ids))
+            return cursor.rowcount
+
+    def pin(self, device_id: str, notification_id: str, pinned: bool) -> bool:
+        with self._lock, self._connect() as con:
+            result = con.execute('UPDATE notifications SET pinned_at=? WHERE device_id=?'
+                                 ' AND id=? AND dismissed_at IS NULL',
+                                 (datetime.now(timezone.utc).isoformat() if pinned else None,
+                                  device_id, notification_id))
+            return result.rowcount == 1
+
+    def dismiss(self, device_id: str, notification_id: str) -> bool:
+        with self._lock, self._connect() as con:
+            result = con.execute('UPDATE notifications SET dismissed_at=COALESCE(dismissed_at,?)'
+                                 ' WHERE device_id=? AND id=?',
+                                 (datetime.now(timezone.utc).isoformat(), device_id, notification_id))
+            return result.rowcount == 1
 
     def mark_read(self, device_id: str, notification_id: str) -> bool:
         with self._connect() as con:
-            return con.execute('UPDATE notifications SET read_at=? WHERE id=? AND device_id=?', (datetime.now(timezone.utc).isoformat(), notification_id, device_id)).rowcount == 1
+            return con.execute('UPDATE notifications SET read_at=? WHERE id=? AND device_id=? AND dismissed_at IS NULL', (datetime.now(timezone.utc).isoformat(), notification_id, device_id)).rowcount == 1
 
     def status(self, device_id: str | None = None) -> dict:
         push_ready = bool(self.apns and self.apns.configured)

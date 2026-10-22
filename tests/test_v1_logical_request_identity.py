@@ -21,5 +21,23 @@ def test_request_id_rejects_missing_unbounded_or_unsafe_values(value):
 def test_request_id_is_identity_metadata_not_authority():
     assert validate_request_id("550e8400-e29b-41d4-a716-446655440000") == "550e8400-e29b-41d4-a716-446655440000"
     fields = set(LogicalTurnBody.model_fields)
-    assert fields == {"request_id", "transcript", "conversation_id"}
+    assert fields == {"request_id", "transcript", "conversation_id", "workspace_id"}
     assert not ({"owner_id", "device_id", "session_id", "security_epoch"} & fields)
+
+
+def test_workspace_id_is_accepted_but_untrusted_fields_remain_forbidden():
+    from pydantic import ValidationError
+
+    request_id = "11111111-1111-4111-8111-111111111111"
+    body = LogicalTurnBody(
+        request_id=request_id, transcript="Check progress",
+        conversation_id="saved-conversation", workspace_id="saved-workspace",
+    )
+    assert body.workspace_id == "saved-workspace"
+    with pytest.raises(ValidationError):
+        LogicalTurnBody(request_id=request_id, transcript="x", workspace_id="")
+    with pytest.raises(ValidationError):
+        LogicalTurnBody(
+            request_id=request_id, transcript="x",
+            workspace_id="saved-workspace", owner_id="forged-owner",
+        )

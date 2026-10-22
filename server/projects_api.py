@@ -219,6 +219,10 @@ class DiscussionReplyBody(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class ProjectConversationCreateBody(BaseModel):
+    title: str = Field(default='New Project Conversation', min_length=1, max_length=120)
+
+
 class ProjectApprovalBody(BaseModel):
     title: str = Field(min_length=1, max_length=180)
     summary: str = Field(min_length=1, max_length=4000)
@@ -664,17 +668,99 @@ def projects_router(runtime, store: ProjectStore):
             raise HTTPException(404, 'Discussion not found')
         return {'project': value}
 
+    def project_thread(project_id: str, conversation_id: str):
+        if continuity is None:
+            raise HTTPException(503, 'Conversation service is unavailable')
+        thread = continuity.thread(conversation_id)
+        if not thread or thread.get('closed_at'):
+            raise HTTPException(404, 'Project conversation not found')
+        meta = thread.get('context') or {}
+        # Only the historic primary conversation is allowed without metadata.
+        project = project_or_404(project_id)
+        is_legacy_primary = project.get('conversation_id') == conversation_id
+        if meta.get('project_id') not in (None, project_id) or (
+            meta.get('project_id') is None and not is_legacy_primary
+        ):
+            raise HTTPException(404, 'Project conversation not found')
+        if meta.get('conversation_kind') not in (None, 'project', ''):
+            raise HTTPException(409, 'Conversation belongs to a different context')
+        return thread
+
+    @router.get('/{project_id}/conversations')
+    def list_project_conversations(
+        project_id: str, limit: int = Query(default=50, ge=1, le=100),
+        pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        project = project_or_404(project_id)
+        if continuity is None:
+            raise HTTPException(503, 'Conversation service is unavailable')
+        # SQL project predicate applies before limit, unlike a global history page.
+        rows = continuity.list_threads(limit=limit, project_id=project_id)
+        primary_id = project.get('conversation_id')
+        if primary_id and all(row['id'] != primary_id for row in rows):
+            legacy = continuity.thread(primary_id)
+            if legacy and not legacy.get('closed_at'):
+                meta = legacy.get('context') or {}
+                if meta.get('project_id') in (None, project_id) and meta.get('conversation_kind') in (None, '', 'project'):
+                    rows.insert(0, legacy)
+        return {'project_id': project_id, 'primary_conversation_id': primary_id,
+                'conversations': rows[:limit]}
+
+    @router.post('/{project_id}/conversations', status_code=201)
+    def new_project_conversation(
+        project_id: str, body: ProjectConversationCreateBody,
+        pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = authenticate(pa_device, pa_token, write=True)
+        project = project_or_404(project_id)
+        if continuity is None:
+            raise HTTPException(503, 'Conversation service is unavailable')
+        # One canonical ledger; Project IDs are validated by ProjectStore.
+        thread_id = continuity.create_thread(
+            body.title.strip(), device_id=device_id,
+            context={'conversation_kind': 'project', 'project_id': project_id},
+        )
+        old_primary = project.get('conversation_id')
+        if not old_primary or not continuity.thread(old_primary) or continuity.thread(old_primary).get('closed_at'):
+            store.update(project_id, {'conversation_id': thread_id})
+        if runtime.get('events'):
+            runtime['events'].emit('project.conversation.created', project_id=project_id,
+                                   conversation_id=thread_id, device_id=device_id)
+        return {'conversation': continuity.thread(thread_id),
+                'project_id': project_id, 'primary_conversation_id': project_or_404(project_id).get('conversation_id')}
+
+    @router.get('/{project_id}/conversations/{conversation_id}')
+    def get_project_conversation(
+        project_id: str, conversation_id: str,
+        pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None),
+    ):
+        authenticate(pa_device, pa_token)
+        thread = project_thread(project_id, conversation_id)
+        return {'conversation': thread, 'events': continuity.events_for_thread(thread['id'], limit=200)}
+
     @router.post('/{project_id}/conversation', status_code=201)
     def project_conversation(project_id: str,
                              pa_device: str | None = Cookie(default=None), pa_token: str | None = Cookie(default=None)):
+        # Preserve the pre-P2-02C primary conversation contract.
         device_id = authenticate(pa_device, pa_token, write=True)
         project = project_or_404(project_id)
         if continuity is None:
             raise HTTPException(503, 'Conversation service is unavailable')
         conversation_id = project.get('conversation_id')
-        if not conversation_id or not continuity.thread(conversation_id):
-            conversation_id = continuity.create_thread(f"Project · {project['name']} · Vishnu", device_id=device_id)
+        previous = continuity.thread(conversation_id) if conversation_id else None
+        if previous is None or previous.get('closed_at'):
+            conversation_id = continuity.create_thread(
+                f"Project · {project['name']} · Vishnu", device_id=device_id,
+                context={'conversation_kind': 'project', 'project_id': project_id},
+            )
             store.update(project_id, {'conversation_id': conversation_id})
+        else:
+            project_thread(project_id, conversation_id)
+            if not (previous.get('context') or {}).get('project_id'):
+                continuity.update_context(conversation_id, {
+                    'conversation_kind': 'project', 'project_id': project_id,
+                })
         return {'conversation_id': conversation_id, 'project': project_or_404(project_id)}
 
     @router.post('/{project_id}/activity', status_code=201)

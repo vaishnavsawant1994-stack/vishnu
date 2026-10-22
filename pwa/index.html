@@ -3057,12 +3057,20 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
   <link rel="stylesheet" href="/iphone/projects-workspace-views.css" />
 <link rel="stylesheet" href="/iphone/reference-pages.css">
 <link rel="stylesheet" href="/iphone/workspaces-ui.css">
+<link rel="stylesheet" href="/iphone/p203-today.css">
+<link rel="stylesheet" href="/iphone/p204-live-voice.css">
+<link rel="stylesheet" href="/iphone/p205-conversation-history.css">
+<link rel="stylesheet" href="/iphone/p202d-workspace-conversation.css">
 <link rel="stylesheet" href="/iphone/memory-experiences.css">
 <link rel="stylesheet" href="/iphone/knowledge-notes.css">
 <link rel="stylesheet" href="/iphone/owner-controls.css">
 <link rel="stylesheet" href="/iphone/chat-experience.css">
+<link rel="stylesheet" href="/iphone/p202-personal-chat.css">
+<link rel="stylesheet" href="/iphone/p202b-work-conversation.css">
+<link rel="stylesheet" href="/iphone/p202c-project-conversation.css">
 <link rel="stylesheet" href="/iphone/reference-home.css">
 <link rel="stylesheet" href="/iphone/global-search.css">
+<link rel="stylesheet" href="/iphone/p207-notifications.css">
 <link rel="stylesheet" href="/iphone/command-center.css">
 </head>
 <body class="v-ref">
@@ -3079,14 +3087,15 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
     <button type="button" data-app-module="devices"><span>▯</span>Devices</button>
     <button type="button" data-app-module="activities"><span>⌁</span>Activity</button>
     <button type="button" data-app-module="dashboard"><span>◉</span>Mission Control</button>
+    <button type="button" data-command-center-entry class="reference-command-entry"><span>ϟ</span>Command Center</button>
     <button type="button" data-app-module="settings"><span>⚙</span>Settings</button>
   </nav>
   <div class="reference-owner"><span class="reference-avatar">V</span><span><strong data-reference-owner>Owner</strong><small>Free Thinker&nbsp; ∞ &nbsp;Builder</small></span></div>
 </aside>
 <div class="reference-desktop-tools">
   <button type="button" data-reference-search aria-label="Search"><span>⌕</span> Search anything… <kbd>⌘ K</kbd></button>
-  <button type="button" data-command-center-entry aria-label="Open Command Center" title="Command Center (Ctrl+Shift+P)"><span aria-hidden="true">⌘</span> Command Center</button>
-  <button type="button" data-app-module="activities" aria-label="Notifications">♧</button>
+  <button type="button" data-command-center-entry aria-label="Open Command Center" title="Command Center (Ctrl/Cmd+Shift+P)"><span aria-hidden="true">⌕</span> Search or type a command… <kbd>⇧ P</kbd></button>
+  <button type="button" class="p207-header-bell" data-p207-entry aria-label="Open Notifications and Alerts">♧<span id="p207HeaderUnread" class="p207-head-badge hidden" aria-label="Unread notifications"></span></button>
   <button type="button" data-app-module="settings" class="reference-profile" aria-label="Profile">V</button>
 </div>
 <main class="app-shell">
@@ -3101,6 +3110,7 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
     <div class="brand header-core" role="img" aria-label="Vishnu animated neural sphere"><div class="core-stage" aria-hidden="true"><div class="core-glow"></div><canvas id="neuralCanvas"></canvas></div></div>
     <div class="v-home-title" aria-label="Vishnu">Vishnu</div>
     <div class="topbar-actions">
+      <button type="button" class="p207-mobile-bell" data-p207-entry aria-label="Open Notifications and Alerts">♧<span id="p207MobileUnread" class="p207-head-badge hidden" aria-label="Unread notifications"></span></button>
       <button id="chatMenuButton" class="chat-menu-button hidden" type="button" aria-label="Conversation options" aria-haspopup="menu" aria-expanded="false" aria-controls="chatActionMenu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg></button>
     <button id="ownerButton" class="owner-status" type="button" aria-label="Recent conversations" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.2"/><path d="M12 7.5v5.2l3.4 2"/></svg><span class="trust"><span id="greeting">Good day.</span><small id="devicePill">Checking device…</small></span></button>
       <div id="chatActionMenu" class="chat-action-menu hidden" role="menu" aria-label="Current conversation options">
@@ -3227,8 +3237,9 @@ body.v-ref .message-actions button svg{width:19px;height:19px}
       <div class="sidebar-section-label">Workspace</div>
       <button  class="sidebar-nav-row active" type="button" data-app-module="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3zM9 20v-7h6v7"/></svg><span>Home</span></button>
       <button class="sidebar-nav-row" type="button" data-app-module="projects"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5m8-5v5M7 13h4m-4 3h7"/></svg><span>Projects</span></button>
+      <button type="button" data-p204-entry class="sidebar-nav-row" aria-label="Open Live Voice"><span aria-hidden="true">〽</span><span>Live Voice</span></button>
       <button id="sidebarToday" class="sidebar-nav-row" type="button" data-app-module="today"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M7 2v5M17 2v5M3 10h18M8 15h3"/></svg><span>Today</span></button>
-      <button id="sidebarInbox" class="sidebar-nav-row" type="button" data-sidebar-inbox><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM4 13h4l2 3h4l2-3h4"/></svg><span>Inbox</span><span id="sidebarInboxCount" class="sidebar-count hidden" aria-label="Items needing attention">0</span></button>
+      <button id="sidebarInbox" class="sidebar-nav-row" type="button" data-sidebar-inbox><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16v16H4zM4 13h4l2 3h4l2-3h4"/></svg><span>Notifications</span><span id="sidebarInboxCount" class="sidebar-count hidden" hidden aria-label="Timeline items needing attention">0</span><span id="p207UnreadCount" class="sidebar-count hidden" aria-label="Unread notifications">0</span></button>
       <div class="sidebar-section-label">Personal</div>
       <button id="appConversations" class="sidebar-nav-row" type="button" data-app-module="conversations"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v12H9l-5 3z"/></svg><span>Conversations</span></button>
       <button class="sidebar-nav-row" type="button" data-app-module="memory"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4c-3-3-8 0-7 4-3 2-1 6 2 6-2 4 3 7 5 4M12 4c3-3 8 0 7 4 3 2 1 6-2 6 2 4-3 7-5 4M12 3v18M8 11h8"/></svg><span>Memory</span></button>
@@ -3855,6 +3866,7 @@ function renderTodayCommandDashboard(){
  mobileNav.querySelectorAll('[data-today-nav]').forEach(button=>button.addEventListener('click',()=>{const target=button.dataset.todayNav;if(target==='Create'){openTodayExistingCreate('task');return}closeTodayScreen();const routes={Home:'home',Workspaces:'labs',Work:'workflows',Activities:'activities'};openModule(routes[target]).catch(error=>showToast(error.message))}));root.querySelector('.today-board')?.append(mobileNav);
 }
 async function refreshTodayScreen(){
+ if(window.vishnuP203&&!todayScreenDemo)return window.vishnuP203.load();
  if(todayScreenDemo){const sample=todayDemoData();todayScreenItems=sample.items;todayScreenPlans=sample.plans;$('todayDemoNotice').classList.remove('hidden');todayCommandSources={everyday:{data:{items:sample.items}},operations:{data:{operations:sample.plans}},work:{data:{counts:{active:2,waiting_approval:1,completed:3},work_orders:[{title:'Patient CRM implementation',objective:'Example record shown only in Preview mode',project_name:'Rudra Health Care',status:'RUNNING'},{title:'Vishnu UI Convergence',objective:'Example record shown only in Preview mode',project_name:'Vishnu Development',status:'VERIFYING'},{title:'QA validation completed',project_name:'Vishnu Development',status:'COMPLETED'}]}},attention:{data:{counts:{total:2},items:[{title:'Review Face Model v8',summary:'Preview example only',severity:'approval required'},{title:'Patient CRM data source',summary:'Preview example only',severity:'blocked'}]}},projects:{data:{projects:[]}},activity:{data:{activities:[]}},workspaces:{data:{workspaces:[]}}};renderTodayScreen();renderTodayCommandDashboard();return}
  $('todayDemoNotice').classList.add('hidden');
  const endpoints={everyday:'/everyday/timeline?limit=500',operations:'/operations?status=all&limit=100',work:'/work/summary',attention:'/work/attention?limit=100',projects:'/projects?status=all&sort=recent',activity:'/activities?limit=30',workspaces:'/workspaces?sort=recent&limit=50'};
@@ -3864,7 +3876,7 @@ async function refreshTodayScreen(){
 }
 async function openTodayScreen(filter='all'){
  closeAllDrawers();todayScreenFilter=filter;document.body.classList.add('today-command-mode');document.querySelectorAll('.today-tab').forEach(b=>{const active=b.dataset.todayFilter===filter;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});$('todayScreen').classList.remove('hidden');$('todayScreen').setAttribute('aria-hidden','false');document.body.style.overflow='hidden';try{await refreshTodayScreen()}catch(error){todayEmpty($('todayTasksList'),'Unable to load your day.');todayEmpty($('todayMeetingsList'),'Retry by reopening Today.');todayEmpty($('todayPlansList'),'Your plans could not be loaded.');showToast(error.message)}}
-function closeTodayScreen(){if($('todayScreen').classList.contains('hidden'))return;$('todayScreen').classList.add('hidden');$('todayScreen').setAttribute('aria-hidden','true');document.body.classList.remove('today-command-mode');document.body.style.overflow=''}
+function closeTodayScreen(){if($('todayScreen').classList.contains('hidden'))return;window.vishnuP203?.onClose?.();$('todayScreen').classList.add('hidden');$('todayScreen').setAttribute('aria-hidden','true');document.body.classList.remove('today-command-mode');document.body.style.overflow=''}
 function openTodayExistingCreate(kind){closeTodayScreen();openCreationDialog(kind==='meeting'?'meeting':kind==='plan'?'work':'task')}
 
 let sidebarSearchResults=null,sidebarSearchEpoch=0,sidebarSearchTimer=null;
@@ -5064,8 +5076,8 @@ $('historyButton').onclick=openAppDrawer;
 $('closeAppDrawer').onclick=closeAppDrawer;
 $('sidebarNewChat').onclick=()=>personalAiDemoMode?showToast('Sample preview only — no conversation is created'):createConversation().catch(error=>showToast(error.message));
 $('sidebarPinCurrent').onclick=pinCurrentSidebarItem;
-$('sidebarInbox').onclick=openTimelineAttention;
-$('sidebarInbox').onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();openTimelineAttention()}};
+$('sidebarInbox').onclick=()=>window.openModule('notifications');
+$('sidebarInbox').onkeydown=event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();window.openModule('notifications')}};
 $('timelineNewChat').onclick=$('sidebarNewChat').onclick;
 $('todayScreenNewChat').onclick=()=>todayScreenDemo||personalAiDemoMode?showToast('Sample preview only — no conversation is created'):createConversation().catch(error=>showToast(error.message));
 $('sidebarSearchToggle').onclick=()=>{
@@ -5142,6 +5154,80 @@ window.vishnuChatBridge={
  setDraft(value){$('message').value=String(value||'');resizeComposerEditor();$('message').focus()},
  getDraft(){return $('message').value}
 };
+window.vishnuTodayP203Bridge={
+ api, name:()=>window.ownerDisplayName?.()||'Owner',
+ toast:message=>showToast(message),navigate:module=>module==='agents'?location.assign('/iphone/agents.html'):openModule(module),
+ close:()=>closeTodayScreen(),
+ goChat:()=>{enterConversationView();$('message')?.focus()},
+ runPrompt:async prompt=>{closeTodayScreen();await sendTurn(prompt)},
+ create:(kind,day)=>{openTodayExistingCreate(kind);if(day&&$('todayScheduledDate'))$('todayScheduledDate').value=day},
+ attention:()=>{closeTodayScreen();openTimelineAttention()},
+ search:()=>{closeTodayScreen();$('globalSearch')?.focus();},
+ attach:()=>{if(!confirm('The existing file picker adds the selected document to Vishnu Knowledge. Continue?'))return;closeTodayScreen();$('attachmentButton')?.click()},
+ voice:()=>{closeTodayScreen();$('micButton')?.click()},
+ openProject:id=>{closeTodayScreen();if(typeof window.openProject==='function')return window.openProject(id);return openModule('projects')},
+ attachCore:target=>{
+   const old=document.querySelector('.core-stage');
+   if(!target||!old)return;
+   if(!window.__vishnuP203CoreReturn)window.__vishnuP203CoreReturn={node:old,parent:old.parentElement,next:old.nextSibling};
+   if(old.parentElement!==target){target.prepend(old);requestAnimationFrame(resizeCanvas)}
+ },
+ restoreCore:()=>{
+   const old=window.__vishnuP203CoreReturn;
+   if(!old)return;
+   if(old.parent?.isConnected){old.parent.insertBefore(old.node,old.next?.parentNode===old.parent?old.next:null);requestAnimationFrame(resizeCanvas)}
+   window.__vishnuP203CoreReturn=null;
+ }
+};
+
+
+window.vishnuHistoryBridge={
+ api,owner:()=>ownerDisplayName()||'Owner',
+ confirm:message=>requestConfirmation(message,{title:'Confirm Conversation Action'}),
+ onClose:()=>document.body.classList.remove('p205-history-open'),
+ navigate:mod=>{
+  if(mod==='attention'){openTimelineAttention();return}
+  if(mod==='chat'){enterConversationView();return}
+  if(mod==='voice'){window.vishnuP204?.open();return}
+  if(mod==='history'){window.vishnuP205?.open();return}
+  if(mod==='agents'){location.assign('/iphone/agents.html');return}
+  openModule(mod);
+ },
+ openConversation:id=>openConversation(id),
+ continueVoice:async id=>{await openConversation(id);$('micButton')?.click()},
+ createTask:()=>openTodayExistingCreate('task')
+};
+document.addEventListener('click',event=>{
+ const match=event.target.closest('[data-p205-entry],#appConversations,#homeRecentSeeAll,#sidebarSeeAll');
+ if(!match)return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(turnInFlight){showToast('Finish the active AI turn before opening History.');return}
+ closeAllDrawers();
+ document.body.classList.add('p205-history-open');
+ window.vishnuP205?.open().catch(err=>{document.body.classList.remove('p205-history-open');showToast(err.message)});
+},true);
+window.vishnuVoiceBridge={
+ api,name:()=>ownerDisplayName()||'Owner',
+ onClose:()=>{document.body.classList.remove('live-voice-mode')},
+ navigate:destination=>{
+  if(destination==='attention'){openTimelineAttention();return}
+  if(destination==='search'){window.openModule('search');return}
+  if(destination==='today'){openTodayScreen('all');return}
+  if(destination==='chat'){enterConversationView();return}
+  if(destination==='voice'){window.vishnuP204?.open();return}
+  if(destination==='agents'){location.assign('/iphone/agents.html');return}
+  openModule(destination);
+ }
+};
+document.addEventListener('click',event=>{
+ if(!event.target.closest('[data-p204-entry]'))return;
+ event.preventDefault();event.stopImmediatePropagation();
+ if(turnInFlight){showToast('Finish the active canonical turn before opening Live Voice.');return}
+ handsFree=false;stopRecognition();if(synth?.speaking)synth.cancel();
+ $('closeAppDrawer')?.click();document.body.classList.add('live-voice-mode');
+ window.vishnuP204?.open().catch(err=>{document.body.classList.remove('live-voice-mode');showToast(err.message)});
+},true);
+
 </script>
 <script src="/iphone/projects-workspace.js"></script>
 <script src="/iphone/projects-workspace-views.js"></script>
@@ -5152,10 +5238,30 @@ window.vishnuChatBridge={
 <script src="/iphone/owner-controls.js"></script>
 <script src="/iphone/chat-experience.js"></script>
 <script src="/iphone/reference-home.js"></script>
+<script src="/iphone/p202-personal-chat.js"></script>
+<script src="/iphone/p202b-work-conversation.js"></script>
+<script src="/iphone/p202c-project-conversation.js"></script>
 <script src="/iphone/global-search.js"></script>
 <script src="/iphone/command-center.js"></script>
 <script src="/iphone/workspaces-ui.js"></script>
+<script src="/iphone/p203-today.js"></script>
+<script src="/iphone/p204-live-voice.js"></script>
+<script src="/iphone/p205-conversation-history.js"></script>
+<script src="/iphone/p207-notifications.js"></script>
+<script src="/iphone/p202d-workspace-conversation.js"></script>
 <script src="/iphone/campaign-demo-data.js"></script>
 <script src="/iphone/campaign-demo.js"></script>
+<aside id="p205Root" class="hidden" role="dialog" aria-modal="true" aria-label="Conversation History" aria-hidden="true"></aside>
+<dialog id="p205Dialog" class="p205-dialog" aria-labelledby="p205ModalTitle">
+  <h2 id="p205ModalTitle">Conversation History</h2>
+  <p id="p205ModalText"></p>
+  <div id="p205Choices" class="p205-dialog-options"></div>
+</dialog>
+<aside id="p204Root" class="hidden" role="dialog" aria-modal="true" aria-label="Vishnu Live Voice" aria-hidden="true"></aside>
+<dialog id="p204Dialog" class="p204-dialog" aria-labelledby="p204DialogTitle">
+  <h2 id="p204DialogTitle">Live Voice</h2>
+  <p id="p204DialogInfo"></p>
+  <div id="p204DialogButtons" class="p204-dialog-options"></div>
+</dialog>
 </body>
 </html>

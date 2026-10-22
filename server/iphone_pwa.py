@@ -210,10 +210,17 @@ class QualificationTakeoverBody(QualificationStartBody):
 
 class ConversationCreateBody(BaseModel):
     title: str = Field(default='New conversation', max_length=120)
+    context_type: Literal['personal', 'work'] = 'personal'
 
 
 class ConversationRenameBody(BaseModel):
     title: str = Field(min_length=1, max_length=120)
+
+
+class ConversationWorkProjectBody(BaseModel):
+    # Link an existing Project; never create a second project or WorkPlan authority.
+    project_id: str | None = Field(default=None, max_length=80)
+    confirm: Literal[True]
 
 
 class IphonePwaState:
@@ -734,6 +741,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def reference_pages_styles():
         return Response((web_dir / 'reference-pages.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/p207-notifications.js', include_in_schema=False)
+    def p207_notifications_js():
+        return Response((web_dir / 'p207-notifications.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p207-notifications.css', include_in_schema=False)
+    def p207_notifications_css():
+        return Response((web_dir / 'p207-notifications.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
+
     @router.get('/global-search.js', include_in_schema=False)
     def global_search_script():
         return Response((web_dir / 'global-search.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
@@ -758,6 +773,42 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def workspaces_ui_styles():
         return Response((web_dir / 'workspaces-ui.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
+    @router.get('/p202d-workspace-conversation.js', include_in_schema=False)
+    def p202d_workspace_script():
+        return Response((web_dir / 'p202d-workspace-conversation.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202d-workspace-conversation.css', include_in_schema=False)
+    def p202d_workspace_styles():
+        return Response((web_dir / 'p202d-workspace-conversation.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p203-today.js', include_in_schema=False)
+    def p203_today_script():
+        return Response((web_dir / 'p203-today.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p203-today.css', include_in_schema=False)
+    def p203_today_styles():
+        return Response((web_dir / 'p203-today.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p205-conversation-history.js', include_in_schema=False)
+    def p205_history_js():
+        return Response((web_dir / 'p205-conversation-history.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p205-conversation-history.css', include_in_schema=False)
+    def p205_history_css():
+        return Response((web_dir / 'p205-conversation-history.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p204-live-voice.js', include_in_schema=False)
+    def p204_live_voice_js():
+        return Response((web_dir / 'p204-live-voice.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p204-live-voice.css', include_in_schema=False)
+    def p204_live_voice_css():
+        return Response((web_dir / 'p204-live-voice.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
+
     @router.get('/campaign-demo.js', include_in_schema=False)
     def campaign_demo_script():
         return Response((web_dir / 'campaign-demo.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
@@ -781,6 +832,14 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('/projects-workspace.css', include_in_schema=False)
     def projects_workspace_styles():
         return Response((web_dir / 'projects-workspace.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202c-project-conversation.js', include_in_schema=False)
+    def p202c_project_script():
+        return Response((web_dir / 'p202c-project-conversation.js').read_text(encoding='utf-8'), media_type='application/javascript', headers={'Cache-Control':'no-cache'})
+
+    @router.get('/p202c-project-conversation.css', include_in_schema=False)
+    def p202c_project_style():
+        return Response((web_dir / 'p202c-project-conversation.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
 
     @router.get('/api/status')
     def status(
@@ -2162,6 +2221,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         q: str = '',
         limit: int = 50,
         include_closed: bool = False,
+        kind: Literal['personal', 'work'] | None = None,
         pa_device: str | None = Cookie(default=None),
         pa_token: str | None = Cookie(default=None),
     ):
@@ -2169,11 +2229,16 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
         active = continuity.active_for_device(device_id)
+        bounded_limit = max(1, min(limit, 100))
+        # Existing continuity ledger stores context_json as canonical metadata.
+        # Filtering is display-only; it does not grant new permissions.
+        # Keep the legacy response unchanged when no kind is requested.
+        rows = continuity.list_threads(
+            q, limit=bounded_limit, include_closed=include_closed, kind=kind,
+        )
         return {
             'active_conversation_id': active['id'] if active else None,
-            'conversations': continuity.list_threads(
-                q, limit=max(1, min(limit, 100)), include_closed=include_closed,
-            ),
+            'conversations': rows,
         }
 
     @router.post('/api/conversations')
@@ -2185,8 +2250,50 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         device_id = auth_device(pa_device, pa_token)
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
-        thread_id = continuity.create_thread(body.title.strip() or 'New conversation', device_id=device_id)
+        context = {'conversation_kind': 'work'} if body.context_type == 'work' else {}
+        thread_id = continuity.create_thread(
+            body.title.strip() or 'New conversation', device_id=device_id, context=context,
+        )
         return {'conversation': continuity.thread(thread_id), 'events': []}
+
+    @router.put('/api/conversations/{conversation_id}/work-project')
+    def conversation_work_project(
+        conversation_id: str,
+        body: ConversationWorkProjectBody,
+        pa_device: str | None = Cookie(default=None),
+        pa_token: str | None = Cookie(default=None),
+    ):
+        device_id = auth_device(pa_device, pa_token)
+        session = current_trusted_request()
+        if session is None or session.device_id != device_id:
+            raise HTTPException(401, 'An active trusted owner session is required to link Work resources')
+        if continuity is None:
+            raise HTTPException(503, 'Conversation continuity is unavailable')
+        thread = continuity.thread(conversation_id)
+        if not thread or thread.get('closed_at'):
+            raise HTTPException(404, 'Conversation not found')
+        if (thread.get('context') or {}).get('conversation_kind') != 'work':
+            raise HTTPException(409, 'Only a Work conversation can be linked to a Project')
+        project_id = (body.project_id or '').strip() or None
+        project = None
+        if project_id is not None:
+            projects = runtime.get('project_store') or runtime.get('base_project_store')
+            if projects is None:
+                raise HTTPException(503, 'Canonical Projects are unavailable')
+            project = projects.get(project_id)
+            if project is None:
+                raise HTTPException(404, 'Project is missing, archived, or unavailable')
+        # The single existing continuity ledger remains the source of truth.
+        # No task, file, plan, artifact or approval is copied into the chat.
+        continuity.update_context(conversation_id, {'work_project_id': project_id})
+        emit('continuity.work_project.link_changed',
+             conversation_id=conversation_id, project_id=project_id, device_id=device_id)
+        return {
+            'conversation': continuity.thread(conversation_id),
+            'linked_project': (
+                {'id': project['id'], 'name': project['name']} if project else None
+            ),
+        }
 
     @router.get('/api/conversations/{conversation_id}')
     def conversation_get(

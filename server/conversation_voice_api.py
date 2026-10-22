@@ -22,6 +22,7 @@ class CanonicalVoiceTurnBody(BaseModel):
     request_id: str = Field(min_length=36, max_length=64)
     transcript: str = Field(min_length=1, max_length=8000)
     conversation_id: str | None = Field(default=None, max_length=80)
+    workspace_id: str | None = Field(default=None, max_length=80)
 
     @field_validator('request_id')
     @classmethod
@@ -136,6 +137,46 @@ def conversation_voice_router(runtime, executor):
                 'message': 'Voice transport request identity does not match the canonical logical request.',
             })
         transcript = body.transcript.strip()
+        # Server-side verified association. Workspace IDs and Project names
+        # supplied in arbitrary user prompts are never an authority boundary.
+        related_thread = continuity.thread(body.conversation_id) if (continuity and body.conversation_id) else None
+        related_meta = (related_thread or {}).get('context') or {}
+        verified_context = ''
+        if body.workspace_id is not None:
+            if (not related_thread or related_thread.get('closed_at')
+                or related_meta.get('conversation_kind') != 'workspace'
+                or related_meta.get('workspace_id') != body.workspace_id
+                or related_meta.get('owner_id') != 'owner'):
+                raise HTTPException(404, 'Workspace conversation not found')
+            workspace_store = runtime.get('workspace_store')
+            workspace = workspace_store.get('owner', body.workspace_id) if workspace_store else None
+            if not workspace or workspace.get('status') != 'active':
+                raise HTTPException(404, 'Workspace not found or archived')
+            project_store = runtime.get('base_project_store')
+            project_names = []
+            if project_store:
+                for link in workspace_store.linked_projects('owner', body.workspace_id)[:30]:
+                    project = project_store.get(link['resource_id'])
+                    if project and project.get('status') != 'archived':
+                        project_names.append(str(project.get('name') or '')[:100] + ' [' +
+                                             str(project.get('status') or 'unknown') + ']')
+            verified_context = (
+                'Workspace name: ' + str(workspace['name'])[:120] + '\n'
+                'Description: ' + str(workspace.get('description') or '')[:950] + '\n'
+                'Linked Projects: ' + ('; '.join(project_names)[:2400] or 'None')
+            )[:4000]
+        elif related_meta.get('conversation_kind') == 'workspace':
+            raise HTTPException(409, 'Workspace conversation requires verified Workspace ID')
+        elif related_meta.get('conversation_kind') == 'project':
+            project_id = related_meta.get('project_id')
+            project_store = runtime.get('base_project_store')
+            project = project_store.get(project_id) if project_store and isinstance(project_id, str) else None
+            if not project or project.get('status') == 'archived' or related_thread.get('closed_at'):
+                raise HTTPException(404, 'Project voice context is unavailable')
+            verified_context = (
+                'Project: ' + str(project.get('name') or '')[:120] + '\n'
+                'Goal: ' + str(project.get('goal') or '')[:500]
+            )[:4000]
         modality = input_modality(request)
         try:
             metadata_reader = getattr(registry, 'metadata', None)
@@ -168,6 +209,8 @@ def conversation_voice_router(runtime, executor):
                 input_modality=modality,
                 response_detail=response_detail,
                 response_style=response_style,
+                scoped_context_only=bool(verified_context),
+                verified_context=verified_context,
             )
         except ExecutionCancelled:
             emit('voice.turn.cancelled', request_id=body.request_id, device_id=context.device_id, source='iphone-pwa')
@@ -316,14 +359,24 @@ def conversation_voice_router(runtime, executor):
         return {'ok': True, 'stale': False}
 
     @router.get('/conversations')
-    def conversation_list(q: str = '', limit: int = 50):
+    def conversation_list(
+        q: str = '', limit: int = 50, include_closed: bool = False,
+        kind: Literal['personal', 'work'] | None = None,
+    ):
         context = require_owner()
         if continuity is None:
             raise HTTPException(503, 'Conversation continuity is unavailable')
         active = continuity.active_for_device(context.device_id)
+        bounded_limit = max(1, min(limit, 100))
+        # Stage-3 is the production GET authority. Keep it aligned with the
+        # legacy compatibility route so Work cannot silently list Personal chats.
+        # Work vs Personal is a saved owner-domain organization, not ACL isolation.
+        rows = continuity.list_threads(
+            q, limit=bounded_limit, include_closed=include_closed, kind=kind,
+        )
         return {
             'active_conversation_id': active['id'] if active else None,
-            'conversations': continuity.list_threads(q, limit=max(1, min(limit, 100))),
+            'conversations': rows,
         }
 
     @router.get('/conversations/{conversation_id}')

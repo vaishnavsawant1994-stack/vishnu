@@ -31,6 +31,10 @@ class LogicalTurnBody(BaseModel):
     request_id: str = Field(min_length=36, max_length=64)
     transcript: str = Field(min_length=1, max_length=8000)
     conversation_id: str | None = Field(default=None, max_length=80)
+    # P2-02D: association is only advisory until the trusted voice router checks
+    # both the saved thread context and the canonical WorkspaceStore record.
+    # Accept the field on the wire; do not derive authorization from it.
+    workspace_id: str | None = Field(default=None, min_length=1, max_length=80)
 
     @field_validator('request_id')
     @classmethod
