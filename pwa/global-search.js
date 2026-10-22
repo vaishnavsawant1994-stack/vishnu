@@ -13,7 +13,7 @@ const enc=x=>encodeURIComponent(String(x)),types=[
 const state={query:'',category:'all',sort:'relevance',time:'all',project:'',workspace:'',tag:'',
  results:[],counts:{},coverage:{},selected:null,detail:null,offset:0,next:null,
  loading:false,error:'',filtersOpen:false,mobileDetail:false,
- pending:0,detailPending:0,navPending:0,timer:0,recent:[],abort:null,initialized:false,live:false};
+ pending:0,detailPending:0,navPending:0,timer:0,recent:[],abort:null,initialized:false,live:false,actionBusy:false,summary:''};
 const active=()=>state.live&&document.body.classList.contains('global-search-mode');
 const message=text=>{if($('gsNotice'))$('gsNotice').textContent=text||''};
 const format=t=>{if(!t)return '';const d=new Date(t);return Number.isNaN(d.valueOf())?'':new Intl.DateTimeFormat(undefined,{dateStyle:'medium'}).format(d)};
@@ -55,8 +55,10 @@ function detailMarkup(){
  '<span class="gs-result-icon gs-icon-'+esc(item.type)+'">'+icon(item.type)+'</span><div><h2>'+esc(item.title)+'</h2><p>'+label(item.type)+' · '+format(item.updated_at)+'</p></div></div>'+
  '<div class="gs-detail-actions"><button data-gs-action="open">Open '+(item.type==='conversations'?'in Chat':'Original')+'</button>'+
  '<button data-gs-action="copy">Copy Link</button>'+
+ (item.type==='conversations'?'<button data-gs-action="summarize">Summarize</button><button data-gs-action="organize">Move to Project</button>':'')+
  (item.project_id?'<button data-gs-action="task">Create Task</button>':'')+'</div>'+
  '<div class="gs-preview-card"><header>Preview</header>'+
+ (state.summary?'<div class="gs-preview-message"><strong>Verified AI Summary</strong><p>'+esc(state.summary)+'</p></div>':'')+
  (preview.length?preview.map(msg=>'<div class="gs-preview-message"><strong>'+ (msg.role==='user_message'?'You':'Vishnu')+'</strong><p>'+esc(msg.text)+'</p></div>').join(''):
  '<p>'+esc(item.excerpt||'A searchable preview is not available. Open the source for its full information.')+'</p>')+'</div>'+
  '<div class="gs-related-card"><header>Related Items</header>'+
@@ -104,12 +106,12 @@ async function search({append=false,remember=false}={}){
  finally{if(seq===state.pending)state.loading=false}
 }
 async function select(item){
- const id=++state.detailPending;state.selected=item;state.detail=null;state.mobileDetail=true;renderDetail();renderMeta();renderResults();
+ const id=++state.detailPending;state.selected=item;state.detail=null;state.summary='';state.mobileDetail=true;renderDetail();renderMeta();renderResults();
  try{const qp=item.project_id?'?project_id='+enc(item.project_id):'';
   const data=await window.api('/search/result/'+enc(item.type)+'/'+enc(item.id)+qp);
   if(id!==state.detailPending||!active())return;
   state.detail=data;renderDetail();renderMeta();
- }catch(e){if(id===state.detailPending){message('Source preview unavailable: '+e.message);renderDetail()}}
+ }catch(e){if(id===state.detailPending){state.selected=null;state.detail=null;state.mobileDetail=false;message('Source preview unavailable or no longer authorized: '+e.message);renderDetail();renderMeta()}}
 }
 async function navigate(item){
  if(!item)return;
@@ -135,9 +137,46 @@ async function action(kind){
  if(kind==='filters'){state.filtersOpen=!state.filtersOpen;renderFilters();return}
  if(!item)return;
  if(kind==='open')return navigate(item);
- if(kind==='copy'){const url=location.origin+location.pathname+'#search/'+enc(item.type)+'/'+enc(item.id);
+ if(kind==='copy'){const url=location.origin+location.pathname+'#search/'+enc(item.type)+'/'+enc(item.id)+'/'+enc(item.project_id||'-');
   try{await navigator.clipboard.writeText(url);message('Private in-app reference copied. It does not grant anyone access.')}
   catch{message('Clipboard unavailable. No public sharing link was created.')}return}
+ if(kind==='summarize'){
+   if(item.type!=='conversations'||state.actionBusy)return;
+   if(!window.confirm('Ask the configured Vishnu AI to summarize this existing conversation? This submits a new canonical conversation turn.'))return;
+   state.actionBusy=true;message('Requesting real canonical conversation summary…');
+   const id=item.id,ctx=state.detail?.result||item,request={request_id:crypto.randomUUID(),conversation_id:id,transcript:'Summarize this conversation, identify decisions and next steps, and clearly state uncertainties.'};
+   if(ctx.workspace_id)request.workspace_id=ctx.workspace_id;
+   try{
+     const reply=await window.api('/voice/turn',{method:'POST',headers:{'X-Personal-AI-Input-Modality':'text'},body:JSON.stringify(request)});
+     if(!active()||state.selected?.id!==id)return;
+     if(reply.status!=='completed'||!reply.reply){message('Summary is not complete; open the conversation to inspect the actual turn.');return}
+     state.summary=String(reply.reply).slice(0,4500);renderDetail();message('Canonical AI summary confirmed and saved as a conversation turn.');
+   }catch(e){message('No summary confirmed: '+e.message)}
+   finally{state.actionBusy=false}
+   return;
+ }
+ if(kind==='organize'){
+   if(item.type!=='conversations'||state.actionBusy)return;
+   try{
+     const list=await window.api('/projects?status=all&sort=recent');
+     const projects=list.projects||[];
+     if(!projects.length){message('No eligible Projects available.');return}
+     const choices=projects.slice(0,30).map((p,i)=>i+1+'. '+p.name).join('\n');
+     const answer=window.prompt('Move this existing conversation to a Project (enter its number):\n'+choices);
+     if(answer===null)return;
+     const project=projects[Number(answer)-1];
+     if(!project){message('No Project selected.');return}
+     if(!window.confirm('Move the full original conversation to '+project.name+'? Its context changes; no message or attachment is copied.'))return;
+     state.actionBusy=true;
+     const response=await window.api('/conversations/'+enc(item.id)+'/organize',{method:'POST',body:JSON.stringify({kind:'project',target_id:project.id,confirm:true})});
+     if(!response.conversation?.id){message('Organization was not confirmed.');return}
+     item.project_id=project.id;state.detail=null;
+     if(active())await select(item);
+     message('The original conversation is now linked to the selected Project.');
+   }catch(e){message('Conversation was not moved: '+e.message)}
+   finally{state.actionBusy=false}
+   return;
+ }
  if(kind==='task'){
    if(!item.project_id){message('Choose a Project in its owning module before creating a task.');return}
    const title=window.prompt?.('Task title for this Project',('Review '+item.title).slice(0,100));
@@ -214,5 +253,15 @@ window.openModule=function(name){
 };
 document.addEventListener('click',e=>{const t=e.target.closest('[data-reference-search]');if(!t)return;e.preventDefault();e.stopImmediatePropagation();window.openModule('search')},true);
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){if(e.target.closest('[contenteditable="true"]'))return;e.preventDefault();window.openModule('search')}});
+function followSearchReference(){
+ const parts=location.hash.slice(1).split('/');
+ if(parts[0]!=='search'||parts.length<3)return;
+ const kind=decodeURIComponent(parts[1]||''),id=decodeURIComponent(parts[2]||'');
+ if(!types.some(([v])=>v===kind&&v!=='all')||!id||id.length>160)return;
+ const project_id=parts[3]&&parts[3]!=='-'?decodeURIComponent(parts[3]):'';
+ window.openModule('search').then(()=>select({type:kind,id,project_id,title:'Loading authorized resource…'})).catch(e=>message('Unable to open reference: '+e.message));
+}
+window.addEventListener('hashchange',followSearchReference);
+window.addEventListener('load',followSearchReference);
 window.addEventListener('vishnu:new-chat',()=>{state.live=false;document.body.classList.remove('global-search-mode')});
 })();

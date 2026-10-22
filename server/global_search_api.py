@@ -330,7 +330,7 @@ def global_search_router(runtime: dict) -> APIRouter:
             if not permitted(device, "knowledge:read"):
                 raise HTTPException(403, "Knowledge access not authorized")
             doc = s["knowledge"].detail(result_id) if s["knowledge"] else None
-            if doc and doc.get("access_class") in knowledge_classes(device) and doc.get("is_current", True):
+            if doc and doc.get("access_class") in knowledge_classes(device) and doc.get("current", True):
                 resource = row(kind, doc["id"], doc.get("title"),
                                doc.get("filename") or doc.get("source"), updated=doc.get("updated_at"))
             elif kind == "files" and project_id and s["projects"]:
@@ -348,7 +348,11 @@ def global_search_router(runtime: dict) -> APIRouter:
                                updated=mem.get("updated_at"))
         elif kind == "agents":
             if s["agents"]:
-                agent = next((a for a in s["agents"].catalog()
+                try:
+                    catalog = s["agents"].catalog()
+                except (OSError, ValueError, RuntimeError) as exc:
+                    raise HTTPException(503, "Agent search source is temporarily unavailable") from exc
+                agent = next((a for a in catalog
                               if str(a.get("id") or a.get("template_id")) == result_id), None)
                 if agent:
                     resource = row(kind, result_id, agent.get("name") or agent.get("display_name"),

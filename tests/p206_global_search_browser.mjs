@@ -44,6 +44,8 @@ const server=createServer(async(req,res)=>{
  }
  if(path.pathname==='/iphone/api/workspaces')return send({workspaces:[{id:'workspace-1',name:'API Workspace'}]});
  if(path.pathname==='/iphone/api/projects')return send({projects:[{id:'proj-1',name:'API Development'}]});
+ if(req.method==='POST'&&path.pathname==='/iphone/api/voice/turn')return send({status:'completed',reply:'Verified AI summary'});
+ if(req.method==='POST'&&path.pathname==='/iphone/api/conversations/conv-1/organize')return send({conversation:{id:'conv-1'}});
  if(req.method==='POST'&&path.pathname==='/iphone/api/projects/proj-1/tasks')return send({task:{id:'task-created'}},201);
  return send({detail:'Not found'},404);
 });
@@ -52,7 +54,7 @@ const browser=await chromium.launch({headless:true});
 try{
  for(const width of [1536,390]){
   const page=await browser.newPage({viewport:{width,height:width===390?844:1024},deviceScaleFactor:width===390?2:1,isMobile:width===390,hasTouch:width===390});
-  const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept('1'));
   await page.goto('http://127.0.0.1:'+server.address().port+'/');
   await page.getByRole('heading',{name:'Global Search'}).waitFor();
   await page.locator('#globalSearchQuery').fill('API');
@@ -65,6 +67,10 @@ try{
   await page.locator('[data-gs-category="all"]').click();
   await page.locator('[data-gs-select="conversations"]').click();
   await page.getByText('Verified canonical reply').waitFor();
+  await page.locator('[data-gs-action="summarize"]').click();
+  await page.getByText('Verified AI summary').waitFor();
+  await page.locator('[data-gs-action="organize"]').click();
+  await page.getByText('The original conversation is now linked to the selected Project.').waitFor();
   if(width===390){
    await page.locator('#gsDetail.mobile-open').waitFor();
    await page.locator('[data-gs-action="back"]').click();

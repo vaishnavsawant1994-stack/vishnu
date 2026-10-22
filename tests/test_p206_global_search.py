@@ -147,4 +147,4 @@ def test_failures_do_not_fabricate_zero_for_unavailable_sources(tmp_path):
     data = client.get("/iphone/api/search?q=API").json()
     assert data["coverage"]["agents"] == "unavailable"
     assert data["counts"]["projects"] >= 1
-    assert client.get("/iphone/api/search/result/agents/missing").status_code == 404
+    assert client.get("/iphone/api/search/result/agents/missing").status_code == 503
