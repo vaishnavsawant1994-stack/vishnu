@@ -1387,7 +1387,7 @@ def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(t
     assert options['creation_available'] is True
     assert options['local_setup_available'] is True
     created = client.post('/iphone/api/first-run/create', json={
-        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+        'first_name': 'Alex', 'display_name': 'Alex',
         'password': 'a sufficiently long local password',
     })
     assert created.status_code == 200, created.text
@@ -1424,7 +1424,7 @@ def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(t
     assert saved_recovery.status_code == 200, saved_recovery.text
     recovery_count = runtime['owner_access'].recovery_codes_remaining()
     duplicate = client.post('/iphone/api/first-run/create', json={
-        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+        'first_name': 'Alex', 'display_name': 'Alex',
         'password': 'a different sufficiently long password',
     })
     assert duplicate.status_code == 409
