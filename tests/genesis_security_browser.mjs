@@ -168,6 +168,70 @@ try{
   assert.deepEqual(errors,[],'No JS browser exceptions: '+errors.join('; '));
   await page.close();
  }
+
+ // Interrupted first-run after the owner profile was saved (but before
+ // owner security was finished) must recover through Your Name, not send
+ // an empty first_name to /first-run/create and get permanently stuck at P1-03.
+ const resumed=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+ await resumed.route('http://127.0.0.1:4173/**',route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(files.has(path))return route.fulfill({status:200,contentType:path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript',body:files.get(path)});
+   if(path==='/'||path==='/iphone/')return route.fulfill({status:200,contentType:'text/html',body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="/iphone/genesis.css"/></head><body>
+   <section id="enrollPanel" class="hidden"></section><script>
+   window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true,setup_in_progress:true,setup_resume_step:3});
+   window.check=async()=>null;window.__apiCalls=[];window.api=async(path,options={})=>{
+      window.__apiCalls.push({path,body:options.body});
+      if(path==='/first-run/create'){
+        const body=JSON.parse(options.body||'{}');
+        if(!body.first_name)throw new Error('Owner first name required');
+        return {ok:true,recovery_codes:['ABCD-EFGH-JKLM','MNOP-QRST-UVWX','YZZZ-AAAA-BBBB','CCCC-DDDD-EEEE']};
+      }
+      return {ok:true};
+   };
+   </script><script src="/iphone/first-run.js"></script><script src="/iphone/first-run-actions.js"></script></body></html>`});
+   return route.fulfill({status:404,body:'not found'});
+ });
+ await resumed.goto('http://127.0.0.1:4173/iphone/');
+ await resumed.getByText('Continue your Vishnu setup').waitFor();
+ assert.match(await resumed.locator('.genesis-copy p').innerText(),/confirm your name again/i);
+ await resumed.getByRole('button',{name:/Continue setup/}).click();
+ await resumed.locator('#firstRunFirstName').waitFor();
+ await resumed.locator('#firstRunFirstName').fill('Recovered Owner');
+ await resumed.locator('.vi-continue').click();
+ await resumed.locator('#firstRunPassword').waitFor();
+ await resumed.locator('#firstRunPassword').fill('M0onlight$Secure456');
+ await resumed.locator('#firstRunPasswordAgain').fill('M0onlight$Secure456');
+ await resumed.locator('.vs-continue').click();
+ await resumed.locator('#firstRunRecoverySaved').waitFor();
+ const recoveredRequest=await resumed.evaluate(()=>window.__apiCalls.find(x=>x.path==='/first-run/create'));
+ assert.equal(JSON.parse(recoveredRequest.body).first_name,'Recovered Owner','Resume must recover identity before creating owner security');
+ await resumed.close();
+
+ // On a network-accessible runtime, an absent setup code is an explicit,
+ // actionable validation error; it must never make a server-side owner or
+ // attempt a secretless enrollment.
+ const hosted=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
+ await hosted.route('http://127.0.0.1:4173/**',route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(files.has(path))return route.fulfill({status:200,contentType:path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript',body:files.get(path)});
+   if(path==='/'||path==='/iphone/')return route.fulfill({status:200,contentType:'text/html',body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"/><link rel="stylesheet" href="/iphone/genesis.css"/></head><body><section id="enrollPanel" class="hidden"></section><script>
+   window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:false});
+   window.check=async()=>null;window.__createAttempted=false;
+   window.api=async(path,options={})=>{if(path==='/first-run/create')window.__createAttempted=true;return {ok:true}};
+   </script><script src="/iphone/first-run.js"></script><script src="/iphone/first-run-actions.js"></script></body></html>`});
+   return route.fulfill({status:404,body:'not found'});
+ });
+ await hosted.goto('http://127.0.0.1:4173/iphone/');
+ await hosted.locator('[data-genesis-create]').click();
+ await hosted.locator('#firstRunFirstName').fill('Hosted Owner');
+ await hosted.locator('.vi-continue').click();
+ await hosted.locator('#firstRunPassword').fill('M0onlight$Secure456');
+ await hosted.locator('#firstRunPasswordAgain').fill('M0onlight$Secure456');
+ await hosted.locator('.vs-continue').click();
+ assert.match(await hosted.locator('#genesisStatus').innerText(),/setup code required/i);
+ assert.equal(await hosted.evaluate(()=>window.__createAttempted),false,'Missing bootstrap must not submit an owner creation');
+ await hosted.close();
+
  const fallback=await browser.newPage({viewport:{width:390,height:844},reducedMotion:'reduce'});
  await fallback.addInitScript(()=>{
    const original=HTMLCanvasElement.prototype.getContext;
