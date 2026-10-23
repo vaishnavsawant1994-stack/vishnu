@@ -17,7 +17,9 @@
   const s = {
     step: localPreviewStep, options: {}, identityCreated: false, recoveryCodes: [], recoverySaved: false,
     policySaved: false, modelSaved: false, passkeyCreated: false,
-    auth: 'passkey', dataPolicy: 'device_only', intelligence: 'skip', privacy: 'local_only',
+    // Password is the verified baseline after P1-03. A passkey is optional
+    // and becomes selected only after WebAuthn registration actually succeeds.
+    auth: 'password', dataPolicy: 'device_only', intelligence: 'skip', privacy: 'local_only',
     accessIntent: accessIntent || '', authView: 'welcome', pendingPostAuthAction: '',
   };
   const panel = $('enrollPanel');
