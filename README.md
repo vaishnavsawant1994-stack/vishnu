@@ -58,7 +58,7 @@ Operational details: [`docs/OWNER_PRODUCT_OPERATIONS.md`](docs/OWNER_PRODUCT_OPE
 
 A laptop is not required to establish the first Vishnu owner identity. The Android and iOS applications include **I don't have a Vishnu runtime yet**, which generates a high-entropy one-time bootstrap secret on the phone and opens an owner-approved deployment flow. The bootstrap secret is never placed in the deployment URL and the hosting provider does not become the Vishnu owner identity.
 
-For a browser-only start, create a strong one-time bootstrap secret in your password manager, keep it private, and provide it when the deployment form asks for `PERSONAL_AI_BOOTSTRAP_SECRET` (older Render environments using `PERSONAL_AI_OWNER_BOOTSTRAP_SECRET` remain compatible until they are migrated).
+For a browser-only start, create a strong one-time bootstrap secret in your password manager, keep it private, and provide it when the Render deployment form asks for `PERSONAL_AI_OWNER_BOOTSTRAP_SECRET`. The runtime now accepts that key as a compatibility alias for `PERSONAL_AI_BOOTSTRAP_SECRET`, which remains the canonical key for other self-hosted deployments.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/vaishnavsawant1994-stack/vishnu)
 

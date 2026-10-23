@@ -15,7 +15,7 @@ services:
         value: "true"
       - key: PERSONAL_AI_TRUST_PROXY_HEADERS
         value: "true"
-      - key: PERSONAL_AI_BOOTSTRAP_SECRET
+      - key: PERSONAL_AI_OWNER_BOOTSTRAP_SECRET
         sync: false
       - key: PERSONAL_AI_VAULT_PASSWORD
         generateValue: true

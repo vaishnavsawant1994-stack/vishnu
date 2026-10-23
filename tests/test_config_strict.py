@@ -201,6 +201,7 @@ def test_canonical_bootstrap_secret_has_priority_over_legacy_env(tmp_path):
     assert result.stdout.strip() == 'B' * 48
 
 
-def test_render_blueprint_uses_exact_runtime_bootstrap_key():
+def test_render_blueprint_keeps_existing_owner_bootstrap_key_compatible():
+    # Do not silently change the required Render setup prompt in existing deployments.
     blueprint = (ROOT / 'render.yaml').read_text(encoding='utf-8')
-    assert '- key: PERSONAL_AI_BOOTSTRAP_SECRET' in blueprint
+    assert '- key: PERSONAL_AI_OWNER_BOOTSTRAP_SECRET' in blueprint
