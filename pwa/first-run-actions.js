@@ -23,12 +23,26 @@
     try {
       return await api(path, options);
     } catch (error) {
-      if (/not currently trusted|saved sign-in credential/i.test(error?.message || '')) {
-        showSetupDeviceReauth();
-        throw error;
+      const message = String(error?.message || '');
+      // Cookie claims expire after fifteen minutes, and an embedded desktop
+      // browser has its own trust cookies separate from Chrome. Both failures
+      // are recoverable through the server's owner-verified resume ceremony;
+      // never create another owner or rotate recovery codes to work around it.
+      const trustProblem = /not currently trusted|saved sign-in credential|was removed from trusted devices/i.test(message);
+      const setupProblem = /setup session expired|setup is not pending|first.device setup is not pending|verified first.device setup is required/i.test(message);
+      if (!trustProblem && !setupProblem) throw error;
+      try {
+        await api('/first-run/resume', { method: 'POST', body: '{}' });
+      } catch (resumeError) {
+        const reason = String(resumeError?.message || '');
+        if (trustProblem || /owner.password verification to resume|incorrect owner password|secure runtime setup code is required/i.test(reason)) {
+          showSetupDeviceReauth();
+          throw new Error('Your first-device setup needs owner-password verification. Use “Restore this browser’s setup access” below, then retry this action.');
+        }
+        throw resumeError;
       }
-      if (!/setup session expired|setup is not pending/i.test(error?.message || '')) throw error;
-      await api('/first-run/resume', { method: 'POST', body: '{}' });
+      // The original request failed before authorization. It can now be
+      // retried with the renewed setup claim and the same trusted device.
       return api(path, options);
     }
   }
@@ -88,7 +102,11 @@
       }
     });
     panel.append(password, button);
-    content.append(panel);
+    // Keep reauthentication close to the blocked recovery controls, above the
+    // page's navigation buttons rather than below the entire long layout.
+    const navigation = content.querySelector('.vs-navigation');
+    if (navigation) content.insertBefore(panel, navigation);
+    else content.append(panel);
   }
 
   async function createIdentity() {

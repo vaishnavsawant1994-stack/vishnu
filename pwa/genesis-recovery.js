@@ -181,7 +181,10 @@ export function mountRecoveryScreen(root,state,{onBack,onFinish,onRegenerate}){
      // If the network dropped after the server rotated codes, the old set
      // cannot safely be presented as current. Require explicit regeneration.
      state.recoveryCodes=[];state.recoverySaved=false;checkbox.checked=false;renderCodes();
-     say('Could not verify the replacement codes. Older codes may be invalid. Retry Generate New Codes.',true);
+     const needsOwner = Boolean(root.querySelector('[data-setup-device-reauth]'));
+     say(needsOwner
+       ? 'Verify your owner password in “Restore this browser’s setup access” below, then generate new recovery codes once. Earlier codes may be invalid.'
+       : 'Could not verify the replacement codes. Older codes may be invalid. Retry Generate New Codes.',true);
    }finally{lock(false);}
  });
  const review=$('#vrReviewDialog');

@@ -122,6 +122,11 @@ try{
     const final=calls.findIndex(x=>x.path==='/first-run/complete');
     assert(saved>=0&&final>saved,'Backend confirms recovery before completion');
     assert.equal(await page.locator('.vr-code').count(),0,'Codes are cleared after successful setup');
+    const completion=JSON.parse(calls.find(x=>x.path==='/first-run/complete').body);
+    assert.equal(completion.passkey_unavailable_confirmed,true,
+      'Password-only P1-03 must finish without demanding a never-enrolled passkey');
+    assert(!calls.some(x=>x.path==='/access/passkey/register/options'),
+      'Optional passkey must not be enrolled implicitly at P1-04');
   }else{
     await page.locator('[data-vr-back]').click();
     await page.locator('.genesis-security .vs-main').waitFor();
@@ -133,5 +138,60 @@ try{
   assert.deepEqual(errors,[],errors.join('; '));
   await page.close();
  }
+
+ // Regression: a browser whose first-device cookie/claim is no longer valid
+ // must surface owner password reauthentication *in* P1-04. It must not
+ // silently regenerate recovery codes or create a second account.
+ const expired=await browser.newPage({viewport:{width:1366,height:768},reducedMotion:'reduce'});
+ await expired.route('http://127.0.0.1:4173/**',route=>{
+   const path=new URL(route.request().url()).pathname;
+   if(files.has(path))return route.fulfill({status:200,contentType:path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript',body:files.get(path)});
+   if(path==='/'||path==='/iphone/')return route.fulfill({status:200,contentType:'text/html',
+     body:`<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+     <link rel="stylesheet" href="/iphone/genesis.css"></head><body>
+     <section id="enrollPanel" class="hidden"></section><script>
+       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
+       window.check=async()=>null;window.__apiCalls=[];window.__lostClaim=false;
+       window.api=async(path,options={})=>{
+         window.__apiCalls.push({path,body:options.body||''});
+         if(path==='/first-run/create')return {ok:true,recovery_codes:${JSON.stringify(first)}};
+         if(path==='/first-run/resume'){
+           if(!JSON.parse(options.body||'{}').password)throw new Error('This browser needs owner-password verification to resume setup');
+           window.__lostClaim=false;
+           return {ok:true,status:'setup_in_progress'};
+         }
+         if(window.__lostClaim && path==='/first-run/recovery-saved')
+           throw new Error('A verified first-device setup is required');
+         return {ok:true,status:path==='/first-run/complete'?'ready':'ok'};
+       };
+     </script><script src="/iphone/first-run.js"></script><script src="/iphone/first-run-actions.js"></script>
+     </body></html>`});
+   return route.fulfill({status:404,body:'not found'});
+ });
+ await expired.goto('http://127.0.0.1:4173/iphone/?genesisStep=2');
+ await expired.locator('#firstRunFirstName').fill('Recovery Owner');
+ await expired.locator('.vi-continue').click();
+ await expired.locator('#firstRunPassword').fill('Tru5t!Sample$519876');
+ await expired.locator('#firstRunPasswordAgain').fill('Tru5t!Sample$519876');
+ await expired.locator('.vs-continue').click();
+ await expired.locator('.vr-panel').waitFor();
+ await expired.evaluate(()=>window.__lostClaim=true);
+ await expired.locator('#firstRunRecoverySaved').check();
+ await expired.locator('.vr-nav .vs-continue').click();
+ await expired.locator('[data-setup-device-reauth]').waitFor();
+ assert.equal(await expired.locator('.vr-code').count(),8,'Unexpired displayed codes must not disappear on a failed finish');
+ assert.match(await expired.locator('#genesisStatus').innerText(),/owner.password verification/i);
+ await expired.locator('[data-setup-device-reauth] input[aria-label="Owner password"]').fill('Tru5t!Sample$519876');
+ await expired.locator('[data-setup-device-reauth] button').click();
+ await expired.getByText(/Browser access restored/).waitFor();
+ assert.equal(await expired.locator('[data-setup-device-reauth]').count(),0);
+ await expired.locator('.vr-nav .vs-continue').click();
+ await expired.waitForFunction(()=>window.__apiCalls.some(c=>c.path==='/first-run/complete'));
+ const log=await expired.evaluate(()=>window.__apiCalls);
+ assert.equal(log.filter(c=>c.path==='/first-run/create').length,1);
+ assert.equal(log.filter(c=>c.path==='/first-run/recovery-codes').length,0,'Reauthentication must not rotate codes');
+ assert.equal(JSON.parse(log.find(c=>c.path==='/first-run/complete').body).passkey_unavailable_confirmed,true);
+ await expired.close();
+
  console.log('P1-04 responsive, WebGL, one-time code controls, regeneration and backend flow: PASS');
 }finally{await browser.close();}
