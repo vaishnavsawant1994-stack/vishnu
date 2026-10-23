@@ -15,7 +15,7 @@ page.on('response', response => {
 try {
   await page.goto('http://127.0.0.1:8770/web/campaign-demo', { waitUntil: 'domcontentloaded' });
   await page.locator('#vishnuCampaignDemo .vd-demo-banner').waitFor({ timeout: 10000 });
-  assert.equal(await page.getByRole('heading', { name: 'Good afternoon, Vaishnav.' }).count(), 1);
+  assert.equal(await page.getByRole('heading', { name: 'Good afternoon, Alex.' }).count(), 1);
   assert.equal(await page.locator('.vd-project-card').count(), 3);
   assert.equal(await page.locator('.vd-core img').first().evaluate(image => image.complete && image.naturalWidth > 0), true);
   assert.deepEqual(nonCanonicalWebPaths, [], 'browser requests must use platform-neutral web paths');
