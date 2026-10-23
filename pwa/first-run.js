@@ -520,15 +520,19 @@
     disposeWelcome();
     ++welcomeMountId;
     const resumeStep = Number(s.options.setup_resume_step) || 4;
+    // A partial server-side owner profile is not the authenticated identity.
+    // After a lost response/reload, first-name fields exist only in memory.
+    // Never jump directly to Security with an empty owner payload (HTTP 422).
+    const nextStep = resumeStep < 4 ? 2 : 4;
     s.identityCreated = resumeStep >= 4;
     panel.setAttribute('aria-label', 'Continue Vishnu setup');
     panel.className = 'genesis';
-    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu setup in progress"></div><div class="genesis-copy"><h1>Continue your Vishnu setup</h1><p>Your owner account is already created on this local runtime. Continue setup to finish it; do not create another account.</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-auth-action="resume-setup">Continue setup &rarr;</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
+    panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu setup in progress"></div><div class="genesis-copy"><h1>Continue your Vishnu setup</h1><p>${resumeStep < 4 ? 'Your previous setup stopped before owner security was completed. Confirm Your Name again, then continue to Security. No duplicate owner will be created.' : 'Your owner account was secured previously. Continue to save or regenerate your one-time recovery codes; do not create a second owner.'}</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-auth-action="resume-setup">Continue setup &rarr;</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
     panel.querySelector('[data-auth-action="resume-setup"]')?.addEventListener('click', () => {
       s.accessIntent = '';
-      s.step = resumeStep;
+      s.step = nextStep;
       show();
-      render(resumeStep);
+      render(nextStep);
     });
   }
   let joinPollTimer = 0;

@@ -72,7 +72,7 @@ function markup(s){
        <div class="vs-device-field">${device.mobile?phone:laptop}<input id="vsDeviceName" type="text" maxlength="120" autocomplete="off" value="" placeholder="Name this device" aria-label="Name this device"><button type="button" data-vs-clear-name aria-label="Clear device name">×</button></div>
        <p class="vs-field-error" id="vsDeviceError" role="alert" aria-live="polite"></p>
      </section>
-     ${s.options?.local_setup_available?'<p class="vs-local-note">Local-only runtime verified. No setup code is needed.</p>':'<div class="vs-runtime-code"><label for="firstRunBootstrap">Secure runtime setup code</label><input type="password" id="firstRunBootstrap" autocomplete="one-time-code" placeholder="Setup code supplied by your runtime administrator"></div>'}
+     ${s.options?.local_setup_available?'<p class="vs-local-note">Local-only runtime verified. No setup code is needed.</p>':'<div class="vs-runtime-code"><label for="firstRunBootstrap">Secure runtime setup code (required)</label><input type="password" id="firstRunBootstrap" autocomplete="one-time-code" aria-describedby="vsBootstrapHelp" placeholder="Paste the setup code from your Vishnu runtime"><p class="vs-detail" id="vsBootstrapHelp">Remote or shared runtimes require the owner setup code configured on the Vishnu server. This is not your login password. For code-free local setup, launch Vishnu in loopback-only development mode.</p></div>'}
      <div class="vs-navigation"><button type="button" class="vs-back" data-vs-back>← <span>Back</span></button><button type="button" class="vs-continue" data-genesis-next><span>Continue</span> ${arrow}</button></div>
      <p id="genesisStatus" class="vs-status" role="status" aria-live="polite"></p>
    </div>
@@ -136,6 +136,14 @@ export function mountSecurityScreen(root,state,{onBack,onContinue,onPasskey}){
    if(pending)return;
    if(!deviceValid())return;
    if(!validate()){pw.focus();return;}
+   const bootstrap=$('#firstRunBootstrap');
+   if(!state.identityCreated && bootstrap && bootstrap.value.trim().length<32){
+     const message=$('#genesisStatus');
+     if(message)message.textContent='Secure runtime setup code required. Enter the code configured on your Vishnu server, or use the local-only runtime launcher. Do not enter your owner password here.';
+     bootstrap.focus();
+     return;
+   }
+   $('#genesisStatus').textContent='';
    pending=true;button.disabled=true;
    const back=$('[data-vs-back]');
    back.disabled=true;

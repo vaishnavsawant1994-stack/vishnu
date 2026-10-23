@@ -162,3 +162,46 @@ def test_invalid_explicit_strict_mode_value_fails_closed(tmp_path):
 
     assert result.returncode != 0
     assert 'PERSONAL_AI_STRICT_CONFIG must be a boolean' in result.stderr
+
+
+def _read_owner_bootstrap(tmp_path: Path, **overrides: str) -> subprocess.CompletedProcess[str]:
+    """Read real Settings in a clean child process, not a mocked setting."""
+    env = os.environ.copy()
+    env.update(_BASE_CONFIG)
+    env.pop('PERSONAL_AI_BOOTSTRAP_SECRET', None)
+    env.pop('PERSONAL_AI_OWNER_BOOTSTRAP_SECRET', None)
+    env['PERSONAL_AI_DATA_DIR'] = str(tmp_path / 'data')
+    env.update(overrides)
+    return subprocess.run(
+        [sys.executable, '-c',
+         'from core.config import settings; print(settings.owner_bootstrap_secret)'],
+        cwd=ROOT, env=env, capture_output=True, text=True, check=False,
+    )
+
+
+def test_render_legacy_owner_bootstrap_env_still_provisions_first_run(tmp_path):
+    """Existing Render installs must not reject the original blueprint secret."""
+    secret = 'A' * 48
+    result = _read_owner_bootstrap(
+        tmp_path,
+        PERSONAL_AI_STRICT_CONFIG='1',
+        PERSONAL_AI_OWNER_BOOTSTRAP_SECRET=secret,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == secret
+
+
+def test_canonical_bootstrap_secret_has_priority_over_legacy_env(tmp_path):
+    result = _read_owner_bootstrap(
+        tmp_path,
+        PERSONAL_AI_BOOTSTRAP_SECRET='B' * 48,
+        PERSONAL_AI_OWNER_BOOTSTRAP_SECRET='A' * 48,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'B' * 48
+
+
+def test_render_blueprint_keeps_existing_owner_bootstrap_key_compatible():
+    # Do not silently change the required Render setup prompt in existing deployments.
+    blueprint = (ROOT / 'render.yaml').read_text(encoding='utf-8')
+    assert '- key: PERSONAL_AI_OWNER_BOOTSTRAP_SECRET' in blueprint

@@ -36,7 +36,10 @@
 
   function showSetupDeviceReauth() {
     if (document.querySelector('[data-setup-device-reauth]')) return;
-    const content = document.querySelector('.genesis-content');
+    // New P1-03/P1-04 mount into .vs-main, not the legacy .genesis-content.
+    // Expired first-device cookies must offer an actionable reauthentication
+    // panel on the screen where the owner is actually blocked.
+    const content = document.querySelector('.genesis-content') || document.querySelector('.vs-main');
     if (!content) return;
     const panel = document.createElement('section');
     panel.className = 'genesis-card';
@@ -105,6 +108,9 @@
       if (stayOnSecurity) return;
       render(4);
       return;
+    }
+    if (!state.firstName || !state.firstName.trim()) {
+      throw new Error('Your owner name was not restored after an interrupted setup. Return to Your Name, confirm your details, then retry Security.');
     }
     const password = $('firstRunPassword')?.value || '';
     const confirmation = $('firstRunPasswordAgain')?.value || '';
