@@ -18,7 +18,7 @@ try {
   if(path==='/work/summary'&&workUnavailable)
    return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Work unavailable'})});
   let data={};
-  if(path==='/status')data={owner_display_name:'Vaishnav',model:{state:'available'},conversation:active,conversations,active_qualification:true,memory_count:0};
+  if(path==='/status')data={owner_display_name:'Alex',model:{state:'available'},conversation:active,conversations,active_qualification:true,memory_count:0};
   else if(path==='/preferences')data={};
   else if(path==='/projects')data={projects:[project]};
   else if(path==='/projects/project-1')data={project};
@@ -47,7 +47,7 @@ try {
  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
  await page.waitForFunction(()=>document.body.classList.contains('home-landing')&&window.__vishnuP201);
  await page.locator('.p2-status-ai[data-ready="true"]').waitFor({timeout:15000});
- assert.match(await page.locator('#homeGreeting').innerText(),/^Good (Morning|Afternoon|Evening), Vaishnav$/);
+ assert.match(await page.locator('#homeGreeting').innerText(),/^Good (Morning|Afternoon|Evening), Alex$/);
  assert.equal(await page.locator('.p2-tile').count(),6,'all six approved shortcuts');
  assert.equal(await page.locator('.p2-tool').count(),6,'all six guided tools');
  assert.equal(await page.locator('.p2-daily-row').count(),4,'four live daily summary rows');
