@@ -101,6 +101,7 @@ try{
  assert.equal(active.conversation.id,'personal-1','conversation ID preserved');
  assert.equal(await page.locator('.p202-plan-card').count(),1,'existing plan card survives refreshed message rendering');
  await page.locator('#message').fill('');
+ await page.locator('#p202Header .p202-context').evaluate(node=>node.scrollIntoView({block:'center',inline:'nearest'}));
  await page.locator('#p202Header .p202-context').click();
  await page.getByText(/No active projects are available|Create a project first/).first().waitFor({timeout:10000});
  assert.equal(active.conversation.id,'personal-1','context picker does not silently move personal chat');
