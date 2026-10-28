@@ -96,7 +96,7 @@ try{
  await page.setViewportSize({width:390,height:844});
  await page.locator('#message').fill('A follow up');
  await page.locator('#message').press('Enter');
- await page.getByText('Canonical Vishnu assistant reply').waitFor({timeout:10000});
+ await page.locator('#messageStream .message-entry.assistant').filter({hasText:'Canonical Vishnu assistant reply'}).last().waitFor({state:'visible',timeout:10000});
  assert.equal(turns,1,'one canonical server turn');
  assert.equal(active.conversation.id,'personal-1','conversation ID preserved');
  assert.equal(await page.locator('.p202-plan-card').count(),1,'existing plan card survives refreshed message rendering');
