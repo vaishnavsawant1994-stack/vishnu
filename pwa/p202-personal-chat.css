@@ -508,13 +508,13 @@ html body.v-ref.p2-home-ready.p202-personal-chat .reference-mobile-nav {
 html body.v-ref.p2-home-ready.p202-personal-chat .reference-desktop-tools {
   display:flex!important;
 }
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .p2-hero,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .p2-lower,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .v-shortcuts,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeProjectsSection,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #homeRecentSection,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing #globalWorkPulse,
-html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .home-sphere-stage {
+html body.v-ref.p2-home-ready.p202-personal-chat .p2-hero,
+html body.v-ref.p2-home-ready.p202-personal-chat .p2-lower,
+html body.v-ref.p2-home-ready.p202-personal-chat .v-shortcuts,
+html body.v-ref.p2-home-ready.p202-personal-chat #homeProjectsSection,
+html body.v-ref.p2-home-ready.p202-personal-chat #homeRecentSection,
+html body.v-ref.p2-home-ready.p202-personal-chat #globalWorkPulse,
+html body.v-ref.p2-home-ready.p202-personal-chat .home-sphere-stage {
   display:none!important;
 }
 html body.v-ref.p2-home-ready.p202-personal-chat.home-landing .app-shell {
