@@ -3,6 +3,72 @@
   const all = selector => [...document.querySelectorAll(selector)];
   const bridge = () => window.vishnuChatBridge;
 
+  const referenceSidebarToggle = one('#referenceSidebarToggle');
+  const referenceDesktopSidebar = one('#referenceDesktopSidebar');
+  const referenceDesktopNav = referenceDesktopSidebar?.querySelector('nav');
+  const referenceSidebarQuery = window.matchMedia?.('(min-width: 901px)');
+  const referenceSidebarPreferenceKey = 'vishnu.referenceSidebarCollapsed';
+  function setReferenceSidebarCollapsed(collapsed, persist = false) {
+    const isDesktop = referenceSidebarQuery?.matches ?? window.innerWidth > 900;
+    const isCollapsed = Boolean(collapsed && isDesktop);
+    document.body.classList.toggle('reference-sidebar-collapsed', isCollapsed);
+    const panelOpen = document.body.classList.contains('conversation-drawer-open');
+    const navigationVisible = !isCollapsed && !panelOpen;
+    if (referenceDesktopSidebar) {
+      referenceDesktopSidebar.inert = !navigationVisible;
+      referenceDesktopSidebar.setAttribute('aria-hidden', String(!navigationVisible));
+    }
+    if (referenceSidebarToggle) {
+      const label = navigationVisible ? 'Collapse navigation' : 'Open navigation';
+      referenceSidebarToggle.setAttribute('aria-expanded', String(navigationVisible));
+      referenceSidebarToggle.setAttribute('aria-label', label);
+      referenceSidebarToggle.title = label;
+    }
+    if (persist) {
+      try { localStorage.setItem(referenceSidebarPreferenceKey, String(isCollapsed)); }
+      catch { /* Navigation remains usable when storage is unavailable. */ }
+    }
+  }
+  let savedSidebarPreference = false;
+  try { savedSidebarPreference = localStorage.getItem(referenceSidebarPreferenceKey) === 'true'; }
+  catch { /* Use the expanded default when storage is unavailable. */ }
+  setReferenceSidebarCollapsed(savedSidebarPreference);
+  window.setReferenceSidebarCollapsed = setReferenceSidebarCollapsed;
+  window.toggleReferencePrimarySidebar = () => {
+    if (document.body.classList.contains('conversation-drawer-open')) {
+      window.closeDrawer?.(false);
+      setReferenceSidebarCollapsed(false, true);
+      return;
+    }
+    setReferenceSidebarCollapsed(!document.body.classList.contains('reference-sidebar-collapsed'), true);
+  };
+  referenceSidebarToggle?.addEventListener('click', () => window.toggleReferencePrimarySidebar?.());
+  referenceSidebarQuery?.addEventListener?.('change', () => {
+    let shouldCollapse = false;
+    try { shouldCollapse = localStorage.getItem(referenceSidebarPreferenceKey) === 'true'; }
+    catch { /* Keep the default expanded state. */ }
+    setReferenceSidebarCollapsed(shouldCollapse);
+  });
+  new MutationObserver(() => setReferenceSidebarCollapsed(document.body.classList.contains('reference-sidebar-collapsed')))
+    .observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+  function placeForgeLauncherInNavigation() {
+    if (!document.body.classList.contains('v-ref') || !referenceSidebarQuery?.matches || !referenceDesktopNav) return;
+    const launcher = document.getElementById('vishnuForgeLauncher');
+    if (!launcher || launcher.parentElement === referenceDesktopNav) return;
+    launcher.classList.add('reference-forge-entry');
+    launcher.setAttribute('aria-label', 'Open Capability Forge');
+    const icon = document.createElement('span');
+    icon.textContent = '✧';
+    icon.setAttribute('aria-hidden', 'true');
+    const label = document.createElement('span');
+    label.textContent = 'Forge';
+    launcher.replaceChildren(icon, label);
+    referenceDesktopNav.appendChild(launcher);
+  }
+  placeForgeLauncherInNavigation();
+  new MutationObserver(placeForgeLauncherInNavigation).observe(document.body, { childList: true, subtree: true });
+
   const composer = document.getElementById('composer');
   const composerSlot = document.getElementById('referenceComposerSlot');
   const composerAnchor = document.createComment('reference-composer-anchor');
@@ -41,6 +107,10 @@
   });
 
   all('[data-reference-search]').forEach(button => button.addEventListener('click', () => {
+    if (window.matchMedia?.('(min-width: 901px)').matches) {
+      openModule('search');
+      return;
+    }
     document.getElementById('historyButton')?.click();
     requestAnimationFrame(() => {
       document.getElementById('sidebarSearchToggle')?.click();
@@ -57,7 +127,8 @@
   }));
 
   all('[data-reference-more]').forEach(button => button.addEventListener('click', () => {
-    document.getElementById('historyButton')?.click();
+    if (window.matchMedia?.('(min-width: 901px)').matches) window.toggleReferencePrimarySidebar?.();
+    else document.getElementById('historyButton')?.click();
   }));
 
   const quickBindings = [
@@ -86,20 +157,4 @@
   if (greeting) observer.observe(greeting, { childList: true, characterData: true, subtree: true });
 })();
 
-// P2-01 extends the existing Home shell. Do not add a second composer/router.
-(() => {
-  if (!document.getElementById('p201Styles')) {
-    const styles = document.createElement('link');
-    styles.id = 'p201Styles';
-    styles.rel = 'stylesheet';
-    styles.href = '/iphone/p2-home.css';
-    document.head.append(styles);
-  }
-  if (!document.querySelector('script[data-p201-home]')) {
-    const script = document.createElement('script');
-    script.src = '/iphone/p2-home.js';
-    script.dataset.p201Home = 'true';
-    script.onerror = () => console.warn('P2-01 Home enhancement unavailable; existing Home remains accessible.');
-    document.body.append(script);
-  }
-})();
+// Phase 2 Home assets are declared by index.html and the shared Home loader.

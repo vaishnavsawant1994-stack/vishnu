@@ -6,6 +6,7 @@ import {mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 await mkdir('artifacts/p202b',{recursive:true});
 const browser=await chromium.launch({headless:true});
+const base=process.env.PWA_PREVIEW_URL||'http://127.0.0.1:4173';
 const errors=[];
 const createdAt=new Date().toISOString();
 const convo={id:'c-work-1',title:'Current discussion',updated_at:createdAt,preview:'Help review the quarterly plan',context:{conversation_kind:'work'}};
@@ -82,8 +83,9 @@ const fixture=async route=>{
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
  page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/web/api/**',fixture);
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
+ await page.goto(base+'/iphone/',{waitUntil:'commit',timeout:60000});
  await page.waitForFunction(()=>window.__vishnuP202B&&window.vishnuChatBridge,{timeout:20000});
  await page.evaluate(()=>window.__vishnuP202B.open());
  await page.waitForFunction(()=>document.body.classList.contains('p202-work-chat'),null,{timeout:20000});

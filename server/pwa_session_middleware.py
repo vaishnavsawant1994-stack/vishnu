@@ -22,6 +22,28 @@ PUBLIC_PATHS = {
     '/iphone/sw.js',
     '/iphone/reference-home.css',
     '/iphone/reference-home.js',
+    # Phase 2 screen bundles are static application code. Keep these assets
+    # available on the signed-out shell; every owner-data API remains guarded.
+    '/iphone/p2-home.js',
+    '/iphone/p2-home.css',
+    '/iphone/p202-personal-chat.js',
+    '/iphone/p202-personal-chat.css',
+    '/iphone/p202b-work-conversation.js',
+    '/iphone/p202b-work-conversation.css',
+    '/iphone/p202c-project-conversation.js',
+    '/iphone/p202c-project-conversation.css',
+    '/iphone/p202d-workspace-conversation.js',
+    '/iphone/p202d-workspace-conversation.css',
+    '/iphone/p203-today.js',
+    '/iphone/p203-today.css',
+    '/iphone/p204-live-voice.js',
+    '/iphone/p204-live-voice.css',
+    '/iphone/p205-conversation-history.js',
+    '/iphone/p205-conversation-history.css',
+    '/iphone/p207-notifications.js',
+    '/iphone/p207-notifications.css',
+    '/iphone/command-center.js',
+    '/iphone/command-center.css',
     '/iphone/global-search.js',
     '/iphone/global-search.css',
     # Static UI code and illustrative fixture content are public, non-secret
@@ -90,7 +112,17 @@ LOGIN_PATHS = {
 
 
 def _is_public(path: str) -> bool:
-    return path in PUBLIC_PATHS or path.startswith('/iphone/assets/genesis/')
+    if path in PUBLIC_PATHS or path.startswith('/iphone/assets/genesis/'):
+        return True
+    # The signed-out shell must be able to download its presentation code.
+    # These are static source assets only; never extend this exception to API
+    # routes or arbitrary files (owner records and exports remain protected).
+    return (
+        path.startswith('/iphone/')
+        and not path.startswith('/iphone/api/')
+        and '..' not in path.split('/')
+        and path.endswith(('.js', '.css'))
+    )
 
 
 def _cookie_from_response(response, name: str) -> str | None:
@@ -121,18 +153,22 @@ class PwaSessionMiddleware(BaseHTTPMiddleware):
         self.cookie_secure = bool(cookie_secure)
 
     def _set_session_cookie(self, response, token: str):
+        response.delete_cookie('pa_session', path='/iphone')
         response.set_cookie(
             'pa_session',
             token,
             httponly=True,
             secure=self.cookie_secure,
             samesite='strict',
-            path='/iphone',
+            # Keep browser sessions available on /web/api when a client has
+            # cached the former permanent /iphone/api redirect.
+            path='/',
             max_age=self.cookie_max_age,
         )
 
     @staticmethod
     def _clear_session_cookie(response):
+        response.delete_cookie('pa_session', path='/')
         response.delete_cookie('pa_session', path='/iphone')
 
     async def dispatch(self, request: Request, call_next):

@@ -360,7 +360,10 @@
       for(const id of ['p202AttachmentDialog','p202ModelDialog']){
         const dialog=$(id);if(dialog?.open)dialog.close();
       }
-      document.body.classList.remove('p202-keyboard-visible');
+      // Class observers schedule this function in a microtask. Removing an
+      // absent token still mutates class and would endlessly reschedule us.
+      if(document.body.classList.contains('p202-keyboard-visible'))
+        document.body.classList.remove('p202-keyboard-visible');
       document.documentElement.style.removeProperty('--p202-keyboard-inset');
       return;
     }

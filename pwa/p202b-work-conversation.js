@@ -232,6 +232,7 @@
    // this shell is layout/navigation only and must not duplicate either.
    document.body.append(shell);
    const entry=btn('▣ Work Chat','p202b-entry',startWorkView);
+   entry.textContent='';entry.append(make('span','p202b-nav-icon','▦'),make('span','p202b-nav-label','Work Chat'));
    entry.id='p202bEntry';entry.setAttribute('aria-label','Open Work Conversation');
    const navHost=document.querySelector('.reference-desktop-sidebar nav');
    const chat=navHost?.querySelector('.p2-sidebar-added');

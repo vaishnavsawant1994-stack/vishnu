@@ -32,6 +32,8 @@
 
   function inject(){
     if(location.pathname==='/iphone/our-products.html')return;
+    const primaryRails=[...document.querySelectorAll('#referenceDesktopSidebar nav,#appDrawer .sidebar-main-nav')];
+    if(primaryRails.length){primaryRails.forEach(injectInto);return}
     injectInto(document.querySelector('.nav'));
     for(const container of document.querySelectorAll('aside,nav,.sidebar,.side-panel,.drawer,.menu-panel')){
       if(container.classList.contains('nav'))continue;

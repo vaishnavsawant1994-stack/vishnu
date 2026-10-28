@@ -6,6 +6,7 @@ import {mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 await mkdir('artifacts/p202',{recursive:true});
 const browser=await chromium.launch({headless:true});
+const base=process.env.PWA_PREVIEW_URL||'http://127.0.0.1:4173';
 const errors=[];
 const createdAt=new Date().toISOString();
 const convo={id:'personal-1',title:'My daily planning',updated_at:createdAt,preview:'Can you plan my day?'};
@@ -43,8 +44,9 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block',hasTouch:false});
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
+ await page.route('**/web/api/**',fixture);
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
+ await page.goto(base+'/iphone/',{waitUntil:'commit',timeout:60000});
  // Vishnu intentionally starts on Home; open the saved Personal conversation
  // using the canonical transport before testing the dedicated Chat screen.
  await page.waitForFunction(()=>window.vishnuChatBridge&&document.body.classList.contains('home-landing'));
