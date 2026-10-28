@@ -28,7 +28,7 @@
   const navigate = name => bridge()?.openModule?.(name);
   const drafts = new Map(); // ephemeral only; never sync personal draft text to unapproved storage.
   const key = id => id ? 'conversation:'+String(id) : 'personal:new';
-  let lastId=null, lastActive=false, profile=null, scheduled=false, modelState=null;
+  let lastId=null, lastActive=false, profile=null, scheduled=false, modelState=null, lastCompactLayout=null;
   const refs = {};
 
   function installShell(){
@@ -367,6 +367,13 @@
       document.documentElement.style.removeProperty('--p202-keyboard-inset');
       return;
     }
+    const compactLayout=window.matchMedia('(max-width:760px)').matches;
+    // The desktop conversation list is a persistent side column. When the
+    // window crosses into the phone layout, dismiss that desktop panel so it
+    // cannot cover the conversation header or trap taps behind the drawer.
+    if(compactLayout&&lastCompactLayout===false&&$('conversationDrawer')&&!$('conversationDrawer').classList.contains('hidden'))
+      window.closeDrawer?.(false);
+    lastCompactLayout=compactLayout;
     syncKeyboard();
     updateHeader();
     if(document.body.classList.contains('chat-details-open')&&!document.body.dataset.p202DetailsExplicit){
@@ -378,6 +385,7 @@
     enhanceResponses();
   }
   function queueSync(){if(scheduled)return;scheduled=true;queueMicrotask(sync);}
+  window.addEventListener('resize',queueSync,{passive:true});
   window.__vishnuP202A={version:1,authority:'presentation_only',parsePlan:planRows,refresh:queueSync};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installShell,{once:true});
   else installShell();
