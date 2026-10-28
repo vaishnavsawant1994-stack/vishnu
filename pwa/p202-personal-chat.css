@@ -86,7 +86,7 @@ body.p202-personal-chat .topbar .header-core .core-stage{
  filter:saturate(1.7) drop-shadow(0 0 9px rgba(3,135,255,.6))!important
 }
 body.p202-personal-chat .p202-header{
- flex:0 0 66px;display:flex;align-items:center;gap:12px;
+ position:relative;z-index:31;flex:0 0 66px;display:flex;align-items:center;gap:12px;
  min-width:0;padding:8px 14px;
  background:rgba(3,14,35,.92);border-bottom:1px solid rgba(58,122,213,.26)
 }
