@@ -675,9 +675,7 @@ html body.v-ref.p2-home-ready.p202-personal-chat #composer:not(.has-text) #sendB
   }
 }
 @media(max-width:760px){
- html body.p202-personal-chat .app-shell{overflow:hidden!important}
- html body.p202-personal-chat .topbar{
-  position:relative!important;top:auto!important;left:auto!important;right:auto!important;
-  width:100%!important;margin:0!important;z-index:45!important;
+ html body.p202-personal-chat #voicePanel{
+  margin-top:54px!important;
  }
 }

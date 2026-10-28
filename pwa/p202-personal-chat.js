@@ -79,8 +79,10 @@
         chips.append(b);
       });
       welcome.append(chips);
-      const anchor=qs('.home-greeting',intro);
-      if(anchor)anchor.after(welcome);else intro.prepend(welcome);
+      // The Phase 2 Home greeting sits inside .p2-hero, which is intentionally
+      // hidden while a conversation is active. Keep the new-chat welcome as a
+      // direct child of the shared intro so it remains visible in that state.
+      intro.prepend(welcome);
       refs.hello=hello;
     }
     // Reuse existing authenticated conversation list and CRUD handlers.
