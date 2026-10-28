@@ -274,7 +274,7 @@
     const title=String(current.title||'').trim();
     if(refs.title)refs.title.textContent=title&&title!=='Current conversation'&&title!=='New conversation'?title:'New Chat';
     const chip=$('vContextChip')?.querySelector('span')?.textContent||'';
-    const isProject=/project/i.test(chip),unknown=/unavailable|checking/i.test(chip);
+    const isProject=/^\s*Project\s*[·:]/i.test(chip),unknown=/unavailable|checking/i.test(chip);
     if(refs.scope)refs.scope.textContent=isProject?chip+' ▾':unknown?'Context unverified ▾':'Personal Conversation ▾';
     if(refs.drawerTitle)refs.drawerTitle.textContent='Chats';
     if(refs.model)refs.model.textContent='◈ Vishnu AI ▾';
