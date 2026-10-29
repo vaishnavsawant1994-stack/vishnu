@@ -114,9 +114,14 @@ body.p202-work-chat .p202b-search{
  background:#041a38;border:1px solid #17609c;border-radius:13px;padding:10px;box-shadow:0 20px 55px #0009
 }
 body.p202-work-chat .p202b-search.hidden{display:none}
+body.p202-work-chat .p202b-search-head{display:flex;align-items:center;gap:8px}
 body.p202-work-chat .p202b-search input{
- width:100%;min-height:42px;background:#03132b;border:1px solid rgba(81,158,236,.3);
+ flex:1;min-width:0;width:100%;min-height:42px;background:#03132b;border:1px solid rgba(81,158,236,.3);
  border-radius:9px;padding:9px 12px;color:#eaf6ff;font-size:14px
+}
+body.p202-work-chat .p202b-search-close{
+ min-height:42px;padding:0 10px;border:1px solid rgba(81,158,236,.3);border-radius:9px;
+ background:#061d3e;color:#d9edff;cursor:pointer
 }
 body.p202-work-chat .p202b-search-results{display:grid;gap:5px;margin-top:8px}
 body.p202-work-chat .p202b-search-hit{
@@ -252,7 +257,7 @@ body.p202-work-chat .p202b-entry{font-size:13px}
 @media(min-width:901px) and (max-width:1319px) {
  body.p202-work-chat .p202b-layout{grid-template-columns:215px minmax(0,1fr)}
  body.p202-work-chat .p202b-context{display:none}
- body.p202-work-chat .app-shell{left:479px!important;right:0!important}
+ body.p202-work-chat .app-shell{left:479px!important;right:0!important;width:auto!important;max-width:calc(100vw - 479px)!important;box-sizing:border-box!important}
  body.p202-work-chat .p202b-composer-tools{left:232px;right:15px}
  body.p202-work-chat .p202b-search{right:12px;left:232px}
 }
@@ -375,4 +380,18 @@ body.p202-work-chat .p202b-project-choice:focus-visible{
 @media(max-width:900px){
  body.p202-work-chat .p202b-resources-modal{max-height:calc(100dvh - 24px)}
  body.p202-work-chat .p202b-project-choices{max-height:44dvh}
+}
+
+@media(min-width:901px) and (max-width:1319px){
+ html body.v-ref.p2-home-ready.chat-experience.p202-work-chat .app-shell{
+  left:479px!important;right:0!important;width:calc(100vw - 479px)!important;
+  min-width:0!important;max-width:none!important;box-sizing:border-box!important;
+ }
+}
+
+@media(min-width:1320px){
+ html body.v-ref.p2-home-ready.chat-experience.p202-work-chat .app-shell{
+  left:496px!important;right:255px!important;width:calc(100vw - 751px)!important;
+  min-width:0!important;max-width:none!important;box-sizing:border-box!important;
+ }
 }

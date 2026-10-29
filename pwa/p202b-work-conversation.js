@@ -168,13 +168,16 @@
    ref.notice=make('p','p202b-notice','Messages are stored through Vishnu’s existing conversation engine.');
    ref.surface.append(ref.notice);
    ref.search=make('div','p202b-search hidden');
+   const searchHead=make('div','p202b-search-head');
    const query=make('input');query.type='search';query.placeholder='Search messages in this conversation…';query.setAttribute('aria-label','Search this conversation');
+   const closeSearch=btn('Close search','p202b-search-close',()=>{ref.search.classList.add('hidden');actionsSearch.focus()});
    const results=make('div','p202b-search-results');
    query.addEventListener('input',()=>renderSearch(query.value,results));
-   ref.search.append(query,results);
+   searchHead.append(query,closeSearch);ref.search.append(searchHead,results);
    main.append(ref.surface,ref.search);
    const actions=make('div','p202b-search-actions');
-   actions.append(btn('⌕ Search conversation','',()=>{ref.search.classList.toggle('hidden');if(!ref.search.classList.contains('hidden'))query.focus()}));
+   const actionsSearch=btn('⌕ Search conversation','',()=>{ref.search.classList.toggle('hidden');if(!ref.search.classList.contains('hidden'))query.focus()});
+   actions.append(actionsSearch);
    actions.append(btn('◈ System status','',()=>nav('system')));
    main.append(actions);
    layout.append(main);
