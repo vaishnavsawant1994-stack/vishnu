@@ -160,10 +160,17 @@ async function select(s,id){
  if(box)box.value=drafts.get(s.workspace.id+'|'+s.id)||'';
 }
 async function create(s){
- const result=await api(s,'/conversations',{method:'POST',body:JSON.stringify({title:'New Workspace Conversation',request_id:crypto.randomUUID()})});
- if(result.conversation?.context?.workspace_id!==s.workspace.id)throw Error('Conversation was not persisted in the selected Workspace.');
- s.id=result.conversation.id;await refreshChats(s,'',s.id);
- s.host.querySelector('[data-p202d-input]')?.focus();
+ // The user can submit a draft while the explicit New Chat request is still
+ // in flight. Share that request so both actions use one persisted thread.
+ if(s.creating)return s.creating;
+ s.creating=(async()=>{
+  const result=await api(s,'/conversations',{method:'POST',body:JSON.stringify({title:'New Workspace Conversation',request_id:crypto.randomUUID()})});
+  if(result.conversation?.context?.workspace_id!==s.workspace.id)throw Error('Conversation was not persisted in the selected Workspace.');
+  s.id=result.conversation.id;await refreshChats(s,'',s.id);
+  s.host.querySelector('[data-p202d-input]')?.focus();
+  return s.id;
+ })();
+ try{return await s.creating}finally{s.creating=null}
 }
 function ownerText(text){
  const k=text.lastIndexOf('\nOwner request: ');
