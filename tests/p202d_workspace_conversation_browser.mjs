@@ -64,8 +64,8 @@ try{
   assert.ok((await page.locator('.p202d-stat strong').allTextContents()).includes('1'),'Project count is based on server data');
   assert.equal(await page.getByText('12 Members').count(),0,'Do not inject fake member counts');
   if(mobile){
-    await page.getByRole('button',{name:'Chats ▾'}).click();
-    await page.getByRole('button',{name:'＋ New Workspace Chat'}).click();
+    await page.getByRole('button',{name:'Open workspace conversations'}).click();
+    await page.getByRole('button',{name:'Create new Workspace chat'}).click();
     await page.locator('.p202d-tabs button:visible').count().then(count=>assert.equal(count,5,'mobile has five Workspace tabs'));
     const geometry=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth}));
     assert.ok(geometry.scroll<=geometry.viewport+3,JSON.stringify(geometry));

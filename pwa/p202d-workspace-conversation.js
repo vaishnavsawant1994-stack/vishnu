@@ -15,7 +15,11 @@ const api=(s,part='',opts)=>s.bridge.api(path(s,part),opts);
 function confirmSheet(s,title,description,entries=[]){
  const origin=document.activeElement;
  const dialog=e('dialog','p202d-dialog'),heading=e('h2','',title),desc=e('p','',description),actions=e('div','p202d-dialog-actions');
- entries.forEach(([label,fn])=>actions.append(b(label,()=>{dialog.close();return fn()})));
+ entries.forEach(([label,fn])=>{
+  const action=b(label,()=>{dialog.close();return fn()});
+  if(label.startsWith('＋ New Workspace Chat'))action.setAttribute('aria-label','Create new Workspace chat');
+  actions.append(action);
+ });
  actions.append(b('Close',()=>dialog.close()));
  dialog.append(heading,desc,actions);document.body.append(dialog);
  dialog.addEventListener('close',()=>{dialog.remove();origin?.focus?.()},{once:true});
@@ -293,17 +297,18 @@ function build(s){
    const value=e('strong','');value.setAttribute('data-'+attr,'');chip.append(value,e('span','',label));stats.append(chip)});
  const absent=e('span','p202d-notice','Members and agents: not linked');stats.append(absent);
  names.append(stats);identity.append(names);
- const actions=e('div','p202d-hero-actions');actions.append(b('＋ New Chat',()=>create(s),'p202d-primary'),b('⋯',()=>menu(s)));
+ const actions=e('div','p202d-hero-actions');
+ const pick=b('Chats ▾',()=>showConversationPicker(s),'p202d-mobile-picker');
+ pick.setAttribute('aria-label','Open workspace conversations');
+ actions.append(b('＋ New Chat',()=>create(s),'p202d-primary'),pick,b('⋯',()=>menu(s)));
  hero.append(identity,actions);
  const topNav=e('nav','p202d-tabs');topNav.setAttribute('aria-label','Workspace sections');
  ['Chat','Projects','Files','Tasks','Agents','Plans','Research','Code','Knowledge','More'].forEach(name=>topNav.append(b(name,()=>navigate(s,name),name==='Chat'?'active':'')));
  const layout=e('div','p202d-layout'),left=e('aside','p202d-left'),main=e('main','p202d-center'),right=e('aside','p202d-right');
  const chatBox=e('section','p202d-panel p202d-chat-panel'),chatHead=e('div','p202d-panel-head');
  chatHead.append(e('h2','','Workspace Chats'),b('＋',()=>create(s),'p202d-primary'));
- const pick=b('Chats ▾',()=>showConversationPicker(s),'p202d-mobile-picker');
- names.append(pick);
  const chatList=e('div','p202d-chat-list');chatList.dataset.p202dChats='';
- chatBox.append(chatHead,pick,chatList);
+ chatBox.append(chatHead,chatList);
  const projectsBox=e('section','p202d-panel'),projectsHead=e('div','p202d-panel-head');projectsHead.append(e('h2','','Projects in this Workspace'),b('＋',()=>s.actions.linkProject()));
  const projectsList=e('div','p202d-project-list');projectsList.dataset.p202dProjects='';
  projectsBox.append(projectsHead,projectsList,b('View all projects ›',()=>projectsSheet(s),'p202d-link'));left.append(chatBox,projectsBox);
