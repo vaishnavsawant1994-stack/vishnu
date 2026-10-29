@@ -20,7 +20,7 @@ function check(initial) {
     addEventListener() {},
     documentElement: {style:{removeProperty(){}}}
   };
-  const window = {};
+  const window = {addEventListener(){}};
   vm.runInNewContext(source,{document,window,queueMicrotask: f=>tasks.push(f)});
   refresh = window.__vishnuP202A.refresh;
   refresh();

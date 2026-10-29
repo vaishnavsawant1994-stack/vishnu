@@ -73,6 +73,10 @@ try{
   // Slow preview + rapid facet switch must not render an obsolete result.
   delayPreview=true;
   await page.locator('[data-gs-select="conversations"]').click();
+  if(width===390){
+   await page.locator('[data-gs-action="back"]').click();
+   await page.waitForFunction(()=>!document.querySelector('#gsDetail')?.classList.contains('mobile-open'));
+  }
   await page.locator('[data-gs-category="projects"]').click();
   await page.locator('[data-gs-select="projects"]').waitFor();
   await page.waitForTimeout(520);
@@ -98,7 +102,7 @@ try{
   }
   if(width===1536&&screenshot)await page.screenshot({path:screenshot+'/search-'+width+'.png',fullPage:false});
   await page.locator('[data-gs-action="summarize"]').click();
-  await page.getByText('Verified AI summary').waitFor();
+  await page.getByText('Verified AI summary',{exact:true}).waitFor();
   await page.locator('.gs-result-more summary').click();
   await page.locator('[data-gs-action="organize"]').click();
   await page.getByText('The original conversation is now linked to the selected Project.').waitFor();
