@@ -6,6 +6,7 @@ import {mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 await mkdir('artifacts/p202',{recursive:true});
 const browser=await chromium.launch({headless:true});
+const base=process.env.PWA_PREVIEW_URL||'http://127.0.0.1:4173';
 const errors=[];
 const createdAt=new Date().toISOString();
 const convo={id:'personal-1',title:'My daily planning',updated_at:createdAt,preview:'Can you plan my day?'};
@@ -43,8 +44,9 @@ try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block',hasTouch:false});
  page.on('pageerror',e=>errors.push(e.message));
  await page.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
+ await page.route('**/web/api/**',fixture);
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
+ await page.goto(base+'/iphone/',{waitUntil:'commit',timeout:60000});
  // Vishnu intentionally starts on Home; open the saved Personal conversation
  // using the canonical transport before testing the dedicated Chat screen.
  await page.waitForFunction(()=>window.vishnuChatBridge&&document.body.classList.contains('home-landing'));
@@ -94,11 +96,12 @@ try{
  await page.setViewportSize({width:390,height:844});
  await page.locator('#message').fill('A follow up');
  await page.locator('#message').press('Enter');
- await page.getByText('Canonical Vishnu assistant reply').waitFor({timeout:10000});
+ await page.locator('#messageStream .message-entry.assistant').filter({hasText:'Canonical Vishnu assistant reply'}).last().waitFor({state:'visible',timeout:10000});
  assert.equal(turns,1,'one canonical server turn');
  assert.equal(active.conversation.id,'personal-1','conversation ID preserved');
  assert.equal(await page.locator('.p202-plan-card').count(),1,'existing plan card survives refreshed message rendering');
  await page.locator('#message').fill('');
+ await page.locator('#p202Header .p202-context').evaluate(node=>node.scrollIntoView({block:'center',inline:'nearest'}));
  await page.locator('#p202Header .p202-context').click();
  await page.getByText(/No active projects are available|Create a project first/).first().waitFor({timeout:10000});
  assert.equal(active.conversation.id,'personal-1','context picker does not silently move personal chat');

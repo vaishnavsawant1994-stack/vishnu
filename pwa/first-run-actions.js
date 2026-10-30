@@ -28,7 +28,7 @@
       // browser has its own trust cookies separate from Chrome. Both failures
       // are recoverable through the server's owner-verified resume ceremony;
       // never create another owner or rotate recovery codes to work around it.
-      const trustProblem = /not currently trusted|saved sign-in credential|was removed from trusted devices/i.test(message);
+      const trustProblem = /not currently trusted|saved sign-in credential|was removed from trusted devices|needs owner-password verification to resume setup/i.test(message);
       const setupProblem = /setup session expired|setup is not pending|first.device setup is not pending|verified first.device setup is required/i.test(message);
       if (!trustProblem && !setupProblem) throw error;
       try {
@@ -50,10 +50,16 @@
 
   function showSetupDeviceReauth() {
     if (document.querySelector('[data-setup-device-reauth]')) return;
-    // New P1-03/P1-04 mount into .vs-main, not the legacy .genesis-content.
-    // Expired first-device cookies must offer an actionable reauthentication
-    // panel on the screen where the owner is actually blocked.
-    const content = document.querySelector('.genesis-content') || document.querySelector('.vs-main');
+    // P1 screens render their own component roots instead of the legacy
+    // .genesis-content wrapper. Attach the recovery action to the active
+    // screen so trust recovery remains available in the final layout.
+    const candidates = Array.from(document.querySelectorAll(
+      '.vs-main, .genesis-screen, .genesis-stage, .genesis-content'
+    ));
+    const content = candidates.find(node => {
+      const style = window.getComputedStyle(node);
+      return style.display !== 'none' && style.visibility !== 'hidden' && node.getClientRects().length > 0;
+    }) || candidates[0] || document.querySelector('.genesis-content');
     if (!content) return;
     const panel = document.createElement('section');
     panel.className = 'genesis-card';
@@ -105,7 +111,7 @@
     // Keep reauthentication close to the blocked recovery controls, above the
     // page's navigation buttons rather than below the entire long layout.
     const navigation = content.querySelector('.vs-navigation');
-    if (navigation) content.insertBefore(panel, navigation);
+    if (navigation?.parentNode) navigation.parentNode.insertBefore(panel, navigation);
     else content.append(panel);
   }
 

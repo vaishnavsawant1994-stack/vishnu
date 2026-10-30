@@ -41,6 +41,7 @@ from security.owner_access import OwnerAccessStore
 from security.owner_access import FirstRunClaimBusy
 from onboarding.owner_avatar import read_owner_avatar, store_owner_avatar
 from security.request_context import current_trusted_request
+from server.pwa_home_shell import load_home_page
 
 
 class OwnerEnrollBody(BaseModel):
@@ -276,12 +277,30 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             httponly=True,
             secure=True,
             samesite='strict',
-            path='/iphone',
+            # Root scope also covers /web/api requests produced by older
+            # browsers with a cached permanent /iphone/api redirect.
+            path='/',
             max_age=60 * 60 * 24 * cookie_days,
         )
         if getattr(settings, 'iphone_pwa_allow_insecure', False):
             cookie_kwargs['secure'] = False
         return cookie_kwargs
+
+    def set_device_cookies(response: Response, device_id: str, token: str):
+        # Remove old route-scoped cookies so stale duplicate names cannot win.
+        response.delete_cookie('pa_device', path='/iphone')
+        response.delete_cookie('pa_token', path='/iphone')
+        cookie_kwargs = device_cookie_kwargs()
+        response.set_cookie('pa_device', device_id, **cookie_kwargs)
+        response.set_cookie('pa_token', token, **cookie_kwargs)
+
+    def set_setup_claim_cookie(response: Response, claim: str):
+        response.delete_cookie('pa_setup_claim', path='/iphone')
+        response.set_cookie(
+            'pa_setup_claim', claim, httponly=True,
+            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
+            samesite='strict', path='/', max_age=900,
+        )
 
     def require_https(request: Request):
         forwarded = request.headers.get('x-forwarded-proto', '').split(',')[0].strip().lower()
@@ -433,9 +452,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             registry.set_permissions(device['id'], registry.OWNER_SCOPES)
         if continuity:
             continuity.resume(device['id'])
-        cookie_kwargs = device_cookie_kwargs()
-        response.set_cookie('pa_device', device['id'], **cookie_kwargs)
-        response.set_cookie('pa_token', token, **cookie_kwargs)
+        set_device_cookies(response, device['id'], token)
         emit('owner.access.trusted', device_id=device['id'], platform=platform)
         return device
 
@@ -443,9 +460,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         device = next((item for item in registry.list() if item['id'] == device_id), None)
         if not device or not registry.is_active(device_id) or not registry.authenticate(device_id, token):
             raise HTTPException(401, 'This trusted device is no longer available. Choose another sign-in method.')
-        cookie_kwargs = device_cookie_kwargs()
-        response.set_cookie('pa_device', device_id, **cookie_kwargs)
-        response.set_cookie('pa_token', token, **cookie_kwargs)
+        set_device_cookies(response, device_id, token)
         return device
 
     def begin_or_unlock_browser(response: Response, name: str, platform: str,
@@ -456,8 +471,9 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             return {'ok': True, 'device_id': device['id']}
         join = registry.request_join(name, platform)
         cookie_kwargs = device_cookie_kwargs()
+        response.delete_cookie('pa_join', path='/iphone/api/access/join')
         response.set_cookie('pa_join', join['device_token'], **{**cookie_kwargs,
-                            'path': '/iphone/api/access/join', 'max_age': 600})
+                            'path': '/', 'max_age': 600})
         return {'status': 'approval_required', **{key: value for key, value in join.items() if key != 'device_token'}}
 
     def auth_device(device_id: str | None, device_token: str | None):
@@ -535,18 +551,38 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     @router.get('', response_class=HTMLResponse, include_in_schema=False)
     @router.get('/', response_class=HTMLResponse, include_in_schema=False)
     def iphone_home():
-        page = (web_dir / 'index.html').read_text(encoding='utf-8')
-        page = page.replace(
-            '</body>',
-            '<link rel="stylesheet" href="/iphone/vishnu-os-workspaces.css">'
-            '<script src="/iphone/vishnu-os-workspaces.js" defer></script>'
-            '<script src="/iphone/neural-sphere.js" defer></script>'
-            '<script src="/iphone/runtime-assistant.js" defer></script>'
-            '<script src="/iphone/recovery-complete.js" defer></script>'
-            '<script src="/iphone/first-run.js" defer></script>'
-            '<script src="/iphone/first-run-actions.js" defer></script></body>',
-        )
+        page = load_home_page(web_dir)
         return HTMLResponse(page, headers={'Cache-Control': 'no-store'})
+
+    @router.get('/p2-home.js', include_in_schema=False)
+    def p2_home_script():
+        return Response((web_dir / 'p2-home.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p2-home.css', include_in_schema=False)
+    def p2_home_styles():
+        return Response((web_dir / 'p2-home.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202-personal-chat.js', include_in_schema=False)
+    def p202_personal_chat_script():
+        return Response((web_dir / 'p202-personal-chat.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202-personal-chat.css', include_in_schema=False)
+    def p202_personal_chat_styles():
+        return Response((web_dir / 'p202-personal-chat.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202b-work-conversation.js', include_in_schema=False)
+    def p202b_work_conversation_script():
+        return Response((web_dir / 'p202b-work-conversation.js').read_text(encoding='utf-8'),
+                        media_type='application/javascript', headers={'Cache-Control': 'no-cache'})
+
+    @router.get('/p202b-work-conversation.css', include_in_schema=False)
+    def p202b_work_conversation_styles():
+        return Response((web_dir / 'p202b-work-conversation.css').read_text(encoding='utf-8'),
+                        media_type='text/css', headers={'Cache-Control': 'no-cache'})
 
     @router.get('/campaign-demo', include_in_schema=False)
     def campaign_demo_entry():
@@ -841,6 +877,56 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
     def p202c_project_style():
         return Response((web_dir / 'p202c-project-conversation.css').read_text(encoding='utf-8'), media_type='text/css', headers={'Cache-Control':'no-cache'})
 
+    # Shared UI bundles referenced by index.html need explicit routes so they
+    # are available before sign-in; only static presentation code is exposed.
+    for asset_name, media_type in {
+        'chat-experience.js': 'application/javascript',
+        'chat-experience.css': 'text/css',
+        'knowledge-notes.js': 'application/javascript',
+        'knowledge-notes.css': 'text/css',
+        'p307-file-preview.js': 'application/javascript',
+        'p307-file-preview.css': 'text/css',
+        'memory-experiences.js': 'application/javascript',
+        'memory-experiences.css': 'text/css',
+        'p3-memory-library.js': 'application/javascript',
+        'p3-memory-library.css': 'text/css',
+        'p3-ai-intelligence.js': 'application/javascript',
+        'p3-ai-intelligence.css': 'text/css',
+        'p3-knowledge-library.js': 'application/javascript',
+        'p3-knowledge-library.css': 'text/css',
+        'p3-files-library.js': 'application/javascript',
+        'p3-files-library.css': 'text/css',
+        'p3-memory-details.js': 'application/javascript',
+        'p3-memory-details.css': 'text/css',
+        'p3-knowledge-details.js': 'application/javascript',
+        'p3-knowledge-details.css': 'text/css',
+        'projects-workspace-views.js': 'application/javascript',
+        'projects-workspace-views.css': 'text/css',
+        'responsive-fit.css': 'text/css',
+        # Home's sequential enhancement chain creates these script tags at
+        # runtime; they are not present in the initial HTML asset scan.
+        'home-chat-redesign-core.js': 'application/javascript',
+        'chat-context-owner.js': 'application/javascript',
+        'work-attention-center.js': 'application/javascript',
+        'global-work-awareness.js': 'application/javascript',
+        'workorder-detail.js': 'application/javascript',
+        'projects-work-visualization-runtime.js': 'application/javascript',
+        'project-autonomy-controls.js': 'application/javascript',
+        'projects-work-runtime.js': 'application/javascript',
+        'adaptive-composer.js': 'application/javascript',
+    }.items():
+        def serve_shared_ui_asset(asset_name=asset_name, media_type=media_type):
+            return Response(
+                (web_dir / asset_name).read_text(encoding='utf-8'),
+                media_type=media_type,
+                headers={'Cache-Control': 'no-cache'},
+            )
+
+        router.add_api_route(
+            f'/{asset_name}', serve_shared_ui_asset,
+            methods=['GET'], include_in_schema=False,
+        )
+
     @router.get('/api/status')
     def status(
         response: Response,
@@ -850,8 +936,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         device_id = auth_device(pa_device, pa_token)
         # Successful use renews this browser's durable trust without changing
         # its scoped credential or weakening revocation checks.
-        response.set_cookie('pa_device', device_id, **device_cookie_kwargs())
-        response.set_cookie('pa_token', pa_token, **device_cookie_kwargs())
+        set_device_cookies(response, device_id, pa_token)
         active_qualification = None
         if recorder is not None:
             active = recorder.active_session()
@@ -1087,11 +1172,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             raise HTTPException(409, str(exc)) from exc
         except (ValueError, RuntimeError) as exc:
             raise HTTPException(409, str(exc)) from exc
-        response.set_cookie(
-            'pa_setup_claim', claim, httponly=True,
-            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
-            samesite='strict', path='/iphone', max_age=900,
-        )
+        set_setup_claim_cookie(response, claim)
         emit('owner.device.recovered', device_id=device['id'], platform='web-pwa', portable=True)
         return {
             'ok': True, 'identity': restored_identity,
@@ -1238,11 +1319,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             if created_claim:
                 owner_access.release_first_run_claim(claim)
             raise HTTPException(409, str(exc)) from exc
-        response.set_cookie(
-            'pa_setup_claim', claim,
-            httponly=True, secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
-            samesite='strict', path='/iphone', max_age=900,
-        )
+        set_setup_claim_cookie(response, claim)
         response.headers['Cache-Control'] = 'no-store, private'
         response.headers['Pragma'] = 'no-cache'
         emit('owner.security.configured', device_id=device['id'], method='password')
@@ -1509,6 +1586,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
         except (RuntimeError, ValueError) as exc:
             raise HTTPException(409, str(exc)) from exc
         owner_access.release_first_run_claim(pa_setup_claim)
+        response.delete_cookie('pa_setup_claim', path='/')
         response.delete_cookie('pa_setup_claim', path='/iphone')
         emit('owner.first_run.completed', device_id=device_id,
              owner_id=result.get('identity', {}).get('owner_id'))
@@ -1678,12 +1756,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
                 registry.revoke(device_id)
                 raise HTTPException(409, str(exc)) from exc
         claim = owner_access.rotate_first_run_claim(ttl=900)
-        response.set_cookie(
-            'pa_setup_claim', claim,
-            httponly=True,
-            secure=not getattr(settings, 'iphone_pwa_allow_insecure', False),
-            samesite='strict', path='/iphone', max_age=900,
-        )
+        set_setup_claim_cookie(response, claim)
         return {'ok': True, 'status': 'setup_in_progress', 'device_id': device_id}
 
     @router.post('/api/first-run/recovery-saved')
@@ -1764,13 +1837,13 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             device = registry.complete_join(body.request_id, token)
             if not device:
                 raise HTTPException(409, 'Device approval could not be completed. Start sign-in again.')
-            cookie_kwargs = device_cookie_kwargs()
-            response.set_cookie('pa_device', device['id'], **cookie_kwargs)
-            response.set_cookie('pa_token', token, **cookie_kwargs)
+            set_device_cookies(response, device['id'], token)
+            response.delete_cookie('pa_join', path='/')
             response.delete_cookie('pa_join', path='/iphone/api/access/join')
             emit('owner.access.trusted', device_id=device['id'], platform=device['platform'], source='approved_join')
             return {'status': 'complete', 'device_id': device['id']}
         if result['status'] in {'denied', 'expired', 'completed'}:
+            response.delete_cookie('pa_join', path='/')
             response.delete_cookie('pa_join', path='/iphone/api/access/join')
         return result
 
@@ -1790,6 +1863,7 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
             raise HTTPException(409, 'This request is no longer pending.')
         if not registry.decide_join(body.request_id, approve=False, decided_by='requester_cancelled'):
             raise HTTPException(409, 'The join request could not be cancelled.')
+        response.delete_cookie('pa_join', path='/')
         response.delete_cookie('pa_join', path='/iphone/api/access/join')
         emit('device.join.cancelled', request_id=body.request_id)
         return {'status': 'cancelled'}
@@ -2036,6 +2110,8 @@ def iphone_pwa_router(runtime, settings, *, include_legacy_runtime_routes: bool 
 
     @router.post('/api/logout')
     def logout(response: Response):
+        response.delete_cookie('pa_device', path='/')
+        response.delete_cookie('pa_token', path='/')
         response.delete_cookie('pa_device', path='/iphone')
         response.delete_cookie('pa_token', path='/iphone')
         return {'ok': True}

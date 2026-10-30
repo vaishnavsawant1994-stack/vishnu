@@ -28,7 +28,7 @@
   const navigate = name => bridge()?.openModule?.(name);
   const drafts = new Map(); // ephemeral only; never sync personal draft text to unapproved storage.
   const key = id => id ? 'conversation:'+String(id) : 'personal:new';
-  let lastId=null, lastActive=false, profile=null, scheduled=false, modelState=null;
+  let lastId=null, lastActive=false, profile=null, scheduled=false, modelState=null, lastCompactLayout=null;
   const refs = {};
 
   function installShell(){
@@ -79,8 +79,10 @@
         chips.append(b);
       });
       welcome.append(chips);
-      const anchor=qs('.home-greeting',intro);
-      if(anchor)anchor.after(welcome);else intro.prepend(welcome);
+      // The Phase 2 Home greeting sits inside .p2-hero, which is intentionally
+      // hidden while a conversation is active. Keep the new-chat welcome as a
+      // direct child of the shared intro so it remains visible in that state.
+      intro.prepend(welcome);
       refs.hello=hello;
     }
     // Reuse existing authenticated conversation list and CRUD handlers.
@@ -274,7 +276,7 @@
     const title=String(current.title||'').trim();
     if(refs.title)refs.title.textContent=title&&title!=='Current conversation'&&title!=='New conversation'?title:'New Chat';
     const chip=$('vContextChip')?.querySelector('span')?.textContent||'';
-    const isProject=/project/i.test(chip),unknown=/unavailable|checking/i.test(chip);
+    const isProject=/^\s*Project\s*[·:]/i.test(chip),unknown=/unavailable|checking/i.test(chip);
     if(refs.scope)refs.scope.textContent=isProject?chip+' ▾':unknown?'Context unverified ▾':'Personal Conversation ▾';
     if(refs.drawerTitle)refs.drawerTitle.textContent='Chats';
     if(refs.model)refs.model.textContent='◈ Vishnu AI ▾';
@@ -360,10 +362,20 @@
       for(const id of ['p202AttachmentDialog','p202ModelDialog']){
         const dialog=$(id);if(dialog?.open)dialog.close();
       }
-      document.body.classList.remove('p202-keyboard-visible');
+      // Class observers schedule this function in a microtask. Removing an
+      // absent token still mutates class and would endlessly reschedule us.
+      if(document.body.classList.contains('p202-keyboard-visible'))
+        document.body.classList.remove('p202-keyboard-visible');
       document.documentElement.style.removeProperty('--p202-keyboard-inset');
       return;
     }
+    const compactLayout=window.matchMedia('(max-width:760px)').matches;
+    // The desktop conversation list is a persistent side column. When the
+    // window crosses into the phone layout, dismiss that desktop panel so it
+    // cannot cover the conversation header or trap taps behind the drawer.
+    if(compactLayout&&lastCompactLayout===false&&$('conversationDrawer')&&!$('conversationDrawer').classList.contains('hidden'))
+      window.closeDrawer?.(false);
+    lastCompactLayout=compactLayout;
     syncKeyboard();
     updateHeader();
     if(document.body.classList.contains('chat-details-open')&&!document.body.dataset.p202DetailsExplicit){
@@ -375,6 +387,7 @@
     enhanceResponses();
   }
   function queueSync(){if(scheduled)return;scheduled=true;queueMicrotask(sync);}
+  window.addEventListener('resize',queueSync,{passive:true});
   window.__vishnuP202A={version:1,authority:'presentation_only',parsePlan:planRows,refresh:queueSync};
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',installShell,{once:true});
   else installShell();

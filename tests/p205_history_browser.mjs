@@ -71,8 +71,14 @@ try{
   await page.locator('#p205Form').evaluate(f=>f.requestSubmit());
   await page.locator('.p205-detail-content').getByText('Canonical AI response').waitFor();
   assert.equal(messageTurns,1);
+  if(width===390){
+   await page.locator('[data-h-action="back"]').click();
+   await page.waitForFunction(()=>!document.querySelector('#p205Detail')?.classList.contains('mobile-open'));
+  }
   await page.locator('[data-h-action="pin:personal-1"]').first().click();
-  await page.locator('[data-h-filter="pinned"]').click();
+  const pinnedFilter=page.locator('[data-h-filter="pinned"]');
+  if(width===390){await pinnedFilter.focus();await pinnedFilter.press('Enter')}
+  else await pinnedFilter.click();
   await page.locator('[data-h-select="personal-1"]').waitFor();
   assert.equal(await page.locator('.p205-row').count(),1);
   await page.locator('[data-h-filter="archived"]').click();

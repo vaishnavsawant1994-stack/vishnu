@@ -113,7 +113,7 @@
  .p204-main{min-height:100dvh}
  .p204-page{padding:12px 10px calc(82px + env(safe-area-inset-bottom));overflow:auto}
  .p204-page-head{gap:8px}.p204-heading h1{font-size:20px}.p204-heading p{font-size:11px}.p204-voice-icon{width:46px;height:46px}
- .p204-actions button:not(:last-child){display:none}
+ .p204-actions button:not(#p204Mode):not(:last-child){display:none}
  .p204-columns{display:flex;flex-direction:column;gap:15px}
  .p204-stage{padding:5px 0}
  .p204-orb{width:clamp(150px,40vw,195px);height:clamp(150px,40vw,195px)}

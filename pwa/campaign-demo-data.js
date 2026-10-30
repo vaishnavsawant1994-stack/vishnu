@@ -2,7 +2,7 @@
  * Loaded only by campaign-demo.js when ?campaignDemo=1 is present.
  * Never sent to, or persisted by, a Vishnu server. */
 window.VISHNU_CAMPAIGN_DEMO_DATA = Object.freeze({
-  owner: { name: 'Vaishnav Sawant', displayName: 'Vaishnav', presence: 'Personal · Online' },
+  owner: { name: 'Alex Morgan', displayName: 'Alex', presence: 'Personal · Online' },
   workspace: { id: 'demo-workspace-rudra', name: 'Rudra Health Care' },
   projects: [
     { id: 'demo-project-patient-crm', title: 'Rudra Health Care', workspace: 'Rudra Health Care', summary: 'Patient CRM implementation', status: 'Active', progress: 72, updated: '2 hours ago', kind: 'workspace' },
@@ -23,7 +23,7 @@ window.VISHNU_CAMPAIGN_DEMO_DATA = Object.freeze({
     { title: 'Yesterday', ids: ['demo-conv-dating'] }
   ],
   messages: [
-    { role: 'owner', author: 'Vaishnav', time: '10:24 AM', text: 'Build a complete patient CRM for Rudra Health Care with patient profiles, appointments, doctor management, and a clean dashboard. Use a modern stack and show me the architecture, database schema and start the implementation.', attachments: [{ name: 'PRD.pdf', detail: '1.2 MB · PDF' }, { name: 'UI Reference', detail: '4 images · ZIP' }, { name: 'Requirements.docx', detail: '320 KB · DOCX' }] },
+    { role: 'owner', author: 'Alex', time: '10:24 AM', text: 'Build a complete patient CRM for Rudra Health Care with patient profiles, appointments, doctor management, and a clean dashboard. Use a modern stack and show me the architecture, database schema and start the implementation.', attachments: [{ name: 'PRD.pdf', detail: '1.2 MB · PDF' }, { name: 'UI Reference', detail: '4 images · ZIP' }, { name: 'Requirements.docx', detail: '320 KB · DOCX' }] },
     { role: 'vishnu', author: 'Vishnu', time: '10:24 AM', text: "I'll create a comprehensive patient CRM for Rudra Health Care. Let me break this down and start the implementation.", steps: ['Analyzing requirements', 'Creating implementation plan', 'Setting up project structure', 'Building core modules', 'Testing and validation'] }
   ],
   activities: [

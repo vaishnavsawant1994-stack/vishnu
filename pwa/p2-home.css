@@ -270,6 +270,17 @@ body.v-ref.p2-home-ready .p2-work-order:hover {
     width:360px;text-align:left
   }
   body.v-ref.p2-home-ready .reference-desktop-tools button:first-child kbd {color:#a2d1fd}
+
+  /* The Phase 2 shell has its own reserved rail width. Release it when the
+     shared navigation collapses, and let Home use the newly available space. */
+  html body.v-ref.p2-home-ready.reference-sidebar-collapsed {padding-left:0!important}
+  html body.v-ref.p2-home-ready.reference-sidebar-collapsed .app-shell {
+    width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important
+  }
+  html body.v-ref.p2-home-ready.reference-sidebar-collapsed.home-landing .home-intro {
+    width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important;
+    padding-left:clamp(20px,2.4vw,38px)!important;padding-right:clamp(20px,2.4vw,38px)!important
+  }
 }
 @media (min-width:901px) and (max-width:1199px) {
   body.v-ref.p2-home-ready.home-landing .p2-hero {

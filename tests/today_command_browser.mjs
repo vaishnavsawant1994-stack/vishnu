@@ -32,7 +32,7 @@ try {
       };
       function $(id){return document.getElementById(id)}
       function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[c]))}
-      function ownerDisplayName(){return 'Vaishnav Sawant'}
+      function ownerDisplayName(){return 'Alex Morgan'}
       function greeting(){return 'Good afternoon.'}
       function todayScreenDateRecord(){return null}
       function todayScreenKind(){return 'tasks'}
@@ -44,7 +44,7 @@ try {
       function showToast(message){window.calls.push(['toast',message])}
     ` });
     await page.addScriptTag({ content: `${code}\nrenderTodayCommandDashboard();` });
-    await page.getByRole('heading', { name: /Good afternoon, Vaishnav Sawant/ }).waitFor();
+    await page.getByRole('heading', { name: /Good afternoon, Alex Morgan/ }).waitFor();
     assert.match(await page.locator('#todayCommandDashboard').innerText(), /Preview data, not saved/);
     assert.match(await page.locator('#todayCommandDashboard').innerText(), /Review Face Model v8/);
     assert.match(await page.locator('#todayCommandDashboard').innerText(), /Patient CRM implementation/);

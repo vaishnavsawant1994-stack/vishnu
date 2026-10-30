@@ -135,6 +135,65 @@ try {
   assert.equal(await page.locator('.genesis-login').count(),1,'Existing owner routes to P1-05 login');
   assert.equal(await page.locator('[data-step="2"]').count(),0,'Existing owner cannot enter new identity creation');
   await page.close();
+  const recoveryPage = await browser.newPage({viewport:{width:1536,height:961}});
+  await recoveryPage.route('http://127.0.0.1:4173/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (assets.has(path)) return route.fulfill({ status:200,
+      contentType: path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript', body:assets.get(path) });
+    return route.fulfill({ status:200, contentType:'text/html', body:`<!doctype html>
+      <html><head><style>body{margin:0}.hidden{display:none!important}</style><link rel="stylesheet" href="/iphone/genesis.css"></head>
+      <body><div id="enrollPanel"></div><script>
+      window.__previewOptions={creation_available:false,restore_available:true,password_available:false,passkey_available:false,recovery_available:false};
+      window.loadAccessOptions=async()=>window.__previewOptions;
+      window.check=async()=>null;</script><script src="/iphone/first-run.js"></script></body></html>` });
+  });
+  await recoveryPage.goto('http://127.0.0.1:4173/iphone/');
+  await recoveryPage.locator('.genesis-welcome').waitFor();
+  await recoveryPage.getByRole('button',{name:/Create My Vishnu/}).click();
+  await recoveryPage.locator('.genesis-recovery-options').waitFor();
+  assert.equal(await recoveryPage.locator('.returning-shell').count(),0,'Unavailable creation routes to final P1-07 recovery, not a legacy screen');
+  await recoveryPage.close();
+  const loginPage = await browser.newPage({viewport:{width:1536,height:961}});
+  await loginPage.route('http://127.0.0.1:4173/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (assets.has(path)) return route.fulfill({ status:200,
+      contentType: path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript', body:assets.get(path) });
+    return route.fulfill({ status:200, contentType:'text/html', body:`<!doctype html>
+      <html><head><style>body{margin:0}.hidden{display:none!important}</style><link rel="stylesheet" href="/iphone/genesis.css"></head>
+      <body><div id="enrollPanel"></div><script>
+      window.__previewOptions={creation_available:false,restore_available:true,password_available:true,passkey_available:false,recovery_available:true};
+      window.loadAccessOptions=async()=>window.__previewOptions;
+      window.check=async()=>null;</script><script src="/iphone/first-run.js"></script></body></html>` });
+  });
+  await loginPage.goto('http://127.0.0.1:4173/iphone/');
+  await loginPage.locator('.genesis-welcome').waitFor();
+  await loginPage.getByRole('button',{name:/I Already Have Vishnu/}).click();
+  await loginPage.locator('.genesis-login').waitFor();
+  assert.equal(await loginPage.locator('[data-step="P1-05"]').count(),1,'Existing owner entry opens final P1-05 login');
+  await loginPage.close();
+  const resumePage = await browser.newPage({viewport:{width:1536,height:961}});
+  await resumePage.route('http://127.0.0.1:4173/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    if (assets.has(path)) return route.fulfill({ status:200,
+      contentType: path.endsWith('.css')?'text/css':path.endsWith('.svg')?'image/svg+xml':'text/javascript', body:assets.get(path) });
+    return route.fulfill({ status:200, contentType:'text/html', body:`<!doctype html>
+      <html><head><style>body{margin:0}.hidden{display:none!important}</style><link rel="stylesheet" href="/iphone/genesis.css"></head>
+      <body><div id="enrollPanel"></div><script>
+      window.__previewOptions={creation_available:true,restore_available:false,setup_in_progress:false,setup_resume_step:null,local_setup_available:true};
+      window.loadAccessOptions=async()=>window.__previewOptions;
+      window.check=async()=>null;</script><script src="/iphone/first-run.js"></script></body></html>` });
+  });
+  await resumePage.goto('http://127.0.0.1:4173/iphone/');
+  await resumePage.locator('.genesis-welcome').waitFor();
+  await resumePage.evaluate(()=>{window.__previewOptions={creation_available:true,restore_available:false,setup_in_progress:true,setup_resume_step:4,local_setup_available:true};});
+  await resumePage.getByRole('button',{name:/Create My Vishnu/}).click();
+  await resumePage.locator('.returning-shell').waitFor();
+  assert.equal(await resumePage.getByRole('button',{name:/Continue setup/}).count(),1,
+    'Interrupted setup must offer an explicit resume action instead of creating a second owner');
+  await resumePage.getByRole('button',{name:/Continue setup/}).click();
+  await resumePage.locator('.genesis-recovery-screen').waitFor();
+  assert.equal(await resumePage.locator('.returning-shell').count(),0,'Confirmed setup resume opens its final Phase 1 screen');
+  await resumePage.close();
   console.log('Vishnu P1-01 responsive screenshots, entry controls, help and guarded creation passed.');
 } finally {
   await browser.close();

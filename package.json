@@ -1,6 +1,10 @@
 {
   "name": "vishnu-browser-qualification",
   "private": true,
+  "scripts": {
+    "dev": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start_web_dev.ps1",
+    "desktop": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start_windows_dev.ps1"
+  },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",
     "playwright": "1.64.0"

@@ -3,6 +3,8 @@
   const $ = window.$ || (id => document.getElementById(id));
   const folder = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h6l2 2h10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>';
   function keepMobileHomeClearOfDock(){
+    // Phase 2 owns Home sizing. Retain this adapter only for older shells.
+    if(document.body.dataset.vishnuDesign==='phase2') return;
     if(document.getElementById('vMobileHomeViewportFix')) return;
     const style=document.createElement('style');
     style.id='vMobileHomeViewportFix';

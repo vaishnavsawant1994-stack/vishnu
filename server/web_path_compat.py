@@ -18,7 +18,12 @@ class CanonicalWebPathMiddleware:
             return
 
         path = scope.get('path', '')
-        if path == '/iphone' or path.startswith('/iphone/'):
+        # Keep API calls on their legacy route. Redirecting /iphone/api to
+        # /web/api changes the request path after the browser has stored
+        # first-run cookies scoped to /iphone, so subsequent setup calls omit
+        # those cookies and incorrectly demand owner-password verification.
+        is_iphone_api = path == '/iphone/api' or path.startswith('/iphone/api/')
+        if (path == '/iphone' or path.startswith('/iphone/')) and not is_iphone_api:
             suffix = path[len('/iphone'):]
             if suffix == '':
                 suffix = '/'
