@@ -227,14 +227,6 @@
   function installNavigation() {
     const sidebar = document.querySelector('.reference-desktop-sidebar nav');
     if (sidebar) {
-      const homeButton = sidebar.querySelector('[data-app-module="home"]');
-      if (homeButton) {
-        const chat = actionButton(' Chat', 'p2-sidebar-added', navigate.chat);
-        chat.prepend(make('span', '', '▢'));
-        const today = actionButton(' Today', 'p2-sidebar-added', navigate.today);
-        today.prepend(make('span', '', '▣'));
-        homeButton.after(chat, today);
-      }
       const knowledge = sidebar.querySelector('[data-app-module="knowledge"]');
       if (knowledge) knowledge.lastChild.textContent = 'Library';
       const tools = sidebar.querySelector('[data-app-module="tools"]');

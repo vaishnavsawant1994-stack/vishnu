@@ -4,6 +4,7 @@ import { chromium } from 'playwright';
 
 await mkdir('artifacts', { recursive: true });
 const browser = await chromium.launch({ headless: true, executablePath: process.env.CHAT_TEST_CHROMIUM_PATH || undefined });
+const previewBase = process.env.PWA_PREVIEW_URL || 'http://127.0.0.1:4173';
 const errors = [];
 const firstRunSource = await readFile(new URL('../pwa/first-run.js', import.meta.url), 'utf8');
 const genesisStyleSource = await readFile(new URL('../pwa/genesis.css', import.meta.url), 'utf8');
@@ -28,8 +29,8 @@ async function verifyGenesisNavigationIsolation(){
   await page.route('**/iphone/genesis.css',route=>route.fulfill({status:200,contentType:'text/css',body:genesisStyleSource}));
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"passkey_available":false,"password_available":false}'}));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
-  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.goto(previewBase+'/iphone/',{waitUntil:'domcontentloaded'});
+  await page.addScriptTag({url:previewBase+'/iphone/first-run.js'});
   await page.locator('#enrollPanel .genesis-screen[data-step="1"]').waitFor({state:'visible'});
   assert.equal(await page.locator('#enrollPanel').getAttribute('aria-modal'),'true','Genesis is exposed as a modal first-run experience');
   for(const selector of ['.reference-desktop-sidebar','.reference-desktop-tools','.reference-mobile-nav','#appDrawer','#conversationDrawer'])
@@ -50,8 +51,8 @@ async function verifyReturningOwnerEntry(){
   await page.route('**/iphone/api/status',route=>route.fulfill({status:401,contentType:'application/json',body:'{"detail":"No local owner yet"}'}));
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":true,"restore_available":true,"passkey_available":false,"password_available":false,"recovery_available":false}'}));
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
-  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.goto(previewBase+'/iphone/',{waitUntil:'domcontentloaded'});
+  await page.addScriptTag({url:previewBase+'/iphone/first-run.js'});
   await page.waitForTimeout(200);
   await page.locator('.genesis-connect').waitFor({state:'visible'});
   assert.equal(await page.locator('.vc-method').count(),5,'P1-06 offers five visible reference methods');
@@ -94,8 +95,8 @@ async function verifyConfiguredOwnerMethods(){
   await page.route('**/iphone/api/access/options',route=>route.fulfill({status:200,contentType:'application/json',body:'{"creation_available":false,"passkey_available":false,"password_available":true,"recovery_available":true}'}));
   await page.route('**/iphone/api/access/password/login',async route=>{passwordLoginAttempts++;return route.fulfill({status:200,contentType:'application/json',body:'{"ok":true}'})});
   await page.addInitScript(()=>sessionStorage.setItem('vishnuAccessIntent','join'));
-  await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
-  await page.addScriptTag({url:'http://127.0.0.1:4173/iphone/first-run.js'});
+  await page.goto(previewBase+'/iphone/',{waitUntil:'domcontentloaded'});
+  await page.addScriptTag({url:previewBase+'/iphone/first-run.js'});
   await page.locator('.genesis-connect').waitFor({state:'visible'});
   await page.locator('[data-vc-method=account]').click();
   await page.locator('[data-vc-continue]').click();
@@ -116,6 +117,15 @@ async function wire(page){
     else if(path==='/preferences') body={continuous_voice:false,voice_rate:1,quiet_hours:false};
     else if(path==='/projects'||path==='/projects?status=active') body={projects:[{id:'p1',name:'Test Project',conversation_id:'project-chat-p1'}]};
     else if(path==='/projects/p1') body={project:{id:'p1',name:'Test Project',goal:'Verify search-to-project navigation.',status:'active',tasks:[],milestones:[],threads:[],files:[],activity:[],approvals:[]}};
+    else if(path==='/search'&&method==='GET'){
+      const q=(url.searchParams.get('q')||'').toLowerCase(),category=url.searchParams.get('category')||'all';
+      const rows=[
+        {type:'conversations',id:'chat-1',title:'New conversation',excerpt:'Help me plan a project with milestones.',source:'Conversation',updated_at:new Date().toISOString()},
+        {type:'projects',id:'p1',title:'Test Project',excerpt:'Verify search-to-project navigation.',source:'Project',project_id:'p1',updated_at:new Date().toISOString()}
+      ].filter(item=>(category==='all'||category===item.type)&&(`${item.title} ${item.excerpt}`.toLowerCase().includes(q)));
+      body={results:rows,counts:{all:rows.length,conversations:rows.filter(x=>x.type==='conversations').length,projects:rows.filter(x=>x.type==='projects').length},coverage:{conversations:'available',projects:'available'},next_offset:null};
+    }
+    else if(path.startsWith('/search/result/')) body={result:{type:'conversations',id:'chat-1',title:'New conversation',excerpt:'Help me plan a project with milestones.',source:'Conversation',updated_at:new Date().toISOString()},preview:[],related:[]};
     else if(path==='/projects/p1/conversation'&&method==='POST') body={conversation_id:'project-chat-p1',project:{id:'p1',name:'Test Project'}};
     else if(path==='/projects/p1/discussions'&&method==='POST'){
       const input=JSON.parse(req.postData()||'{}');await page.evaluate(value=>window.__projectDiscussion=value,input);body={project:{id:'p1',name:'Test Project'}};
@@ -149,7 +159,7 @@ try{
   // The real Google sign-in widget is unrelated to this offline browser fixture.
   await desktop.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
   await wire(desktop);
-  await desktop.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+  await desktop.goto(previewBase+'/iphone/',{waitUntil:'domcontentloaded'});
   await desktop.addStyleTag({content:globalSearchStyle});
   await desktop.addScriptTag({content:globalSearchSource});
   await desktop.addStyleTag({content:commandCenterStyle});
@@ -157,13 +167,17 @@ try{
   await desktop.locator('#vNewChat').evaluate(node=>node.click());
   await desktop.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
   await desktop.screenshot({path:'artifacts/chat-new-empty-desktop.png',fullPage:true});
-  assert.equal(await desktop.locator('#chatPromptGrid .chat-prompt-card').count(),4);
-  assert.equal(await desktop.locator('#appDrawer').isVisible(),true,'desktop uses existing global navigation');
+  assert.equal(await desktop.locator('#p202Welcome .p202-prompt').count(),4,'new chat uses the approved Phase 2 prompt chips');
+  assert.equal(await desktop.locator('.reference-desktop-sidebar').isVisible(),true,'desktop keeps global navigation beside the conversation list');
   assert.equal(await desktop.locator('#conversationDrawer').isVisible(),true,'desktop uses the existing conversation list');
+  await desktop.locator('#historyButton').evaluate(node=>node.click());
+  await desktop.locator('.reference-desktop-sidebar').waitFor({state:'visible'});
+  assert.equal(await desktop.locator('#conversationDrawer').isVisible(),false,'the navigation toggle closes chat history instead of stacking another panel');
   assert.equal(await desktop.locator('#vContextChip').isVisible(),true,'new chat keeps its project context selector visible');
   assert.equal(await desktop.locator('#sendButton').isVisible(),true,'send control remains visible for an empty draft');
-  await desktop.locator('#chatPromptGrid .chat-prompt-card').first().click();
-  assert.match(await desktop.locator('#message').inputValue(),/plan a project/i);
+  await desktop.locator('#p202Welcome .p202-prompt').first().click();
+  assert.match(await desktop.locator('#message').inputValue(),/organize my day/i);
+  await desktop.locator('#message').fill('Help me plan a project with milestones.');
   assert.equal(turns,0,'a suggestion fills the draft without submitting it');
   await desktop.locator('#vContextChip').click();
   await desktop.locator('.project-dialog select[name="project_id"]').selectOption('p1');
@@ -223,13 +237,15 @@ try{
   // races its asynchronous shell render and can hide a freshly mounted input.
   await desktop.evaluate(()=>window.openModule('search'));
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
-  await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-category="projects"]:visible').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('New conversation');
-  await desktop.locator('[data-gs-open="conversation"]').first().waitFor({state:'visible'});
-  assert.equal(await desktop.locator('.gs-group h2').first().innerText(),'Conversations','global search groups canonical conversation results');
+  await desktop.locator('[data-gs-select="conversations"]:visible').first().waitFor({state:'visible'});
+  assert.match(await desktop.locator('#globalSearchResults').innerText(),/Search Results/,'global search renders canonical results');
   await desktop.screenshot({path:'artifacts/global-search-desktop.png',fullPage:true});
-  const searchConversationId=await desktop.locator('[data-gs-open="conversation"]').first().getAttribute('data-gs-id');
-  await desktop.locator('[data-gs-open="conversation"]').first().click();
+  const searchConversationId=await desktop.locator('[data-gs-select="conversations"]').first().getAttribute('data-gs-id');
+  await desktop.locator('[data-gs-select="conversations"]').first().click();
+  await desktop.locator('#gsDetail [data-gs-action="open"]').waitFor({state:'visible'});
+  await desktop.locator('#gsDetail [data-gs-action="open"]').click();
   await desktop.waitForFunction(id=>window.vishnuChatBridge.current.id===id,searchConversationId,'search result activates its existing conversation ID');
   await desktop.waitForFunction(()=>!document.querySelector('#modulePanel')?.classList.contains('open') && !document.body.classList.contains('global-search-mode'),null,{timeout:10000}); // Wait for async conversation navigation to close Search before reopening it.
 
@@ -237,11 +253,12 @@ try{
   // races its asynchronous shell render and can hide a freshly mounted input.
   await desktop.evaluate(()=>window.openModule('search'));
   await desktop.locator('#globalSearchQuery').waitFor({state:'visible'});
-  await desktop.locator('[data-gs-scope="projects"]').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-category="projects"]:visible').waitFor({state:'visible'});
   await desktop.locator('#globalSearchQuery').fill('Test Project');
-  await desktop.locator('[data-gs-scope="projects"]').click();
-  await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').waitFor({state:'visible'});
-  await desktop.locator('[data-gs-open="project"][data-gs-id="p1"]').click();
+  await desktop.locator('[data-gs-category="projects"]:visible').click();
+  await desktop.locator('[data-gs-select="projects"][data-gs-id="p1"]').waitFor({state:'visible'});
+  await desktop.locator('[data-gs-select="projects"][data-gs-id="p1"]').click();
+  await desktop.locator('#gsDetail [data-gs-action="open"]').click();
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
   assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
   await desktop.keyboard.press('Control+Shift+P');
@@ -257,7 +274,7 @@ try{
   await mobile.route('https://accounts.google.com/gsi/client',route=>route.fulfill({status:200,contentType:'application/javascript',body:''}));
   active=null;conversations=[];created=0;turns=0;modalities=[];
   await wire(mobile);
-  await mobile.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+  await mobile.goto(previewBase+'/iphone/',{waitUntil:'domcontentloaded'});
   await mobile.addStyleTag({content:globalSearchStyle});
   await mobile.addScriptTag({content:globalSearchSource});
   await mobile.addStyleTag({content:commandCenterStyle});
@@ -277,7 +294,9 @@ try{
   await mobile.locator('.project-dialog select[name="project_id"]').selectOption('');
   await mobile.locator('.project-dialog .project-btn.primary').click();
   await mobile.waitForFunction(()=>document.body.innerText.includes('General chat · No project context'));
-  await mobile.locator('#chatPromptGrid .chat-prompt-card').nth(1).click();
+  await mobile.locator('#p202Welcome .p202-prompt').first().click();
+  assert.match(await mobile.locator('#message').inputValue(),/organize my day/i);
+  await mobile.locator('#message').fill('Help me plan my day with a meeting and focused work.');
   assert.equal(turns,0);
   await mobile.locator('#sendButton').click();
   await mobile.waitForFunction(()=>document.body.classList.contains('has-conversation'));

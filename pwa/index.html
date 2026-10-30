@@ -4537,7 +4537,12 @@ async function refreshConversationList(query=''){
 function syncDrawerOverlay(){
  const conversationOpen=!$('conversationDrawer').classList.contains('hidden');
  const open=!$('appDrawer').classList.contains('hidden')||conversationOpen;
- $('drawerOverlay').classList.toggle('hidden',!open);
+ const desktopChatPanel=conversationOpen&&$('conversationDrawer').dataset.mode==='conversations'&&
+  document.body.classList.contains('p202-personal-chat')&&window.matchMedia('(min-width: 1280px)').matches;
+ $('conversationDrawer').setAttribute('aria-modal',desktopChatPanel?'false':'true');
+ $('drawerOverlay').classList.toggle('hidden',!open||desktopChatPanel);
+ if(desktopChatPanel)$('conversationDrawer').setAttribute('role','complementary');
+ else $('conversationDrawer').setAttribute('role','dialog');
  document.body.classList.toggle('conversation-drawer-open',conversationOpen)
 }
 function attachSidebarSphere(){const stage=document.querySelector('.core-stage'),target=document.querySelector('#appDrawer .sidebar-symbol');if(!stage||!target)return;if(!identityCoreHomeParent){identityCoreHomeParent=stage.parentElement;identityCoreHomeNext=stage.nextSibling}target.replaceWith(stage);stage.classList.add('identity-core-stage');requestAnimationFrame(resizeCanvas)}

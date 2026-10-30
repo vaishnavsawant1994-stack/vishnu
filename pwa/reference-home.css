@@ -345,7 +345,8 @@ body.v-ref.home-landing .v-project {
   body.v-ref .reference-desktop-sidebar nav button.p202b-entry > span.p202b-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   body.v-ref.conversation-drawer-open { padding-left: 0 !important; }
   body.v-ref.conversation-drawer-open .reference-desktop-sidebar { transform: translateX(-100%); }
-  body.v-ref.conversation-drawer-open .reference-sidebar-toggle { display: none !important; }
+  body.v-ref.conversation-drawer-open .reference-sidebar-toggle { left: 12px; }
+  body.v-ref.chat-experience.conversation-drawer-open .conversations-drawer-header { padding-left: 50px; }
   body.v-ref.conversation-drawer-open .app-shell { width: calc(100% - 280px) !important; margin-left: 280px !important; }
   body.v-ref #appDrawer,
   body.v-ref #drawerOverlay { display: none !important; }

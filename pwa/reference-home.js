@@ -95,15 +95,32 @@
 
   function syncActive(name) {
     all('.reference-desktop-sidebar [data-app-module],.reference-mobile-nav [data-app-module]').forEach(button => {
-      button.classList.toggle('active', button.dataset.appModule === name);
+      const active = button.dataset.appModule === name;
+      button.classList.toggle('active', active);
+      if (active) button.setAttribute('aria-current', 'page');
+      else button.removeAttribute('aria-current');
     });
   }
 
   all('.reference-desktop-sidebar [data-app-module],.reference-mobile-nav [data-app-module]').forEach(button => {
     button.addEventListener('click', () => {
       syncActive(button.dataset.appModule);
+      if (button.dataset.appModule === 'conversations') {
+        window.openConversationsDrawer?.();
+        return;
+      }
       openModule(button.dataset.appModule);
     });
+  });
+
+  function syncCurrentSurface() {
+    if (document.body.classList.contains('chat-experience')) syncActive('conversations');
+    else if (document.body.classList.contains('home-landing')) syncActive('home');
+  }
+  syncCurrentSurface();
+  new MutationObserver(syncCurrentSurface).observe(document.body, {
+    attributes: true,
+    attributeFilter: ['class']
   });
 
   all('[data-reference-search]').forEach(button => button.addEventListener('click', () => {

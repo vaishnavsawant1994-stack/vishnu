@@ -74,7 +74,9 @@ class GovernedRepositoryEditor:
         if b"\x00" in raw:
             raise ValueError(f"binary files are outside the governed text editor: {path}")
         try:
-            return raw.decode("utf-8")
+            # Match Python's text-mode universal-newline behavior so governed
+            # edits are deterministic on Windows and POSIX workspaces alike.
+            return raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
         except UnicodeDecodeError as exc:
             raise ValueError(f"file is not valid UTF-8 governed source text: {path}") from exc
 
