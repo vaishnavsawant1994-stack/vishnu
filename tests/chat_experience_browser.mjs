@@ -135,7 +135,7 @@ async function wire(page){
           ? {type:'conversations',id:'chat-1',title:'New conversation',excerpt:'Help me plan a project with milestones.',source:'Conversation',updated_at:new Date().toISOString()}
           : null;
       if(!result)return route.fulfill({status:404,contentType:'application/json',body:'{"detail":"Not found"}'});
-      body={result,preview:[],related:[]};
+      body={result,preview:kind==='projects'?[{role:'assistant_message',text:'Verified project detail preview'}]:[],related:[]};
     }
     else if(path==='/projects/p1/conversation'&&method==='POST') body={conversation_id:'project-chat-p1',project:{id:'p1',name:'Test Project'}};
     else if(path==='/projects/p1/discussions'&&method==='POST'){
@@ -275,6 +275,8 @@ try{
   await desktop.locator('[data-gs-category="projects"]:visible').click();
   await desktop.locator('[data-gs-select="projects"][data-gs-id="p1"]').waitFor({state:'visible'});
   await desktop.locator('[data-gs-select="projects"][data-gs-id="p1"]').click();
+  // Wait for the canonical project preview to finish re-rendering the Open action.
+  await desktop.getByText('Verified project detail preview').waitFor({state:'visible'});
   await desktop.locator('#gsDetail [data-gs-action="open"]').click();
   await desktop.locator('.project-detail-page .project-detail-title h1').waitFor({state:'visible'});
   assert.equal(await desktop.locator('.project-detail-page .project-detail-title h1').innerText(),'Test Project','project search result loads the selected project through the real project detail module');
