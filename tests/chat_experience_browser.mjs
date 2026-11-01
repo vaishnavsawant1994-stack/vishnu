@@ -339,7 +339,8 @@ try{
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile Command Center stays within the viewport');
   await mobile.screenshot({path:'artifacts/command-center-mobile.png',fullPage:false});
   await mobile.keyboard.press('Escape');
-  assert.equal(await mobile.locator('.cc-page').count(),0,'Escape closes the mobile Command Center');
+  await mobile.waitForFunction(()=>!document.body.classList.contains('cc-page-mode'));
+  assert.equal(await mobile.locator('.cc-page').isVisible(),false,'Escape hides the mobile Command Center and restores the previous view');
   await mobile.locator('[data-reference-search]').evaluate(node=>node.click());
   await mobile.locator('#globalSearchQuery').waitFor({state:'visible'});
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile global search has no horizontal overflow');
