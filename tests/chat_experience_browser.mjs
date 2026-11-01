@@ -125,7 +125,18 @@ async function wire(page){
       ].filter(item=>(category==='all'||category===item.type)&&(`${item.title} ${item.excerpt}`.toLowerCase().includes(q)));
       body={results:rows,counts:{all:rows.length,conversations:rows.filter(x=>x.type==='conversations').length,projects:rows.filter(x=>x.type==='projects').length},coverage:{conversations:'available',projects:'available'},next_offset:null};
     }
-    else if(path.startsWith('/search/result/')) body={result:{type:'conversations',id:'chat-1',title:'New conversation',excerpt:'Help me plan a project with milestones.',source:'Conversation',updated_at:new Date().toISOString()},preview:[],related:[]};
+    else if(path.startsWith('/search/result/')){
+      // Each preview must return the same canonical resource type and ID that was selected.
+      // Returning a conversation for a project would silently redirect Open to the wrong module.
+      const [, , , kind, selectedId]=path.split('/');
+      const result=kind==='projects'&&selectedId==='p1'
+        ? {type:'projects',id:'p1',title:'Test Project',excerpt:'Verify search-to-project navigation.',source:'Project',project_id:'p1',updated_at:new Date().toISOString()}
+        : kind==='conversations'&&selectedId==='chat-1'
+          ? {type:'conversations',id:'chat-1',title:'New conversation',excerpt:'Help me plan a project with milestones.',source:'Conversation',updated_at:new Date().toISOString()}
+          : null;
+      if(!result)return route.fulfill({status:404,contentType:'application/json',body:'{"detail":"Not found"}'});
+      body={result,preview:[],related:[]};
+    }
     else if(path==='/projects/p1/conversation'&&method==='POST') body={conversation_id:'project-chat-p1',project:{id:'p1',name:'Test Project'}};
     else if(path==='/projects/p1/discussions'&&method==='POST'){
       const input=JSON.parse(req.postData()||'{}');await page.evaluate(value=>window.__projectDiscussion=value,input);body={project:{id:'p1',name:'Test Project'}};
