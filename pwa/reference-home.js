@@ -102,17 +102,10 @@
     });
   }
 
-  all('.reference-desktop-sidebar [data-app-module],.reference-mobile-nav [data-app-module]').forEach(button => {
-    button.addEventListener('click', () => {
-      syncActive(button.dataset.appModule);
-      if (button.dataset.appModule === 'conversations') {
-        window.openConversationsDrawer?.();
-        return;
-      }
-      openModule(button.dataset.appModule);
-    });
-  });
-
+  // Navigation is owned by the canonical index.html router. Phase 2 owns
+  // [data-reference-search] via its capture handler; registering another click
+  // listener here caused duplicate async module openings and stale old routes.
+  // This adapter synchronizes visual active states only.
   function syncCurrentSurface() {
     if (document.body.classList.contains('chat-experience')) syncActive('conversations');
     else if (document.body.classList.contains('home-landing')) syncActive('home');
@@ -122,18 +115,6 @@
     attributes: true,
     attributeFilter: ['class']
   });
-
-  all('[data-reference-search]').forEach(button => button.addEventListener('click', () => {
-    if (window.matchMedia?.('(min-width: 901px)').matches) {
-      openModule('search');
-      return;
-    }
-    document.getElementById('historyButton')?.click();
-    requestAnimationFrame(() => {
-      document.getElementById('sidebarSearchToggle')?.click();
-      document.getElementById('sidebarSearch')?.focus();
-    });
-  }));
 
   all('[data-reference-create]').forEach(button => button.addEventListener('click', () => {
     if (bridge()?.setDraft) bridge().setDraft('Create ');
