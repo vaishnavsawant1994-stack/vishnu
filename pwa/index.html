@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="vishnu-phase2-booting">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
@@ -12,6 +12,44 @@
   <link rel="stylesheet" href="/iphone/runtime-assistant.css" />
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <title>Vishnu</title>
+  <!-- Prevent the legacy Home layout from painting before P2-01 mounts.
+       On a missing bundle, report an error instead of silently reverting. -->
+  <style id="vishnuPhase2BootStyle">
+    html.vishnu-phase2-booting body.v-ref.home-landing #voicePanel,
+    html.vishnu-phase2-failed body.v-ref.home-landing #voicePanel {visibility:hidden!important}
+    html.vishnu-phase2-booting body.v-ref .reference-mobile-nav,
+    html.vishnu-phase2-failed body.v-ref .reference-mobile-nav {visibility:hidden!important}
+    #vishnuPhase2BootError {display:none}
+    html.vishnu-phase2-failed body.v-ref.home-landing #vishnuPhase2BootError {
+      display:flex;flex-direction:column;align-items:flex-start;gap:12px;
+      padding:18px;max-width:680px;margin:24px auto;border-radius:12px;
+      background:#0a1625;border:1px solid #385c83;color:#e7f0ff
+    }
+    #vishnuPhase2BootError button {padding:10px 16px;border-radius:9px;
+      border:1px solid #6bbaff;background:#092b4d;color:#fff;cursor:pointer}
+  </style>
+  <script>
+    // Deferred screen modules finish before DOMContentLoaded. If Phase 2 did
+    // not mount, keep the outdated Home hidden and expose an actionable error.
+    document.addEventListener('DOMContentLoaded', () => {
+      const root = document.documentElement;
+      if (!root.classList.contains('vishnu-phase2-booting')) return;
+      root.classList.replace('vishnu-phase2-booting', 'vishnu-phase2-failed');
+      const shell = document.querySelector('.app-shell');
+      if (!shell) return;
+      const notice = document.createElement('section');
+      notice.id = 'vishnuPhase2BootError';
+      notice.setAttribute('role','alert');
+      const message = document.createElement('p');
+      message.textContent = 'Vishnu 2.0 Home could not load. The older Home has not been substituted.';
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Reload Vishnu';
+      retry.addEventListener('click', () => location.reload());
+      notice.append(message, retry);
+      shell.querySelector('.topbar')?.after(notice);
+    }, {once:true});
+  </script>
   <style>
     :root{color-scheme:dark;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter",sans-serif;--bg:#03060b;--panel:rgba(10,17,29,.68);--line:rgba(148,177,230,.2);--text:#f4f7fd;--muted:#8c98ad;--blue:#69b8ff;--violet:#9b84ff;--cyan:#60e8ff;--danger:#ff718d}
     *{box-sizing:border-box}html{background:var(--bg);scroll-behavior:smooth}body{margin:0;min-height:100dvh;color:var(--text);background:radial-gradient(ellipse at 50% 28%,rgba(44,82,147,.17),transparent 43%),radial-gradient(ellipse at 76% 18%,rgba(87,58,160,.09),transparent 30%),#03060b}button,input{font:inherit}button{color:inherit}.hidden{display:none!important}
@@ -5092,7 +5130,7 @@ document.addEventListener('click',event=>{const button=event.target.closest('[da
 document.addEventListener('keydown',event=>{if(event.key!=='Escape')return;const memoryDialog=document.querySelector('dialog.mx-filter-dialog[open]');if(memoryDialog){event.preventDefault();memoryDialog.close();return}if(document.querySelector('dialog[open]'))return;const menu=document.activeElement?.closest('.section-menu[open]')||document.querySelector('.section-menu[open]');if(!menu)return;event.preventDefault();event.stopImmediatePropagation();menu.open=false;menu.querySelector('summary')?.focus()},{capture:true});
 document.addEventListener('pointerdown',event=>{document.querySelectorAll('.section-menu[open]').forEach(menu=>{if(!menu.contains(event.target))menu.open=false})});
 document.querySelectorAll('[data-module]').forEach(button=>button.onclick=()=>openModule(button.dataset.module));
-document.querySelectorAll('[data-app-module]').forEach(button=>button.onclick=()=>openModule(button.dataset.appModule));
+document.querySelectorAll('[data-app-module]').forEach(button=>button.onclick=()=>button.dataset.appModule==='conversations'?openConversationsDrawer():openModule(button.dataset.appModule));
 
 document.querySelectorAll('.today-tab').forEach(button=>button.onclick=()=>{todayScreenFilter=button.dataset.todayFilter;document.querySelectorAll('.today-tab').forEach(b=>{const active=b===button;b.classList.toggle('active',active);b.setAttribute('aria-selected',String(active))});renderTodayScreen()});
 document.querySelectorAll('[data-today-summary],[data-today-see]').forEach(button=>button.onclick=()=>openTodayScreen(button.dataset.todaySummary||button.dataset.todaySee));
