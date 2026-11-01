@@ -295,7 +295,7 @@ function mount(focus=false){
   const actionBtn=e.target.closest('[data-gs-action]'),category=e.target.closest('[data-gs-category]'),selected=e.target.closest('[data-gs-select]'),recent=e.target.closest('[data-gs-recent]'),related=e.target.closest('[data-gs-related]');
   if(actionBtn){action(actionBtn.dataset.gsAction).catch(err=>message(err.message));return}
   if(category){state.category=category.dataset.gsCategory;updateFacets();search();return}
-  if(selected){const type=selected.dataset.gsSelect,id=selected.dataset.gsId,project_id=selected.dataset.gsProject;const item=state.results.find(x=>x.type===type&&x.id===id&&x.project_id===project_id);if(item)select(item);return}
+  if(selected){const type=selected.dataset.gsSelect,id=selected.dataset.gsId,project_id=selected.dataset.gsProject;const item=state.results.find(x=>x.type===type&&x.id===id&&(x.project_id||'')===project_id);if(item)select(item);return}
   if(recent){state.query=state.recent[Number(recent.dataset.gsRecent)];$('globalSearchQuery').value=state.query;search({remember:true});return}
   if(related){const item=state.detail?.related?.[Number(related.dataset.gsRelated)];if(item)select({...item,project_id:item.project_id||''});return}
  });
