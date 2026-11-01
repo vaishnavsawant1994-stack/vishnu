@@ -66,6 +66,10 @@ try {
  assert.equal(await page.locator('#homeRecentSection').isVisible(),true,'real conversation activity panel visible');
  assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('vishnu-phase2-booting')),false,
   'legacy Home first-paint guard is removed only after the canonical Phase 2 mount');
+ assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('vishnu-phase2-failed')),false,
+  'successful Phase 2 initialization never triggers the missing-bundle fallback');
+ assert.equal(await page.locator('#voicePanel').isVisible(),true,
+  'verified Phase 2 Home becomes visible after mount');
  assert.equal(await page.evaluate(()=>document.body.classList.contains('p2-home-ready')),true,
   'new Home is the only marked ready layout');
  assert.equal(await page.locator('.reference-desktop-sidebar [data-reference-search]').count(),1,
