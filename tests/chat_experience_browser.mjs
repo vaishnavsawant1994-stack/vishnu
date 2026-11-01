@@ -283,10 +283,10 @@ try{
   await desktop.keyboard.press('Control+Shift+P');
   await desktop.getByRole('heading',{name:'Command Center'}).waitFor({state:'visible'});
   await desktop.screenshot({path:'artifacts/command-center-desktop.png',fullPage:false});
-  await desktop.locator('[data-cc-query]').fill('Projects');
-  await desktop.locator('[data-cc-run="Projects"]').click();
+  await desktop.locator('#ccCommandInput').fill('Open Projects');
+  await desktop.locator('[data-cc-id="projects"]').first().click();
   await desktop.waitForFunction(()=>document.querySelector('#moduleTitle')?.textContent==='Projects','command navigation opens the canonical Projects module');
-  assert.equal(await desktop.locator('.cc-dialog').count(),0,'command navigation closes the palette and returns to the canonical Projects module');
+  assert.equal(await desktop.locator('.cc-page').count(),0,'command navigation closes Command Center and returns to canonical Projects');
 
   const mobile=await browser.newPage({viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,serviceWorkers:'block'});
   // The real Google sign-in widget is unrelated to this offline browser fixture.
@@ -339,7 +339,7 @@ try{
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile Command Center stays within the viewport');
   await mobile.screenshot({path:'artifacts/command-center-mobile.png',fullPage:false});
   await mobile.keyboard.press('Escape');
-  assert.equal(await mobile.locator('.cc-dialog').count(),0,'Escape closes the mobile Command Center');
+  assert.equal(await mobile.locator('.cc-page').count(),0,'Escape closes the mobile Command Center');
   await mobile.locator('[data-reference-search]').evaluate(node=>node.click());
   await mobile.locator('#globalSearchQuery').waitFor({state:'visible'});
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile global search has no horizontal overflow');
