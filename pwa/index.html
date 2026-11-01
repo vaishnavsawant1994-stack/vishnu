@@ -32,22 +32,26 @@
     // Deferred screen modules finish before DOMContentLoaded. If Phase 2 did
     // not mount, keep the outdated Home hidden and expose an actionable error.
     document.addEventListener('DOMContentLoaded', () => {
-      const root = document.documentElement;
-      if (!root.classList.contains('vishnu-phase2-booting')) return;
-      root.classList.replace('vishnu-phase2-booting', 'vishnu-phase2-failed');
-      const shell = document.querySelector('.app-shell');
-      if (!shell) return;
-      const notice = document.createElement('section');
-      notice.id = 'vishnuPhase2BootError';
-      notice.setAttribute('role','alert');
-      const message = document.createElement('p');
-      message.textContent = 'Vishnu 2.0 Home could not load. The older Home has not been substituted.';
-      const retry = document.createElement('button');
-      retry.type = 'button';
-      retry.textContent = 'Reload Vishnu';
-      retry.addEventListener('click', () => location.reload());
-      notice.append(message, retry);
-      shell.querySelector('.topbar')?.after(notice);
+      // The Phase 2 defer bundle registers its own DOMContentLoaded callback.
+      // Check on the following task, after every same-event initializer ran.
+      setTimeout(() => {
+        const root = document.documentElement;
+        if (!root.classList.contains('vishnu-phase2-booting')) return;
+        root.classList.replace('vishnu-phase2-booting', 'vishnu-phase2-failed');
+        const shell = document.querySelector('.app-shell');
+        if (!shell) return;
+        const notice = document.createElement('section');
+        notice.id = 'vishnuPhase2BootError';
+        notice.setAttribute('role','alert');
+        const message = document.createElement('p');
+        message.textContent = 'Vishnu 2.0 Home could not load. The older Home has not been substituted.';
+        const retry = document.createElement('button');
+        retry.type = 'button';
+        retry.textContent = 'Reload Vishnu';
+        retry.addEventListener('click', () => location.reload());
+        notice.append(message, retry);
+        shell.querySelector('.topbar')?.after(notice);
+      }, 0);
     }, {once:true});
   </script>
   <style>
