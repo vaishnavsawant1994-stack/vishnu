@@ -7,8 +7,10 @@ const source=await readFile(new URL('../pwa/global-search.js',import.meta.url),'
 const style=await readFile(new URL('../pwa/global-search.css',import.meta.url),'utf8');
 const screenshot=process.env.P206_SCREENSHOT_DIR;
 if(screenshot)await mkdir(screenshot,{recursive:true});
+// Conversation search records may omit the optional project_id field entirely.
+// Keep this fixture unscoped to guard preview and navigation click handling.
 const records=[
- {type:'conversations',id:'conv-1',title:'API Integration Plan',excerpt:'Real persisted API conversation',updated_at:'2026-10-22T08:00:00Z',source:'continuity',project_id:'',workspace_id:'',tags:['API']},
+ {type:'conversations',id:'conv-1',title:'API Integration Plan',excerpt:'Real persisted API conversation',updated_at:'2026-10-22T08:00:00Z',source:'continuity',workspace_id:'',tags:['API']},
  {type:'projects',id:'proj-1',title:'API Development',excerpt:'Integrate API services',updated_at:'2026-10-22T07:00:00Z',source:'canonical_project',project_id:'proj-1',workspace_id:'',status:'in_progress'},
  {type:'files',id:'file-1',title:'API blueprint.txt',excerpt:'Indexed file',updated_at:'2026-10-21T09:00:00Z',source:'project_file',project_id:'proj-1',workspace_id:'',status:'indexed'},
  {type:'work',id:'task-1',title:'API checklist',excerpt:'Canonical project task',updated_at:'2026-10-20T09:00:00Z',source:'canonical_project_task',project_id:'proj-1',workspace_id:'',status:'planned'},
