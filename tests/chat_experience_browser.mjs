@@ -341,7 +341,9 @@ try{
   await mobile.keyboard.press('Escape');
   await mobile.waitForFunction(()=>!document.body.classList.contains('cc-page-mode'));
   assert.equal(await mobile.locator('.cc-page').isVisible(),false,'Escape hides the mobile Command Center and restores the previous view');
-  await mobile.locator('[data-reference-search]:visible').first().click();
+  await mobile.locator('.reference-mobile-nav [data-reference-more]').click();
+  await mobile.locator('#appDrawer [data-app-module="search"]').waitFor({state:'visible'});
+  await mobile.locator('#appDrawer [data-app-module="search"]').click();
   await mobile.locator('#globalSearchQuery').waitFor({state:'visible'});
   assert.equal(await mobile.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'mobile global search has no horizontal overflow');
   await mobile.screenshot({path:'artifacts/global-search-mobile.png',fullPage:true});
