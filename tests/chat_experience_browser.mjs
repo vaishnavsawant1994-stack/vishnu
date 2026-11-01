@@ -151,7 +151,13 @@ async function wire(page){
       active.events.push({event_id:'a-'+turns,kind:'assistant_message',created_at:now,payload:{text:'Here is a concise plan based on your question.',sources:[{title:'Planning reference',description:'Source metadata returned by the conversation service.',url:'https://example.test/reference'}]}});
       body={conversation_id:active.conversation.id,conversation_title:active.conversation.title,reply:'Here is a concise plan based on your question.',status:'completed'};
     } else if(path==='/conversations/project-chat-p1/activate'&&method==='POST') {active={conversation:{id:'project-chat-p1',title:'Test Project'},events:[]};body=active;}
-    else if(path.startsWith('/conversations/')&&path.endsWith('/activate')) body=active||{};
+    else if(path.startsWith('/conversations/')&&path.endsWith('/activate')){
+      const requestedId=decodeURIComponent(path.split('/')[2]||'');
+      const requested=conversations.find(conversation=>conversation.id===requestedId);
+      if(!requested)return route.fulfill({status:404,contentType:'application/json',body:'{"detail":"Conversation not found"}'});
+      active={conversation:requested,events:active?.conversation?.id===requestedId?(active.events||[]):[]};
+      body=active;
+    }
     else if(path.startsWith('/conversations/')&&method==='GET') body=active||{};
     else if(path.startsWith('/conversations/')&&path.endsWith('/export')) body={conversation:active?.conversation,events:active?.events||[]};
     else if(path.startsWith('/conversations/')&&method==='PATCH'){const input=JSON.parse(req.postData()||'{}');active.conversation.title=input.title;body={conversation:active.conversation};}
