@@ -436,7 +436,7 @@ body.v-ref.p2-home-ready .p2-mobile-notifications {display:none}
   html body.v-ref.p2-home-ready.home-landing .topbar .owner-status {display:none!important}
   html body.v-ref.p2-home-ready.home-landing .p2-mobile-notifications {
     display:grid!important;place-items:center;
-    width:42px;height:42px;min-width:42px;min-height:42px;
+    width:44px;height:44px;min-width:44px;min-height:44px;
     border:0;border-radius:12px;background:transparent;
     color:#dcf2ff;font-size:27px;cursor:pointer
   }
