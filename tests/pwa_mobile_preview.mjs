@@ -403,7 +403,13 @@ try {
   assert.ok(homeState.cardRects.every(card=>card.height>=44&&card.height<=180),"P2-01 Home action cards must retain controlled heights");
   const mobileHomeButton=await page.locator('.reference-mobile-nav [data-p2-mobile="home"]').boundingBox();
   assert.ok(mobileHomeButton&&mobileHomeButton.width>=44&&mobileHomeButton.height>=44,"Mobile Home navigation must preserve an accessible touch target");
-  assert.ok(homeState.timelineButton.width>=44&&homeState.timelineButton.height>=44,"Home timeline control must preserve an accessible touch target");
+  // P2-01 uses the approved Notifications button in Home; the legacy Timeline
+  // clock remains available on other surfaces, not on this new Home header.
+  assert.equal(await page.locator('#ownerButton').isVisible(),false,
+    'legacy Timeline button is not shown on the approved Phase 2 Home');
+  const homeNotifications=await page.locator('.p2-mobile-notifications').boundingBox();
+  assert.ok(homeNotifications&&homeNotifications.width>=44&&homeNotifications.height>=44,
+    'Phase 2 Home Notifications retains an accessible touch target');
   const mobileNavBox=await page.locator('.reference-mobile-nav').boundingBox();
   assert.ok(mobileNavBox&&mobileNavBox.height>=44&&homeState.composer.width>0,"P2-01 composer remains in scrollable content with a separate mobile nav");
   const recentSectionVisible=await page.locator("#homeRecentSection").isVisible();
