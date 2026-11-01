@@ -145,7 +145,7 @@ async function action(kind){
  if(kind==='clear'){state.query='';$('globalSearchQuery').value='';clearTimeout(state.timer);return search()}
  if(kind==='clear-recent'){state.recent=[];renderRecent();return}
  if(kind==='more')return search({append:true});
- if(kind==='reset'){state.category='all';state.sort='relevance';state.time='all';state.dateFrom='';state.dateTo='';state.project='';state.workspace='';state.tag='';state.filtersOpen=false;renderFilters();return search()}
+ if(kind==='reset'){clearTimeout(state.timer);state.category='all';state.sort='relevance';state.time='all';state.dateFrom='';state.dateTo='';state.project='';state.workspace='';state.tag='';state.filtersOpen=false;renderFilters();return search()}
  if(kind==='back'){state.mobileDetail=false;renderDetail();$('globalSearchQuery').focus();return}
  if(kind==='filters'){state.filtersOpen=!state.filtersOpen;renderFilters();return}
  if(!item)return;
@@ -294,14 +294,14 @@ function mount(focus=false){
   if(!active())return;
   const actionBtn=e.target.closest('[data-gs-action]'),category=e.target.closest('[data-gs-category]'),selected=e.target.closest('[data-gs-select]'),recent=e.target.closest('[data-gs-recent]'),related=e.target.closest('[data-gs-related]');
   if(actionBtn){action(actionBtn.dataset.gsAction).catch(err=>message(err.message));return}
-  if(category){state.category=category.dataset.gsCategory;updateFacets();search();return}
+  if(category){clearTimeout(state.timer);state.category=category.dataset.gsCategory;updateFacets();search();return}
   if(selected){const type=selected.dataset.gsSelect,id=selected.dataset.gsId,project_id=selected.dataset.gsProject;const item=state.results.find(x=>x.type===type&&x.id===id&&(x.project_id||'')===project_id);if(item)select(item);return}
-  if(recent){state.query=state.recent[Number(recent.dataset.gsRecent)];$('globalSearchQuery').value=state.query;search({remember:true});return}
+  if(recent){clearTimeout(state.timer);state.query=state.recent[Number(recent.dataset.gsRecent)];$('globalSearchQuery').value=state.query;search({remember:true});return}
   if(related){const item=state.detail?.related?.[Number(related.dataset.gsRelated)];if(item)select({...item,project_id:item.project_id||''});return}
  });
  root.querySelector('#globalSearchQuery').oninput=e=>{state.query=e.target.value;clearTimeout(state.timer);state.timer=setTimeout(()=>search(),290)};
  root.querySelector('#globalSearchQuery').onkeydown=e=>{if(e.key==='Escape'){e.preventDefault();action('clear')}};
- surface.addEventListener('change',e=>{const key=e.target.dataset.gsFilter;if(!key)return;state[key]=e.target.value;if(key==='dateFrom'||key==='dateTo'){state.time='custom';const t=surface.querySelector('[data-gs-filter="time"]');if(t)t.value='custom'}search()});
+ surface.addEventListener('change',e=>{const key=e.target.dataset.gsFilter;if(!key)return;clearTimeout(state.timer);state[key]=e.target.value;if(key==='dateFrom'||key==='dateTo'){state.time='custom';const t=surface.querySelector('[data-gs-filter="time"]');if(t)t.value='custom'}search()});
  renderFilters();updateFacets();updateCoverage();renderResults();renderDetail();renderMeta();renderRecent();
  if(focus)root.querySelector('#globalSearchQuery').focus();
 }
