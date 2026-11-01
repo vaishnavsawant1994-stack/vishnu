@@ -160,11 +160,32 @@
         renderPendingSetup();
       } else if (options.creation_available) {
         render(2);
+      } else if (options.passkey_available || options.password_available || options.recovery_available || options.google_available) {
+        renderReturning('login');
+      } else if (options.restore_available) {
+        s.recoveryOrigin = 'welcome';
+        renderRecoveryOptions();
       } else {
-        renderReturning('welcome');
+        renderConnect();
       }
     } catch {
       setError('Could not verify owner setup status. Check your runtime connection and retry.');
+      button.disabled = false;
+    }
+  }
+
+  async function startExistingVishnu() {
+    const button = panel.querySelector('[data-genesis-join]');
+    if (!button) return;
+    button.disabled = true;
+    try {
+      s.options = await window.loadAccessOptions() || {};
+      const hasSignInMethod = s.options.passkey_available || s.options.password_available ||
+        s.options.recovery_available || s.options.google_available;
+      if (hasSignInMethod) renderReturning('login');
+      else renderConnect();
+    } catch {
+      setError('Could not verify your Vishnu sign-in options. Check the runtime connection and retry.');
       button.disabled = false;
     }
   }
@@ -256,8 +277,11 @@
   function bind() {
     panel.querySelectorAll('[data-genesis-back]').forEach(button => { button.onclick = () => s.step > 1 && render(s.step-1); });
     panel.querySelector('[data-genesis-create]')?.addEventListener('click', startWelcomeCreation);
-    panel.querySelector('[data-genesis-join]')?.addEventListener('click', () => showLegacy('join'));
-    panel.querySelector('[data-genesis-restore]')?.addEventListener('click', () => showLegacy('restore'));
+    panel.querySelector('[data-genesis-join]')?.addEventListener('click', startExistingVishnu);
+    panel.querySelector('[data-genesis-restore]')?.addEventListener('click', () => {
+      s.recoveryOrigin = 'welcome';
+      renderRecoveryOptions();
+    });
     panel.querySelector('[data-genesis-next]')?.addEventListener('click', () => window.dispatchEvent(new CustomEvent('vishnu:genesis-next', { detail: { step: s.step } })));
     panel.querySelectorAll('input[name=auth]').forEach(input => { input.onchange = () => s.auth = input.value; });
     if (s.step === 3) {
@@ -314,7 +338,8 @@
     s.authView = view;
     panel.setAttribute('aria-label', view === 'restore' ? 'Recover owner access' : 'Vishnu owner authentication');
     const configured = Boolean(s.options.passkey_available || s.options.password_available || s.options.recovery_available || s.options.google_available);
-    const freshRuntime = Boolean((s.options.creation_available || s.options.restore_available) && !s.options.setup_in_progress);
+    const freshRuntime = Boolean((s.options.creation_available || s.options.restore_available) &&
+      !s.options.setup_in_progress && !configured);
     const supportedPasskey = Boolean(s.options.passkey_available && window.PublicKeyCredential && navigator.credentials);
     // P1-05 is a separate returning-owner entry, not a fifth mandatory
     // first-run step. Reuse canonical password / WebAuthn / DeviceRegistry.
@@ -527,6 +552,8 @@
     // Never jump directly to Security with an empty owner payload (HTTP 422).
     const nextStep = resumeStep < 4 ? 2 : 4;
     s.identityCreated = resumeStep >= 4;
+    s.accessIntent = '';
+    s.step = Math.max(2, Math.min(4, resumeStep));
     panel.setAttribute('aria-label', 'Continue Vishnu setup');
     panel.className = 'genesis';
     panel.innerHTML = `<main class="genesis-shell returning-shell"><header class="genesis-top"><span></span><div class="genesis-brand">VISHNU</div><span></span></header><section class="genesis-stage"><div class="genesis-core" role="img" aria-label="Vishnu setup in progress"></div><div class="genesis-copy"><h1>Continue your Vishnu setup</h1><p>${resumeStep < 4 ? 'Your previous setup stopped before owner security was completed. Confirm Your Name again, then continue to Security. No duplicate owner will be created.' : 'Your owner account was secured previously. Continue to save or regenerate your one-time recovery codes; do not create a second owner.'}</p></div><div class="returning-actions"><button type="button" class="genesis-primary" data-auth-action="resume-setup">Continue setup &rarr;</button></div><p id="returningStatus" class="genesis-error" role="status" aria-live="polite"></p></section><footer class="genesis-footer"><a href="#" data-genesis-info="privacy">Privacy</a><span>|</span><a href="#" data-genesis-info="accessibility">Accessibility</a></footer></main>`;
@@ -793,7 +820,7 @@
       const pendingJoin = (() => { try { return JSON.parse(sessionStorage.getItem('vishnuPendingJoin') || 'null'); } catch { return null; } })();
       if (s.options.restore_setup_in_progress) { show(); renderRestoreSecurity(); }
       else if (s.options.restore_restart_required) { show(); renderRestoreRestartRequired(); }
-      else if (s.options.setup_in_progress && s.options.creation_available) { show(); renderPendingSetup(); }
+      else if (s.options.setup_in_progress && s.options.creation_available) renderPendingSetup();
       else if (pendingJoin && !result) { show(); renderJoinPending(pendingJoin); }
       else if (s.accessIntent === 'join') { show(); renderConnect(); }
       else if (s.accessIntent === 'restore') { show(); s.recoveryOrigin='welcome'; renderRecoveryOptions(); }

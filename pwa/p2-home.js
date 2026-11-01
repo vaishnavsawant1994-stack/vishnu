@@ -64,7 +64,6 @@
   function build() {
     if (initialized || !$('homeIntro') || !$('homeSphereStage') || !$('homeGreeting')) return;
     initialized = true;
-    document.body.classList.add('p2-home-ready');
     const intro = $('homeIntro'), greeting = $('homeGreeting').parentNode, sphere = $('homeSphereStage');
     const hero = make('section', 'p2-hero');
     hero.setAttribute('aria-label', 'Vishnu intelligence home');
@@ -223,18 +222,13 @@
     installNavigation();
     paintClock();
     paintEmpty('Loading Home information…');
+    // Publish Phase 2 ownership only after the new Home and navigation are fully mounted.
+    document.body.classList.add('p2-home-ready');
+    document.documentElement.classList.remove('vishnu-phase2-booting');
   }
   function installNavigation() {
     const sidebar = document.querySelector('.reference-desktop-sidebar nav');
     if (sidebar) {
-      const homeButton = sidebar.querySelector('[data-app-module="home"]');
-      if (homeButton) {
-        const chat = actionButton(' Chat', 'p2-sidebar-added', navigate.chat);
-        chat.prepend(make('span', '', '▢'));
-        const today = actionButton(' Today', 'p2-sidebar-added', navigate.today);
-        today.prepend(make('span', '', '▣'));
-        homeButton.after(chat, today);
-      }
       const knowledge = sidebar.querySelector('[data-app-module="knowledge"]');
       if (knowledge) knowledge.lastChild.textContent = 'Library';
       const tools = sidebar.querySelector('[data-app-module="tools"]');
@@ -245,12 +239,13 @@
         more.prepend(make('span', '', '◫'));
         devices.after(more);
       }
-      const search = actionButton(' Search', 'p2-sidebar-added p2-sidebar-search', navigate.search);
-      search.prepend(make('span', '', '⌕'));
-      const notifications = actionButton(' Notifications', 'p2-sidebar-added', navigate.notification);
-      notifications.prepend(make('span', '', '♧'));
-      const anchor = sidebar.querySelector('[data-app-module="settings"]');
-      if (anchor) anchor.before(search, notifications);
+      // Global Search and Notifications are already in the canonical desktop
+      // navigation. Reuse those entries rather than injecting duplicates that
+      // compete with the existing route and visual-active state handlers.
+      const search = sidebar.querySelector('[data-reference-search]');
+      const notifications = sidebar.querySelector('[data-p207-entry]');
+      if (search) search.setAttribute('aria-label', 'Open Global Search');
+      if (notifications) notifications.setAttribute('aria-label', 'Open Notifications and Alerts');
     }
     const nav = document.querySelector('.reference-mobile-nav');
     if (nav) {

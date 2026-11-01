@@ -57,6 +57,8 @@ try{
   await page.locator('[data-cc-id="new-automation"]').first().click();
   assert.equal(await page.evaluate(()=>window.workflowComposerOpened),true,'canonical workflow composer');
   await page.evaluate(()=>window.vishnuOpenCommandCenter());
+  await page.locator('[data-cc-filter="Create"]').click();
+  await page.locator('[data-cc-id="new-note"]').waitFor({state:'visible'});
   await page.locator('[data-cc-id="new-note"]').first().click();
   assert.equal(await page.evaluate(()=>window.noteEditorOpened),true,'canonical Knowledge Note editor');
   await page.evaluate(()=>window.vishnuOpenCommandCenter());

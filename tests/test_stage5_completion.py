@@ -45,8 +45,14 @@ def test_presence_cleanup(tmp_path):
 def test_presence_no_second_authority():
     s=Path('desktop/floating_presence.py').read_text(); assert 'RuntimeStateAuthority(' not in s and "subscribe('runtime.state'" in s and 'runtime_state.snapshot()' in s
 
-def test_desktop_launches_canonical_home():
-    s=Path('app/main.py').read_text(); assert 'from ui.canonical_main_window import CanonicalMainWindow' in s and 'window=CanonicalMainWindow(' in s
+def test_desktop_launches_shared_web_ui():
+    source = Path('app/main.py').read_text()
+    assert 'from scripts.run_local_desktop import main as run_embedded_web_desktop' in source
+    assert 'return run_embedded_web_desktop()' in source
+    desktop = Path('scripts/run_local_desktop.py').read_text()
+    assert 'QWebEngineView' in desktop and 'web_view.setUrl(QUrl(_web_url()))' in desktop
+    assert 'return f"http://127.0.0.1:{settings.control_server_port}/web/"' in desktop
+    assert 'window.showMaximized()' in desktop
 
 def test_canonical_home_ignores_legacy_state_events():
     s=Path('ui/canonical_main_window.py').read_text(); assert "subscribe('runtime.state'" in s and 'Legacy `state` events are explicitly non-authoritative' in s

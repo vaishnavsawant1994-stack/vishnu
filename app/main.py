@@ -182,32 +182,9 @@ def _close_runtime(runtime, *, services_started=False, floating_presence=None):
 
 
 def main():
-    from PyQt6.QtWidgets import QApplication, QDialog
-    from desktop.floating_presence import FloatingPresence
-    from ui.main_window import MainWindow
-    from ui.canonical_main_window import CanonicalMainWindow
-    from ui.first_run_wizard import FirstRunWizard
+    from scripts.run_local_desktop import main as run_embedded_web_desktop
 
-    app=QApplication(sys.argv); app.setApplicationName('Vishnu')
-    FirstRunCoordinator.apply_pending_restore(settings.data_dir, vault_password=settings.vault_password or None)
-    runtime=build_runtime()
-    setup=FirstRunCoordinator(settings.data_dir,runtime=runtime); runtime['first_run_setup']=setup; runtime['setup_surface']='desktop'
-    if setup.should_run():
-        wizard=FirstRunWizard(runtime,setup)
-        result=wizard.exec()
-        if result != QDialog.DialogCode.Accepted or wizard.restart_required or wizard.external_connect or not setup.ready:
-            _close_runtime(runtime)
-            return 0
-    setup.ensure_first_device()
-
-    composition=runtime['composition']
-    composition.work.automation_engine.start(); start_e9_services(runtime)
-    voice_provider_runtime=runtime.get('voice_provider_runtime')
-    if voice_provider_runtime is not None:voice_provider_runtime.start()
-    if settings.control_server_enabled:threading.Thread(target=start_server,args=(runtime,),daemon=True).start()
-    window=CanonicalMainWindow(events=runtime['events'],executor=composition.work.turn_runtime,memory=composition.memory.store,runtime=runtime); window.show(); floating_presence=FloatingPresence(runtime=runtime); runtime['floating_presence']=floating_presence; floating_presence.show()
-    if runtime['preferences'].get('launch_voice_on_start'):window.toggle_voice()
-    code=app.exec(); _close_runtime(runtime,services_started=True,floating_presence=floating_presence); return code
+    return run_embedded_web_desktop()
 
 
 if __name__=='__main__':raise SystemExit(main())

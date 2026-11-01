@@ -57,7 +57,7 @@ try{
   assert.equal(await page.locator('.p207-item').count(),3);
   assert.match(await page.locator('#p207Categories').innerText(),/Approvals/);
   await page.locator('[data-p207-cat="approvals"]').click();
-  await page.locator('.p207-item').first().waitFor();
+  await page.waitForFunction(()=>document.querySelectorAll('.p207-item').length===1);
   assert.equal(await page.locator('.p207-item').count(),1);
   await page.locator('[data-p207-id="approval:a1"]').click();
   await page.getByText('Governed approval details').waitFor();
@@ -73,7 +73,13 @@ try{
   await page.waitForFunction(()=>document.querySelectorAll('.p207-item').length===1);
   await page.locator('#p207Query').fill('');
   await page.waitForFunction(()=>document.querySelectorAll('.p207-item').length===2);
-  await page.locator('[data-p207-id="n1"]').click();
+  if(width===390&&await page.locator('[data-p207-action="back"]').count()){
+    await page.locator('[data-p207-action="back"]').click();
+    await page.waitForFunction(()=>!document.querySelector('#p207Detail')?.classList.contains('mobile-detail'));
+  }
+  const notificationRow=page.locator('[data-p207-id="n1"]');
+  if(width===390)await notificationRow.evaluate(e=>e.click());
+  else await notificationRow.click();
   await page.locator('[data-p207-action="read"]:visible').click();
   assert.ok(rows.find(x=>x.id==='n1').read_at);
   await page.locator('[data-p207-action="pin"]:visible').click();
@@ -85,7 +91,7 @@ try{
   }else{
     const layout=await page.evaluate(()=>({outer:document.documentElement.scrollWidth,view:innerWidth}));
     assert.ok(layout.outer<=layout.view+3,JSON.stringify(layout));
-    await page.locator('[data-p207-id="n1"]').click();
+    await notificationRow.evaluate(e=>e.click());
     await page.locator('#p207Detail.mobile-detail').waitFor();
     await page.locator('[data-p207-action="back"]').click();
     await page.locator('[data-p207-action="togglefilters"]').click();

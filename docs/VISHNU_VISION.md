@@ -138,7 +138,7 @@ Biometric identity requires:
 - no raw face-image enrollment in the biometric store
 - profile listing and deletion
 
-A visible person can therefore be described without Vishnu claiming who that person is. “I see a person” and “this is Vaishnav” are intentionally different authorities.
+A visible person can therefore be described without Vishnu claiming who that person is. “I see a person” and “this is Alex” are intentionally different authorities.
 
 ## Multimodal Sensorium context
 

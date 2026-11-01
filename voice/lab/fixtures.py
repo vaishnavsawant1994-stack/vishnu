@@ -58,7 +58,7 @@ _BUILTINS = (
     VoiceFixture("slow-speech", FixtureKind.SLOW, "Please speak slowly and clearly.", ("en",)),
     VoiceFixture("silence", FixtureKind.SILENCE, "", ("und",)),
     VoiceFixture("overlap", FixtureKind.OVERLAP, "Stop and listen to the new speaker.", ("en",)),
-    VoiceFixture("names", FixtureKind.NAMES, "Vishnu, Vaishnav, Maharashtra, Frankfurt.", ("en",)),
+    VoiceFixture("names", FixtureKind.NAMES, "Vishnu, Alex, Maharashtra, Frankfurt.", ("en",)),
     VoiceFixture("multilingual", FixtureKind.MULTILINGUAL, "Hello. Namaste. Guten Tag.", ("en", "hi", "de")),
     VoiceFixture("code-switch", FixtureKind.CODE_SWITCH, "Vishnu, kal meeting hai, please remind me.", ("en", "hi")),
     VoiceFixture("long-form", FixtureKind.LONG_FORM, "Explain the result in a structured long-form answer.", ("en",)),

@@ -237,19 +237,21 @@ async def lifespan(app):
         runtime['voice'].stop();stop_e9_services(runtime);runtime['automations'].stop();runtime['telemetry'].persist();runtime['apns'].close();runtime['visual_intelligence'].close()
 
 app=create_app(runtime['executor'],settings,device_registry=runtime['device_registry'],device_gateway=runtime['device_gateway'],second_brain=runtime['second_brain'],automations=runtime['automations'],runtime=runtime)
-app.add_middleware(CanonicalWebPathMiddleware)
 app.add_middleware(LogicalRequestMiddleware)
 app.add_middleware(PwaSessionMiddleware,sessions=runtime['pwa_sessions'],device_registry=runtime['device_registry'],cookie_max_age=60*60*24*max(1,min(int(getattr(settings,'iphone_device_cookie_days',365)),3650)),first_run_setup=runtime['first_run_setup'],cookie_secure=not settings.iphone_pwa_allow_insecure)
 app.add_middleware(WorkflowBudgetUiMiddleware);app.add_middleware(ConnectorUiMiddleware);app.add_middleware(VisualizeUiMiddleware);app.add_middleware(OwnerIntelligenceUiMiddleware);app.add_middleware(OwnerEngineeringUiMiddleware);app.add_middleware(OwnerReleaseUiMiddleware);app.add_middleware(PortableIntelligenceUiMiddleware);app.add_middleware(SelfImprovementUiMiddleware);app.add_middleware(CapabilityForgeUiMiddleware)
+# Normalize /web paths before session/auth middleware evaluates them. This is
+# also compatible with clients that cached the former /iphone/api 308 redirect.
+app.add_middleware(CanonicalWebPathMiddleware)
 pwa_runtime=dict(runtime);pwa_runtime['executor']=SessionBoundExecutor(runtime['executor'],continuity=runtime['continuity'],surface='iphone-pwa');pwa_runtime['continuity']=CanonicalConversationProjection(runtime['continuity'])
 app.include_router(approval_router(runtime,pwa_runtime['executor']))
 app.include_router(workspaces_router(runtime,workspace_store))
 app.include_router(workspace_conversation_router(runtime,workspace_store))
 app.include_router(approvals_center_router(runtime))
 app.include_router(conversation_voice_router(runtime,pwa_runtime['executor']))
-# The workforce shell router is intentionally mounted before iphone_pwa_router
-# only for /iphone and /iphone/. It injects isolated workspace navigation entries
-# while every existing API/asset route remains owned by the canonical PWA.
+# Keep the workforce asset router before the PWA router: it serves only its
+# named pages/assets and no longer registers the overlapping /iphone Home path.
+# The canonical PWA handler owns both /iphone/ and /web/ Home composition.
 app.include_router(agent_workforce_assets_router(settings))
 app.include_router(visualize_assets_router(settings))
 _original_pwa_state=iphone_pwa_module.IphonePwaState

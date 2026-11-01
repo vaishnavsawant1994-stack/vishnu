@@ -403,7 +403,13 @@ try {
   assert.ok(homeState.cardRects.every(card=>card.height>=44&&card.height<=180),"P2-01 Home action cards must retain controlled heights");
   const mobileHomeButton=await page.locator('.reference-mobile-nav [data-p2-mobile="home"]').boundingBox();
   assert.ok(mobileHomeButton&&mobileHomeButton.width>=44&&mobileHomeButton.height>=44,"Mobile Home navigation must preserve an accessible touch target");
-  assert.ok(homeState.timelineButton.width>=44&&homeState.timelineButton.height>=44,"Home timeline control must preserve an accessible touch target");
+  // P2-01 uses the approved Notifications button in Home; the legacy Timeline
+  // clock remains available on other surfaces, not on this new Home header.
+  assert.equal(await page.locator('#ownerButton').isVisible(),false,
+    'legacy Timeline button is not shown on the approved Phase 2 Home');
+  const homeNotifications=await page.locator('.p2-mobile-notifications').boundingBox();
+  assert.ok(homeNotifications&&homeNotifications.width>=44&&homeNotifications.height>=44,
+    'Phase 2 Home Notifications retains an accessible touch target');
   const mobileNavBox=await page.locator('.reference-mobile-nav').boundingBox();
   assert.ok(mobileNavBox&&mobileNavBox.height>=44&&homeState.composer.width>0,"P2-01 composer remains in scrollable content with a separate mobile nav");
   const recentSectionVisible=await page.locator("#homeRecentSection").isVisible();
@@ -418,9 +424,26 @@ try {
   assert.deepEqual(homeState.timeline,["Finish daily review","Team planning meeting"],"Today should show canonical plan items");
   assert.ok((await page.locator(".calendar-status-copy").innerText()).includes("External calendars not connected"),"calendar row should report the disconnected state");
   assert.equal(await page.locator("#homeCalendarConnect").getAttribute("aria-label"),"Open Tools to connect an external calendar");
-  for(const section of [homeState.header,homeState.quick,homeState.recent,homeState.today,homeState.calendar,homeState.composer]){
-    assert.ok(section.left>=-1&&section.right<=homeState.innerWidth+1,"Home section should remain inside the viewport");
+  // The approved P2-01 Home hides the legacy Today/calendar panels.
+  // Check all visible approved regions instead; never enforce geometry for
+  // display:none legacy sections whose rects are not meaningful.
+  const homeSections=await page.evaluate(()=>{
+    const bounds=(selector)=>{
+      const node=document.querySelector(selector);
+      if(!node)throw new Error('Missing approved Home section: '+selector);
+      const style=getComputedStyle(node),rect=node.getBoundingClientRect();
+      return {selector,visible:style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0,left:rect.left,right:rect.right};
+    };
+    return ['.topbar','.p2-hero','.p2-daily','.v-shortcuts','#composer','.p2-lower','#homeRecentSection','.p2-work-panel','.p2-tools-panel','.today-panel','.calendar-status-row'].map(bounds);
+  });
+  for(const section of homeSections.filter(section=>section.visible)){
+    assert.ok(section.left>=-1&&section.right<=homeState.innerWidth+1,
+      section.selector+' must remain inside the Home viewport: '+JSON.stringify(section));
   }
+  assert.ok(homeSections.some(s=>s.selector==='.p2-hero'&&s.visible),
+    'the new approved Home hero must be visible');
+  assert.ok(homeSections.some(s=>s.selector==='.p2-daily'&&s.visible),
+    'the new approved Home daily panel must be visible');
   assert.ok(homeState.scrollWidth<=homeState.innerWidth,"Home must not scroll horizontally");
   await page.screenshot({ path: "artifacts/personal-ai-home-390x844.png", fullPage: true });
 

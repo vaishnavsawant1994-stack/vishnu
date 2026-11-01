@@ -7,8 +7,10 @@ const source=await readFile(new URL('../pwa/global-search.js',import.meta.url),'
 const style=await readFile(new URL('../pwa/global-search.css',import.meta.url),'utf8');
 const screenshot=process.env.P206_SCREENSHOT_DIR;
 if(screenshot)await mkdir(screenshot,{recursive:true});
+// Conversation search records may omit the optional project_id field entirely.
+// Keep this fixture unscoped to guard preview and navigation click handling.
 const records=[
- {type:'conversations',id:'conv-1',title:'API Integration Plan',excerpt:'Real persisted API conversation',updated_at:'2026-10-22T08:00:00Z',source:'continuity',project_id:'',workspace_id:'',tags:['API']},
+ {type:'conversations',id:'conv-1',title:'API Integration Plan',excerpt:'Real persisted API conversation',updated_at:'2026-10-22T08:00:00Z',source:'continuity',workspace_id:'',tags:['API']},
  {type:'projects',id:'proj-1',title:'API Development',excerpt:'Integrate API services',updated_at:'2026-10-22T07:00:00Z',source:'canonical_project',project_id:'proj-1',workspace_id:'',status:'in_progress'},
  {type:'files',id:'file-1',title:'API blueprint.txt',excerpt:'Indexed file',updated_at:'2026-10-21T09:00:00Z',source:'project_file',project_id:'proj-1',workspace_id:'',status:'indexed'},
  {type:'work',id:'task-1',title:'API checklist',excerpt:'Canonical project task',updated_at:'2026-10-20T09:00:00Z',source:'canonical_project_task',project_id:'proj-1',workspace_id:'',status:'planned'},
@@ -73,6 +75,10 @@ try{
   // Slow preview + rapid facet switch must not render an obsolete result.
   delayPreview=true;
   await page.locator('[data-gs-select="conversations"]').click();
+  if(width===390){
+   await page.locator('[data-gs-action="back"]').click();
+   await page.waitForFunction(()=>!document.querySelector('#gsDetail')?.classList.contains('mobile-open'));
+  }
   await page.locator('[data-gs-category="projects"]').click();
   await page.locator('[data-gs-select="projects"]').waitFor();
   await page.waitForTimeout(520);
@@ -98,7 +104,7 @@ try{
   }
   if(width===1536&&screenshot)await page.screenshot({path:screenshot+'/search-'+width+'.png',fullPage:false});
   await page.locator('[data-gs-action="summarize"]').click();
-  await page.getByText('Verified AI summary').waitFor();
+  await page.getByText('Verified AI summary',{exact:true}).waitFor();
   await page.locator('.gs-result-more summary').click();
   await page.locator('[data-gs-action="organize"]').click();
   await page.getByText('The original conversation is now linked to the selected Project.').waitFor();

@@ -3,8 +3,8 @@ from core.preferences import Preferences
 from core.telemetry import Telemetry
 
 def test_preferences_persist_and_reject_unknown(tmp_path):
-    path=tmp_path/'prefs.json';p=Preferences(path);p.update(preferred_name='Vaishnav',reduce_motion=True,onboarding_complete=True)
-    p2=Preferences(path);assert p2.get('preferred_name')=='Vaishnav';assert p2.get('reduce_motion') is True;assert p2.get('onboarding_complete') is True
+    path=tmp_path/'prefs.json';p=Preferences(path);p.update(preferred_name='Alex',reduce_motion=True,onboarding_complete=True)
+    p2=Preferences(path);assert p2.get('preferred_name')=='Alex';assert p2.get('reduce_motion') is True;assert p2.get('onboarding_complete') is True
     try:p2.set('unknown',True);assert False
     except KeyError:pass
 

@@ -482,3 +482,12 @@ body:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.m
  body.focused-module:has(#modulePanel.module-panel.open[data-surface="projects"]):not(:has(.project-detail-page)) .app-shell>.topbar{display:grid!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important;position:relative!important;z-index:85!important}
  body:has(#modulePanel.module-panel.open[data-surface="projects"]) #historyButton{display:grid!important;visibility:visible!important;opacity:1!important;pointer-events:auto!important}
 }
+
+/* On desktop, #referenceDesktopSidebar is the single global navigation rail.
+   Project-local navigation remains inside the project workspace itself. */
+@media(min-width:901px){
+ body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) #appDrawer{display:none!important}
+ body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) .drawer-overlay{display:none!important}
+ body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.module-panel.open[data-surface="projects"]{inset-inline-start:264px!important}
+ body.v-ref.reference-sidebar-collapsed:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.module-panel.open[data-surface="projects"]{inset-inline-start:0!important}
+}

@@ -75,7 +75,7 @@ def stage_owner_data_deletion(data_dir: Path) -> Path:
     if target.is_symlink() or not target.exists() or not target.is_dir():
         raise ValueError('Owner data directory is unavailable')
     resolved = target.resolve(strict=True)
-    if resolved in {Path('/'), Path.home(), Path.cwd().resolve()}:
+    if resolved.parent == resolved or resolved in {Path.home().resolve(), Path.cwd().resolve()}:
         raise ValueError('Refusing to delete an unsafe data directory')
     tombstone = resolved.with_name(f'.{resolved.name}.deleted-{uuid.uuid4().hex}')
     os.replace(resolved, tombstone)

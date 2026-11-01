@@ -16,8 +16,8 @@ const html='<!doctype html><html><head><meta name="viewport" content="width=devi
 const server=createServer(async(req,res)=>{
  const url=new URL(req.url,'http://localhost');
  function out(value,status=200,type='application/json'){res.writeHead(status,{'content-type':type});res.end(type==='application/json'?JSON.stringify(value):value)}
- if(url.pathname==='/')return out(html,200,'text/html');
- if(url.pathname==='/js')return out(js,200,'application/javascript');
+ if(url.pathname==='/')return out(html,200,'text/html; charset=utf-8');
+ if(url.pathname==='/js')return out(js,200,'application/javascript; charset=utf-8');
  if(url.pathname==='/css')return out(css,200,'text/css');
  reads.push(req.method+' '+url.pathname);
  let body={};if(req.method==='POST'){let raw='';for await(const part of req)raw+=part.toString();body=JSON.parse(raw||'{}')}
@@ -69,7 +69,8 @@ try{
   assert.ok(await page.locator('#p204Root').evaluate(n=>n.classList.contains('p204-focus')));
   await page.locator('#p204Mode').click();
   await page.locator('#p204Start').click();
-  await page.getByText('Vishnu is listening…').waitFor();
+  await page.locator('#p204Status').waitFor({state:'visible'});
+  assert.equal(await page.locator('#p204Status').textContent(),'Vishnu is listening…');
   assert.equal(await page.evaluate(()=>window.__micRequests),1);
   await page.locator('#p204Mute').click();
   await page.getByText('Microphone muted').waitFor();
@@ -95,7 +96,7 @@ try{
   }
   if(dir)await page.screenshot({path:dir+'/live-voice-'+width+'.png',fullPage:false});
   await page.locator('#p204End').click();
-  await page.locator('#p204Root.hidden').waitFor();
+  await page.waitForFunction(()=>document.querySelector('#p204Root')?.classList.contains('hidden'));
   assert.ok(await page.evaluate(()=>window.__micStops)>0,'End releases microphone tracks');
   assert.deepEqual(errors,[],errors.join(' | '));
   await page.close();

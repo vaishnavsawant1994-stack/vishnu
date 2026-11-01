@@ -6,6 +6,7 @@ import {mkdir} from 'node:fs/promises';
 import {chromium} from 'playwright';
 await mkdir('artifacts/p202b',{recursive:true});
 const browser=await chromium.launch({headless:true});
+const base=process.env.PWA_PREVIEW_URL||'http://127.0.0.1:4173';
 const errors=[];
 const createdAt=new Date().toISOString();
 const convo={id:'c-work-1',title:'Current discussion',updated_at:createdAt,preview:'Help review the quarterly plan',context:{conversation_kind:'work'}};
@@ -82,8 +83,9 @@ const fixture=async route=>{
 try{
  const page=await browser.newPage({viewport:{width:1440,height:900},serviceWorkers:'block'});
  page.on('pageerror',e=>errors.push(e.message));
+ await page.route('**/web/api/**',fixture);
  await page.route('**/iphone/api/**',fixture);
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'commit',timeout:60000});
+ await page.goto(base+'/iphone/',{waitUntil:'commit',timeout:60000});
  await page.waitForFunction(()=>window.__vishnuP202B&&window.vishnuChatBridge,{timeout:20000});
  await page.evaluate(()=>window.__vishnuP202B.open());
  await page.waitForFunction(()=>document.body.classList.contains('p202-work-chat'),null,{timeout:20000});
@@ -107,10 +109,10 @@ try{
  await page.locator('.p202b-search input').fill('quarterly plan');
  assert.ok(await page.locator('.p202b-search-hit').count()>0,'real loaded conversation search');
  await page.locator('.p202b-search input').fill('');
- await page.locator('.p202b-search-actions button').first().click();
+ await page.locator('.p202b-search-close').click();
  await page.locator('.p202b-tab[data-tab=Files]').click();
  await page.locator('dialog[open]').waitFor();
- assert.match(await page.locator('dialog[open]').innerText(),/not linked|No file/i);
+ assert.match(await page.locator('dialog[open]').innerText(),/no canonical conversation-attachment association|not linked|No file/i);
  await page.locator('dialog[open]').getByText('Close').click();
  // Resource cards become populated only when the owner links a real Project.
  await page.locator('.p202b-context').getByRole('button',{name:'Link Project'}).click();
@@ -158,7 +160,7 @@ try{
  await page.locator('.p202b-search-modal').getByRole('button',{name:'Close'}).click();
  await page.locator('#message').fill('Follow-up in Work conversation');
  await page.locator('#message').press('Enter');
- await page.getByText('Real transport fixture response 1').waitFor({timeout:10000});
+ await page.locator('#messageStream').getByText('Real transport fixture response 1',{exact:true}).waitFor({timeout:10000});
  assert.equal(turns,1,'canonical AI endpoint was called exactly once');
  assert.equal(active.conversation.id,'c-work-1','canonical conversation ID unchanged');
  await page.reload({waitUntil:'domcontentloaded'});
@@ -169,8 +171,8 @@ try{
  await page.evaluate(()=>document.querySelector('#vContextChip span').textContent='General chat · No project context');
  await page.waitForFunction(()=>document.body.classList.contains('p202-work-chat'));
  await page.evaluate(()=>window.__vishnuP202B.newChat());
- await page.waitForFunction(()=>document.body.classList.contains('chat-new-empty'));
  assert.equal(active.conversation.id,'c-work-2','New Work Chat reuses canonical creation');
+ assert.deepEqual(active.events,[],'new Work Chat opens its persisted empty transcript');
  assert.deepEqual(errors,[],'no uncaught browser errors');
  console.log('P2-02B Work Chat mock API browser checks passed; external providers and real Work execution not qualified.');
 }finally{await browser.close()}

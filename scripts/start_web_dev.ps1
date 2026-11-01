@@ -1,6 +1,6 @@
 param(
-    [string]$DataDirectory = (Join-Path $env:TEMP 'vishnu-pixel-preview'),
-    [int]$Port = 8770
+    [string]$DataDirectory = (Join-Path $env:TEMP 'vishnu-owner-fresh-20261023'),
+    [int]$Port = 8771
 )
 
 $ErrorActionPreference = 'Stop'

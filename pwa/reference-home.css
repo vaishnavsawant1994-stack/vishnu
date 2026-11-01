@@ -80,6 +80,54 @@ body.v-ref.home-landing #composer {
   box-shadow: inset 0 1px rgba(255,255,255,.035), 0 18px 45px rgba(0,0,0,.34) !important;
 }
 
+/* Desktop navigation can be tucked away without losing a way to reopen it. */
+.reference-sidebar-toggle { display: none; }
+@media (min-width: 901px) {
+  body.v-ref .reference-sidebar-toggle {
+    position: fixed;
+    z-index: 70;
+    top: 18px;
+    left: 210px;
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(183,200,222,.18);
+    border-radius: 10px;
+    color: #c8d5e7;
+    background: rgba(8,17,29,.92);
+    cursor: pointer;
+    transition: left .2s ease, background-color .15s ease, color .15s ease;
+  }
+  body.v-ref .reference-sidebar-toggle:hover,
+  body.v-ref .reference-sidebar-toggle:focus-visible {
+    color: #fff;
+    background: rgba(24,48,78,.98);
+    outline: 2px solid rgba(45,153,255,.75);
+    outline-offset: 2px;
+  }
+  body.v-ref .reference-sidebar-toggle svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+  }
+  body.v-ref.reference-sidebar-collapsed { padding-left: 0 !important; }
+  body.v-ref .reference-desktop-sidebar { transition: transform .2s ease; }
+  body.v-ref.reference-sidebar-collapsed .reference-desktop-sidebar { transform: translateX(-100%); }
+  body.v-ref.reference-sidebar-collapsed .reference-sidebar-toggle { left: 12px; }
+}
+@media (max-width: 900px) {
+  body.v-ref .reference-sidebar-toggle { display: none !important; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.v-ref .reference-sidebar-toggle,
+  body.v-ref .reference-desktop-sidebar { transition: none; }
+}
+
 body.v-ref.home-landing .v-shortcuts {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
@@ -140,17 +188,18 @@ body.v-ref.home-landing .v-project {
     background: linear-gradient(145deg, rgba(13,17,21,.98), rgba(5,8,11,.99));
     border-right: 1px solid rgba(187,204,225,.12);
   }
-  .reference-brand { height: 64px; display: flex; align-items: center; gap: 13px; padding: 0 10px 12px; }
+  .reference-brand { height: 64px; flex: 0 0 64px; display: flex; align-items: center; gap: 13px; padding: 0 10px 12px; }
   .reference-brand-orb { width: 39px; height: 39px; border-radius: 50%; border: 1px solid #bcd8fc; box-shadow: 0 0 14px rgba(122,178,244,.45), inset -8px -5px 14px #010203; }
   .reference-brand strong { display: block; font-size: 16px; font-weight: 500; letter-spacing: .34em; }
   .reference-brand small { display: block; color: #9ca3ad; margin-top: 5px; font-size: 10px; }
-  .reference-desktop-sidebar nav { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+  .reference-desktop-sidebar nav { display: flex; flex: 1 1 auto; min-height: 0; flex-direction: column; gap: 5px; margin-top: 10px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
   body.v-ref .reference-desktop-sidebar nav button {
-    height: 43px; display: grid; grid-template-columns: 28px 1fr; align-items: center; gap: 10px;
+    width: 100%; min-width: 0; min-height: 43px; height: 43px; flex: 0 0 43px; display: grid; grid-template-columns: 28px minmax(0,1fr); align-items: center; gap: 10px;
     padding: 0 13px; border: 1px solid transparent; border-radius: 10px;
-    color: #b8bec8; background: transparent !important; border-color: transparent !important; text-align: left; cursor: pointer;
+    color: #b8bec8; background: transparent !important; border-color: transparent !important; text-align: left; white-space: nowrap; overflow: hidden; cursor: pointer;
   }
-  .reference-desktop-sidebar nav button span { color: #b8c4d4; font-size: 20px; text-align: center; }
+  .reference-desktop-sidebar nav button > span:first-child { color: #b8c4d4; font-size: 20px; text-align: center; }
+  .reference-desktop-sidebar nav button > span:not(:first-child) { min-width: 0; color: inherit; font-size: 14px; text-align: left; white-space: nowrap; }
   body.v-ref .reference-desktop-sidebar nav button:hover,
   body.v-ref .reference-desktop-sidebar nav button.active { color: #f6f7f9; border-color: rgba(175,196,222,.15) !important; background: rgba(35,41,49,.72) !important; }
   .reference-desktop-sidebar nav button.active span { color: #5aa7ff; }
@@ -272,6 +321,46 @@ body.v-ref.home-landing .v-project {
     width: min(calc(100% - 24px), 560px) !important;
     margin: 0 auto !important;
   }
+}
+
+/* Phase 2 uses one global desktop rail: the reference rail. The richer drawer
+   remains the mobile navigation drawer and is not rendered as a second rail. */
+@media (min-width: 901px) {
+  body.v-ref #appDrawer,
+  body.v-ref #drawerOverlay { display: none !important; }
+  body.v-ref .reference-desktop-sidebar { width: 264px; }
+  body.v-ref .reference-desktop-sidebar nav { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+  body.v-ref .reference-sidebar-toggle { left: 210px; }
+  body.v-ref.reference-sidebar-collapsed .reference-sidebar-toggle { left: 12px; }
+  body.v-ref .app-shell { width: auto !important; }
+  body.v-ref.reference-sidebar-collapsed .app-shell { width: auto !important; margin-left: 0 !important; }
+  body.v-ref .history-button { display: none !important; }
+  body.v-ref .reference-desktop-sidebar nav button > span:first-child { flex: 0 0 28px; }
+  body.v-ref #vishnuForgeLauncher.reference-forge-entry { position: static !important; z-index: auto !important; width: 100% !important; min-width: 0 !important; height: 43px !important; min-height: 43px !important; flex: 0 0 43px !important; display: grid !important; grid-template-columns: 28px minmax(0,1fr) !important; align-items: center !important; gap: 10px !important; margin: 0 !important; padding: 0 13px !important; border: 1px solid transparent !important; border-radius: 10px !important; background: transparent !important; box-shadow: none !important; color: #b8bec8 !important; text-align: left !important; font: inherit !important; cursor: pointer; }
+  body.v-ref #vishnuForgeLauncher.reference-forge-entry:hover,
+  body.v-ref #vishnuForgeLauncher.reference-forge-entry:focus-visible { color: #f6f7f9 !important; border-color: rgba(175,196,222,.15) !important; background: rgba(35,41,49,.72) !important; outline: 2px solid rgba(45,153,255,.75); outline-offset: 1px; }
+  body.v-ref #vishnuForgeLauncher.reference-forge-entry > span:first-child { flex: 0 0 28px; color: #b8c4d4; font-size: 20px; text-align: center; }
+  body.v-ref #vishnuForgeLauncher.reference-forge-entry > span:last-child { min-width: 0; font-size: 14px; text-align: left; white-space: nowrap; }
+  body.v-ref .reference-desktop-sidebar nav button.p202b-entry { grid-template-columns: 28px minmax(0,1fr); }
+  body.v-ref .reference-desktop-sidebar nav button.p202b-entry > span.p202b-nav-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  body.v-ref.conversation-drawer-open { padding-left: 0 !important; }
+  body.v-ref.conversation-drawer-open .reference-desktop-sidebar { transform: translateX(-100%); }
+  body.v-ref.conversation-drawer-open .reference-sidebar-toggle { left: 12px; }
+  body.v-ref.chat-experience.conversation-drawer-open .conversations-drawer-header { padding-left: 50px; }
+  body.v-ref.conversation-drawer-open .app-shell { width: calc(100% - 280px) !important; margin-left: 280px !important; }
+  body.v-ref #appDrawer,
+  body.v-ref #drawerOverlay { display: none !important; }
+  body.v-ref.chat-experience:not(.chat-shell-collapsed) #appDrawer { display: none !important; }
+  body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) #appDrawer { display: none !important; }
+  body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) .drawer-overlay { display: none !important; }
+  body.v-ref:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.module-panel.open[data-surface="projects"] { inset-inline-start: 264px !important; }
+  body.v-ref.reference-sidebar-collapsed:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.module-panel.open[data-surface="projects"] { inset-inline-start: 0 !important; }
+  body.v-ref.conversation-drawer-open:has(#modulePanel.module-panel.open[data-surface="projects"]) #modulePanel.module-panel.open[data-surface="projects"] { inset-inline-start: 0 !important; }
+  body.v-ref.chat-experience:not(.conversation-drawer-open) .conversation-drawer[data-mode="conversations"] { display: none !important; }
+  body.v-ref.chat-experience.conversation-drawer-open .conversation-drawer[data-mode="conversations"] { display: flex !important; visibility: visible !important; left: 0 !important; inset-inline-start: 0 !important; right: auto !important; width: 280px !important; max-width: 280px !important; height: 100dvh !important; border-radius: 0 !important; z-index: 41 !important; }
+  body.v-ref.chat-experience.conversation-drawer-open .app-shell { width: calc(100% - 280px) !important; margin-left: 280px !important; }
+  body.v-ref.chat-experience:not(.conversation-drawer-open):not(.reference-sidebar-collapsed) .app-shell { width: 100% !important; margin-left: 0 !important; }
+  body.v-ref.chat-experience.reference-sidebar-collapsed:not(.conversation-drawer-open) .app-shell { width: 100% !important; margin-left: 0 !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

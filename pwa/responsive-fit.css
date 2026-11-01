@@ -1,0 +1,76 @@
+/* Shared viewport safety rules for the main app. The calibrated Genesis / P1
+   screens have their own responsive stylesheets and must not be overridden. */
+html,
+body {
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+body {
+  min-width: 0;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+body:not(.genesis-active) :is(p, h1, h2, h3, h4, label, small, strong, a, code, pre) {
+  overflow-wrap: anywhere;
+}
+
+body:not(.genesis-active) :is(pre, code) {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+table {
+  max-width: 100%;
+}
+
+body:not(.genesis-active) :is(dialog, [role="dialog"], .modal, .modal-content, .sheet, .more-sheet, .owner-menu) {
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+body:not(.genesis-active) .module-panel.open {
+  max-width: calc(100vw - 24px);
+}
+
+body:not(.genesis-active) .module-body,
+body:not(.genesis-active) .settings-content,
+body:not(.genesis-active) .today-screen-content,
+body:not(.genesis-active) .section-page,
+body:not(.genesis-active) .reference-page-content {
+  min-width: 0;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 700px) {
+  body:not(.genesis-active) .module-panel.open,
+  body:not(.genesis-active) .approval-panel {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  body:not(.genesis-active) .module-toolbar > * {
+    max-width: 100%;
+  }
+
+  body:not(.genesis-active) .module-search {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+}

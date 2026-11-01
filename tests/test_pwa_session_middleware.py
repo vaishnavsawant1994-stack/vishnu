@@ -42,6 +42,14 @@ def make_client(tmp_path):
             'reauthenticated_at': context.reauthenticated_at if context else None,
         }
 
+    @app.get('/iphone/ui-bundle.js')
+    def ui_bundle():
+        return Response('window.vishnuUiBundle = true;', media_type='application/javascript')
+
+    @app.get('/iphone/ui-bundle.css')
+    def ui_styles():
+        return Response('body { color: white; }', media_type='text/css')
+
     @app.post('/iphone/api/logout')
     def logout(response: Response):
         response.delete_cookie('pa_device', path='/iphone')
@@ -59,6 +67,14 @@ def test_device_bearer_alone_cannot_access_protected_pwa_api(tmp_path):
     response = client.get('/iphone/api/protected')
     assert response.status_code == 401
     assert response.json()['detail']['code'] == 'session_expired'
+
+
+def test_signed_out_shell_can_load_static_ui_bundles_but_not_owner_api(tmp_path):
+    client, _, _ = make_client(tmp_path)
+
+    assert client.get('/iphone/ui-bundle.js').status_code == 200
+    assert client.get('/iphone/ui-bundle.css').status_code == 200
+    assert client.get('/iphone/api/protected.js').status_code == 401
 
 
 def test_login_issues_server_session_and_binds_request_context(tmp_path):

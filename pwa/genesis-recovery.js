@@ -184,7 +184,9 @@ export function mountRecoveryScreen(root,state,{onBack,onFinish,onRegenerate}){
      const needsOwner = Boolean(root.querySelector('[data-setup-device-reauth]'));
      say(needsOwner
        ? 'Verify your owner password in “Restore this browser’s setup access” below, then generate new recovery codes once. Earlier codes may be invalid.'
-       : 'Could not verify the replacement codes. Older codes may be invalid. Retry Generate New Codes.',true);
+       : String(e?.message||'').trim()
+         ? `Could not verify the replacement codes. ${String(e.message).trim()}`
+         : 'Could not verify the replacement codes. Older codes may be invalid. Retry Generate New Codes.',true);
    }finally{lock(false);}
  });
  const review=$('#vrReviewDialog');

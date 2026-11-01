@@ -37,12 +37,19 @@ try{
       <style>body,html{margin:0;background:#020509;min-height:100%}.hidden{display:none!important}</style>
       <link rel="stylesheet" href="/iphone/genesis.css"></head><body>
       <section id="enrollPanel" class="hidden"></section>
+      <section class="genesis-content hidden" aria-hidden="true"></section>
       <script>
       window.loadAccessOptions=async()=>({creation_available:true,local_setup_available:true});
       window.check=async()=>null;window.__apiCalls=[];
       window.api=async(path,options={})=>{
        window.__apiCalls.push({path,method:options.method,body:options.body});
        if(path==='/first-run/create')return {ok:true,recovery_codes:${JSON.stringify(first)}};
+       if((path==='/first-run/recovery-codes'||path==='/first-run/recovery-saved')&&window.__requireSetupReauth){
+        window.__requireSetupReauth=false;
+        throw new Error('The first-device setup session expired');
+       }
+       if(path==='/first-run/resume'&&!JSON.parse(options.body||'{}').password)
+        throw new Error('This browser needs owner-password verification to resume setup');
        if(path==='/first-run/recovery-codes')return {shown_once:true,recovery_codes:${JSON.stringify(second)}};
        return {ok:true};
       };
@@ -54,7 +61,10 @@ try{
   await page.locator('.genesis-identity .vi-form').waitFor();
   await page.locator('#firstRunFirstName').fill('Test Owner');
   await page.locator('.vi-continue').click();
-  await page.locator('.genesis-security .vs-main').waitFor();
+  await page.locator('.genesis-security .vs-main').waitFor({timeout:5000}).catch(async error=>{
+    console.error('Step 3 screen debug:', await page.locator('#enrollPanel').innerText(), errors);
+    throw error;
+  });
   await page.locator('#firstRunPassword').fill('Tru5t!Sample$519876');
   await page.locator('#firstRunPasswordAgain').fill('Tru5t!Sample$519876');
   await page.locator('#vsDeviceName').fill('My Test Laptop');
@@ -106,15 +116,38 @@ try{
   assert.equal(await page.evaluate(()=>window.__apiCalls.filter(x=>x.path==='/first-run/recovery-codes').length),0);
   await page.locator('[data-vr-cancel]').click();
   assert.equal(await page.evaluate(()=>window.__apiCalls.filter(x=>x.path==='/first-run/recovery-codes').length),0,'Cancel is non-destructive');
+  await page.evaluate(()=>{window.__requireSetupReauth=true;});
   await page.locator('#firstRunRecoverySaved').check();
+  await page.locator('[data-vr-regenerate]').click();
+  await page.locator('[data-vr-confirm]').click();
+  await page.locator('[data-setup-device-reauth]').waitFor({state:'visible',timeout:5000}).catch(async error=>{
+    console.error('Recovery reauth debug:', await page.locator('#genesisStatus').innerText(),
+      await page.evaluate(()=>window.__apiCalls), errors);
+    throw error;
+  });
+  assert.match(await page.locator('#genesisStatus').innerText(),/owner.?password|reconnect|verify your owner/i,
+    'Recovery must explain that owner verification is needed, not report code rotation as the only failure');
+  await page.getByRole('textbox',{name:'Owner password'}).waitFor({state:'visible'});
+  await page.getByRole('textbox',{name:'Owner password'}).fill('Tru5t!Sample$519876');
+  await page.getByRole('button',{name:'Reconnect this browser'}).click();
+  await page.locator('#genesisStatus').getByText('Browser access restored').waitFor();
   await page.locator('[data-vr-regenerate]').click();
   await page.locator('[data-vr-confirm]').click();
   await page.waitForFunction(()=>document.querySelector('.vr-code code')?.textContent==='J2KL-M3NP-Q4RS');
   assert.equal(await page.locator('#firstRunRecoverySaved').isChecked(),false,'Rotation resets acknowledgement');
   assert.equal(await page.locator('.vr-code').count(),second.length);
-  assert.equal(await page.evaluate(()=>window.__apiCalls.filter(x=>x.path==='/first-run/recovery-codes').length),1);
+  assert.equal(await page.evaluate(()=>window.__apiCalls.filter(x=>x.path==='/first-run/recovery-codes').length),2,
+    'the failed request and explicit user retry must both reach the recovery-code endpoint');
   if(vp.width===1536){
     await page.locator('#firstRunRecoverySaved').check();
+    await page.evaluate(()=>{window.__requireSetupReauth=true;});
+    await page.locator('.vr-nav .vs-continue').click();
+    await page.getByRole('textbox',{name:'Owner password'}).waitFor({state:'visible'});
+    await page.getByRole('textbox',{name:'Owner password'}).fill('Tru5t!Sample$519876');
+    await page.getByRole('button',{name:'Reconnect this browser'}).click();
+    await page.locator('#genesisStatus').getByText('Browser access restored').waitFor();
+    assert.equal(await page.evaluate(()=>window.__apiCalls.filter(x=>x.path==='/first-run/resume').length),4,
+      'a failed silent resume must offer owner verification, then reconnect securely after entry');
     await page.locator('.vr-nav .vs-continue').click();
     await page.waitForFunction(()=>window.__apiCalls.some(x=>x.path==='/first-run/complete'));
     const calls=await page.evaluate(()=>window.__apiCalls);

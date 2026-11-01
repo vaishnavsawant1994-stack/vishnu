@@ -524,10 +524,10 @@ def test_privacy_preferences_persist_and_validate_for_authenticated_device(tmp_p
     updated = client.put('/iphone/api/preferences', json={**saved, 'appearance_theme': 'system', 'appearance_accent': 'teal', 'chat_enter_sends': False, 'chat_message_spacing': 'compact'})
     assert updated.status_code == 200
     persisted = client.get('/iphone/api/preferences').json()
-    updated_name = client.put('/iphone/api/preferences', json={**persisted, 'profile_display_name': 'Vaishnav'})
+    updated_name = client.put('/iphone/api/preferences', json={**persisted, 'profile_display_name': 'Alex'})
     assert updated_name.status_code == 200
-    assert client.get('/iphone/api/preferences').json()['profile_display_name'] == 'Vaishnav'
-    assert runtime['preferences'].get('preferred_name') == 'Vaishnav'
+    assert client.get('/iphone/api/preferences').json()['profile_display_name'] == 'Alex'
+    assert runtime['preferences'].get('preferred_name') == 'Alex'
     assert persisted['appearance_theme'] == 'system'
     assert persisted['appearance_accent'] == 'teal'
     assert persisted['chat_enter_sends'] is False

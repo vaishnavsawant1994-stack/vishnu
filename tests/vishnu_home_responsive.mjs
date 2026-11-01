@@ -24,7 +24,7 @@ try {
     const path = url.pathname.replace("/iphone/api", "");
     const method = request.method();
     let body = {};
-    if (path === "/status") body = { ok: true, owner_display_name: "Vaishnav", model: { state: "ready" }, conversation: active, conversations, memory_count: 0 };
+    if (path === "/status") body = { ok: true, owner_display_name: "Alex", model: { state: "ready" }, conversation: active, conversations, memory_count: 0 };
     else if (path === "/preferences") body = { continuous_voice: true, voice_rate: 1, quiet_hours: true };
     else if (path === "/projects") body = { projects: [project] };
     else if (path === "/projects/project-1") body = { project };
@@ -47,7 +47,7 @@ try {
 
   await page.goto("http://127.0.0.1:4173/iphone/", { waitUntil: "domcontentloaded" });
   await page.waitForFunction(() => document.body.classList.contains("home-landing") && document.querySelector("#homeProjectList .v-project") && window.__vishnuP201);
-  assert.match(await page.locator("#homeGreeting").innerText(), /^Good (Morning|Afternoon|Evening), Vaishnav$/, "greeting should use the saved preferred name and local time");
+  assert.match(await page.locator("#homeGreeting").innerText(), /^Good (Morning|Afternoon|Evening), Alex$/, "greeting should use the saved preferred name and local time");
   assert.equal(await page.locator("#homeProjectList").textContent().then(text => text.includes("Responsive workspace")), true, "recent project row should render live project data");
   assert.equal(await page.locator("#appDrawer").isVisible(), false, "navigation drawer starts collapsed");
   assert.equal(await page.locator("#homeSphereStage #neuralCanvas").count(), 1, "Home should reuse the existing particle sphere canvas");

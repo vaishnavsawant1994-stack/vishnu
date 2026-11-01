@@ -90,7 +90,8 @@ body.workspace-canonical-mode:has(.p202d-root) .ws-owner-chip small{color:#89a9c
  .p202d-hero{padding:4px 2px}.p202d-workspace-icon{height:45px;width:45px;font-size:24px}
  .p202d-workspace-select{font-size:18px!important}
  .p202d-identity p{font-size:11px}
- .p202d-hero-actions{display:none}
+ .p202d-hero-actions{display:flex;align-items:center}
+ .p202d-hero-actions button:not(.p202d-mobile-picker){display:none}
  .p202d-notice{display:none}
  .p202d-tabs{gap:0}.p202d-tabs button{display:none!important}
  .p202d-tabs button:nth-child(1),.p202d-tabs button:nth-child(2),.p202d-tabs button:nth-child(3),.p202d-tabs button:nth-child(4),.p202d-tabs button:nth-child(10){display:block!important;flex:1;text-align:center;font-size:11px;padding:8px 4px}

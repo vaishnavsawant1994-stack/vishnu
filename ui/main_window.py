@@ -428,7 +428,7 @@ class MainWindow(QMainWindow):
             layout.addWidget(button)
 
         layout.addStretch(1)
-        footer = QLabel("●  Vaishnav\n    Free Thinker  ·  Builder")
+        footer = QLabel("●  Owner\n    Free Thinker  ·  Builder")
         footer.setObjectName("muted")
         footer.setWordWrap(True)
         layout.addWidget(footer)
@@ -504,7 +504,7 @@ class MainWindow(QMainWindow):
         tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(tagline)
 
-        greeting = QLabel("Good afternoon, Vaishnav.")
+        greeting = QLabel("Good afternoon, Owner.")
         greeting.setObjectName("homeGreeting")
         greeting.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(greeting)

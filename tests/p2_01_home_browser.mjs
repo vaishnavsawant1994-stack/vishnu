@@ -5,6 +5,7 @@ import { chromium } from 'playwright';
 
 await mkdir('artifacts',{recursive:true});
 const browser=await chromium.launch({headless:true});
+const base=process.env.PWA_PREVIEW_URL||'http://127.0.0.1:4173';
 const errors=[];
 const conversations=[{id:'existing',title:'Saved owner conversation',preview:'Prior work',updated_at:new Date().toISOString()}];
 let active={conversation:{id:'existing',title:'Saved owner conversation'},events:[]};
@@ -13,12 +14,12 @@ const project={id:'project-1',name:'Owner workspace',updated_at:new Date().toISO
 try {
  const page=await browser.newPage({viewport:{width:390,height:844},isMobile:true,hasTouch:true,serviceWorkers:'block'});
  page.on('pageerror',error=>errors.push(error.message));
- await page.route('**/iphone/api/**',async route=>{
-  const request=route.request(),url=new URL(request.url()),path=url.pathname.replace('/iphone/api',''),method=request.method();
+ const apiFixture=async route=>{
+  const request=route.request(),url=new URL(request.url()),path=url.pathname.replace(/^\/(?:web|iphone)\/api/,''),method=request.method();
   if(path==='/work/summary'&&workUnavailable)
    return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'Work unavailable'})});
   let data={};
-  if(path==='/status')data={owner_display_name:'Vaishnav',model:{state:'available'},conversation:active,conversations,active_qualification:true,memory_count:0};
+  if(path==='/status')data={owner_display_name:'Alex',model:{state:'available'},conversation:active,conversations,active_qualification:true,memory_count:0};
   else if(path==='/preferences')data={};
   else if(path==='/projects')data={projects:[project]};
   else if(path==='/projects/project-1')data={project};
@@ -43,11 +44,16 @@ try {
   }
   else if(path==='/access/options')data={passkey_available:false,password_available:false,google_available:false};
   return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(data)});
- });
- await page.goto('http://127.0.0.1:4173/iphone/',{waitUntil:'domcontentloaded'});
+ };
+ await page.route('**/web/api/**',apiFixture);
+ await page.route('**/iphone/api/**',apiFixture);
+ // The PWA shell can keep deferred enhancement requests alive while the
+ // embedded desktop webview is starting. Commit is enough to begin asserting
+ // the real DOM; the test below waits explicitly for the Home boot contract.
+ await page.goto(base+'/web/',{waitUntil:'commit',timeout:15000});
  await page.waitForFunction(()=>document.body.classList.contains('home-landing')&&window.__vishnuP201);
  await page.locator('.p2-status-ai[data-ready="true"]').waitFor({timeout:15000});
- assert.match(await page.locator('#homeGreeting').innerText(),/^Good (Morning|Afternoon|Evening), Vaishnav$/);
+ assert.match(await page.locator('#homeGreeting').innerText(),/^Good (Morning|Afternoon|Evening), Alex$/);
  assert.equal(await page.locator('.p2-tile').count(),6,'all six approved shortcuts');
  assert.equal(await page.locator('.p2-tool').count(),6,'all six guided tools');
  assert.equal(await page.locator('.p2-daily-row').count(),4,'four live daily summary rows');
@@ -58,6 +64,20 @@ try {
  assert.equal(await page.locator('#homeSphereStage #neuralCanvas').count(),1,'canonical canvas, not duplicated');
  assert.ok((await page.locator('.p2-time').innerText()).length>0,'locale-aware clock populated');
  assert.equal(await page.locator('#homeRecentSection').isVisible(),true,'real conversation activity panel visible');
+ assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('vishnu-phase2-booting')),false,
+  'legacy Home first-paint guard is removed only after the canonical Phase 2 mount');
+ assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('vishnu-phase2-failed')),false,
+  'successful Phase 2 initialization never triggers the missing-bundle fallback');
+ assert.equal(await page.locator('#voicePanel').isVisible(),true,
+  'verified Phase 2 Home becomes visible after mount');
+ assert.equal(await page.evaluate(()=>document.body.classList.contains('p2-home-ready')),true,
+  'new Home is the only marked ready layout');
+ assert.equal(await page.locator('.reference-desktop-sidebar [data-reference-search]').count(),1,
+  'one canonical Global Search entry; no injected duplicate');
+ assert.equal(await page.locator('.reference-desktop-sidebar [data-p207-entry]').count(),1,
+  'one canonical Notifications entry; no injected duplicate');
+ assert.equal(await page.locator('.reference-mobile-nav [data-p2-mobile]').count(),5,
+  'one Phase 2 bottom-navigation owner');
 
  for(const [width,height,columns] of [[320,568,2],[390,844,2],[768,960,2],[1024,768,3],[1440,900,6],[1920,1080,6]]){
   await page.setViewportSize({width,height});
@@ -86,7 +106,7 @@ try {
  await page.evaluate(()=>window.vishnuChatBridge.openModule('home'));
  await page.fill('#message','Home test');
  await page.press('#message','Enter');
- await page.getByText('Canonical assistant response').waitFor({state:'visible',timeout:10000});
+ await page.getByRole('article',{name:'Vishnu response'}).getByText('Canonical assistant response').waitFor({state:'visible',timeout:10000});
  assert.equal(active.conversation.id,'existing','same conversation preserved after sending');
  await page.evaluate(()=>window.vishnuChatBridge.openModule('home'));
  workUnavailable=true;
@@ -96,5 +116,18 @@ try {
  await page.evaluate(()=>document.getElementById('voicePanel').classList.add('hidden'));
  assert.equal(await page.locator('#voicePanel').isVisible(),false,'locked Home remains hidden');
  assert.deepEqual(errors,[],'no uncaught client exceptions');
+ // The old Home is never allowed to become the fallback presentation if its
+ // Phase 2 module cannot be loaded; a visible recovery action is provided.
+ const unavailable=await browser.newPage({viewport:{width:390,height:844},serviceWorkers:'block'});
+ await unavailable.route('**/iphone/p2-home.js',route=>route.fulfill({
+  status:200,contentType:'application/javascript',body:'/* simulated missing Phase 2 Home module */'
+ }));
+ await unavailable.route('**/web/api/**',apiFixture);
+ await unavailable.route('**/iphone/api/**',apiFixture);
+ await unavailable.goto(base+'/web/',{waitUntil:'domcontentloaded'});
+ await unavailable.waitForFunction(()=>document.documentElement.classList.contains('vishnu-phase2-failed'));
+ assert.equal(await unavailable.locator('#vishnuPhase2BootError button').innerText(),'Reload Vishnu',
+  'missing Phase 2 bundle has an actionable error rather than reverting to old Home');
+ await unavailable.close();
  console.log('P2-01 Home responsive, read-only projection, composer, error and locked-state checks passed.');
 } finally {await browser.close();}

@@ -19,6 +19,7 @@ from recovery.disaster_recovery import DisasterRecoveryService, encrypt_recovery
 from security.owner_access import OwnerAccessStore
 from security.pwa_sessions import PwaSessionStore
 from server.pwa_session_middleware import PwaSessionMiddleware
+from server.web_path_compat import CanonicalWebPathMiddleware
 
 
 class Registry:
@@ -188,6 +189,8 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
     assert demo_entry.status_code == 302
     assert demo_entry.headers['location'] == '/iphone/?campaignDemo=1'
     page = client.get('/iphone/')
+    assert '/iphone/p2-home.css' in page.text
+    assert '/iphone/p2-home.js' in page.text
     assert page.status_code == 200
     assert '/iphone/first-run.js' in page.text
     assert '/iphone/first-run-actions.js' in page.text
@@ -239,6 +242,8 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         ('/iphone/campaign-demo.js', 'campaignDemo'),
         ('/iphone/campaign-demo.css', 'vishnuCampaignDemo'),
         ('/iphone/campaign-demo-data.js', 'Rudra Health Care'),
+        ('/iphone/p2-home.js', '__vishnuP201'),
+        ('/iphone/p2-home.css', 'p2-home-ready'),
         ('/iphone/global-search.js', 'globalSearch'),
         ('/iphone/global-search.css', 'global-search'),
         ('/iphone/command-center.js', 'vishnuOpenCommandCenter'),
@@ -250,6 +255,63 @@ def test_first_run_browser_adapter_is_served_by_the_existing_pwa(tmp_path):
         assert asset.status_code == 200, path
         assert marker.lower() in asset.text.lower(), path
 
+
+def test_phase_two_screen_assets_load_without_exposing_owner_apis(tmp_path):
+    client, _ = make_client(tmp_path)
+    client.cookies.clear()
+    for path, marker in (
+        ('/iphone/p2-home.js', '__vishnuP201'),
+        ('/iphone/p2-home.css', 'p2-home-ready'),
+        ('/iphone/chat-experience.js', 'chat-experience'),
+        ('/iphone/chat-experience.css', 'chat-experience'),
+        ('/iphone/knowledge-notes.js', 'knowledge'),
+        ('/iphone/knowledge-notes.css', 'knowledge'),
+        ('/iphone/p307-file-preview.js', 'P3-07 File Preview & Intelligence'),
+        ('/iphone/p307-file-preview.css', 'p307'),
+        ('/iphone/memory-experiences.js', 'memory'),
+        ('/iphone/memory-experiences.css', 'memory'),
+        ('/iphone/p3-memory-library.js', 'canonical-memory views'),
+        ('/iphone/p3-memory-library.css', 'p3m-page'),
+        ('/iphone/p3-ai-intelligence.js', 'P3-01 intelligence controls'),
+        ('/iphone/p3-ai-intelligence.css', 'p3ai-page'),
+        ('/iphone/p3-knowledge-library.js', 'P3-03 Knowledge & Notes'),
+        ('/iphone/p3-knowledge-library.css', 'p3kn-page'),
+        ('/iphone/p3-files-library.js', 'P3-04: owner-visible files'),
+        ('/iphone/p3-files-library.css', 'p3fl-page'),
+        ('/iphone/p3-memory-details.js', 'P3-05: detail view'),
+        ('/iphone/p3-memory-details.css', 'p3md-page'),
+        ('/iphone/p3-knowledge-details.js', 'P3-06: source details'),
+        ('/iphone/p3-knowledge-details.css', 'p3kd-page'),
+        ('/iphone/projects-workspace-views.js', 'project'),
+        ('/iphone/projects-workspace-views.css', 'project'),
+        ('/iphone/responsive-fit.css', 'Shared viewport'),
+        ('/iphone/home-chat-redesign-core.js', 'Reference Home and system-wide chat'),
+        ('/iphone/chat-context-owner.js', '__vishnuChatContextOwner'),
+        ('/iphone/work-attention-center.js', 'Unified owner Attention Center'),
+        ('/iphone/global-work-awareness.js', 'Global read-only awareness'),
+        ('/iphone/workorder-detail.js', 'Full WorkOrder inspection drawer'),
+        ('/iphone/projects-work-visualization-runtime.js', 'Canonical Work visualization adapter'),
+        ('/iphone/project-autonomy-controls.js', 'Project autonomy controls'),
+        ('/iphone/projects-work-runtime.js', 'Canonical Projects WorkPlan + Live Work adapter'),
+        ('/iphone/adaptive-composer.js', 'Vishnu Adaptive Universal Composer'),
+        ('/iphone/p202-personal-chat.js', 'p202'),
+        ('/iphone/p202b-work-conversation.js', 'p202b'),
+        ('/iphone/p202c-project-conversation.js', 'p202c'),
+        ('/iphone/p202d-workspace-conversation.js', 'p202d'),
+        ('/iphone/p203-today.js', 'p203'),
+        ('/iphone/p204-live-voice.js', 'p204'),
+        ('/iphone/p205-conversation-history.js', 'p205'),
+        ('/iphone/global-search.js', 'globalSearch'),
+        ('/iphone/p207-notifications.js', 'p207'),
+        ('/iphone/command-center.js', 'vishnuOpenCommandCenter'),
+    ):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        assert marker.lower() in response.text.lower(), path
+
+    # Static screen code may load on Welcome, but private owner data stays gated.
+    assert client.get('/iphone/api/conversations').status_code == 401
+
 def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path):
     client, _ = make_client(tmp_path)
     bad = client.post('/iphone/api/enroll', json={'code': 'wrong'})
@@ -258,9 +320,10 @@ def test_owner_enrollment_requires_correct_code_and_sets_secure_cookies(tmp_path
     assert response.status_code == 200
     assert response.json()['device_id'] == 'iphone-1'
     cookies = response.headers.get_list('set-cookie')
-    assert any('pa_device=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c for c in cookies)
-    assert any('pa_token=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c for c in cookies)
-    assert all('Max-Age=31536000' in c for c in cookies)
+    active_cookies = [c for c in cookies if 'Max-Age=31536000' in c]
+    assert any('pa_device=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c and 'Path=/' in c for c in active_cookies)
+    assert any('pa_token=' in c and 'HttpOnly' in c and 'Secure' in c and 'SameSite=strict' in c and 'Path=/' in c for c in active_cookies)
+    assert all('Max-Age=0' in c and 'Path=/iphone' in c for c in cookies if 'Max-Age=0' in c)
 
 
 def test_missing_browser_trust_returns_clear_web_sign_in_guidance(tmp_path):
@@ -282,8 +345,10 @@ def test_status_renews_existing_browser_trust_without_reenrollment(tmp_path):
 
     assert response.status_code == 200
     cookies = response.headers.get_list('set-cookie')
-    assert len(cookies) == 2
-    assert all('Max-Age=31536000' in cookie for cookie in cookies)
+    active_cookies = [cookie for cookie in cookies if 'Max-Age=31536000' in cookie]
+    assert len(active_cookies) == 2
+    assert all('Path=/' in cookie for cookie in active_cookies)
+    assert sum('Max-Age=0' in cookie and 'Path=/iphone' in cookie for cookie in cookies) == 2
     assert len(runtime['device_registry'].tokens) == 1
 
 
@@ -398,7 +463,16 @@ def test_web_portable_restore_preserves_identity_restores_data_and_secures_repla
     identity, _ = source_owner.initialize_identity(
         first_name='Asha', last_name='Patel', display_name='Asha Patel',
     )
-    (source / 'conversation-sample.json').write_text('{"message":"recoverable test data"}', encoding='utf-8')
+    # Use Vishnu's canonical conversation store as the recovery payload, not a
+    # synthetic loose file, so the test proves that real user data survives a
+    # lost-device restore.
+    source_continuity = ContinuityService(source / 'continuity.sqlite3')
+    conversation_id = source_continuity.create_thread('Recovery integrity conversation')
+    source_continuity.append(
+        conversation_id, device_id=None, kind='message',
+        payload={'role': 'user', 'text': 'Restore this exact conversation.'},
+        event_id='web-restore-integrity-event',
+    )
     recovery_key = generate_recovery_key()
     archive = tmp_path / 'asha.vdr'
     DisasterRecoveryService(BackupService(source)).create_bundle(
@@ -452,12 +526,37 @@ def test_web_portable_restore_preserves_identity_restores_data_and_secures_repla
 
     restored = FirstRunCoordinator.apply_pending_restore(target)
     assert restored['ok'] is True and restored['portable_disaster_recovery'] is True
-    assert (target / 'conversation-sample.json').read_text(encoding='utf-8') == '{"message":"recoverable test data"}'
+    restored_continuity = ContinuityService(target / 'continuity.sqlite3')
+    restored_conversation = restored_continuity.thread(conversation_id)
+    assert restored_conversation is not None
+    assert restored_conversation['title'] == 'Recovery integrity conversation'
+    restored_history = restored_continuity.list_threads(query='Restore this exact conversation.')
+    assert len(restored_history) == 1
+    assert restored_history[0]['id'] == conversation_id
+    assert restored_history[0]['preview'] == 'Restore this exact conversation.'
+    # Exercise the real process boundary: the restore is applied during the
+    # next server start, so all request/runtime objects must be reconstructed
+    # before the replacement browser can be secured.
+    setup = FirstRunCoordinator(target)
+    target_preferences = Preferences(target / 'preferences.json')
+    client, runtime = make_client(
+        target, allow_insecure=True, bootstrap_secret='B' * 48,
+        runtime_overrides={
+            'preferences': target_preferences,
+            'models': Models(),
+            'tools': Tools(),
+            'backups': BackupService(target),
+            'first_run_setup': setup,
+        },
+    )
+    setup.bind_runtime(runtime)
+
     restored_identity = runtime['owner_access'].identity()
     assert restored_identity['owner_id'] == identity['owner_id']
     assert restored_identity['vishnu_id'] == identity['vishnu_id']
     assert runtime['owner_access'].password_configured() is False
     assert runtime['owner_access'].recovery_codes_remaining() == 0
+    assert runtime['device_registry'].list() == []
 
     secured = client.post('/iphone/api/first-run/restore/secure-device', json={
         'bootstrap_secret': 'B' * 48,
@@ -635,7 +734,8 @@ def test_verified_configured_google_owner_unlocks_new_browser(tmp_path, monkeypa
     assert calls == [('g' * 120, 'google-client.apps.googleusercontent.com')]
     assert len(runtime['device_registry'].tokens) == 1
     join_cookie = response.headers.get_list('set-cookie')
-    assert len(join_cookie) == 1 and 'pa_join=' in join_cookie[0] and 'HttpOnly' in join_cookie[0]
+    active_join = [cookie for cookie in join_cookie if 'Max-Age=600' in cookie]
+    assert len(active_join) == 1 and 'pa_join=' in active_join[0] and 'HttpOnly' in active_join[0] and 'Path=/' in active_join[0]
 
 
 def test_google_login_rejects_other_or_unverified_accounts(tmp_path, monkeypatch):
@@ -1380,22 +1480,30 @@ def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(t
     app.add_middleware(PwaSessionMiddleware, sessions=runtime['pwa_sessions'],
                        device_registry=registry, cookie_max_age=600,
                        first_run_setup=setup, cookie_secure=False)
+    # Model an embedded browser that followed and cached the old permanent
+    # /iphone/api -> /web/api redirect: canonicalization must run outside the
+    # session middleware, and owner cookies must work on the /web alias.
+    app.add_middleware(CanonicalWebPathMiddleware)
     app.include_router(iphone_pwa_router(runtime, settings))
     client = TestClient(app, base_url='http://127.0.0.1', client=('127.0.0.1', 12345))
 
-    options = client.get('/iphone/api/access/options').json()
+    options = client.get('/web/api/access/options').json()
     assert options['creation_available'] is True
     assert options['local_setup_available'] is True
-    created = client.post('/iphone/api/first-run/create', json={
-        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+    created = client.post('/web/api/first-run/create', json={
+        'first_name': 'Alex', 'display_name': 'Alex',
         'password': 'a sufficiently long local password',
     })
     assert created.status_code == 200, created.text
+    set_cookies = created.headers.get_list('set-cookie')
+    for name in ('pa_device', 'pa_token', 'pa_setup_claim', 'pa_session'):
+        assert any(value.startswith(name + '=') and '; Path=/;' in value
+                   for value in set_cookies), f'{name} must work on both /iphone and /web API paths'
     assert runtime['owner_access'].identity() is not None
     original_device_id = created.json()['device']['id']
     client.cookies.delete('pa_device')
     client.cookies.delete('pa_token')
-    reconnected = client.post('/iphone/api/first-run/resume', json={
+    reconnected = client.post('/web/api/first-run/resume', json={
         'password': 'a sufficiently long local password',
         'device_name': 'Replacement local browser',
     })
@@ -1404,40 +1512,40 @@ def test_local_web_first_run_needs_no_setup_code_when_runtime_is_loopback_only(t
     assert replacement_device_id != original_device_id
     assert not runtime['device_registry'].is_active(original_device_id)
     assert runtime['device_registry'].is_active(replacement_device_id)
-    resumed = client.post('/iphone/api/first-run/resume', json={})
+    resumed = client.post('/web/api/first-run/resume', json={})
     assert resumed.status_code == 200, resumed.text
     assert 'pa_setup_claim=' in resumed.headers.get('set-cookie', '')
-    regenerated = client.post('/iphone/api/first-run/recovery-codes', json={})
+    regenerated = client.post('/web/api/first-run/recovery-codes', json={})
     assert regenerated.status_code == 200, regenerated.text
     assert len(regenerated.json()['recovery_codes']) == 8
-    saved_recovery = client.post('/iphone/api/first-run/recovery-saved', json={'saved': True})
+    saved_recovery = client.post('/web/api/first-run/recovery-saved', json={'saved': True})
     assert saved_recovery.status_code == 200, saved_recovery.text
-    options = client.get('/iphone/api/access/options').json()
+    options = client.get('/web/api/access/options').json()
     assert options['setup_in_progress'] is True
     assert options['setup_resume_step'] == 4
     assert options['setup_recovery_saved'] is True
-    regenerated_after_ack = client.post('/iphone/api/first-run/recovery-codes', json={})
+    regenerated_after_ack = client.post('/web/api/first-run/recovery-codes', json={})
     assert regenerated_after_ack.status_code == 200, regenerated_after_ack.text
-    options = client.get('/iphone/api/access/options').json()
+    options = client.get('/web/api/access/options').json()
     assert options['setup_recovery_saved'] is False, 'new recovery codes must invalidate the previous save acknowledgement'
-    saved_recovery = client.post('/iphone/api/first-run/recovery-saved', json={'saved': True})
+    saved_recovery = client.post('/web/api/first-run/recovery-saved', json={'saved': True})
     assert saved_recovery.status_code == 200, saved_recovery.text
     recovery_count = runtime['owner_access'].recovery_codes_remaining()
-    duplicate = client.post('/iphone/api/first-run/create', json={
-        'first_name': 'Vaishnav', 'display_name': 'Vaishnav',
+    duplicate = client.post('/web/api/first-run/create', json={
+        'first_name': 'Alex', 'display_name': 'Alex',
         'password': 'a different sufficiently long password',
     })
     assert duplicate.status_code == 409
     assert 'Resume the pending setup' in duplicate.json()['detail']
     assert runtime['owner_access'].recovery_codes_remaining() == recovery_count
-    saved_policy = client.put('/iphone/api/first-run/data-policy', json={
+    saved_policy = client.put('/web/api/first-run/data-policy', json={
         'default_policy': 'device_only',
     })
     assert saved_policy.status_code == 200, saved_policy.text
     assert saved_policy.json()['settings']['default_policy'] == 'device_only'
     # The ordinary settings API remains unavailable until setup is complete;
     # only the setup-claim-bound endpoint may save the first-run choice.
-    ordinary_policy = client.put('/iphone/api/data-plane/settings', json={
+    ordinary_policy = client.put('/web/api/data-plane/settings', json={
         'default_policy': 'sync_everywhere',
     })
     assert ordinary_policy.status_code == 423, ordinary_policy.text

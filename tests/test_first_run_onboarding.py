@@ -242,7 +242,7 @@ def test_identity_creation_is_idempotent_and_race_safe(tmp_path):
 
     def initialize(_):
         return store.initialize_identity(
-            first_name='Vaishnav', last_name='Sawant', display_name='Vishnu Owner'
+            first_name='Alex', last_name='Sawant', display_name='Vishnu Owner'
         )
 
     with ThreadPoolExecutor(max_workers=8) as pool:

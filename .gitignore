@@ -13,3 +13,21 @@ dist/
 build/
 *.egg-info/
 .reset-archives/
+
+# Local test/runtime records and secrets must not be committed.
+.pytest-*/
+test-results/
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.wal
+*.shm
+.personal_ai/
+.vishnu/
+first-run-state.json
+vault.json
+preferences.json
+telemetry.json
+artifacts/genesis-*/

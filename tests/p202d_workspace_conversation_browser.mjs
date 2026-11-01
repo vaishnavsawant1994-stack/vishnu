@@ -32,6 +32,9 @@ const server=createServer(async(req,res)=>{
  if(url.pathname===prefix+'/summary')return send(200,summary);
  if(url.pathname===prefix+'/conversations'&&req.method==='GET')return send(200,{workspace_id:workspace.id,conversations:chats.map(c=>c.conversation)});
  if(url.pathname===prefix+'/conversations'&&req.method==='POST'){
+   // Keep creation pending long enough to exercise sending immediately after
+   // selecting New Chat, as can happen on mobile and under slow connections.
+   await new Promise(resolve=>setTimeout(resolve,80));
    const ident='workspace-thread-'+(++created),entry={conversation:{id:ident,title:body.title||'New Workspace Conversation',context:{workspace_id:workspace.id,conversation_kind:'workspace',owner_id:'owner'}},events:[]};
    chats.unshift(entry);return send(201,{workspace_id:workspace.id,conversation:entry.conversation});
  }
@@ -64,8 +67,8 @@ try{
   assert.ok((await page.locator('.p202d-stat strong').allTextContents()).includes('1'),'Project count is based on server data');
   assert.equal(await page.getByText('12 Members').count(),0,'Do not inject fake member counts');
   if(mobile){
-    await page.getByRole('button',{name:'Chats ▾'}).click();
-    await page.getByRole('button',{name:'＋ New Workspace Chat'}).click();
+    await page.getByRole('button',{name:'Open workspace conversations'}).click();
+    await page.getByRole('button',{name:'Create new Workspace chat'}).click();
     await page.locator('.p202d-tabs button:visible').count().then(count=>assert.equal(count,5,'mobile has five Workspace tabs'));
     const geometry=await page.evaluate(()=>({viewport:innerWidth,scroll:document.documentElement.scrollWidth}));
     assert.ok(geometry.scroll<=geometry.viewport+3,JSON.stringify(geometry));
@@ -80,6 +83,7 @@ try{
   assert.equal(sent.length,1);
   assert.equal(sent[0].workspace_id,workspace.id);
   assert.equal(sent[0].transcript,'Show me authorized Workspace progress');
+  assert.equal(created,1,'New Chat and immediate send share one conversation creation request');
   assert.equal(chats.length,1);
   assert.deepEqual(errors,[],'P2-02D must not cause runtime page errors');
   if(screenshotDir)await page.screenshot({path:screenshotDir+'/workspace-chat-'+width+'.png',fullPage:false});
