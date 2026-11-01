@@ -424,9 +424,26 @@ try {
   assert.deepEqual(homeState.timeline,["Finish daily review","Team planning meeting"],"Today should show canonical plan items");
   assert.ok((await page.locator(".calendar-status-copy").innerText()).includes("External calendars not connected"),"calendar row should report the disconnected state");
   assert.equal(await page.locator("#homeCalendarConnect").getAttribute("aria-label"),"Open Tools to connect an external calendar");
-  for(const section of [homeState.header,homeState.quick,homeState.recent,homeState.today,homeState.calendar,homeState.composer]){
-    assert.ok(section.left>=-1&&section.right<=homeState.innerWidth+1,"Home section should remain inside the viewport");
+  // The approved P2-01 Home hides the legacy Today/calendar panels.
+  // Check all visible approved regions instead; never enforce geometry for
+  // display:none legacy sections whose rects are not meaningful.
+  const homeSections=await page.evaluate(()=>{
+    const bounds=(selector)=>{
+      const node=document.querySelector(selector);
+      if(!node)throw new Error('Missing approved Home section: '+selector);
+      const style=getComputedStyle(node),rect=node.getBoundingClientRect();
+      return {selector,visible:style.display!=='none'&&style.visibility!=='hidden'&&rect.width>0&&rect.height>0,left:rect.left,right:rect.right};
+    };
+    return ['.topbar','.p2-hero','.p2-daily','.v-shortcuts','#composer','.p2-lower','#homeRecentSection','.p2-work-panel','.p2-tools-panel','.today-panel','.calendar-status-row'].map(bounds);
+  });
+  for(const section of homeSections.filter(section=>section.visible)){
+    assert.ok(section.left>=-1&&section.right<=homeState.innerWidth+1,
+      section.selector+' must remain inside the Home viewport: '+JSON.stringify(section));
   }
+  assert.ok(homeSections.some(s=>s.selector==='.p2-hero'&&s.visible),
+    'the new approved Home hero must be visible');
+  assert.ok(homeSections.some(s=>s.selector==='.p2-daily'&&s.visible),
+    'the new approved Home daily panel must be visible');
   assert.ok(homeState.scrollWidth<=homeState.innerWidth,"Home must not scroll horizontally");
   await page.screenshot({ path: "artifacts/personal-ai-home-390x844.png", fullPage: true });
 
