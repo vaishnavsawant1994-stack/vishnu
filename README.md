@@ -105,3 +105,7 @@ signing, device and microphone features may remain unconfigured; their absence
 must be reported as deferred external qualification rather than bypassed.
 
 This project does not contain or reproduce Brahma Echo source code.
+
+## Detailed project guide
+
+The [**Project Handbook**](docs/PROJECT_HANDBOOK.md) describes the repository's specific goals, users, source architecture, functional areas, current qualification limits, development setup, security requirements and next milestones. It differentiates implemented source from unverified or planned functionality.
